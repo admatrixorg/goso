@@ -32,4 +32,14 @@
 | **Zalo Personal** | Kênh Zalo cá nhân (profile) | Ưu tiên MVP |
 | **Zalo OA** | Kênh Zalo Official Account | Ưu tiên MVP |
 
+| **Observability** | Khả năng quan sát hệ thống: log, trace, metrics | SPEC 008 |
+
+| **Rate Limit** | Giới hạn số request/phút/IP, trả 429 + Retry-After | SPEC 006 |
+
+| **Auth (Admin Token)** | Bảo vệ /api/* và /ws bằng Bearer token, bypass /healthz | SPEC 006 |
+
+| **Deploy** | Đóng gói Docker + Compose, overlay prod | SPEC 012 |
+
+| **Hardening** | Cứng hóa: secret scan, semgrep, E2E, runbook | SPEC 013 |
+
 *30+ thuật ngữ, mở rộng khi SPEC mới bổ sung.*

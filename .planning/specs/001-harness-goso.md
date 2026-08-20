@@ -34,6 +34,6 @@ Dựng **nền tảng GOSO** đủ để các SPEC tiếp theo xây lên: harnes
 
 ## Clarifications
 
-- Go 1.23 (tương thích GoClaw 1.26, tránh yêu cầu toolchain quá mới)
+- Go 1.25 (tương thích GoClaw 1.26, tránh yêu cầu toolchain quá mới)
 - Module `github.com/mqglobal/goso` (đổi khi có org chính thức)
 - Không copy bất kỳ file GoClaw gốc; mọi file có header license GOSO

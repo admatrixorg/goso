@@ -26,3 +26,5 @@
 | 15 | 2026-08-20 | **SPEC 006: Bearer token + in-memory rate limit** | Đơn giản, không Redis, bypass /healthz | JWT/OAuth, Redis limit |
 
 | 16 | 2026-08-20 | **SPEC 007: Vite+React+TS cho Control Plane, gateway là nguồn chân lý** | Nhanh, nhẹ, không UI framework nặng | Next.js, Tailwind nặng |
+
+| 17 | 2026-08-20 | **SPEC 008-013: plan-only, không code chi tiết** | Hoàn thiện quy hoạch tới release trước khi code tiếp, theo yêu cầu /goal | Code chi tiết 008-013 ngay |
