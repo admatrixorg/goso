@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "GOSO",
+  "outputfilename": "GOSO",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "build:tags": "wails",
+  "wailsjsdir": "./frontend",
+  "author": {
+    "name": "MQ Global"
+  },
+  "info": {
+    "companyName": "MQ Global",
+    "productName": "GOSO",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright (c) 2026 MQ Global",
+    "comments": "GOSO Desktop — Control Plane + local gateway (SQLite)"
+  }
+}

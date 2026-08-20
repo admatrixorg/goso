@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/client": ["./node_modules/@types/react-dom/client"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
+    }
+  },
+  "include": ["src"]
+}

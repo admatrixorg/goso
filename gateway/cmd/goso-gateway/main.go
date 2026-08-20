@@ -13,17 +13,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/mqglobal/goso/gateway/internal/auth"
-	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
-	"github.com/mqglobal/goso/gateway/internal/httpapi"
-	"github.com/mqglobal/goso/gateway/internal/llm"
-	"github.com/mqglobal/goso/gateway/internal/ratelimit"
+	"github.com/mqglobal/goso/gateway/internal/serve"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -127,45 +122,19 @@ func runGateway(args []string) {
 	} else {
 		fmt.Printf("store: sqlite %s\n", dbPath)
 	}
-	reg := llm.NewRegistry()
-	// Prefer anthropic if configured, else openai, else echo.
-	var provider llm.Provider = reg.Get("anthropic")
-	if !reg.HasReal() {
-		provider = llm.Echo{}
-	} else if reg.Get("anthropic").Name() == "echo" {
-		provider = reg.Get("openai")
-	}
-	fmt.Printf("LLM provider: %s (hasReal=%v)\n", provider.Name(), reg.HasReal())
 
-	tg := &channel.Telegram{Store: st, LLM: provider}
-	zp := &channel.ZaloPersonal{Store: st, LLM: provider}
-	zo := &channel.ZaloOA{Store: st, LLM: provider}
-	mux := httpapi.RouterWithAllChannels(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate).(*http.ServeMux)
-	httpapi.RegisterWS(mux)
-
-	// Auth + rate limit (AC 01–03)
-	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
-	rateLimit := 60
-	if v := os.Getenv("GOSO_RATE_LIMIT"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			rateLimit = n
-		}
-	}
-	if adminToken == "" {
-		fmt.Println("auth: dev mode (no GOSO_ADMIN_TOKEN)")
-	} else {
+	handler, status := serve.New(st, version)
+	fmt.Printf("LLM provider: %s (hasReal=%v)\n", status.Provider, status.HasReal)
+	if status.Auth {
 		fmt.Println("auth: enabled")
+	} else {
+		fmt.Println("auth: dev mode (no GOSO_ADMIN_TOKEN)")
 	}
-	if rateLimit > 0 {
-		fmt.Printf("rate limit: %d req/min/IP\n", rateLimit)
+	if status.RateLimit > 0 {
+		fmt.Printf("rate limit: %d req/min/IP\n", status.RateLimit)
 	} else {
 		fmt.Println("rate limit: off")
 	}
-	var handler http.Handler = mux
-	if rateLimit > 0 {
-		handler = ratelimit.New(rateLimit).Middleware(handler)
-	}
-	handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() {

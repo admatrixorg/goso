@@ -1,4 +1,4 @@
-# SETUP — GOSO (5 bước)
+# SETUP — GOSO
 
 ## 1. Yêu cầu
 
@@ -28,7 +28,22 @@ make verify   # vet + fmt + test
 make build    # bin/goso-gateway
 ```
 
-## 5. Pre-commit (tùy chọn)
+## 5. Desktop (SPEC 009)
+
+```bash
+make -C desktop verify    # không cần Wails/CGO
+# Dev window (cần Wails CLI + WebKit):
+#   go install github.com/wailsapp/wails/v2/cmd/wails@latest
+#   cd desktop && wails dev
+# macOS binary:
+#   make -C desktop build   # → desktop/build/bin/GOSO.app
+```
+
+SQLite mặc định: `~/Library/Application Support/GOSO/goso.db` (macOS). Ghi đè: `GOSO_DB_PATH`.
+
+Xem `desktop/README.md`.
+
+## 6. Pre-commit (tùy chọn)
 
 ```bash
 ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo root
@@ -43,5 +58,5 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo 
 | GOSO_LOG_LEVEL | info | Mức log |
 | GOSO_ADMIN_TOKEN | (rỗng) | Bearer token cho /api/* và /ws (rỗng = dev mode) |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
-| GOSO_DB_PATH | :memory: | File SQLite (vd data/goso.db) |
+| GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db) |
 | GOSO_ENV | development | Môi trường |

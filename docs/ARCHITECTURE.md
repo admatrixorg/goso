@@ -36,7 +36,7 @@ goso/
 ├── gateway/internal/config    # domain config
 ├── gateway/internal/health    # domain health checks
 ├── control-plane/             # SPEC 002+
-├── desktop/                   # SPEC 00X
+├── desktop/                   # SPEC 009 — Wails v2 + React + SQLite (reuse gateway store)
 ├── mcp/                       # tận dụng goclaw-mcp
 └── .planning/                 # specs/plans/decisions/glossary
 ```
