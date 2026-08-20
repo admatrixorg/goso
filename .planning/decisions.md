@@ -24,3 +24,5 @@
 | 14 | 2026-08-20 | **SPEC 005: modernc.org/sqlite (pure Go) cho persist** | Không CGO, cross-build dễ; file data/goso.db | mattn/go-sqlite3 (cần CGO) |
 
 | 15 | 2026-08-20 | **SPEC 006: Bearer token + in-memory rate limit** | Đơn giản, không Redis, bypass /healthz | JWT/OAuth, Redis limit |
+
+| 16 | 2026-08-20 | **SPEC 007: Vite+React+TS cho Control Plane, gateway là nguồn chân lý** | Nhanh, nhẹ, không UI framework nặng | Next.js, Tailwind nặng |
