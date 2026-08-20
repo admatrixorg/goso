@@ -23,6 +23,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -135,6 +136,8 @@ func runGateway(args []string) {
 	} else if reg.Get("anthropic").Name() == "echo" {
 		provider = reg.Get("openai")
 	}
+	obs := observe.New()
+	provider = obs.Wrap(provider)
 	fmt.Printf("LLM provider: %s (hasReal=%v)\n", provider.Name(), reg.HasReal())
 
 	tg := &channel.Telegram{Store: st, LLM: provider}
@@ -142,6 +145,7 @@ func runGateway(args []string) {
 	zo := &channel.ZaloOA{Store: st, LLM: provider}
 	mux := httpapi.RouterWithAllChannels(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
+	obs.Register(mux)
 
 	// Auth + rate limit (AC 01–03)
 	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
@@ -166,6 +170,7 @@ func runGateway(args []string) {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
 	handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
+	handler = obs.Middleware(handler)
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() {

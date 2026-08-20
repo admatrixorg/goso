@@ -22,6 +22,13 @@ type Anthropic struct {
 
 func (a *Anthropic) Name() string { return "anthropic" }
 
+func (a *Anthropic) ModelName() string {
+	if a.Model != "" {
+		return a.Model
+	}
+	return "claude-sonnet-4-20250514"
+}
+
 func (a *Anthropic) Chat(ctx context.Context, messages []Message) (string, error) {
 	if a.APIKey == "" {
 		return "", fmt.Errorf("anthropic: missing API key")

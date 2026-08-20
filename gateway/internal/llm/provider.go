@@ -19,7 +19,8 @@ type Provider interface {
 // Echo is a fallback provider that echoes the last user message.
 type Echo struct{}
 
-func (Echo) Name() string { return "echo" }
+func (Echo) Name() string      { return "echo" }
+func (Echo) ModelName() string { return "echo" }
 func (Echo) Chat(_ context.Context, messages []Message) (string, error) {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" {
