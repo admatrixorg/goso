@@ -29,4 +29,13 @@ make verify
 
 - `docs/SETUP.md` — 5 bước dựng môi trường
 - `docs/ARCHITECTURE.md` — kiến trúc C→B
-- `.planning/specs/001-harness-goso.md` — SPEC đã LOCKED
+- `docs/RUNBOOK.md` — khởi động, backup SQLite, xoay token, sự cố
+- `docs/RELEASE.md` — checklist version / changelog / tag
+- `CHANGELOG.md` — lịch sử thay đổi
+- `.planning/specs/013-hardening.md` — SPEC 013 (hardening)
+
+```bash
+make verify          # vet + fmt + test + scan + e2e
+./scripts/e2e.sh     # healthz → agents → sessions → chat → webhook
+./scripts/pre-commit.sh
+```

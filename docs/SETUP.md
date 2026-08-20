@@ -24,8 +24,17 @@ go run ./gateway/cmd/goso-gateway doctor
 ## 4. Verify harness
 
 ```bash
-make verify   # vet + fmt + test
+make verify   # vet + fmt + test + gitleaks/semgrep (nếu có) + e2e
 make build    # bin/goso-gateway
+make scan     # gitleaks + semgrep
+./scripts/e2e.sh
+```
+
+Cài scanner (khuyến nghị local, bắt buộc trên CI):
+
+```bash
+# gitleaks: https://github.com/gitleaks/gitleaks/releases
+# semgrep:  pipx install semgrep   # hoặc: uv tool install semgrep
 ```
 
 ## 5. Pre-commit (tùy chọn)
@@ -45,3 +54,5 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo 
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: | File SQLite (vd data/goso.db) |
 | GOSO_ENV | development | Môi trường |
+
+Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).

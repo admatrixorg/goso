@@ -6,19 +6,36 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
           cache: true
-      - name: go vet
-        run: go vet ./...
-      - name: gofmt
-        run: test -z "$(gofmt -l gateway)"
-      - name: go test
-        run: go test ./... -count=1
-      - name: gateway smoke
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install gitleaks
         run: |
-          go run ./gateway/cmd/goso-gateway version
-          go run ./gateway/cmd/goso-gateway doctor
+          VER=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Install semgrep
+        run: |
+          # setuptools 82+ dropped pkg_resources; opentelemetry in semgrep 1.110 still imports it
+          python3 -m pip install --user "setuptools==70.3.0" "semgrep==1.110.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: make verify
+        run: make verify
+
+      - name: gateway smoke
+        run: make smoke

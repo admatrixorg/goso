@@ -66,7 +66,7 @@ Commands:
   help       Show this help
 
 gateway flags:
-  --port int    Port (default env GOSO_PORT or 8080; 0 = random)
+  --port int    Port (omit = env GOSO_PORT or 8080; 0 = random)
   --host string Host (default 127.0.0.1)
 
 Environment:
@@ -98,12 +98,12 @@ func printDoctor() {
 
 func runGateway(args []string) {
 	fs := flag.NewFlagSet("gateway", flag.ExitOnError)
-	port := fs.Int("port", 0, "port (0 = random, else overrides GOSO_PORT)")
+	port := fs.Int("port", -1, "port (omit = env GOSO_PORT or 8080; 0 = random)")
 	host := fs.String("host", "127.0.0.1", "host")
 	_ = fs.Parse(args)
 
 	cfg := config.Load()
-	if *port != 0 {
+	if *port >= 0 {
 		cfg.Port = *port
 	}
 	addr := fmt.Sprintf("%s:%d", *host, cfg.Port)

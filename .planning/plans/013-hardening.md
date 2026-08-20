@@ -16,6 +16,6 @@
 
 ## Trạng thái
 
-- [ ] T01 — scan
-- [ ] T02 — runbook
-- [ ] T03 — e2e
+- [x] T01 — scan
+- [x] T02 — runbook
+- [x] T03 — e2e
