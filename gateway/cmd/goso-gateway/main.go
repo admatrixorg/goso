@@ -1,5 +1,5 @@
 // Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
-// GOSO Gateway — commands: version, doctor, gateway (HTTP+WS+Session+LLM+4 channels).
+// GOSO Gateway — commands: version, doctor, gateway (HTTP+WS+Session+LLM+4 channels+auth/ratelimit).
 
 package main
 
@@ -13,14 +13,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/ratelimit"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -59,7 +62,7 @@ Usage:
 Commands:
   version    Print version (JSON)
   doctor     Run health checks (JSON)
-  gateway    Start HTTP gateway (SPEC 005)
+  gateway    Start HTTP gateway (SPEC 006)
   help       Show this help
 
 gateway flags:
@@ -140,7 +143,31 @@ func runGateway(args []string) {
 	mux := httpapi.RouterWithAllChannels(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	// Auth + rate limit (AC 01–03)
+	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
+	rateLimit := 60
+	if v := os.Getenv("GOSO_RATE_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			rateLimit = n
+		}
+	}
+	if adminToken == "" {
+		fmt.Println("auth: dev mode (no GOSO_ADMIN_TOKEN)")
+	} else {
+		fmt.Println("auth: enabled")
+	}
+	if rateLimit > 0 {
+		fmt.Printf("rate limit: %d req/min/IP\n", rateLimit)
+	} else {
+		fmt.Println("rate limit: off")
+	}
+	var handler http.Handler = mux
+	if rateLimit > 0 {
+		handler = ratelimit.New(rateLimit).Middleware(handler)
+	}
+	handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
+
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("serve: %v", err)
