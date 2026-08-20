@@ -1,12 +1,17 @@
 # GOSO — Makefile (Harness)
 
-.PHONY: verify lint vet fmt test build doctor version help
+.PHONY: verify lint vet fmt test build doctor version help mcp-verify
 
 help:
-	@echo "Targets: verify | vet | fmt | test | build | lint"
+	@echo "Targets: verify | vet | fmt | test | build | lint | mcp-verify"
 
-verify: vet fmt test
+verify: vet fmt test mcp-verify
 	@echo "==> verify: OK"
+
+mcp-verify:
+	@echo "==> mcp verify"
+	@if [ ! -d mcp/node_modules ]; then pnpm -C mcp install --frozen-lockfile; fi
+	pnpm -C mcp verify
 
 vet:
 	go vet ./...

@@ -3,6 +3,7 @@
 ## 1. Yêu cầu
 
 - Go 1.23+ (`go version`)
+- Node 20+ và pnpm (cho `mcp/`)
 - Git, make
 
 ## 2. Clone & cài
@@ -24,9 +25,12 @@ go run ./gateway/cmd/goso-gateway doctor
 ## 4. Verify harness
 
 ```bash
-make verify   # vet + fmt + test
+make verify   # vet + fmt + test + pnpm -C mcp verify
 make build    # bin/goso-gateway
+pnpm -C mcp install && pnpm -C mcp verify
 ```
+
+MCP (Claude Code / Cursor): xem `mcp/README.md`. Env bắt buộc: `GOSO_GATEWAY_URL` (vd `http://localhost:8080`).
 
 ## 5. Pre-commit (tùy chọn)
 
@@ -45,3 +49,6 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo 
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: | File SQLite (vd data/goso.db) |
 | GOSO_ENV | development | Môi trường |
+| GOSO_GATEWAY_URL | — | URL gateway cho `goso-mcp` (bắt buộc khi chạy MCP) |
+| GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |
+| GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |

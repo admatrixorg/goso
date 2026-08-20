@@ -37,6 +37,6 @@ goso/
 ├── gateway/internal/health    # domain health checks
 ├── control-plane/             # SPEC 002+
 ├── desktop/                   # SPEC 00X
-├── mcp/                       # tận dụng goclaw-mcp
+├── mcp/                       # goso-mcp (rebrand goclaw-mcp, GOSO_GATEWAY_URL)
 └── .planning/                 # specs/plans/decisions/glossary
 ```
