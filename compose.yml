@@ -1,0 +1,51 @@
+# GOSO local stack — gateway + control-plane + SQLite volume.
+# Usage: docker compose up --build
+# Gateway:        http://localhost:8080
+# Control Plane:  http://localhost:3000
+
+name: goso
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+    environment:
+      GOSO_PORT: "8080"
+      GOSO_HOST: "0.0.0.0"
+      GOSO_DB_PATH: /data/goso.db
+      GOSO_ENV: ${GOSO_ENV:-development}
+      GOSO_LOG_LEVEL: ${GOSO_LOG_LEVEL:-info}
+      GOSO_ADMIN_TOKEN: ${GOSO_ADMIN_TOKEN:-}
+      GOSO_RATE_LIMIT: ${GOSO_RATE_LIMIT:-60}
+      GOSO_ANTHROPIC_API_KEY: ${GOSO_ANTHROPIC_API_KEY:-}
+      GOSO_OPENAI_API_KEY: ${GOSO_OPENAI_API_KEY:-}
+      GOSO_TELEGRAM_BOT_TOKEN: ${GOSO_TELEGRAM_BOT_TOKEN:-}
+      GOSO_ZALO_OA_ACCESS_TOKEN: ${GOSO_ZALO_OA_ACCESS_TOKEN:-}
+      GOSO_ZALO_PERSONAL_TOKEN: ${GOSO_ZALO_PERSONAL_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 8s
+
+  control-plane:
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      GATEWAY_URL: http://gateway:8080
+      PORT: "3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+volumes:
+  data:

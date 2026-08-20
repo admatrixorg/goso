@@ -25,8 +25,16 @@ go run ./gateway/cmd/goso-gateway doctor
 make verify
 ```
 
+Docker (SPEC 012):
+
+```bash
+docker compose up --build
+# gateway http://localhost:8080  ·  control-plane http://localhost:3000
+```
+
 ## Tài liệu
 
 - `docs/SETUP.md` — 5 bước dựng môi trường
 - `docs/ARCHITECTURE.md` — kiến trúc C→B
+- `docs/DEPLOY.md` — Docker Compose + overlay production
 - `.planning/specs/001-harness-goso.md` — SPEC đã LOCKED

@@ -67,16 +67,19 @@ Commands:
 
 gateway flags:
   --port int    Port (default env GOSO_PORT or 8080; 0 = random)
-  --host string Host (default 127.0.0.1)
+  --host string Host (default env GOSO_HOST or 127.0.0.1)
 
 Environment:
   GOSO_PORT                Port (default 8080)
+  GOSO_HOST                Bind host (default 127.0.0.1; Docker uses 0.0.0.0)
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional, falls back to echo)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)
   GOSO_ENV                 Environment (default development)
+  GOSO_DB_PATH             SQLite path (default :memory:)
+  GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (empty = dev mode)
 
 `, name, version)
 }
@@ -99,14 +102,21 @@ func printDoctor() {
 func runGateway(args []string) {
 	fs := flag.NewFlagSet("gateway", flag.ExitOnError)
 	port := fs.Int("port", 0, "port (0 = random, else overrides GOSO_PORT)")
-	host := fs.String("host", "127.0.0.1", "host")
+	host := fs.String("host", "", "host (default env GOSO_HOST or 127.0.0.1)")
 	_ = fs.Parse(args)
 
 	cfg := config.Load()
 	if *port != 0 {
 		cfg.Port = *port
 	}
-	addr := fmt.Sprintf("%s:%d", *host, cfg.Port)
+	bindHost := *host
+	if bindHost == "" {
+		bindHost = os.Getenv("GOSO_HOST")
+	}
+	if bindHost == "" {
+		bindHost = "127.0.0.1"
+	}
+	addr := fmt.Sprintf("%s:%d", bindHost, cfg.Port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("listen %s: %v", addr, err)
