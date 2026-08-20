@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e '(.tool_input.command // \"\") | test(\"rm\\\\s+-rf\\\\s+/(\\\\s|$)|rm\\\\s+-rf\\\\s+~|git\\\\s+push\\\\s+--force|DROP\\\\s+TABLE|TRUNCATE\\\\s+TABLE\")' >/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked by GOSO harness: destructive command requires explicit user confirmation.\"}}' && exit 0; jq -e '(.tool_input.command // \"\") | test(\"\\\\.env\") and test(\"Write|Edit|rm|mv|cp\")' >/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked: editing .env requires explicit confirmation.\"}}' && exit 0; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+
+package channel
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/store"
+)
+
+func TestTelegram_HandleUpdate_EchoAndStore(t *testing.T) {
+	st := store.New()
+	var sentChatID int64
+	var sentText string
+	tg := &Telegram{
+		Store: st,
+		LLM:   llm.Echo{},
+		Sender: func(_ context.Context, chatID int64, text string) error {
+			sentChatID = chatID
+			sentText = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 12345},
+			"text":       "hello bot",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	if sentChatID != 12345 {
+		t.Fatalf("chat_id %d", sentChatID)
+	}
+	if sentText != "echo: hello bot" {
+		t.Fatalf("text %q", sentText)
+	}
+	// messages persisted
+	sessions := st.ListSessions()
+	if len(sessions) != 1 {
+		t.Fatalf("sessions %d", len(sessions))
+	}
+	msgs, _ := st.ListMessages(sessions[0].ID)
+	if len(msgs) != 2 || msgs[0].Content != "hello bot" || msgs[1].Content != "echo: hello bot" {
+		t.Fatalf("messages %v", msgs)
+	}
+}
+
+func TestTelegram_HandleUpdate_IgnoresEmpty(t *testing.T) {
+	st := store.New()
+	tg := &Telegram{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _ int64, _ string) error { return nil }}
+	body := `{"update_id":1}`
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader([]byte(body)))
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 || len(st.ListSessions()) != 0 {
+		t.Fatalf("expected ignore empty: %d sessions %d", w.Code, len(st.ListSessions()))
+	}
+}
+
+func TestTelegram_HandleUpdate_BadJSON(t *testing.T) {
+	st := store.New()
+	tg := &Telegram{Store: st}
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader([]byte("{bad")))
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 400 {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
