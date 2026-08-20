@@ -7,22 +7,16 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 // Router builds the HTTP mux.
 func Router(st store.StoreIface, version string) http.Handler {
-	mux := routerBase(st, version)
-	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{"echo"}})
-	})
-	mux.HandleFunc("GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"channels": []string{"telegram", "zalo-personal", "zalo-oa"}})
-	})
-	mux.HandleFunc("POST /api/chat", handleChat(st))
-	return mux
+	return RouterWithBilling(st, version, nil, nil, nil, nil, billing.New())
 }
 
 func routerBase(st store.StoreIface, version string) *http.ServeMux {
@@ -171,7 +165,7 @@ func handleListMessages(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleChat(st store.StoreIface) http.HandlerFunc {
+func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			SessionID string `json:"session_id"`
@@ -185,7 +179,8 @@ func handleChat(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
-		if _, err := st.GetSession(body.SessionID); err != nil {
+		sess, err := st.GetSession(body.SessionID)
+		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
@@ -193,11 +188,12 @@ func handleChat(st store.StoreIface) http.HandlerFunc {
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "user", Content: body.Message})
 		reply := "echo: " + body.Message
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "assistant", Content: reply})
+		recordUsage(meter, sess.AgentID, "echo", llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
 		writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "session_id": body.SessionID})
 	}
 }
 
-func handleChatWithLLM(st store.StoreIface, provider llm.Provider) http.HandlerFunc {
+func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			SessionID string `json:"session_id"`
@@ -211,7 +207,8 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider) http.HandlerF
 			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
-		if _, err := st.GetSession(body.SessionID); err != nil {
+		sess, err := st.GetSession(body.SessionID)
+		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
@@ -221,13 +218,49 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider) http.HandlerF
 		for _, m := range history {
 			msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
 		}
-		reply, err := provider.Chat(r.Context(), msgs)
+		reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "assistant", Content: reply})
+		recordUsage(meter, sess.AgentID, provider.Name(), usage)
 		writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "session_id": body.SessionID})
+	}
+}
+
+func recordUsage(meter *billing.Store, agentID, provider string, u llm.Usage) {
+	if meter == nil {
+		return
+	}
+	meter.AddCall(agentID, provider, u.PromptTokens, u.CompletionTokens, u.Estimated)
+}
+
+func handleUsage(meter *billing.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := billing.Query{
+			AgentID:  strings.TrimSpace(r.URL.Query().Get("agent_id")),
+			Provider: strings.TrimSpace(r.URL.Query().Get("provider")),
+		}
+		fromStr := strings.TrimSpace(r.URL.Query().Get("from"))
+		toStr := strings.TrimSpace(r.URL.Query().Get("to"))
+		if fromStr != "" {
+			t, err := time.ParseInLocation("2006-01-02", fromStr, time.UTC)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, "invalid from date")
+				return
+			}
+			q.From = t
+		}
+		if toStr != "" {
+			t, err := time.ParseInLocation("2006-01-02", toStr, time.UTC)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, "invalid to date")
+				return
+			}
+			q.To = t.Add(24 * time.Hour) // exclusive end of day
+		}
+		writeJSON(w, http.StatusOK, meter.Query(q))
 	}
 }
 
@@ -238,6 +271,14 @@ func RouterWithDeps(st store.StoreIface, version string, provider llm.Provider, 
 }
 
 func RouterWithAllChannels(st store.StoreIface, version string, provider llm.Provider, tgHandler, zpHandler, zoHandler http.HandlerFunc) http.Handler {
+	return RouterWithBilling(st, version, provider, tgHandler, zpHandler, zoHandler, billing.New())
+}
+
+// RouterWithBilling is RouterWithAllChannels plus a usage meter (SPEC 010).
+func RouterWithBilling(st store.StoreIface, version string, provider llm.Provider, tgHandler, zpHandler, zoHandler http.HandlerFunc, meter *billing.Store) http.Handler {
+	if meter == nil {
+		meter = billing.New()
+	}
 	mux := routerBase(st, version)
 	if zpHandler != nil {
 		mux.HandleFunc("POST /api/channels/zalo-personal/webhook", zpHandler)
@@ -260,10 +301,11 @@ func RouterWithAllChannels(st store.StoreIface, version string, provider llm.Pro
 		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{name}})
 	})
 	if provider != nil {
-		mux.HandleFunc("POST /api/chat", handleChatWithLLM(st, provider))
+		mux.HandleFunc("POST /api/chat", handleChatWithLLM(st, provider, meter))
 	} else {
-		mux.HandleFunc("POST /api/chat", handleChat(st))
+		mux.HandleFunc("POST /api/chat", handleChat(st, meter))
 	}
+	mux.HandleFunc("GET /api/usage", handleUsage(meter))
 	return mux
 }
 

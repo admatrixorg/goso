@@ -23,8 +23,13 @@ type Anthropic struct {
 func (a *Anthropic) Name() string { return "anthropic" }
 
 func (a *Anthropic) Chat(ctx context.Context, messages []Message) (string, error) {
+	s, _, err := a.ChatUsage(ctx, messages)
+	return s, err
+}
+
+func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, Usage, error) {
 	if a.APIKey == "" {
-		return "", fmt.Errorf("anthropic: missing API key")
+		return "", Usage{}, fmt.Errorf("anthropic: missing API key")
 	}
 	base := a.BaseURL
 	if base == "" {
@@ -73,31 +78,36 @@ func (a *Anthropic) Chat(ctx context.Context, messages []Message) (string, error
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", a.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
 	}
 	var out struct {
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	if len(out.Content) == 0 {
-		return "", fmt.Errorf("anthropic: empty content")
+		return "", Usage{}, fmt.Errorf("anthropic: empty content")
 	}
-	return out.Content[0].Text, nil
+	content := out.Content[0].Text
+	return content, fallbackUsage(messages, content, out.Usage.InputTokens, out.Usage.OutputTokens), nil
 }

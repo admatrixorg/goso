@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -55,6 +56,45 @@ func TestTelegram_HandleUpdate_EchoAndStore(t *testing.T) {
 	msgs, _ := st.ListMessages(sessions[0].ID)
 	if len(msgs) != 2 || msgs[0].Content != "hello bot" || msgs[1].Content != "echo: hello bot" {
 		t.Fatalf("messages %v", msgs)
+	}
+}
+
+func TestTelegram_RecordsUsage(t *testing.T) {
+	st := store.New()
+	meter := billing.New()
+	tg := &Telegram{
+		Store: st,
+		LLM:   llm.Echo{},
+		Meter: meter,
+		Sender: func(_ context.Context, _ int64, _ string) error {
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 99},
+			"text":       "abcd",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d", w.Code)
+	}
+	sum := meter.Query(billing.Query{Provider: "echo"})
+	if sum.Calls != 1 || sum.TotalTokens < 1 {
+		t.Fatalf("usage %+v", sum)
+	}
+	sessions := st.ListSessions()
+	if len(sessions) != 1 || sum.AgentID == "" && sessions[0].AgentID == "" {
+		t.Fatalf("agent linkage sessions=%v usage=%+v", sessions, sum)
+	}
+	got := meter.Query(billing.Query{AgentID: sessions[0].AgentID})
+	if got.Calls != 1 {
+		t.Fatalf("by agent %+v", got)
 	}
 }
 

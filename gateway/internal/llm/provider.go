@@ -20,11 +20,18 @@ type Provider interface {
 type Echo struct{}
 
 func (Echo) Name() string { return "echo" }
-func (Echo) Chat(_ context.Context, messages []Message) (string, error) {
+func (Echo) Chat(ctx context.Context, messages []Message) (string, error) {
+	s, _, err := Echo{}.ChatUsage(ctx, messages)
+	return s, err
+}
+
+func (Echo) ChatUsage(_ context.Context, messages []Message) (string, Usage, error) {
+	reply := "echo: (no message)"
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" {
-			return "echo: " + messages[i].Content, nil
+			reply = "echo: " + messages[i].Content
+			break
 		}
 	}
-	return "echo: (no message)", nil
+	return reply, EstimateUsage(messages, reply), nil
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/auth"
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
@@ -127,6 +128,13 @@ func runGateway(args []string) {
 	} else {
 		fmt.Printf("store: sqlite %s\n", dbPath)
 	}
+	meter, closeMeter, err := billing.Open(dbPath)
+	if err != nil {
+		log.Fatalf("open billing %q: %v", dbPath, err)
+	}
+	if closeMeter != nil {
+		defer closeMeter()
+	}
 	reg := llm.NewRegistry()
 	// Prefer anthropic if configured, else openai, else echo.
 	var provider llm.Provider = reg.Get("anthropic")
@@ -137,10 +145,10 @@ func runGateway(args []string) {
 	}
 	fmt.Printf("LLM provider: %s (hasReal=%v)\n", provider.Name(), reg.HasReal())
 
-	tg := &channel.Telegram{Store: st, LLM: provider}
-	zp := &channel.ZaloPersonal{Store: st, LLM: provider}
-	zo := &channel.ZaloOA{Store: st, LLM: provider}
-	mux := httpapi.RouterWithAllChannels(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate).(*http.ServeMux)
+	tg := &channel.Telegram{Store: st, LLM: provider, Meter: meter}
+	zp := &channel.ZaloPersonal{Store: st, LLM: provider, Meter: meter}
+	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
+	mux := httpapi.RouterWithBilling(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate, meter).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
 
 	// Auth + rate limit (AC 01–03)
