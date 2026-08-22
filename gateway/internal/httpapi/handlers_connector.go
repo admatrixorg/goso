@@ -13,8 +13,10 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
+	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -255,7 +257,7 @@ func handleToolInvoke(opt Options) http.HandlerFunc {
 	}
 }
 
-func handleChatRuntime(rt *agent.Runtime, st store.StoreIface) http.HandlerFunc {
+func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.Store, provider llm.Provider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			SessionID string `json:"session_id"`
@@ -269,7 +271,8 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface) http.HandlerFunc 
 			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
-		if _, err := st.GetSession(body.SessionID); err != nil {
+		sess, err := st.GetSession(body.SessionID)
+		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
@@ -278,6 +281,15 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface) http.HandlerFunc 
 			writeErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
+		name := "echo"
+		if provider != nil {
+			name = provider.Name()
+		}
+		reply := ""
+		if out != nil {
+			reply = out.Reply
+		}
+		recordUsage(meter, sess.AgentID, name, llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
 		writeJSON(w, http.StatusOK, out)
 	}
 }

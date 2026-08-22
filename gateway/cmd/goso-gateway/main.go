@@ -122,7 +122,6 @@ func runGateway(args []string) {
 	} else {
 		fmt.Printf("store: sqlite %s\n", dbPath)
 	}
-
 	handler, status := serve.New(st, version)
 	fmt.Printf("LLM provider: %s (hasReal=%v)\n", status.Provider, status.HasReal)
 	if status.Auth {

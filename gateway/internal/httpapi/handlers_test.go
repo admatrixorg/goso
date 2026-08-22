@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -107,6 +109,90 @@ func TestAgentsAndSessions(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &chat)
 	if chat["reply"] != "echo: hi there" {
 		t.Fatalf("chat reply %v", chat)
+	}
+}
+
+func TestUsageAPI(t *testing.T) {
+	st := store.New()
+	meter := billing.New()
+	h := RouterWithBilling(st, "0.1.0", llm.Echo{}, nil, nil, nil, meter)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"u1","display_name":"U1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create agent %d %s", w.Code, w.Body.String())
+	}
+	var a map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &a)
+	agentID := a["id"].(string)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/sessions", bytes.NewBufferString(`{"agent_id":"`+agentID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	var sess map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &sess)
+	sessID := sess["id"].(string)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sessID+`","message":"abcd"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("chat %d %s", w.Code, w.Body.String())
+	}
+
+	from := "2000-01-01"
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?agent_id="+agentID+"&from="+from, nil))
+	if w.Code != 200 {
+		t.Fatalf("usage %d %s", w.Code, w.Body.String())
+	}
+	var usage map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &usage)
+	if usage["calls"].(float64) != 1 {
+		t.Fatalf("calls %v body %s", usage["calls"], w.Body.String())
+	}
+	if usage["prompt_tokens"].(float64) < 1 || usage["total_tokens"].(float64) < 1 {
+		t.Fatalf("tokens %v", usage)
+	}
+	if usage["agent_id"] != agentID {
+		t.Fatalf("agent_id %v", usage["agent_id"])
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?agent_id="+agentID+"&provider=echo", nil))
+	_ = json.Unmarshal(w.Body.Bytes(), &usage)
+	if usage["calls"].(float64) != 1 || usage["provider"] != "echo" {
+		t.Fatalf("provider echo %v", usage)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?agent_id="+agentID+"&provider=openai", nil))
+	_ = json.Unmarshal(w.Body.Bytes(), &usage)
+	if usage["calls"].(float64) != 0 {
+		t.Fatalf("provider openai should be empty %v", usage)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?from=not-a-date", nil))
+	if w.Code != 400 {
+		t.Fatalf("invalid from %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?to=2026-13-40", nil))
+	if w.Code != 400 {
+		t.Fatalf("invalid to %d", w.Code)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?from=2099-01-01&to=2099-01-02", nil))
+	_ = json.Unmarshal(w.Body.Bytes(), &usage)
+	if usage["calls"].(float64) != 0 {
+		t.Fatalf("future range should be empty %v", usage)
 	}
 }
 

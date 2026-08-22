@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -21,6 +22,7 @@ type Telegram struct {
 	BotToken string
 	Store    store.StoreIface
 	LLM      llm.Provider
+	Meter    *billing.Store
 	// Sender can be overridden in tests to capture sendMessage calls.
 	Sender func(ctx context.Context, chatID int64, text string) error
 }
@@ -78,9 +80,11 @@ func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	for _, m := range history {
 		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
 	}
-	reply, err := provider.Chat(r.Context(), msgs)
+	reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
 	if err != nil {
 		reply = fmt.Sprintf("LLM error: %v", err)
+	} else {
+		trackUsage(t.Meter, agent.ID, provider.Name(), usage)
 	}
 	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
 

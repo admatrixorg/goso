@@ -30,8 +30,13 @@ func (o *OpenAI) ModelName() string {
 }
 
 func (o *OpenAI) Chat(ctx context.Context, messages []Message) (string, error) {
+	s, _, err := o.ChatUsage(ctx, messages)
+	return s, err
+}
+
+func (o *OpenAI) ChatUsage(ctx context.Context, messages []Message) (string, Usage, error) {
 	if o.APIKey == "" {
-		return "", fmt.Errorf("openai: missing API key")
+		return "", Usage{}, fmt.Errorf("openai: missing API key")
 	}
 	base := o.BaseURL
 	if base == "" {
@@ -59,18 +64,18 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message) (string, error) {
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+o.APIKey)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("openai %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, fmt.Errorf("openai %d: %s", resp.StatusCode, string(b))
 	}
 	var out struct {
 		Choices []struct {
@@ -78,12 +83,17 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message) (string, error) {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("openai: no choices")
+		return "", Usage{}, fmt.Errorf("openai: no choices")
 	}
-	return out.Choices[0].Message.Content, nil
+	content := out.Choices[0].Message.Content
+	return content, fallbackUsage(messages, content, out.Usage.PromptTokens, out.Usage.CompletionTokens), nil
 }

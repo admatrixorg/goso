@@ -11,6 +11,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auth"
+	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
@@ -68,17 +69,20 @@ func loadConnectors(st store.StoreIface, connReg *connector.Registry) {
 	}
 }
 
-// Mux builds the gateway ServeMux (API + channels + WS + observe + connectors).
-func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observe.Observer) *http.ServeMux {
+// Mux builds the gateway ServeMux (API + channels + WS + observe + connectors + billing).
+func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observe.Observer, meter *billing.Store) *http.ServeMux {
 	if provider == nil {
 		provider = llm.Echo{}
 	}
 	if obs == nil {
 		obs = observe.New()
 	}
-	tg := &channel.Telegram{Store: st, LLM: provider}
-	zp := &channel.ZaloPersonal{Store: st, LLM: provider}
-	zo := &channel.ZaloOA{Store: st, LLM: provider}
+	if meter == nil {
+		meter = billing.New()
+	}
+	tg := &channel.Telegram{Store: st, LLM: provider, Meter: meter}
+	zp := &channel.ZaloPersonal{Store: st, LLM: provider, Meter: meter}
+	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)
@@ -87,7 +91,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	rt := agent.New(st, connReg, gate, ev, provider)
 	mux := httpapi.NewRouter(httpapi.Options{
 		Store: st, Version: version, Provider: provider,
-		Registry: connReg, Gate: gate, Events: ev, Runtime: rt,
+		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
@@ -95,12 +99,17 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	return mux
 }
 
-// New wires store + LLM + channels + observe + connectors + auth/ratelimit.
+// New wires store + LLM + channels + observe + connectors + billing + auth/ratelimit.
 func New(st store.StoreIface, version string) (http.Handler, Status) {
 	provider := DefaultProvider()
 	obs := observe.New()
 	provider = obs.Wrap(provider)
-	mux := Mux(st, version, provider, obs)
+	meter, _, err := billing.Open(os.Getenv("GOSO_DB_PATH"))
+	if err != nil {
+		log.Printf("billing: %v — using memory meter", err)
+		meter = billing.New()
+	}
+	mux := Mux(st, version, provider, obs, meter)
 
 	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
 	rateLimit := 60
