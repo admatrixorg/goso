@@ -29,6 +29,26 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export type Agent = { id: string; agent_key: string; display_name: string; model?: string; created_at: string };
 export type Session = { id: string; agent_id: string; label?: string; created_at: string };
 export type Message = { id: string; session_id: string; role: string; content: string; created_at: string };
+export type Connector = {
+  name: string;
+  transport: string;
+  endpoint: string;
+  credential_ref?: string;
+  schema_version?: string;
+  enabled: boolean;
+  health?: string;
+  health_error?: string;
+  created_at?: string;
+};
+export type GatewayEvent = {
+  trace_id: string;
+  connector: string;
+  tool: string;
+  kind: string;
+  ts: string;
+  summary: string;
+};
+export type Approval = { approval_id: string; status: string; connector: string; tool: string };
 
 export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),
@@ -41,7 +61,35 @@ export const api = {
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
   chat: (body: { session_id: string; message: string }) =>
-    jsonFetch<{ reply: string; session_id: string }>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
+    jsonFetch<{ reply: string; session_id: string; trace?: unknown[] }>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
   providers: () => jsonFetch<{ providers: string[] }>("/api/providers"),
   channels: () => jsonFetch<{ channels: string[] }>("/api/channels"),
+  listConnectors: () => jsonFetch<{ connectors: Connector[] }>("/api/connectors"),
+  createConnector: (body: {
+    name: string;
+    transport: string;
+    endpoint: string;
+    enabled?: boolean;
+    credential_ref?: string;
+    manifest_url?: string;
+    timeout_ms?: number;
+    retries?: number;
+  }) => jsonFetch<Connector>("/api/connectors", { method: "POST", body: JSON.stringify(body) }),
+  linkAgentConnector: (agentId: string, connector: string) =>
+    jsonFetch<{ agent_id: string; connectors: string[] }>(`/api/agents/${agentId}/connectors`, {
+      method: "POST",
+      body: JSON.stringify({ connector }),
+    }),
+  listAgentConnectors: (agentId: string) =>
+    jsonFetch<{ agent_id: string; connectors: string[] }>(`/api/agents/${agentId}/connectors`),
+  listEvents: (q?: { kind?: string; connector?: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (q?.kind) p.set("kind", q.kind);
+    if (q?.connector) p.set("connector", q.connector);
+    if (q?.limit) p.set("limit", String(q.limit));
+    const qs = p.toString();
+    return jsonFetch<{ events: GatewayEvent[] }>(`/api/events${qs ? `?${qs}` : ""}`);
+  },
+  decideApproval: (id: string, decision: "approve" | "reject") =>
+    jsonFetch<Approval>(`/api/approvals/${id}/decision`, { method: "POST", body: JSON.stringify({ decision }) }),
 };

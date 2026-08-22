@@ -4,6 +4,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -73,6 +74,26 @@ func (s *SQLiteStore) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)`,
+		`CREATE TABLE IF NOT EXISTS connectors (
+			name TEXT PRIMARY KEY,
+			transport TEXT NOT NULL,
+			endpoint TEXT,
+			credential_ref TEXT,
+			schema_version TEXT,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			manifest_url TEXT,
+			manifest_json TEXT,
+			timeout_ms INTEGER,
+			retries INTEGER,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_connectors (
+			agent_id TEXT NOT NULL,
+			connector_name TEXT NOT NULL,
+			PRIMARY KEY(agent_id, connector_name),
+			FOREIGN KEY(agent_id) REFERENCES agents(id),
+			FOREIGN KEY(connector_name) REFERENCES connectors(name)
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -269,6 +290,151 @@ func (s *SQLiteStore) ListMessages(sessionID string) ([]*Message, error) {
 		out = []*Message{}
 	}
 	return out, nil
+}
+
+// --- Connector ---
+
+func (s *SQLiteStore) CreateConnector(c ConnectorRecord) (*ConnectorRecord, error) {
+	if c.Name == "" {
+		return nil, errors.New("name is required")
+	}
+	if c.Transport == "" {
+		c.Transport = "http"
+	}
+	c.CreatedAt = time.Now().UTC()
+	en := 0
+	if c.Enabled {
+		en = 1
+	}
+	man := ""
+	if len(c.ManifestJSON) > 0 {
+		man = string(c.ManifestJSON)
+	}
+	_, err := s.db.Exec(`INSERT INTO connectors(name, transport, endpoint, credential_ref, schema_version, enabled, manifest_url, manifest_json, timeout_ms, retries, created_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		c.Name, c.Transport, c.Endpoint, c.CredentialRef, c.SchemaVersion, en, c.ManifestURL, man, c.TimeoutMS, c.Retries, formatTime(c.CreatedAt))
+	if err != nil {
+		return nil, ErrExists
+	}
+	cp := c
+	return &cp, nil
+}
+
+func (s *SQLiteStore) ListConnectors() []*ConnectorRecord {
+	rows, err := s.db.Query(`SELECT name, transport, endpoint, credential_ref, schema_version, enabled, manifest_url, manifest_json, timeout_ms, retries, created_at FROM connectors ORDER BY created_at`)
+	if err != nil {
+		return []*ConnectorRecord{}
+	}
+	defer rows.Close()
+	var out []*ConnectorRecord
+	for rows.Next() {
+		c, err := scanConnector(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	if out == nil {
+		out = []*ConnectorRecord{}
+	}
+	return out
+}
+
+func (s *SQLiteStore) GetConnector(name string) (*ConnectorRecord, error) {
+	row := s.db.QueryRow(`SELECT name, transport, endpoint, credential_ref, schema_version, enabled, manifest_url, manifest_json, timeout_ms, retries, created_at FROM connectors WHERE name=?`, name)
+	c, err := scanConnector(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func (s *SQLiteStore) SetConnectorEnabled(name string, enabled bool) error {
+	en := 0
+	if enabled {
+		en = 1
+	}
+	res, err := s.db.Exec(`UPDATE connectors SET enabled=? WHERE name=?`, en, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) LinkAgentConnector(agentID, connectorName string) error {
+	if agentID == "" || connectorName == "" {
+		return errors.New("agent_id and connector_name are required")
+	}
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE id=?`, agentID).Scan(&cnt); err != nil {
+		return err
+	}
+	if cnt == 0 {
+		return errors.New("agent not found")
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM connectors WHERE name=?`, connectorName).Scan(&cnt); err != nil {
+		return err
+	}
+	if cnt == 0 {
+		return errors.New("connector not found")
+	}
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO agent_connectors(agent_id, connector_name) VALUES(?,?)`, agentID, connectorName)
+	return err
+}
+
+func (s *SQLiteStore) ListAgentConnectors(agentID string) ([]string, error) {
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE id=?`, agentID).Scan(&cnt); err != nil {
+		return nil, err
+	}
+	if cnt == 0 {
+		return nil, ErrNotFound
+	}
+	rows, err := s.db.Query(`SELECT connector_name FROM agent_connectors WHERE agent_id=? ORDER BY connector_name`, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			continue
+		}
+		out = append(out, name)
+	}
+	if out == nil {
+		out = []string{}
+	}
+	return out, nil
+}
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanConnector(sc scanner) (*ConnectorRecord, error) {
+	var c ConnectorRecord
+	var ts string
+	var enabled int
+	var man string
+	err := sc.Scan(&c.Name, &c.Transport, &c.Endpoint, &c.CredentialRef, &c.SchemaVersion, &enabled, &c.ManifestURL, &man, &c.TimeoutMS, &c.Retries, &ts)
+	if err != nil {
+		return nil, err
+	}
+	c.Enabled = enabled != 0
+	if man != "" {
+		c.ManifestJSON = json.RawMessage(man)
+	}
+	c.CreatedAt = parseTime(ts)
+	return &c, nil
 }
 
 var sqliteSeq int64

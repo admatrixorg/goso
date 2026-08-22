@@ -84,6 +84,28 @@ func TestSQLiteStore_PersistReopen(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_ConnectorLink(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "conn.db")
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	a, _ := s.CreateAgent(Agent{AgentKey: "k", DisplayName: "K"})
+	_, err = s.CreateConnector(ConnectorRecord{Name: "pos", Transport: "http", Endpoint: "http://x", Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	if err := s.LinkAgentConnector(a.ID, "pos"); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	names, err := s.ListAgentConnectors(a.ID)
+	if err != nil || len(names) != 1 {
+		t.Fatalf("links %v %v", err, names)
+	}
+}
+
 func TestSQLiteStore_Memory(t *testing.T) {
 	s, err := OpenSQLite(":memory:")
 	if err != nil {

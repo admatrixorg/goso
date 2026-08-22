@@ -17,9 +17,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/config"
+	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -127,20 +131,46 @@ func runGateway(args []string) {
 	} else {
 		fmt.Printf("store: sqlite %s\n", dbPath)
 	}
-	reg := llm.NewRegistry()
+	llmReg := llm.NewRegistry()
 	// Prefer anthropic if configured, else openai, else echo.
-	var provider llm.Provider = reg.Get("anthropic")
-	if !reg.HasReal() {
+	var provider llm.Provider = llmReg.Get("anthropic")
+	if !llmReg.HasReal() {
 		provider = llm.Echo{}
-	} else if reg.Get("anthropic").Name() == "echo" {
-		provider = reg.Get("openai")
+	} else if llmReg.Get("anthropic").Name() == "echo" {
+		provider = llmReg.Get("openai")
 	}
-	fmt.Printf("LLM provider: %s (hasReal=%v)\n", provider.Name(), reg.HasReal())
+	fmt.Printf("LLM provider: %s (hasReal=%v)\n", provider.Name(), llmReg.HasReal())
 
 	tg := &channel.Telegram{Store: st, LLM: provider}
 	zp := &channel.ZaloPersonal{Store: st, LLM: provider}
 	zo := &channel.ZaloOA{Store: st, LLM: provider}
-	mux := httpapi.RouterWithAllChannels(st, version, provider, tg.HandleUpdate, zp.HandleUpdate, zo.HandleUpdate).(*http.ServeMux)
+
+	connReg := connector.NewRegistry()
+	gate := approval.New(0)
+	ev := eventstore.New(1024)
+	for _, rec := range st.ListConnectors() {
+		cfg := connector.Config{
+			Name: rec.Name, Transport: rec.Transport, Endpoint: rec.Endpoint,
+			CredentialRef: rec.CredentialRef, SchemaVersion: rec.SchemaVersion,
+			ManifestURL: rec.ManifestURL, ManifestJSON: rec.ManifestJSON,
+			TimeoutMS: rec.TimeoutMS, Retries: rec.Retries,
+		}
+		c, err := connector.Build(cfg)
+		if err != nil {
+			log.Printf("connector %s: %v", rec.Name, err)
+			continue
+		}
+		_ = connReg.Replace(c)
+		if !rec.Enabled {
+			_ = connReg.SetEnabled(rec.Name, false)
+		}
+	}
+	rt := agent.New(st, connReg, gate, ev, provider)
+	mux := httpapi.NewRouter(httpapi.Options{
+		Store: st, Version: version, Provider: provider,
+		Registry: connReg, Gate: gate, Events: ev, Runtime: rt,
+		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
+	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
 
 	// Auth + rate limit (AC 01–03)

@@ -8,20 +8,68 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
+// Options wires SPEC 014 deps into the HTTP mux. All fields except Store are optional.
+type Options struct {
+	Store    store.StoreIface
+	Version  string
+	Provider llm.Provider
+	Registry *connector.Registry
+	Gate     *approval.Gate
+	Events   *eventstore.Store
+	Runtime  *agent.Runtime
+	TG       http.HandlerFunc
+	ZP       http.HandlerFunc
+	ZO       http.HandlerFunc
+}
+
+func (o *Options) defaults() {
+	if o.Registry == nil {
+		o.Registry = connector.NewRegistry()
+	}
+	if o.Gate == nil {
+		o.Gate = approval.New(0)
+	}
+	if o.Events == nil {
+		o.Events = eventstore.New(256)
+	}
+	if o.Runtime == nil {
+		o.Runtime = agent.New(o.Store, o.Registry, o.Gate, o.Events, o.Provider)
+	}
+}
+
 // Router builds the HTTP mux.
 func Router(st store.StoreIface, version string) http.Handler {
-	mux := routerBase(st, version)
+	return NewRouter(Options{Store: st, Version: version})
+}
+
+// NewRouter builds the mux with optional connector/approval/event deps.
+func NewRouter(opt Options) http.Handler {
+	opt.defaults()
+	mux := routerBase(opt.Store, opt.Version)
+	registerChannels(mux, opt.TG, opt.ZP, opt.ZO)
 	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{"echo"}})
+		name := "echo"
+		if opt.Provider != nil {
+			name = opt.Provider.Name()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{name}})
 	})
-	mux.HandleFunc("GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"channels": []string{"telegram", "zalo-personal", "zalo-oa"}})
-	})
-	mux.HandleFunc("POST /api/chat", handleChat(st))
+	if opt.Runtime != nil {
+		mux.HandleFunc("POST /api/chat", handleChatRuntime(opt.Runtime, opt.Store))
+	} else if opt.Provider != nil {
+		mux.HandleFunc("POST /api/chat", handleChatWithLLM(opt.Store, opt.Provider))
+	} else {
+		mux.HandleFunc("POST /api/chat", handleChat(opt.Store))
+	}
+	registerConnectorRoutes(mux, opt)
 	return mux
 }
 
@@ -238,33 +286,29 @@ func RouterWithDeps(st store.StoreIface, version string, provider llm.Provider, 
 }
 
 func RouterWithAllChannels(st store.StoreIface, version string, provider llm.Provider, tgHandler, zpHandler, zoHandler http.HandlerFunc) http.Handler {
-	mux := routerBase(st, version)
-	if zpHandler != nil {
-		mux.HandleFunc("POST /api/channels/zalo-personal/webhook", zpHandler)
+	return NewRouter(Options{
+		Store:    st,
+		Version:  version,
+		Provider: provider,
+		TG:       tgHandler,
+		ZP:       zpHandler,
+		ZO:       zoHandler,
+	})
+}
+
+func registerChannels(mux *http.ServeMux, tg, zp, zo http.HandlerFunc) {
+	if zp != nil {
+		mux.HandleFunc("POST /api/channels/zalo-personal/webhook", zp)
 	}
-	if zoHandler != nil {
-		mux.HandleFunc("POST /api/channels/zalo-oa/webhook", zoHandler)
+	if zo != nil {
+		mux.HandleFunc("POST /api/channels/zalo-oa/webhook", zo)
 	}
-	if tgHandler != nil {
-		mux.HandleFunc("POST /api/channels/telegram/webhook", tgHandler)
+	if tg != nil {
+		mux.HandleFunc("POST /api/channels/telegram/webhook", tg)
 	}
 	mux.HandleFunc("GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"channels": []string{"telegram", "zalo-personal", "zalo-oa"}})
 	})
-	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		// provider name only, never expose keys
-		name := "echo"
-		if provider != nil {
-			name = provider.Name()
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{name}})
-	})
-	if provider != nil {
-		mux.HandleFunc("POST /api/chat", handleChatWithLLM(st, provider))
-	} else {
-		mux.HandleFunc("POST /api/chat", handleChat(st))
-	}
-	return mux
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
