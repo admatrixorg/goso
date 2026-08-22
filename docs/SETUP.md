@@ -2,9 +2,10 @@
 
 ## 1. Yêu cầu
 
-- Go 1.23+ (`go version`)
+- Go 1.25+ (`go version`) — Docker image dùng `golang:1.25-alpine`
 - Node 20+ và pnpm (cho `mcp/`)
 - Git, make
+- Docker + Compose v2 nếu chạy stack đóng gói (`docs/DEPLOY.md`)
 
 ## 2. Clone & cài
 
@@ -54,15 +55,25 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo 
 # hoặc chạy thủ công: ./scripts/pre-commit.sh
 ```
 
+## Docker (tùy chọn)
+
+```bash
+docker compose up --build
+# http://localhost:8080 (gateway) + http://localhost:3000 (control-plane)
+```
+
+Chi tiết overlay production: `docs/DEPLOY.md`.
+
 ## Biến môi trường
 
 | Biến | Mặc định | Mô tả |
 |------|----------|-------|
 | GOSO_PORT | 8080 | Cổng gateway |
+| GOSO_HOST | 127.0.0.1 | Bind host (Docker: `0.0.0.0`) |
 | GOSO_LOG_LEVEL | info | Mức log |
 | GOSO_ADMIN_TOKEN | (rỗng) | Bearer token cho /api/* và /ws (rỗng = dev mode) |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
-| GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db) |
+| GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
 | GOSO_ENV | development | Môi trường |
 | GOSO_GATEWAY_URL | — | URL gateway cho `goso-mcp` (bắt buộc khi chạy MCP) |
 | GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |

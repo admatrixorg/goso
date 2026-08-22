@@ -13,10 +13,10 @@
 
 ## Acceptance criteria
 
-- [ ] AC-01 `Dockerfile` cho gateway (multi-stage Go 1.25), `control-plane/Dockerfile` (node 22)
-- [ ] AC-02 `compose.yml` (gateway + control-plane + volume `data/`), `compose.prod.yml` overlay
-- [ ] AC-03 `docker compose build` xanh
-- [ ] AC-04 Docs `docs/DEPLOY.md`
+- [x] AC-01 `Dockerfile` cho gateway (multi-stage Go 1.25), `control-plane/Dockerfile` (node 22)
+- [x] AC-02 `compose.yml` (gateway + control-plane + volume `data/`), `compose.prod.yml` overlay
+- [x] AC-03 `docker compose build` xanh
+- [x] AC-04 Docs `docs/DEPLOY.md`
 
 ## Non-goals
 

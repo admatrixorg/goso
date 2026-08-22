@@ -1,0 +1,64 @@
+# GOSO production overlay.
+# Usage: docker compose -f compose.yml -f compose.prod.yml up -d --build
+#
+# Minimized vs GoClaw's 8 overlays (postgres, redis, jaeger/otel, tailscale,
+# sandbox, browser, selfservice, upgrade). This file adds restart policy,
+# production env, auth token, log rotation, and a SQLite backup sidecar.
+# Future overlays (postgres, redis, jaeger, tailscale) are documented in
+# docs/DEPLOY.md and are not enabled here — gateway persists to SQLite today.
+
+services:
+  gateway:
+    restart: unless-stopped
+    environment:
+      GOSO_ENV: production
+      GOSO_ADMIN_TOKEN: ${GOSO_ADMIN_TOKEN:-}
+      GOSO_RATE_LIMIT: ${GOSO_RATE_LIMIT:-60}
+      GOSO_LOG_LEVEL: ${GOSO_LOG_LEVEL:-info}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  control-plane:
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  backup:
+    image: alpine:3.21
+    restart: unless-stopped
+    volumes:
+      - data:/data:ro
+      - backup:/backup
+    environment:
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "GOSO sqlite backup every $$BACKUP_INTERVAL_SECONDS s"
+        while true; do
+          if [ -f /data/goso.db ]; then
+            ts=$$(date -u +%Y%m%dT%H%M%SZ)
+            cp /data/goso.db "/backup/goso-$$ts.db"
+            ls -1t /backup/goso-*.db 2>/dev/null | tail -n +15 | while read f; do rm -f "$$f"; done
+            echo "backup $$ts"
+          fi
+          sleep $$BACKUP_INTERVAL_SECONDS
+        done
+    depends_on:
+      gateway:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  backup:

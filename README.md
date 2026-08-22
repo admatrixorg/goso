@@ -26,10 +26,18 @@ make verify
 # MCP (stdio): GOSO_GATEWAY_URL=http://localhost:8080 pnpm -C mcp start
 ```
 
+Docker (SPEC 012):
+
+```bash
+docker compose up --build
+# gateway http://localhost:8080  ·  control-plane http://localhost:3000
+```
+
 ## Tài liệu
 
 - `docs/SETUP.md` — 5 bước dựng môi trường
 - `docs/ARCHITECTURE.md` — kiến trúc C→B
+- `docs/DEPLOY.md` — Docker Compose + overlay production
 - `.planning/specs/001-harness-goso.md` — SPEC đã LOCKED
 - `.planning/specs/009-desktop.md` — Desktop Wails v2 (khung)
 - `desktop/README.md` — `wails dev` / `make -C desktop verify`

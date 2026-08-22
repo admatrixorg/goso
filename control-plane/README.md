@@ -33,6 +33,8 @@ npm run build   # -> dist/
 npm run preview
 ```
 
+Docker (SPEC 012) phục vụ `dist/` bằng `server.mjs` (proxy `/api`, `/healthz`, `/ws` tới `GATEWAY_URL`). Xem `docs/DEPLOY.md`.
+
 ## Trang
 
 - **Agents** — list + tạo agent

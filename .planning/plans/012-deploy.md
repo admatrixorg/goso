@@ -16,6 +16,6 @@
 
 ## Trạng thái
 
-- [ ] T01 — dockerfiles
-- [ ] T02 — compose
-- [ ] T03 — docs
+- [x] T01 — dockerfiles
+- [x] T02 — compose
+- [x] T03 — docs
