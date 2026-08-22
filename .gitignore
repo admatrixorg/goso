@@ -18,3 +18,5 @@ desktop/frontend/wailsjs/
 desktop/frontend/package.json.md5
 desktop/build/bin/
 build/bin/
+mcp/dist/
+mcp/node_modules/

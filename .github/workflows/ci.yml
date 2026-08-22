@@ -24,3 +24,13 @@ jobs:
           go run ./gateway/cmd/goso-gateway doctor
       - name: desktop verify
         run: make -C desktop verify
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: mcp/pnpm-lock.yaml
+      - name: mcp verify
+        run: pnpm -C mcp install --frozen-lockfile && pnpm -C mcp verify

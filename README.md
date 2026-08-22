@@ -11,7 +11,7 @@ goso/
 │   └── internal/
 ├── control-plane/    # API quản trị + Dashboard (TypeScript) — giai đoạn C
 ├── desktop/          # Wails v2 + React + SQLite — giữ lại
-├── mcp/              # MCP server (tận dụng goclaw-mcp, đổi brand sau)
+├── mcp/              # MCP server (goso-mcp — rebrand goclaw-mcp, 66 tools)
 ├── docs/             # SETUP, ARCHITECTURE
 └── .planning/        # specs, plans, decisions, glossary
 ```
@@ -23,6 +23,7 @@ go run ./gateway/cmd/goso-gateway --help
 go run ./gateway/cmd/goso-gateway version
 go run ./gateway/cmd/goso-gateway doctor
 make verify
+# MCP (stdio): GOSO_GATEWAY_URL=http://localhost:8080 pnpm -C mcp start
 ```
 
 ## Tài liệu

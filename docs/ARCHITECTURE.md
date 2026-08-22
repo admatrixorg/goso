@@ -37,6 +37,6 @@ goso/
 ├── gateway/internal/health    # domain health checks
 ├── control-plane/             # SPEC 002+
 ├── desktop/                   # SPEC 009 — Wails v2 + React + SQLite (reuse gateway store)
-├── mcp/                       # tận dụng goclaw-mcp
+├── mcp/                       # goso-mcp (rebrand goclaw-mcp, GOSO_GATEWAY_URL)
 └── .planning/                 # specs/plans/decisions/glossary
 ```
