@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "name": "pos",
+  "tools": [
+    {
+      "name": "order_lookup",
+      "description": "Look up a POS order by id",
+      "requires_approval": false,
+      "input_schema": {
+        "type": "object",
+        "properties": { "order_id": { "type": "string" } },
+        "required": ["order_id"]
+      }
+    },
+    {
+      "name": "price_change",
+      "description": "Change an item price (mutation — approval required)",
+      "requires_approval": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "sku": { "type": "string" },
+          "price": { "type": "number" }
+        },
+        "required": ["sku", "price"]
+      }
+    }
+  ]
+}

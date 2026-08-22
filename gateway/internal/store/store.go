@@ -3,6 +3,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -29,9 +30,24 @@ type Session struct {
 type Message struct {
 	ID        string    `json:"id"`
 	SessionID string    `json:"session_id"`
-	Role      string    `json:"role"` // user | assistant
+	Role      string    `json:"role"` // user | assistant | tool
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// ConnectorRecord is a persisted connector registration (config only, no secrets).
+type ConnectorRecord struct {
+	Name          string          `json:"name"`
+	Transport     string          `json:"transport"`
+	Endpoint      string          `json:"endpoint"`
+	CredentialRef string          `json:"credential_ref,omitempty"`
+	SchemaVersion string          `json:"schema_version,omitempty"`
+	Enabled       bool            `json:"enabled"`
+	ManifestURL   string          `json:"manifest_url,omitempty"`
+	ManifestJSON  json.RawMessage `json:"manifest,omitempty"`
+	TimeoutMS     int             `json:"timeout_ms,omitempty"`
+	Retries       int             `json:"retries,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 // StoreIface is satisfied by both Store (memory) and SQLiteStore.
@@ -44,6 +60,12 @@ type StoreIface interface {
 	GetSession(string) (*Session, error)
 	AddMessage(Message) (*Message, error)
 	ListMessages(string) ([]*Message, error)
+	CreateConnector(ConnectorRecord) (*ConnectorRecord, error)
+	ListConnectors() []*ConnectorRecord
+	GetConnector(string) (*ConnectorRecord, error)
+	SetConnectorEnabled(name string, enabled bool) error
+	LinkAgentConnector(agentID, connectorName string) error
+	ListAgentConnectors(agentID string) ([]string, error)
 }
 
 var (
@@ -53,11 +75,13 @@ var (
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
-	mu       sync.RWMutex
-	agents   map[string]*Agent
-	sessions map[string]*Session
-	messages map[string][]*Message // session_id -> messages
-	seq      int64
+	mu         sync.RWMutex
+	agents     map[string]*Agent
+	sessions   map[string]*Session
+	messages   map[string][]*Message // session_id -> messages
+	connectors map[string]*ConnectorRecord
+	agentConns map[string]map[string]struct{} // agent_id -> connector names
+	seq        int64
 }
 
 func Open(path string) (StoreIface, func() error, error) {
@@ -74,9 +98,11 @@ func Open(path string) (StoreIface, func() error, error) {
 
 func New() *Store {
 	return &Store{
-		agents:   make(map[string]*Agent),
-		sessions: make(map[string]*Session),
-		messages: make(map[string][]*Message),
+		agents:     make(map[string]*Agent),
+		sessions:   make(map[string]*Session),
+		messages:   make(map[string][]*Message),
+		connectors: make(map[string]*ConnectorRecord),
+		agentConns: make(map[string]map[string]struct{}),
 	}
 }
 
@@ -214,6 +240,92 @@ func (s *Store) ListMessages(sessionID string) ([]*Message, error) {
 	}
 	if out == nil {
 		out = []*Message{}
+	}
+	return out, nil
+}
+
+// --- Connector ---
+
+func (s *Store) CreateConnector(c ConnectorRecord) (*ConnectorRecord, error) {
+	if c.Name == "" {
+		return nil, errors.New("name is required")
+	}
+	if c.Transport == "" {
+		c.Transport = "http"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.connectors[c.Name]; ok {
+		return nil, ErrExists
+	}
+	c.CreatedAt = time.Now().UTC()
+	cp := c
+	s.connectors[cp.Name] = &cp
+	return &cp, nil
+}
+
+func (s *Store) ListConnectors() []*ConnectorRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*ConnectorRecord, 0, len(s.connectors))
+	for _, v := range s.connectors {
+		cp := *v
+		out = append(out, &cp)
+	}
+	return out
+}
+
+func (s *Store) GetConnector(name string) (*ConnectorRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.connectors[name]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	cp := *v
+	return &cp, nil
+}
+
+func (s *Store) SetConnectorEnabled(name string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.connectors[name]
+	if !ok {
+		return ErrNotFound
+	}
+	v.Enabled = enabled
+	return nil
+}
+
+func (s *Store) LinkAgentConnector(agentID, connectorName string) error {
+	if agentID == "" || connectorName == "" {
+		return errors.New("agent_id and connector_name are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.agents[agentID]; !ok {
+		return errors.New("agent not found")
+	}
+	if _, ok := s.connectors[connectorName]; !ok {
+		return errors.New("connector not found")
+	}
+	if s.agentConns[agentID] == nil {
+		s.agentConns[agentID] = make(map[string]struct{})
+	}
+	s.agentConns[agentID][connectorName] = struct{}{}
+	return nil
+}
+
+func (s *Store) ListAgentConnectors(agentID string) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.agents[agentID]; !ok {
+		return nil, ErrNotFound
+	}
+	set := s.agentConns[agentID]
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
 	}
 	return out, nil
 }

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "name": "zalocrm",
+  "tools": [
+    {
+      "name": "contact_search",
+      "description": "Search contacts by name or phone",
+      "requires_approval": false,
+      "input_schema": {
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "message_send",
+      "description": "Send a message to a contact (mutation — approval required)",
+      "requires_approval": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "contact_id": { "type": "string" },
+          "text": { "type": "string" }
+        },
+        "required": ["contact_id", "text"]
+      }
+    }
+  ]
+}

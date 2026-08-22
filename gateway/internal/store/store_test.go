@@ -67,3 +67,29 @@ func TestStore_SessionAndMessage(t *testing.T) {
 		t.Fatal("expected session not found")
 	}
 }
+
+func TestStore_ConnectorAndLink(t *testing.T) {
+	s := New()
+	a, _ := s.CreateAgent(Agent{AgentKey: "k", DisplayName: "K"})
+	c, err := s.CreateConnector(ConnectorRecord{Name: "zalocrm", Transport: "http", Endpoint: "http://127.0.0.1:8089", Enabled: true})
+	if err != nil || c.Name != "zalocrm" {
+		t.Fatalf("CreateConnector: %v %v", err, c)
+	}
+	if _, err := s.CreateConnector(ConnectorRecord{Name: "zalocrm"}); err != ErrExists {
+		t.Fatalf("dup: %v", err)
+	}
+	if err := s.LinkAgentConnector(a.ID, "zalocrm"); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	names, err := s.ListAgentConnectors(a.ID)
+	if err != nil || len(names) != 1 || names[0] != "zalocrm" {
+		t.Fatalf("list links: %v %v", err, names)
+	}
+	if err := s.SetConnectorEnabled("zalocrm", false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	got, _ := s.GetConnector("zalocrm")
+	if got.Enabled {
+		t.Fatal("expected disabled")
+	}
+}
