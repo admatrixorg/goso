@@ -22,6 +22,13 @@ type OpenAI struct {
 
 func (o *OpenAI) Name() string { return "openai" }
 
+func (o *OpenAI) ModelName() string {
+	if o.Model != "" {
+		return o.Model
+	}
+	return "gpt-4o-mini"
+}
+
 func (o *OpenAI) Chat(ctx context.Context, messages []Message) (string, error) {
 	if o.APIKey == "" {
 		return "", fmt.Errorf("openai: missing API key")

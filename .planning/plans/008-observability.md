@@ -18,8 +18,16 @@
 
 ## Trạng thái
 
-- [ ] T01 — log
-- [ ] T02 — trace
-- [ ] T03 — stats
-- [ ] T04 — wire
-- [ ] T05 — QA
+- [x] T01 — log
+- [x] T02 — trace
+- [x] T03 — stats
+- [x] T04 — wire
+- [x] T05 — QA
+
+## QA 2026-08-20
+| AC | Kết quả | Bằng chứng |
+| AC-01 | ✅ | `observe.Middleware`: sinh/giữ `X-Request-ID`, log JSON method/path/status/latency, không log query/header (token) |
+| AC-02 | ✅ | ring buffer N=200, wrap `llm.Provider`, `GET /api/traces?limit=` newest-first |
+| AC-03 | ✅ | `GET /api/stats` JSON (uptime_seconds, request_count, llm_call_count) + `GET /metrics` text |
+| AC-04 | ✅ | `go test ./gateway/internal/observe` — middleware, ring, wrap, handlers |
+| AC-05 | ✅ | `make verify` OK |

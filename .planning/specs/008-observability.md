@@ -14,11 +14,11 @@ Gateway có thể quan sát: log JSON có `request_id`/`trace_id`, trace LLM (la
 
 ## Acceptance criteria
 
-- [ ] AC-01 Middleware request ID + structured JSON log (không lộ token/key)
-- [ ] AC-02 LLM trace: lưu in-memory ring buffer (N=200), `GET /api/traces`
-- [ ] AC-03 `GET /api/stats` hoặc `/metrics` — uptime + counters
-- [ ] AC-04 Unit test cho middleware + trace buffer
-- [ ] AC-05 `make verify` xanh
+- [x] AC-01 Middleware request ID + structured JSON log (không lộ token/key)
+- [x] AC-02 LLM trace: lưu in-memory ring buffer (N=200), `GET /api/traces`
+- [x] AC-03 `GET /api/stats` hoặc `/metrics` — uptime + counters
+- [x] AC-04 Unit test cho middleware + trace buffer
+- [x] AC-05 `make verify` xanh
 
 ## Non-goals
 
