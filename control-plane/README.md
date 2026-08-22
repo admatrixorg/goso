@@ -35,14 +35,18 @@ npm run preview
 
 Docker (SPEC 012) phục vụ `dist/` bằng `server.mjs` (proxy `/api`, `/healthz`, `/ws` tới `GATEWAY_URL`). Xem `docs/DEPLOY.md`.
 
+## Skin
+
+ZAgent design tokens (`src/styles/tokens/`) + sprite `src/assets/icons.svg`. Chrome + sidebar theo `ZAgent UI.dc.html`. API không đổi.
+
 ## Trang
 
-- **Agents** — list + tạo agent
-- **Sessions** — list, chọn session
-- **Chat** — xem message + gửi chat tới session
-- **Connectors** — đăng ký connector + gán agent
-- **Events** — EventStore (attempt/success/error/approval)
-- **CRM metrics** — KPI live từ goso-crm HTTP (`GET /api/crm/metrics`, `GET /api/crm/advisor`)
+- **Tổng quan** — KPI live từ goso-crm HTTP (`GET /api/crm/metrics`, `GET /api/crm/advisor`)
+- **Agent** — list + tạo agent
+- **Phiên** — list, chọn session
+- **Chat** — tin + gửi tới session
+- **Kết nối** — đăng ký connector + gán agent
+- **Nhật ký** — EventStore (attempt/success/error/approval)
 
 ## CRM metrics (goso-crm HTTP)
 

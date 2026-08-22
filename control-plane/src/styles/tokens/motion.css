@@ -1,0 +1,42 @@
+/* Motion contract. Two rules govern everything here:
+   1. Anything that carries meaning (a meter's length, a status dot, a progress fill)
+      must be fully readable with motion switched off — the animation is the path to
+      the value, never the value itself.
+   2. Anything decorative disappears entirely under reduced motion.
+   Durations are short: this is a console people work in all day. */
+:root {
+  --dur-hover: 130ms;
+  --dur-control: 140ms;   /* nav/tab colour change */
+  --dur-overlay: 150ms;   /* modal scrim fade */
+  --dur-panel: 190ms;     /* modal panel rise */
+  --dur-gesture: 200ms;   /* icon gesture, e.g. refresh arrow */
+  --dur-data: 450ms;      /* meter / bar grow-in */
+
+  --ease-standard: cubic-bezier(.2, .7, .3, 1);
+  --ease-gesture: cubic-bezier(.34, .03, .28, 1);
+  --ease-linear: linear;
+
+  --travel-panel: 7px;    /* how far a modal rises */
+  --scale-panel: .986;    /* how much it starts undersized */
+}
+
+@keyframes zFade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes zRise {
+  from { opacity: 0; transform: translateY(var(--travel-panel)) scale(var(--scale-panel)) }
+  to   { opacity: 1; transform: none }
+}
+/* No `both` and `to{transform:none}` on purpose: a bar at rest is its real width. */
+@keyframes zBar { from { transform: scaleX(0) } to { transform: none } }
+@keyframes zPulse { 0%, 100% { opacity: 1; transform: scale(1) } 50% { opacity: .4; transform: scale(.78) } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Looping indicators stop at full strength rather than mid-fade. */
+  [data-motion="pulse"] { animation: none !important; opacity: 1 !important; transform: none !important }
+}

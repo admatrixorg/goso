@@ -1,0 +1,81 @@
+@import "./tokens-entry.css";
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-width: var(--view-min-width);
+}
+*, *::before, *::after { box-sizing: border-box; }
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+button { cursor: pointer; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-strong); }
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-md);
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+svg[viewBox="0 0 24 24"] {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.z-field {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 7px 11px;
+  min-height: 34px;
+  color: var(--text);
+  transition: border-color var(--dur-control) var(--ease-standard), background var(--dur-hover) var(--ease-standard);
+}
+.z-field:hover { background: var(--surface-1); }
+.z-field::placeholder { color: var(--text-4); }
+
+.z-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-table);
+}
+.z-table thead th {
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--text-3);
+  text-align: left;
+  padding: var(--pad-col-head);
+  border-bottom: var(--border-divider);
+}
+.z-table tbody td {
+  padding: var(--pad-row-lg);
+  border-bottom: var(--border-divider);
+  font-variant-numeric: tabular-nums;
+}
+.z-table tbody tr { transition: background var(--dur-hover) var(--ease-standard); }
+.z-table tbody tr:hover { background: var(--surface-1); }
+
+[data-ig="refresh"] svg { transform-box: fill-box; transform-origin: 50% 50%; }
+[data-ig="refresh"]:hover svg { animation: ig-refresh-turn var(--dur-gesture) var(--ease-gesture) both; }
+[data-ig="gear"]:hover [data-ig-part] { animation: ig-gear-turn 190ms var(--ease-gesture) both; }
+[data-ig="bell"]:hover [data-ig-part] { animation: ig-bell-swing 210ms cubic-bezier(.36,.05,.3,1) both; }
+[data-ig="search"]:hover [data-ig-part] { animation: ig-glass-sweep 180ms var(--ease-gesture) both; }
+@keyframes ig-gear-turn { 0% { transform: rotate(0) } 58% { transform: rotate(15deg) } 100% { transform: rotate(0) } }
+@keyframes ig-bell-swing { 0% { transform: rotate(0) } 38% { transform: rotate(-13deg) } 72% { transform: rotate(9deg) } 100% { transform: rotate(0) } }
+@keyframes ig-glass-sweep { 0% { transform: rotate(0) } 55% { transform: rotate(12deg) } 100% { transform: rotate(0) } }
+@keyframes ig-refresh-turn { 0% { transform: rotate(0) } 56% { transform: rotate(15deg) } 100% { transform: rotate(0) } }
