@@ -6,7 +6,7 @@ Orca run `run_37db1fcc868b`. Advisor/QC only; workers implemented.
 |---|-----|------|--------|---------------|----------------|
 | 1 | SPEC 014 Connector Architecture | `admatrixorg/goso` | `admatrixmdp/spec014` | `bff48b2` | `12eb09c` |
 | 2 | Dockerize goso-crm | `admatrixorg/goso-crm` | `admatrixmdp/spec015-deploy` | see that repo `docs/qa/015-deploy.md` | `e7aa4dc` |
-| 3 | Control Plane CRM metrics | `admatrixorg/goso` | `admatrixmdp/control-plane-crm-metrics` | `54d9cfb` | *(this merge)* |
+| 3 | Control Plane CRM metrics | `admatrixorg/goso` | `admatrixmdp/control-plane-crm-metrics` | `54d9cfb` | `8b7356c` |
 
 ## V1 — SPEC 014 (goso core)
 

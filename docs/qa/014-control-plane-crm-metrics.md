@@ -53,4 +53,4 @@ Re-ran on worktree `/Users/mqglobal/orca/workspaces/goso/cp-crm-metrics` @ `54d9
 
 Config is `VITE_GOSOCRM_API_URL` / `VITE_GOSOCRM_ORG_ID` (Vite client bundle). Default upstream `http://127.0.0.1:8089`, org test-a. Dev uses `/crm-api` proxy.
 
-**Merge:** coordinator fast-forwards/no-ff this branch onto `main` after QC.
+**Merge:** `8b7356c` on `main` (pushed `origin/main`). Feature tip `f2ac162` (worker `54d9cfb` + coordinator QC).
