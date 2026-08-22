@@ -35,6 +35,22 @@ make verify                                               # OK (vet + fmt + go t
 - In `npm run dev`, unset `VITE_GOSOCRM_API_URL` uses same-origin `/crm-api` (proxy → `http://127.0.0.1:8089`). Production/preview without a reverse proxy should set the full URL at build time.
 - Live goso-crm was not required for typecheck/build/verify. Offline UI is the expected state when CRM is down.
 
-## Left
+## Coordinator QC (2026-08-22)
 
-- Coordinator merges to `main` if this report is accepted. This branch is not merged here.
+Re-ran on worktree `/Users/mqglobal/orca/workspaces/goso/cp-crm-metrics` @ `54d9cfb`:
+
+| Check | Result |
+|-------|--------|
+| `cd control-plane && npm run typecheck` | PASS (`tsc --noEmit`) |
+| `cd control-plane && npm run build` | PASS (vite 5.4.21, 38 modules, `dist/assets/index-D4Arpm2x.js`) |
+| `make verify` | PASS (`go vet` + `gofmt` + `go test ./... -count=1`) |
+| Tabs Agents / Sessions / Chat / Connectors / Events kept | PASS (`App.tsx`) |
+| KPI fields + advisor + `X-Org-ID` | PASS (`crm.ts`, `CrmMetrics.tsx`) |
+| Online/offline `/healthz` then `/readyz`, 3s abort | PASS |
+| No goso-crm Go import / no AGPL authors | PASS (`go.mod` unchanged; grep empty) |
+| No secrets in CRM client | PASS (no gateway Bearer; `Bearer …` redacted in errors) |
+| SPEC 008–013 branches not restacked | PASS (base `12eb09c` only) |
+
+Config is `VITE_GOSOCRM_API_URL` / `VITE_GOSOCRM_ORG_ID` (Vite client bundle). Default upstream `http://127.0.0.1:8089`, org test-a. Dev uses `/crm-api` proxy.
+
+**Merge:** coordinator fast-forwards/no-ff this branch onto `main` after QC.
