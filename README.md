@@ -30,3 +30,5 @@ make verify
 - `docs/SETUP.md` — 5 bước dựng môi trường
 - `docs/ARCHITECTURE.md` — kiến trúc C→B
 - `.planning/specs/001-harness-goso.md` — SPEC đã LOCKED
+- `.planning/specs/009-desktop.md` — Desktop Wails v2 (khung)
+- `desktop/README.md` — `wails dev` / `make -C desktop verify`

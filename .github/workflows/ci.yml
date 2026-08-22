@@ -15,10 +15,12 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: gofmt
-        run: test -z "$(gofmt -l gateway)"
+        run: test -z "$(gofmt -l gateway desktop)"
       - name: go test
         run: go test ./... -count=1
       - name: gateway smoke
         run: |
           go run ./gateway/cmd/goso-gateway version
           go run ./gateway/cmd/goso-gateway doctor
+      - name: desktop verify
+        run: make -C desktop verify

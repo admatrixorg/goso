@@ -16,6 +16,6 @@
 
 ## Trạng thái
 
-- [ ] T01 — khung Wails
-- [ ] T02 — reuse gateway
-- [ ] T03 — docs/verify
+- [x] T01 — khung Wails
+- [x] T02 — reuse gateway
+- [x] T03 — docs/verify

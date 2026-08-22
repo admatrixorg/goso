@@ -12,3 +12,9 @@ bin/
 node_modules/
 control-plane/dist/
 control-plane/node_modules/
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+desktop/frontend/wailsjs/
+desktop/frontend/package.json.md5
+desktop/build/bin/
+build/bin/
