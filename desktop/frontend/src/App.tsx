@@ -8,18 +8,58 @@ export default function App() {
   const [tab, setTab] = useState<"agents" | "sessions" | "chat">("agents");
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 860, margin: "24px auto", padding: "0 16px" }}>
-      <h1>GOSO Desktop</h1>
-      <p style={{ color: "#666" }}>
-        Local gateway + SQLite • Control Plane pages reused from <code>control-plane/</code>
-      </p>
-      <nav style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["agents", "sessions", "chat"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{ fontWeight: tab === t ? 700 : 400 }}>
-            {t}
-          </button>
-        ))}
-      </nav>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          background: "var(--chrome)",
+          borderBottom: "1px solid var(--border)",
+          padding: "7px 16px",
+        }}
+      >
+        <div
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 8,
+            background: "var(--accent)",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 600,
+            fontSize: 14,
+          }}
+        >
+          Z
+        </div>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>GOSO Desktop</div>
+        <nav style={{ display: "flex", gap: 4, marginLeft: 12 }}>
+          {(["agents", "sessions", "chat"] as const).map((t) => {
+            const on = tab === t;
+            const label = t === "agents" ? "Agent" : t === "sessions" ? "Phiên" : "Chat";
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: "8px 12px",
+                  fontWeight: on ? 600 : 500,
+                  color: on ? "var(--text)" : "var(--text-3)",
+                  borderBottom: `2px solid ${on ? "var(--accent)" : "transparent"}`,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
       {tab === "agents" && <AgentsPage />}
       {tab === "sessions" && (
         <SessionsPage
@@ -30,10 +70,14 @@ export default function App() {
         />
       )}
       {tab === "chat" && (
-        <>
-          <SessionsPage onPick={setSessionId} />
-          <ChatPage sessionId={sessionId} />
-        </>
+        <div style={{ display: "flex", minHeight: "calc(100vh - 48px)" }}>
+          <div style={{ width: 280, borderRight: "1px solid var(--border)" }}>
+            <SessionsPage compact onPick={setSessionId} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <ChatPage sessionId={sessionId} />
+          </div>
+        </div>
       )}
     </div>
   );

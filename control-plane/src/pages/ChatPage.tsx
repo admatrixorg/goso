@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type Message } from "../api/client";
+import { Button } from "../ui/Button";
+import { EmptyState } from "../ui/EmptyState";
+import { Icon } from "../ui/Icon";
+import { SectionHeader } from "../ui/SectionHeader";
 
 export function ChatPage({ sessionId }: { sessionId: string }) {
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -11,9 +15,13 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       const j = await api.listMessages(sessionId);
       setMsgs(j.messages ?? []);
       setErr("");
-    } catch (e) { setErr(String(e)); }
+    } catch (e) {
+      setErr(String(e));
+    }
   }
-  useEffect(() => { if (sessionId) void load(); }, [sessionId]);
+  useEffect(() => {
+    if (sessionId) void load();
+  }, [sessionId]);
 
   async function send() {
     if (!input.trim()) return;
@@ -21,28 +29,112 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       await api.chat({ session_id: sessionId, message: input.trim() });
       setInput("");
       await load();
-    } catch (e) { setErr(String(e)); }
+    } catch (e) {
+      setErr(String(e));
+    }
   }
 
-  if (!sessionId) return <p style={{ color: "#666" }}>Pick a session to chat.</p>;
+  if (!sessionId) {
+    return (
+      <div style={{ padding: "14px 22px 40px" }}>
+        <SectionHeader icon="msg" title="Chat" description="Chọn một phiên bên trái để đọc tin và gửi. Agent chạy trên gateway, không gửi Zalo từ đây." />
+        <EmptyState>Chưa chọn phiên.</EmptyState>
+      </div>
+    );
+  }
 
   return (
-    <section>
-      <h3>Chat — {sessionId}</h3>
-      {err && <p style={{ color: "crimson" }}>{err}</p>}
-      <div style={{ border: "1px solid #ddd", padding: 8, maxHeight: 320, overflow: "auto", marginBottom: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div style={{ padding: "14px 22px 0" }}>
+        <SectionHeader
+          icon="msg"
+          title="Chat"
+          description={`Phiên ${sessionId} — tin user/assistant/tool từ gateway.`}
+          actions={
+            <Button icon="refresh" iconGesture onClick={() => void load()}>
+              Làm mới
+            </Button>
+          }
+        />
+      </div>
+      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: "8px 22px 0" }}>{err}</p> : null}
+      <div style={{ flex: 1, overflow: "auto", padding: "14px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
         {msgs.map((m) => (
-          <div key={m.id} style={{ marginBottom: 6 }}>
-            <strong>{m.role}:</strong> {m.content}
+          <div
+            key={m.id}
+            style={{
+              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+              maxWidth: "72%",
+              background: m.role === "user" ? "var(--accent-soft)" : "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "10px 13px",
+              fontSize: 13,
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".4px", color: "var(--text-3)", marginBottom: 4 }}>
+              {m.role.toUpperCase()}
+            </div>
+            <div style={{ whiteSpace: "pre-wrap", textWrap: "pretty" as const }}>{m.content}</div>
           </div>
         ))}
-        {msgs.length === 0 && <small style={{ color: "#666" }}>(no messages)</small>}
+        {msgs.length === 0 ? <EmptyState>Chưa có tin nhắn.</EmptyState> : null}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input style={{ flex: 1 }} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void send()} placeholder="message" />
-        <button onClick={() => void send()}>Send</button>
-        <button onClick={() => void load()}>Refresh</button>
+      <div
+        style={{
+          padding: "12px 22px 18px",
+          borderTop: "1px solid var(--border)",
+          background: "var(--chrome)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "var(--accent-soft)",
+            color: "var(--accent)",
+            borderRadius: 8,
+            padding: "4px 9px",
+            fontSize: 12,
+            fontWeight: 600,
+            flex: "none",
+          }}
+        >
+          <Icon name="bolt" size={13} />
+          Agent
+        </span>
+        <input
+          className="z-field"
+          style={{ flex: 1 }}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void send()}
+          placeholder="Nhắn cho agent…"
+        />
+        <button
+          type="button"
+          onClick={() => void send()}
+          aria-label="Gửi cho Agent"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            background: "var(--btn-dark-bg)",
+            color: "var(--btn-dark-fg)",
+            border: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "none",
+          }}
+        >
+          <Icon name="arrow-up" size={15} />
+        </button>
       </div>
-    </section>
+    </div>
   );
 }

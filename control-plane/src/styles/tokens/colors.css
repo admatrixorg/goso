@@ -1,0 +1,69 @@
+/* ZAgent color system — lifted verbatim from the ZAgent CRM build.
+   Light is the default surface. .dark on <body> (or [data-theme="dark"]) flips every
+   semantic alias; nothing else in the system needs to know which theme is active. */
+:root {
+  --bg:#f9f9f8;
+  --card:#ffffff;
+  --chrome:#ffffff;
+  --surface-1:#fafafa;
+  --surface-2:#f2f3f5;
+  --border:#e4e5e7;
+  --border-soft:#efeff0;
+  --text:#1c1c1e;
+  --text-2:#4d4f54;   /* 8.1:1 on --card */
+  --text-3:#63656b;   /* 5.8:1 — was #7d7f85, which failed AA at 4.0:1 */
+  --text-4:#74767c;   /* 4.6:1 — was #a6a8ae, which failed badly at 2.4:1 */
+  --accent:#2463eb;
+  --accent-strong:#1d4ed8;
+  --accent-soft:#eef3fe;
+  --accent-soft-2:#e3ecfd;
+  --accent-border:#c5d7fa;
+  --btn-dark-bg:#1c1c1e;
+  --btn-dark-fg:#ffffff;
+  --green:#188a52;
+  --green-bg:#e7f6ee;
+  --red:#dc4a43;
+  --red-bg:#fdecea;
+  --orange:#d97706;
+  --warn-bg:#fdf3e1;
+  --warn-text:#b45309;
+  --hint-bg:#fbf7ec;
+  --hint-border:#eee0b8;
+  --hint-text:#8a7333;
+  --pink:#c2437e;
+  --pink-bg:#fdeaf2;
+  --today:#f8f2ee;
+}
+body.dark, [data-theme="dark"] {
+  --bg:#141517;
+  --card:#1d1e21;
+  --chrome:#191a1d;
+  --surface-1:#202124;
+  --surface-2:#27282c;
+  --border:#303136;
+  --border-soft:#26272b;
+  --text:#ececee;
+  --text-2:#b4b6bd;
+  --text-3:#9b9da4;   /* 6.4:1 on dark --card */
+  --text-4:#83858e;   /* 4.6:1 — was #64666d at 2.9:1 */
+  --accent:#5b8bf5;
+  --accent-strong:#83a8f7;
+  --accent-soft:#1c2a4b;
+  --accent-soft-2:#1d3059;
+  --accent-border:#31509a;
+  --btn-dark-bg:#ececee;
+  --btn-dark-fg:#17181a;
+  --green:#41c283;
+  --green-bg:#16301f;
+  --red:#f07a74;
+  --red-bg:#3a1f1e;
+  --orange:#e5a154;
+  --warn-bg:#332a17;
+  --warn-text:#e0b05e;
+  --hint-bg:#2a2617;
+  --hint-border:#4a4022;
+  --hint-text:#d8bf7a;
+  --pink:#e07ab0;
+  --pink-bg:#3a2230;
+  --today:#27221f;
+}

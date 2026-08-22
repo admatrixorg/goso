@@ -1,0 +1,50 @@
+/* Dense operational spacing. The product is a working console, not a marketing page:
+   the outer gutter is 22px, cards sit 10–14px apart, rows are 9–11px tall inside. */
+:root {
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 5px;
+  --space-4: 6px;
+  --space-5: 7px;
+  --space-6: 8px;
+  --space-7: 9px;
+  --space-8: 10px;
+  --space-9: 12px;
+  --space-10: 13px;
+  --space-11: 14px;
+  --space-12: 16px;
+  --space-13: 18px;
+  --space-14: 22px;
+
+  --gutter-view: 22px;      /* left/right padding of every view */
+  --gutter-view-top: 14px;
+  --gap-card: 12px;         /* between sibling cards in a grid */
+  --gap-card-lg: 14px;      /* dashboard grids */
+  --pad-card-header: 11px 16px;
+  --pad-card-body: 14px 16px;
+  --pad-row: 9px 16px;      /* log / list row */
+  --pad-row-lg: 11px 16px;  /* table row with avatar */
+  --pad-col-head: 8px 16px;
+  --pad-btn: 7px 13px;
+  --pad-btn-lg: 7px 14px;
+  --pad-pill: 5px 14px;
+  --pad-badge: 2px 8px;
+  --pad-tab: 11px 13px;
+  --pad-nav-item: 5px 11px;
+
+  --size-avatar-sm: 24px;
+  --size-avatar: 26px;
+  --size-avatar-lg: 34px;
+  --size-icon-chip: 27px;   /* tinted square behind a KPI icon */
+  --size-icon-badge: 44px;  /* accent square in a view header */
+  --icon-sm: 13px;
+  --icon-md: 14px;
+  --icon-lg: 15px;
+  --icon-xl: 16px;
+  --icon-hero: 22px;
+
+  --bar-h: 5px;             /* meter inside a table row */
+  --bar-h-lg: 7px;          /* meter in a list */
+  --heat-cell: 26px;
+  --view-min-width: 1280px; /* the console does not reflow below this */
+}

@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
 import { api, type GatewayEvent } from "../api/client";
+import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
+import { Card, CardHeader } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { SectionHeader } from "../ui/SectionHeader";
+
+function kindTone(k: string): "positive" | "warning" | "critical" | "neutral" | "accent" {
+  if (k.includes("error") || k.includes("fail")) return "critical";
+  if (k.includes("success") || k.includes("ok")) return "positive";
+  if (k.includes("pending") || k.includes("approval")) return "warning";
+  if (k.includes("attempt")) return "accent";
+  return "neutral";
+}
 
 export function EventsPage() {
   const [events, setEvents] = useState<GatewayEvent[]>([]);
@@ -20,44 +33,49 @@ export function EventsPage() {
       setErr(String(e));
     }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
   return (
-    <section>
-      <h2>Events</h2>
-      {err && <p style={{ color: "crimson" }}>{err}</p>}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <input placeholder="kind" value={kind} onChange={(e) => setKind(e.target.value)} />
-        <input placeholder="connector" value={connector} onChange={(e) => setConnector(e.target.value)} />
-        <button onClick={() => void load()}>Refresh</button>
+    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <SectionHeader
+        icon="history"
+        title="Nhật ký"
+        description="Ai đổi gì trên connector — attempt, success, error, pending_approval. Không chứa secret."
+        actions={
+          <Button icon="refresh" iconGesture onClick={() => void load()}>
+            Làm mới
+          </Button>
+        }
+      />
+      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input className="z-field" placeholder="kind" value={kind} onChange={(e) => setKind(e.target.value)} />
+        <input className="z-field" placeholder="connector" value={connector} onChange={(e) => setConnector(e.target.value)} />
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr>
-            <th align="left">ts</th>
-            <th align="left">kind</th>
-            <th align="left">connector</th>
-            <th align="left">tool</th>
-            <th align="left">trace</th>
-            <th align="left">summary</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((e, i) => (
-            <tr key={e.trace_id + e.kind + i}>
-              <td><small>{e.ts}</small></td>
-              <td>{e.kind}</td>
-              <td>{e.connector}</td>
-              <td>{e.tool}</td>
-              <td><code>{e.trace_id}</code></td>
-              <td><small>{e.summary}</small></td>
-            </tr>
-          ))}
-          {events.length === 0 && (
-            <tr><td colSpan={6} style={{ color: "#666" }}>(no events)</td></tr>
-          )}
-        </tbody>
-      </table>
-    </section>
+      <Card>
+        <CardHeader icon="pulse" title="EventStore" meta={`${events.length} sự kiện`} />
+        <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
+          <span style={{ flex: 1.4 }}>THỜI GIAN</span>
+          <span style={{ flex: 1.1 }}>LOẠI</span>
+          <span style={{ flex: 1.1 }}>CONNECTOR</span>
+          <span style={{ flex: 1 }}>TOOL</span>
+          <span style={{ flex: 2.2 }}>TÓM TẮT</span>
+        </div>
+        {events.map((e, i) => (
+          <div key={e.trace_id + e.kind + i} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
+            <span style={{ flex: 1.4, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{e.ts}</span>
+            <span style={{ flex: 1.1 }}>
+              <Badge tone={kindTone(e.kind)}>{e.kind}</Badge>
+            </span>
+            <span style={{ flex: 1.1 }}>{e.connector}</span>
+            <span style={{ flex: 1, color: "var(--text-2)" }}>{e.tool}</span>
+            <span style={{ flex: 2.2, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.summary}</span>
+          </div>
+        ))}
+        {events.length === 0 ? <EmptyState>Không có sự kiện.</EmptyState> : null}
+      </Card>
+    </div>
   );
 }

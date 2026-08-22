@@ -1,0 +1,22 @@
+/* Corners are soft but never pill-shaped except for true capsules (filters, avatars).
+   Elevation is used almost nowhere: cards are defined by a 1px border, not a shadow.
+   The only real shadow in the product is under a modal. */
+:root {
+  --radius-xs: 3px;   /* meter fill */
+  --radius-sm: 5px;   /* badge, heat cell */
+  --radius-md: 6px;   /* inline status chip */
+  --radius-lg: 8px;   /* nav item, pill, small control */
+  --radius-xl: 10px;  /* button */
+  --radius-2xl: 11px; /* nested panel, icon badge */
+  --radius-card: 12px;
+  --radius-modal: 16px;
+  --radius-full: 999px;
+
+  --border-width: 1px;
+  --border-card: 1px solid var(--border);
+  --border-divider: 1px solid var(--border-soft);
+  --focus-ring: 0 0 0 3px var(--accent-soft-2);
+
+  --shadow-none: none;
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, .3);
+}

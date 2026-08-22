@@ -1,0 +1,35 @@
+/* One family, Inter, across the entire product. No display face, no serif.
+   Numbers in every metric, table cell and KPI use tabular figures so columns align. */
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: var(--font-sans);
+
+  /* Type ramp — the real sizes in use, including the half-pixel steps.
+     Do not snap these to a 2px grid; the density depends on them. */
+  --fs-page-title: 17px;    /* view header */
+  --fs-metric-xl: 30px;     /* single hero number (error rate) */
+  --fs-metric-lg: 26px;     /* KPI card value */
+  --fs-metric-md: 22px;     /* dashboard KPI value */
+  --fs-metric-sm: 20px;     /* quad-split counters */
+  --fs-section: 14.5px;     /* section lead-in */
+  --fs-card-title: 13.5px;  /* card header */
+  --fs-body: 13px;          /* controls, buttons, nav */
+  --fs-table: 12.5px;       /* table cell, KPI label, descriptions */
+  --fs-meta: 12px;          /* helper text */
+  --fs-micro: 11.5px;       /* legends, notes */
+  --fs-badge: 11px;         /* pills and chips */
+  --fs-caption: 10.5px;     /* sub-labels under a name */
+  --fs-eyebrow: 10px;       /* column heads, KPI eyebrows */
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;   /* card titles, names, badges — the workhorse weight */
+  --fw-bold: 700;       /* numbers and page titles only */
+
+  --ls-metric: -.5px;   /* large numbers tighten */
+  --ls-title: -.2px;
+  --ls-eyebrow: .4px;   /* uppercase column heads open up */
+  --ls-eyebrow-wide: .6px;
+
+  --num-tabular: tabular-nums;
+}
