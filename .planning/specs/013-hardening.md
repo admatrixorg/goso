@@ -14,10 +14,10 @@ GOSO sẵn sàng cho user trả tiền thử nghiệm: quét secret, semgrep, e2
 
 ## Acceptance criteria
 
-- [ ] AC-01 Pre-commit + CI chạy gitleaks/semgrep (đã có skeleton, làm chặt hơn)
-- [ ] AC-02 `docs/RUNBOOK.md` + `docs/RELEASE.md`
-- [ ] AC-03 E2E script `scripts/e2e.sh` chạy toàn bộ luồng (healthz → agents → sessions → chat → webhook)
-- [ ] AC-04 `make verify` xanh trên CI và local
+- [x] AC-01 Pre-commit + CI chạy gitleaks/semgrep (đã có skeleton, làm chặt hơn)
+- [x] AC-02 `docs/RUNBOOK.md` + `docs/RELEASE.md`
+- [x] AC-03 E2E script `scripts/e2e.sh` chạy toàn bộ luồng (healthz → agents → sessions → chat → webhook)
+- [x] AC-04 `make verify` xanh trên CI và local
 
 ## Non-goals
 

@@ -1,0 +1,20 @@
+# GOSO gitleaks config — extend defaults, allowlist generated/vendor paths.
+title = "GOSO"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated artifacts, lockfiles, local env files, and planning docs (no live secrets in git)"
+paths = [
+  '''(^|/)bin/''',
+  '''(^|/)dist/''',
+  '''(^|/)data/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.git/''',
+  '''go\.sum$''',
+  '''package-lock\.json$''',
+  '''(^|/)\.planning/''',
+  '''(^|/)\.env$''',
+  '''(^|/)\.env\.[^./]+$''',
+]

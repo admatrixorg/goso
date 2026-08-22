@@ -1,0 +1,12 @@
+# Generated / vendor paths — do not SAST-scan.
+.env
+.env.*
+node_modules/
+dist/
+bin/
+data/
+.git/
+*.db
+go.sum
+package-lock.json
+control-plane/dist/

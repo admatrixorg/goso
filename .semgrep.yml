@@ -1,0 +1,49 @@
+# GOSO semgrep ruleset (local, no --config auto).
+# Fail the scan on real secret material and a few high-confidence Go pitfalls.
+rules:
+  - id: goso.private-key
+    languages: [generic]
+    severity: ERROR
+    message: Private key material must not be committed. Store keys outside git and load via env.
+    metadata:
+      cwe: "CWE-321"
+    paths:
+      exclude:
+        - "**/*.md"
+    pattern-regex: "-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"
+
+  - id: goso.aws-access-key
+    languages: [generic]
+    severity: ERROR
+    message: AWS access key id committed.
+    metadata:
+      cwe: "CWE-798"
+    pattern-regex: "AKIA[0-9A-Z]{16}"
+
+  - id: goso.openai-api-key
+    languages: [generic]
+    severity: ERROR
+    message: OpenAI-style API key committed. Use GOSO_OPENAI_API_KEY / GOSO_ANTHROPIC_API_KEY env vars.
+    metadata:
+      cwe: "CWE-798"
+    paths:
+      exclude:
+        - "**/*.md"
+    pattern-regex: "sk-(?:proj-|ant-)?[A-Za-z0-9]{20,}"
+
+  - id: goso.github-pat
+    languages: [generic]
+    severity: ERROR
+    message: GitHub personal access token committed.
+    metadata:
+      cwe: "CWE-798"
+    pattern-regex: "ghp_[A-Za-z0-9]{20,}"
+
+  - id: goso.tls-insecure-skip-verify
+    languages: [go]
+    severity: ERROR
+    message: tls.Config InsecureSkipVerify disables certificate verification.
+    metadata:
+      cwe: "CWE-295"
+    pattern: |
+      tls.Config{..., InsecureSkipVerify: true, ...}

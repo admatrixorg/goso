@@ -26,9 +26,18 @@ go run ./gateway/cmd/goso-gateway doctor
 ## 4. Verify harness
 
 ```bash
-make verify   # vet + fmt + test + pnpm -C mcp verify
+make verify   # vet + fmt + test + mcp + gitleaks/semgrep (nếu có) + e2e
 make build    # bin/goso-gateway
 pnpm -C mcp install && pnpm -C mcp verify
+make scan     # gitleaks + semgrep
+./scripts/e2e.sh
+```
+
+Cài scanner (khuyến nghị local, bắt buộc trên CI):
+
+```bash
+# gitleaks: https://github.com/gitleaks/gitleaks/releases
+# semgrep:  pipx install semgrep   # hoặc: uv tool install semgrep
 ```
 
 MCP (Claude Code / Cursor): xem `mcp/README.md`. Env bắt buộc: `GOSO_GATEWAY_URL` (vd `http://localhost:8080`).
@@ -78,3 +87,5 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_GATEWAY_URL | — | URL gateway cho `goso-mcp` (bắt buộc khi chạy MCP) |
 | GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |
 | GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |
+
+Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
