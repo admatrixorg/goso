@@ -20,3 +20,4 @@ desktop/build/bin/
 build/bin/
 mcp/dist/
 mcp/node_modules/
+.cache/

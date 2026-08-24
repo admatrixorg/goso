@@ -1,0 +1,7 @@
+# Orca worktree sharing — gitignored dirs symlink from primary checkout.
+# Paths missing on primary are skipped.
+worktree:
+  sharedDirectories:
+    - control-plane/node_modules
+    - mcp/node_modules
+    - .cache
