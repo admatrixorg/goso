@@ -41,6 +41,7 @@ ZAgent design tokens (`src/styles/tokens/`) + sprite `src/assets/icons.svg`. Chr
 
 ## Trang
 
+- **Trang chủ / Việc / Cuộc họp / Bạn bè / Lịch / Kho ảnh / Marketing / Cài đặt** — skin ZAgent; data **DEMO** (badge), chưa có API
 - **Tổng quan** — KPI live từ goso-crm HTTP (`GET /api/crm/metrics`, `GET /api/crm/advisor`)
 - **Agent** — list + tạo agent
 - **Phiên** — list, chọn session

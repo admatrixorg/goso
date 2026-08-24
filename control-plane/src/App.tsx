@@ -5,15 +5,37 @@ import { ChatPage } from "./pages/ChatPage";
 import { ConnectorsPage } from "./pages/Connectors";
 import { EventsPage } from "./pages/Events";
 import { CrmMetricsPage } from "./pages/CrmMetrics";
+import { HomePage } from "./pages/HomePage";
+import { MeetingsPage } from "./pages/MeetingsPage";
+import { TasksPage } from "./pages/TasksPage";
+import { FriendsPage } from "./pages/FriendsPage";
+import { CalendarPage } from "./pages/CalendarPage";
+import { GalleryPage } from "./pages/GalleryPage";
+import { MarketingPage } from "./pages/MarketingPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 
-export type Tab = "crm" | "agents" | "sessions" | "chat" | "connectors" | "events";
+export type Tab =
+  | "home"
+  | "tasks"
+  | "meetings"
+  | "crm"
+  | "agents"
+  | "sessions"
+  | "chat"
+  | "friends"
+  | "calendar"
+  | "gallery"
+  | "marketing"
+  | "connectors"
+  | "events"
+  | "settings";
 
 const TOP: { id: Tab; label: string }[] = [
+  { id: "home", label: "Trang chủ" },
+  { id: "tasks", label: "Việc của tôi" },
   { id: "crm", label: "Tổng quan" },
-  { id: "agents", label: "Agent" },
-  { id: "sessions", label: "Phiên" },
   { id: "chat", label: "Chat" },
   { id: "connectors", label: "Kết nối" },
   { id: "events", label: "Nhật ký" },
@@ -21,12 +43,24 @@ const TOP: { id: Tab; label: string }[] = [
 
 const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = [
   {
+    group: "TỔNG QUAN",
+    items: [
+      { id: "home", label: "Trang chủ", ic: "dash" },
+      { id: "tasks", label: "Việc của tôi", ic: "check" },
+      { id: "crm", label: "Tổng quan", ic: "gauge" },
+      { id: "meetings", label: "Cuộc họp", ic: "mic" },
+    ],
+  },
+  {
     group: "LÀM VIỆC",
     items: [
-      { id: "crm", label: "Tổng quan", ic: "gauge" },
       { id: "agents", label: "Agent", ic: "bolt" },
       { id: "sessions", label: "Phiên", ic: "list" },
       { id: "chat", label: "Chat", ic: "msg" },
+      { id: "friends", label: "Bạn bè", ic: "friends" },
+      { id: "calendar", label: "Lịch hẹn", ic: "cal" },
+      { id: "gallery", label: "Kho ảnh", ic: "gallery" },
+      { id: "marketing", label: "Marketing", ic: "mega" },
     ],
   },
   {
@@ -48,7 +82,7 @@ function useTheme() {
 
 export default function App() {
   const [sessionId, setSessionId] = useState("");
-  const [tab, setTab] = useState<Tab>("crm");
+  const [tab, setTab] = useState<Tab>("home");
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
 
@@ -270,24 +304,31 @@ export default function App() {
           ))}
           <div style={{ flex: 1 }} />
           <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 8 }}>
-            <div
+            <button
+              type="button"
               data-ig="gear"
+              onClick={() => go("settings")}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 9,
+                width: "100%",
                 minHeight: 34,
                 padding: "7px 10px",
                 borderRadius: 8,
                 fontSize: 13,
-                color: "var(--text-2)",
+                color: tab === "settings" ? "var(--accent)" : "var(--text-2)",
+                background: tab === "settings" ? "var(--accent-soft)" : "transparent",
+                border: "none",
+                fontWeight: tab === "settings" ? 600 : 400,
+                textAlign: "left",
               }}
             >
               <span data-ig-part="">
                 <Icon name="gear" size={15} />
               </span>
               <span style={{ flex: 1 }}>Cài đặt</span>
-            </div>
+            </button>
             <div
               style={{
                 display: "flex",
@@ -323,6 +364,9 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflowY: "auto", overflowX: "hidden" }}>
+          {tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
+          {tab === "meetings" && <MeetingsPage />}
+          {tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
           {tab === "crm" && <CrmMetricsPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
@@ -348,8 +392,13 @@ export default function App() {
               </div>
             </div>
           )}
+          {tab === "friends" && <FriendsPage />}
+          {tab === "calendar" && <CalendarPage />}
+          {tab === "gallery" && <GalleryPage />}
+          {tab === "marketing" && <MarketingPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "events" && <EventsPage />}
+          {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
     </div>
