@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
@@ -27,6 +28,7 @@ type Status struct {
 	Provider  string
 	HasReal   bool
 	Auth      bool
+	DevMode   bool
 	RateLimit int
 }
 
@@ -119,17 +121,31 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 		}
 	}
 
+	devMode := envTruthy(os.Getenv("GOSO_DEV_MODE"))
 	var handler http.Handler = mux
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
-	handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
+	if adminToken != "" || !devMode {
+		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
+		handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
+	}
 	handler = obs.Middleware(handler)
 
 	return handler, Status{
 		Provider:  provider.Name(),
 		HasReal:   provider.Name() != "echo",
 		Auth:      adminToken != "",
+		DevMode:   devMode && adminToken == "",
 		RateLimit: rateLimit,
+	}
+}
+
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }

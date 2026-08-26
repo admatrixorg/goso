@@ -26,7 +26,10 @@ export function crmUpstream(): string {
 }
 
 function orgHeaders(orgId: string): Record<string, string> {
-  return { Accept: "application/json", "X-Org-ID": orgId };
+  const h: Record<string, string> = { Accept: "application/json", "X-Org-ID": orgId };
+  const tok = import.meta.env.VITE_GOSOCRM_ORG_TOKEN?.trim();
+  if (tok) h["X-Org-Token"] = tok;
+  return h;
 }
 
 function clip(s: string, n = 240): string {

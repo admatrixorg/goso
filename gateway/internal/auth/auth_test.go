@@ -52,12 +52,17 @@ func TestRequireToken_PassAndFail(t *testing.T) {
 	}
 }
 
-func TestRequireToken_DevMode(t *testing.T) {
-	mw := RequireToken("", nil)
+func TestRequireToken_EmptyRefuses(t *testing.T) {
+	mw := RequireToken("", []string{"/healthz"})
 	h := mw(okHandler())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents", nil))
+	if w.Code != 401 {
+		t.Fatalf("empty token 401, got %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
 	if w.Code != 200 {
-		t.Fatalf("dev mode 200, got %d", w.Code)
+		t.Fatalf("healthz bypass 200, got %d", w.Code)
 	}
 }

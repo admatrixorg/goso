@@ -49,6 +49,7 @@ func TestStartSQLiteAndGatewayReuse(t *testing.T) {
 	path := filepath.Join(dir, "goso.db")
 	t.Setenv("GOSO_DB_PATH", path)
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_RATE_LIMIT", "0")
 
 	rt, err := Start()

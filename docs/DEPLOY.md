@@ -47,7 +47,7 @@ Overlay `compose.prod.yml` thêm:
 - log rotation (`json-file`, 10m × 5)
 - sidecar `backup`: copy SQLite mỗi `BACKUP_INTERVAL_SECONDS` (mặc định 3600s) vào volume `backup`, giữ 14 bản
 
-Token rỗng = dev mode (không auth). Production phải set `GOSO_ADMIN_TOKEN`.
+Token rỗng = 401 trên `/api/*` trừ khi `GOSO_DEV_MODE=1`. Production phải set `GOSO_ADMIN_TOKEN`.
 
 ## Build riêng
 

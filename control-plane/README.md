@@ -57,6 +57,7 @@ Control Plane **không** import Go của goso-crm. KPI lấy qua HTTP.
 |------|----------|-------|
 | `VITE_GOSOCRM_API_URL` | `http://127.0.0.1:8089` (upstream) | Base URL goso-crm. Để trống khi `npm run dev` → dùng Vite proxy `/crm-api`. Có thể set URL đầy đủ hoặc `/crm-api`. |
 | `VITE_GOSOCRM_ORG_ID` | `01a01fe5-704c-7375-aa1f-6e50a9d0296d` (test-a) | Gửi header `X-Org-ID` trên fetch metrics/advisor. |
+| `VITE_GOSOCRM_ORG_TOKEN` | (trống) | `X-Org-Token` — bắt buộc khi goso-crm SPEC 016. Không hiện trên UI. |
 
 Mọi CRM fetch gửi `X-Org-ID`. **Không** nhúng secret trong UI, source, hay hiển thị network.
 

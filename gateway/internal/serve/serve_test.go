@@ -13,8 +13,13 @@ import (
 )
 
 func TestNewHealthzAndAgent(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	st := store.New()
 	h, status := New(st, "test")
+	if !status.DevMode {
+		t.Fatal("expected explicit GOSO_DEV_MODE passthrough")
+	}
 	if status.Provider == "" {
 		t.Fatal("expected provider name")
 	}
@@ -48,5 +53,43 @@ func TestNewHealthzAndAgent(t *testing.T) {
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/stats", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("stats status %d body %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestNewRequiresToken(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	st := store.New()
+	h, status := New(st, "test")
+	if status.Auth || status.DevMode {
+		t.Fatalf("status %+v", status)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("healthz %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("empty token /api/agents %d body %s", rr.Code, rr.Body.String())
+	}
+
+	t.Setenv("GOSO_ADMIN_TOKEN", "secret-016")
+	h, status = New(st, "test")
+	if !status.Auth {
+		t.Fatal("expected auth on")
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("missing bearer %d", rr.Code)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer secret-016")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("bearer /api/agents %d %s", rr.Code, rr.Body.String())
 	}
 }
