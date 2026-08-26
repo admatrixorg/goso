@@ -1,5 +1,5 @@
 /**
- * GoClawClient — aggregates all endpoint modules into a single typed client.
+ * GosoClient — aggregates all endpoint modules into a single typed client.
  * Thin wrapper over HttpClient with domain-specific methods.
  */
 
@@ -18,13 +18,13 @@ import { traceEndpoints } from "./endpoints/trace-endpoints.js";
 import { channelEndpoints } from "./endpoints/channel-endpoints.js";
 import { memoryEndpoints } from "./endpoints/memory-endpoints.js";
 
-export interface GoClawClientOptions {
+export interface GosoClientOptions {
   baseUrl: string;
   token?: string;
   userId?: string;
 }
 
-export class GoClawClient {
+export class GosoClient {
   private http: HttpClient;
 
   // Domain endpoint groups
@@ -42,7 +42,7 @@ export class GoClawClient {
   public channels: ReturnType<typeof channelEndpoints>;
   public memory: ReturnType<typeof memoryEndpoints>;
 
-  constructor(options: GoClawClientOptions) {
+  constructor(options: GosoClientOptions) {
     this.http = new HttpClient(options);
 
     this.system = systemEndpoints(this.http);

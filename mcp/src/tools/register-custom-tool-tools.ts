@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerCustomToolTools(server: McpServer, client: GoClawClient): void {
+export function registerCustomToolTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_custom_tool_list",
+    "goso_custom_tool_list",
     "List custom tools defined in GoClaw",
     { agent_id: z.string().optional().describe("Filter by agent ID (omit for global tools)") },
     async ({ agent_id }) => {
@@ -25,7 +25,7 @@ export function registerCustomToolTools(server: McpServer, client: GoClawClient)
   );
 
   server.tool(
-    "goclaw_custom_tool_get",
+    "goso_custom_tool_get",
     "Get details of a custom tool",
     { id: z.string().describe("Custom tool ID") },
     async ({ id }) => {
@@ -48,7 +48,7 @@ export function registerCustomToolTools(server: McpServer, client: GoClawClient)
   );
 
   server.tool(
-    "goclaw_custom_tool_create",
+    "goso_custom_tool_create",
     "Create a new custom tool in GoClaw",
     {
       name: z.string().describe("Tool name"),
@@ -69,7 +69,7 @@ export function registerCustomToolTools(server: McpServer, client: GoClawClient)
   );
 
   server.tool(
-    "goclaw_custom_tool_update",
+    "goso_custom_tool_update",
     "Update a custom tool's definition",
     {
       id: z.string().describe("Custom tool ID"),
@@ -89,7 +89,7 @@ export function registerCustomToolTools(server: McpServer, client: GoClawClient)
   );
 
   server.tool(
-    "goclaw_custom_tool_delete",
+    "goso_custom_tool_delete",
     "Delete a custom tool from GoClaw",
     { id: z.string().describe("Custom tool ID") },
     async ({ id }) => {
@@ -103,7 +103,7 @@ export function registerCustomToolTools(server: McpServer, client: GoClawClient)
   );
 
   server.tool(
-    "goclaw_custom_tool_invoke",
+    "goso_custom_tool_invoke",
     "Invoke a custom tool directly with arguments",
     {
       id: z.string().describe("Custom tool ID"),

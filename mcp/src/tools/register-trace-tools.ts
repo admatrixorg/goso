@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerTraceTools(server: McpServer, client: GoClawClient): void {
+export function registerTraceTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_trace_list",
+    "goso_trace_list",
     "List LLM execution traces with cost and token usage",
     {
       agent_id: z.string().optional().describe("Filter by agent ID"),
@@ -32,7 +32,7 @@ export function registerTraceTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_trace_get",
+    "goso_trace_get",
     "Get detailed trace with individual LLM call spans",
     { trace_id: z.string().describe("Trace ID") },
     async ({ trace_id }) => {

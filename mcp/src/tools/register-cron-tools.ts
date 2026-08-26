@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerCronTools(server: McpServer, client: GoClawClient): void {
+export function registerCronTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_cron_list",
+    "goso_cron_list",
     "List all cron jobs in GoClaw",
     {},
     async () => {
@@ -28,7 +28,7 @@ export function registerCronTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_cron_create",
+    "goso_cron_create",
     "Create a new cron job",
     {
       name: z.string().describe("Job name"),
@@ -48,7 +48,7 @@ export function registerCronTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_cron_update",
+    "goso_cron_update",
     "Update a cron job's settings",
     {
       id: z.string().describe("Cron job ID"),
@@ -68,7 +68,7 @@ export function registerCronTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_cron_delete",
+    "goso_cron_delete",
     "Delete a cron job",
     { id: z.string().describe("Cron job ID") },
     async ({ id }) => {
@@ -82,7 +82,7 @@ export function registerCronTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_cron_toggle",
+    "goso_cron_toggle",
     "Enable or disable a cron job",
     {
       id: z.string().describe("Cron job ID"),
@@ -101,7 +101,7 @@ export function registerCronTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_cron_run",
+    "goso_cron_run",
     "Trigger a cron job to run immediately",
     { id: z.string().describe("Cron job ID") },
     async ({ id }) => {
