@@ -15,6 +15,7 @@ import (
 )
 
 func TestConnector_CRUDAndApproval(t *testing.T) {
+	t.Setenv("GOSO_QUOTA_DAY", "")
 	manifest := `{
 		"schema_version":"1.0",
 		"tools":[
