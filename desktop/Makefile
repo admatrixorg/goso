@@ -1,6 +1,6 @@
 # GOSO Desktop — Wails v2 (SPEC 009 + SPEC 024)
 
-.PHONY: verify vet fmt fmt-fix test frontend build help
+.PHONY: verify vet fmt fmt-fix test frontend build package-desktop help
 
 GOPATH_BIN := $(shell go env GOPATH)/bin
 WAILS ?= $(shell command -v wails 2>/dev/null)
@@ -9,7 +9,7 @@ WAILS := $(GOPATH_BIN)/wails
 endif
 
 help:
-	@echo "Targets: verify | vet | fmt | test | frontend | build"
+	@echo "Targets: verify | vet | fmt | test | frontend | build | package-desktop"
 
 # AC-01: green without Wails/CGO (CI-safe). Frontend + darwin app: `make build`.
 verify: vet fmt test
@@ -50,3 +50,7 @@ build: frontend
 	fi
 	PATH="$(GOPATH_BIN):$$PATH" $(WAILS) build -tags wails -platform darwin/arm64 -m -nosyncgomod
 	@echo "==> unsigned app: desktop/build/bin/GOSO.app (not notarized)"
+
+# SPEC 029 unsigned zip (no codesign / notarize). SKIP_WAILS=1 writes stub + README-UNSIGNED.md.
+package-desktop:
+	../scripts/package-desktop.sh

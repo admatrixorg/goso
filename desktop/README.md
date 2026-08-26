@@ -52,6 +52,25 @@ make -C desktop build             # npm verify (DEMO gate) + wails build
 
 `wails build` on darwin/arm64 is expected to exit 0. Put `$(go env GOPATH)/bin` on `PATH` if `wails` is not found.
 
+## Unsigned zip (SPEC 029)
+
+Packaging is a **zip**, not a signed DMG. The archive is **unsigned**: **no Developer ID, no notarization, no auto-update**. Recipients get a Gatekeeper warning; there is no Sparkle / in-app updater.
+
+```bash
+./scripts/package-desktop.sh          # from repo root
+make package-desktop                  # same
+# output: dist/GOSO-darwin-arm64-unsigned.zip
+```
+
+The zip always contains `README-UNSIGNED.md` (`xattr -cr GOSO.app`, Gatekeeper, no notarization, no auto-update, no Developer ID). If `desktop/build/bin/GOSO.app` exists it is included; otherwise (or when `SKIP_WAILS=1`) the zip carries `STUB.txt` instead — tests must not require Wails:
+
+```bash
+SKIP_WAILS=1 ./scripts/package-desktop.sh
+unzip -l dist/GOSO-darwin-arm64-unsigned.zip
+```
+
+`scripts/package-desktop.sh` never invokes `codesign`, `notarytool`, or `altool`.
+
 ## Verify (không cần Wails/CGO)
 
 ```bash
@@ -71,6 +90,7 @@ desktop/
 ├── frontend/               # Vite app — Control Plane skin, VITE_DEMO_MODE=false
 └── Makefile
 scripts/run-desktop.sh      # --dev | default unsigned build + open
+scripts/package-desktop.sh  # unsigned zip → dist/GOSO-darwin-arm64-unsigned.zip (SPEC 029)
 ```
 
 Không duplicate domain: agents/sessions/messages sống trong `gateway/internal/store`. Binary lớn nằm ở `desktop/build/bin/` (gitignored).

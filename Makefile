@@ -1,9 +1,9 @@
 # GOSO — Makefile (Harness)
 
-.PHONY: verify lint vet fmt fmt-fix test build doctor version help mcp-verify scan e2e smoke
+.PHONY: verify lint vet fmt fmt-fix test build doctor version help mcp-verify scan e2e smoke package-desktop
 
 help:
-	@echo "Targets: verify | lint | vet | fmt | test | mcp-verify | scan | e2e | build | smoke"
+	@echo "Targets: verify | lint | vet | fmt | test | mcp-verify | scan | e2e | build | smoke | package-desktop"
 
 # vet + fmt + test + mcp + gitleaks/semgrep (if installed) + e2e
 verify: vet fmt test mcp-verify scan e2e
@@ -46,3 +46,7 @@ version:
 
 doctor:
 	go run ./gateway/cmd/goso-gateway doctor
+
+# SPEC 029 unsigned zip (no codesign / notarize / auto-update). SKIP_WAILS=1 writes stub + README-UNSIGNED.md.
+package-desktop:
+	./scripts/package-desktop.sh
