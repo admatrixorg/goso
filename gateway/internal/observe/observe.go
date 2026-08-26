@@ -60,6 +60,7 @@ func (o *Observer) Traces() *Buffer { return o.traces }
 func (o *Observer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/traces", o.HandleTraces)
 	mux.HandleFunc("GET /api/stats", o.HandleStats)
+	mux.HandleFunc("GET /api/metrics", o.HandleStats) // SPEC 018 alias
 	mux.HandleFunc("GET /metrics", o.HandleMetrics)
 }
 

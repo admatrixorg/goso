@@ -39,6 +39,11 @@ func TestHandleStatsAndMetrics(t *testing.T) {
 	if s.StartedAt == "" {
 		t.Fatal("missing started_at")
 	}
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/metrics", nil))
+	if w.Code != 200 {
+		t.Fatalf("api/metrics alias %d", w.Code)
+	}
 
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
