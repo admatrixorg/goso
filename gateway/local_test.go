@@ -12,6 +12,8 @@ import (
 )
 
 func TestOpenLocalSQLitePersistsAgent(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "goso.db")
 	h, closeFn, status, err := OpenLocal(path, "test")

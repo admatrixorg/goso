@@ -80,7 +80,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_PORT | 8080 | Cổng gateway |
 | GOSO_HOST | 127.0.0.1 | Bind host (Docker: `0.0.0.0`) |
 | GOSO_LOG_LEVEL | info | Mức log |
-| GOSO_ADMIN_TOKEN | (rỗng) | Bearer token cho /api/* và /ws (rỗng = dev mode) |
+| GOSO_ADMIN_TOKEN | (rỗng → 401) | Bearer `/api/*` và `/ws`. Passthrough chỉ khi `GOSO_DEV_MODE=1`. |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
 | GOSO_ENV | development | Môi trường |

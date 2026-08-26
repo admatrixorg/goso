@@ -9,15 +9,12 @@ import (
 )
 
 // RequireToken returns middleware that enforces Bearer token auth.
-// If token == "", middleware passes through (dev mode).
+// An empty expected token rejects every non-bypass path with 401 (SPEC 016).
+// Explicit passthrough is GOSO_DEV_MODE=1 in serve.New — do not pass "" here for that.
 // Bypass is a list of path prefixes that don't require auth (e.g. "/healthz").
 func RequireToken(token string, bypass []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if token == "" {
-				next.ServeHTTP(w, r)
-				return
-			}
 			for _, p := range bypass {
 				if strings.HasPrefix(r.URL.Path, p) {
 					next.ServeHTTP(w, r)
@@ -25,7 +22,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 				}
 			}
 			got := extractToken(r)
-			if got != token {
+			if token == "" || got != token {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})

@@ -7,8 +7,8 @@ Vận hành GOSO core (gateway + SQLite). Không bao gồm ZaloCRM.
 Yêu cầu: Go 1.25+, `make`.
 
 ```bash
-# Dev (không auth, store in-memory)
-go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
+# Dev tường minh (passthrough — chỉ loopback)
+GOSO_DEV_MODE=1 go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
 
 # Local bền (SQLite + admin token)
 mkdir -p data
@@ -36,7 +36,7 @@ curl -sS http://127.0.0.1:8080/healthz
 # {"ok":true,"version":"0.1.0"}
 ```
 
-`/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN` khi token được set.
+`/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN`, trừ khi `GOSO_DEV_MODE=1`. Token rỗng + không dev-mode → 401.
 
 Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
@@ -81,7 +81,7 @@ Tất cả secret đi qua env, không commit. Đổi giá trị rồi **restart 
 
 Không log token (auth middleware chỉ trả `{"error":"unauthorized"}`). Không dán key vào issue/chat.
 
-Nếu `GOSO_ADMIN_TOKEN` rỗng: **dev mode** — mọi `/api/*` mở. Không dùng trên host public.
+Nếu `GOSO_ADMIN_TOKEN` rỗng và không có `GOSO_DEV_MODE=1`: `/api/*` trả **401**. Passthrough chỉ khi `GOSO_DEV_MODE=1`. Không dùng passthrough trên host public.
 
 ## 4. Sự cố
 

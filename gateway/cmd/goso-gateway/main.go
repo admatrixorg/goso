@@ -74,7 +74,8 @@ Environment:
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)
   GOSO_ENV                 Environment (default development)
   GOSO_DB_PATH             SQLite path (default :memory:)
-  GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (empty = dev mode)
+  GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
+  GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
 
 `, name, version)
 }
@@ -136,8 +137,10 @@ func runGateway(args []string) {
 	fmt.Printf("LLM provider: %s (hasReal=%v)\n", status.Provider, status.HasReal)
 	if status.Auth {
 		fmt.Println("auth: enabled")
+	} else if status.DevMode {
+		fmt.Println("auth: GOSO_DEV_MODE=1 (passthrough)")
 	} else {
-		fmt.Println("auth: dev mode (no GOSO_ADMIN_TOKEN)")
+		fmt.Println("auth: required (GOSO_ADMIN_TOKEN empty — /api returns 401)")
 	}
 	if status.RateLimit > 0 {
 		fmt.Printf("rate limit: %d req/min/IP\n", status.RateLimit)
