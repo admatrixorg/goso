@@ -11,4 +11,5 @@ interface ImportMetaEnv {
   readonly VITE_GOSOCRM_API_URL?: string;
   readonly VITE_GOSOCRM_ORG_ID?: string;
   readonly VITE_GOSOCRM_ORG_TOKEN?: string;
+  readonly VITE_DEMO_MODE?: string;
 }

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --port 3000",
     "build": "tsc --noEmit && vite build",
+    "build:demo": "tsc --noEmit && VITE_DEMO_MODE=true vite build",
+    "build:prod": "tsc --noEmit && VITE_DEMO_MODE=false vite build",
     "typecheck": "tsc --noEmit",
     "verify": "tsc --noEmit && vite build",
     "preview": "vite preview --port 3000"

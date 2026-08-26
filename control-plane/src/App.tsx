@@ -15,6 +15,9 @@ import { MarketingPage } from "./pages/MarketingPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
+import { isDemoMode } from "./demo/mode";
+
+const DEMO = isDemoMode();
 
 export type Tab =
   | "home"
@@ -32,24 +35,20 @@ export type Tab =
   | "events"
   | "settings";
 
-const TOP: { id: Tab; label: string }[] = [
-  { id: "home", label: "Trang chủ" },
-  { id: "tasks", label: "Việc của tôi" },
+const TOP_LIVE: { id: Tab; label: string }[] = [
   { id: "crm", label: "Tổng quan" },
   { id: "chat", label: "Chat" },
   { id: "connectors", label: "Kết nối" },
   { id: "events", label: "Nhật ký" },
 ];
+const TOP: { id: Tab; label: string }[] = DEMO
+  ? [{ id: "home", label: "Trang chủ" }, { id: "tasks", label: "Việc của tôi" }, ...TOP_LIVE]
+  : TOP_LIVE;
 
-const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = [
+const SIDE_LIVE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = [
   {
     group: "TỔNG QUAN",
-    items: [
-      { id: "home", label: "Trang chủ", ic: "dash" },
-      { id: "tasks", label: "Việc của tôi", ic: "check" },
-      { id: "crm", label: "Tổng quan", ic: "gauge" },
-      { id: "meetings", label: "Cuộc họp", ic: "mic" },
-    ],
+    items: [{ id: "crm", label: "Tổng quan", ic: "gauge" }],
   },
   {
     group: "LÀM VIỆC",
@@ -57,10 +56,6 @@ const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }
       { id: "agents", label: "Agent", ic: "bolt" },
       { id: "sessions", label: "Phiên", ic: "list" },
       { id: "chat", label: "Chat", ic: "msg" },
-      { id: "friends", label: "Bạn bè", ic: "friends" },
-      { id: "calendar", label: "Lịch hẹn", ic: "cal" },
-      { id: "gallery", label: "Kho ảnh", ic: "gallery" },
-      { id: "marketing", label: "Marketing", ic: "mega" },
     ],
   },
   {
@@ -71,6 +66,32 @@ const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }
     ],
   },
 ];
+const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = DEMO
+  ? [
+      {
+        group: "TỔNG QUAN",
+        items: [
+          { id: "home", label: "Trang chủ", ic: "dash" },
+          { id: "tasks", label: "Việc của tôi", ic: "check" },
+          { id: "crm", label: "Tổng quan", ic: "gauge" },
+          { id: "meetings", label: "Cuộc họp", ic: "mic" },
+        ],
+      },
+      {
+        group: "LÀM VIỆC",
+        items: [
+          { id: "agents", label: "Agent", ic: "bolt" },
+          { id: "sessions", label: "Phiên", ic: "list" },
+          { id: "chat", label: "Chat", ic: "msg" },
+          { id: "friends", label: "Bạn bè", ic: "friends" },
+          { id: "calendar", label: "Lịch hẹn", ic: "cal" },
+          { id: "gallery", label: "Kho ảnh", ic: "gallery" },
+          { id: "marketing", label: "Marketing", ic: "mega" },
+        ],
+      },
+      SIDE_LIVE[2],
+    ]
+  : SIDE_LIVE;
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.body.classList.contains("dark"));
@@ -82,7 +103,7 @@ function useTheme() {
 
 export default function App() {
   const [sessionId, setSessionId] = useState("");
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
 
@@ -258,7 +279,10 @@ export default function App() {
             <span style={{ flex: 1 }}>Tìm nhanh</span>
             <span style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
           </div>
-          {SIDE.map((g) => (
+          {SIDE.map((g) => {
+            const items = g.items;
+            if (!items.length) return null;
+            return (
             <div key={g.group} style={{ marginTop: 14 }}>
               <div
                 style={{
@@ -271,7 +295,7 @@ export default function App() {
               >
                 {g.group}
               </div>
-              {g.items.map((i) => {
+              {items.map((i) => {
                 const on = tab === i.id;
                 return (
                   <button
@@ -301,7 +325,8 @@ export default function App() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
           <div style={{ flex: 1 }} />
           <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 8 }}>
             <button
@@ -364,9 +389,9 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflowY: "auto", overflowX: "hidden" }}>
-          {tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
-          {tab === "meetings" && <MeetingsPage />}
-          {tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
+          {DEMO && tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
+          {DEMO && tab === "meetings" && <MeetingsPage />}
+          {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
           {tab === "crm" && <CrmMetricsPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
@@ -392,10 +417,10 @@ export default function App() {
               </div>
             </div>
           )}
-          {tab === "friends" && <FriendsPage />}
-          {tab === "calendar" && <CalendarPage />}
-          {tab === "gallery" && <GalleryPage />}
-          {tab === "marketing" && <MarketingPage />}
+          {DEMO && tab === "friends" && <FriendsPage />}
+          {DEMO && tab === "calendar" && <CalendarPage />}
+          {DEMO && tab === "gallery" && <GalleryPage />}
+          {DEMO && tab === "marketing" && <MarketingPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "events" && <EventsPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
