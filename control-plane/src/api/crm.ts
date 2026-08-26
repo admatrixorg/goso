@@ -56,17 +56,30 @@ async function fetchWithTimeout(url: string, init: RequestInit | undefined, time
   }
 }
 
+const DATA_TIMEOUT_MS = 8000;
+
+export async function crmRequest<T>(path: string, orgId: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { ...orgHeaders(orgId), ...(init?.headers as Record<string, string> | undefined) };
+  if (init?.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const res = await fetchWithTimeout(`${crmBase()}${path}`, { ...init, headers }, DATA_TIMEOUT_MS);
+  if (res.status === 204) return undefined as T;
+  const text = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(`${res.status} ${clip(text)}`);
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
 async function crmJson<T>(path: string, orgId: string): Promise<T> {
-  const res = await fetchWithTimeout(
-    `${crmBase()}${path}`,
-    { method: "GET", headers: orgHeaders(orgId) },
-    HEALTH_TIMEOUT_MS,
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${clip(text)}`);
+  return crmRequest<T>(path, orgId);
+}
+
+export function asList<T>(j: unknown, key?: string): T[] {
+  if (Array.isArray(j)) return j as T[];
+  if (j && typeof j === "object" && key) {
+    const inner = (j as Record<string, unknown>)[key];
+    if (Array.isArray(inner)) return inner as T[];
   }
-  return (await res.json()) as T;
+  return [];
 }
 
 export type CrmHealth = { online: boolean };
@@ -143,4 +156,57 @@ export async function fetchCrmAdvisor(orgId: string): Promise<CrmAdvice[]> {
       evidenceIds: Array.isArray(r.evidenceIds) ? r.evidenceIds.filter((x): x is string => typeof x === "string") : undefined,
     };
   });
+}
+
+export type HeatmapBucket = {
+  date: string;
+  messagesSent: number;
+  messagesReceived: number;
+  unreplied: number;
+  kpiCompletionRate: number;
+  revenue: number;
+};
+
+export type HeatmapReport = {
+  orgId?: string;
+  from?: string;
+  to?: string;
+  grain?: string;
+  buckets: HeatmapBucket[];
+};
+
+function bucket(row: Record<string, unknown>): HeatmapBucket {
+  return {
+    date: typeof row.date === "string" ? row.date : "",
+    messagesSent: num(row.messagesSent),
+    messagesReceived: num(row.messagesReceived),
+    unreplied: num(row.unreplied),
+    kpiCompletionRate: num(row.kpiCompletionRate),
+    revenue: num(row.revenue),
+  };
+}
+
+export async function fetchCrmHeatmap(orgId: string, from?: string, to?: string): Promise<HeatmapReport> {
+  const p = new URLSearchParams();
+  if (from) p.set("from", from);
+  if (to) p.set("to", to);
+  const qs = p.toString();
+  const j = await crmJson<unknown>(`/api/crm/heatmap${qs ? `?${qs}` : ""}`, orgId);
+  if (Array.isArray(j)) {
+    return {
+      from,
+      to,
+      grain: "day",
+      buckets: j.filter((row): row is Record<string, unknown> => !!row && typeof row === "object").map(bucket),
+    };
+  }
+  const obj = j && typeof j === "object" ? (j as Record<string, unknown>) : {};
+  const raw = Array.isArray(obj.buckets) ? obj.buckets : [];
+  return {
+    orgId: typeof obj.orgId === "string" ? obj.orgId : undefined,
+    from: typeof obj.from === "string" ? obj.from : from,
+    to: typeof obj.to === "string" ? obj.to : to,
+    grain: typeof obj.grain === "string" ? obj.grain : "day",
+    buckets: raw.filter((row): row is Record<string, unknown> => !!row && typeof row === "object").map(bucket),
+  };
 }

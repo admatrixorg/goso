@@ -10,6 +10,7 @@ import {
   type CrmAdvice,
   type CrmMetrics,
 } from "../api/crm";
+import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -17,12 +18,13 @@ import { EmptyState } from "../ui/EmptyState";
 import { KpiCard } from "../ui/KpiCard";
 import { SectionHeader } from "../ui/SectionHeader";
 
-function fmt(n: number | undefined): string {
+function fmt(n: number | undefined, locale: string): string {
   if (n == null) return "—";
-  return n.toLocaleString("vi-VN");
+  return n.toLocaleString(locale === "en" ? "en-US" : "vi-VN");
 }
 
 export function CrmMetricsPage() {
+  const { t, locale } = useI18n();
   const [org, setOrg] = useState(crmOrgId);
   const [online, setOnline] = useState<boolean | null>(null);
   const [metrics, setMetrics] = useState<CrmMetrics | null>(null);
@@ -64,20 +66,20 @@ export function CrmMetricsPage() {
 
   const kpis = metrics
     ? [
-        { label: "Tin gửi", value: fmt(metrics.messagesSent), icon: "msg" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
-        { label: "Tin nhận", value: fmt(metrics.messagesReceived), icon: "inbox" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
+        { label: t("crm.sent"), value: fmt(metrics.messagesSent, locale), icon: "msg" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
+        { label: t("crm.received"), value: fmt(metrics.messagesReceived, locale), icon: "inbox" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
         {
-          label: "Chưa rep",
-          value: fmt(metrics.unreplied),
+          label: t("crm.unreplied"),
+          value: fmt(metrics.unreplied, locale),
           icon: "flame" as const,
           tint: "var(--red)",
           tintBg: "var(--red-bg)",
-          note: metrics.unreplied ? "Cần trả lời" : "Không có lead bị kẹt.",
+          note: metrics.unreplied ? t("crm.needReply") : t("crm.noStuck"),
           noteTone: metrics.unreplied ? ("critical" as const) : ("neutral" as const),
         },
-        { label: "Phản hồi TB", value: fmt(metrics.avgResponseTime), icon: "hourglass" as const, tint: "var(--green)", tintBg: "var(--green-bg)" },
-        { label: "KPI hoàn thành", value: fmt(metrics.kpiCompletionRate), unit: "%", icon: "flag" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
-        { label: "Doanh thu tháng", value: fmt(metrics.revenueMonth), icon: "trend" as const, tint: "var(--green)", tintBg: "var(--green-bg)" },
+        { label: t("crm.avgResponse"), value: fmt(metrics.avgResponseTime, locale), icon: "hourglass" as const, tint: "var(--green)", tintBg: "var(--green-bg)" },
+        { label: t("crm.kpi"), value: fmt(metrics.kpiCompletionRate, locale), unit: "%", icon: "flag" as const, tint: "var(--accent)", tintBg: "var(--accent-soft)" },
+        { label: t("crm.revenue"), value: fmt(metrics.revenueMonth, locale), icon: "trend" as const, tint: "var(--green)", tintBg: "var(--green-bg)" },
       ]
     : [];
 
@@ -85,17 +87,17 @@ export function CrmMetricsPage() {
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
         icon="gauge"
-        title="Tổng quan"
-        description="Ai đang làm tốt, ai đang kẹt — đo công bằng theo nhịp thật của từng org. KPI lấy live từ goso-crm HTTP, không import Go."
+        title={t("crm.title")}
+        description={t("crm.desc")}
         actions={
           <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading}>
-            Làm mới
+            {t("common.refresh")}
           </Button>
         }
       />
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Badge tone={online ? "positive" : online === false ? "critical" : "neutral"}>
-          {online == null ? "đang kiểm tra…" : online ? "goso-crm online" : "goso-crm offline"}
+          {online == null ? t("crm.checking") : online ? t("crm.online") : t("crm.offline")}
         </Badge>
         <span style={{ fontSize: 12, color: "var(--text-3)" }}>
           {crmBase()}
@@ -106,7 +108,7 @@ export function CrmMetricsPage() {
       </div>
       {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
       {online === false ? (
-        <EmptyState>goso-crm offline — metrics unavailable.</EmptyState>
+        <EmptyState>{t("crm.offlineEmpty")}</EmptyState>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {kpis.map((k) => (
@@ -116,16 +118,16 @@ export function CrmMetricsPage() {
       )}
       {metrics?.sampleDays != null ? (
         <p style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic", margin: 0 }}>
-          {metrics.sampleDays} ngày mẫu · cửa sổ {metrics.from ?? "—"} → {metrics.to ?? "—"}
+          {t("crm.sample", { n: metrics.sampleDays, from: metrics.from ?? "—", to: metrics.to ?? "—" })}
           {metrics.orgId ? ` · org ${metrics.orgId}` : ""}
         </p>
       ) : null}
       <Card>
-        <CardHeader icon="eye" title="Advisor" meta={`${advice.length} gợi ý`} />
+        <CardHeader icon="eye" title={t("crm.advisor")} meta={t("crm.adviceMeta", { n: advice.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-          <span style={{ flex: 1.2 }}>LOẠI</span>
-          <span style={{ flex: 3.4 }}>TÓM TẮT</span>
-          <span style={{ flex: 0.8, textAlign: "right" }}>CONF</span>
+          <span style={{ flex: 1.2 }}>{t("crm.col.kind")}</span>
+          <span style={{ flex: 3.4 }}>{t("crm.col.summary")}</span>
+          <span style={{ flex: 0.8, textAlign: "right" }}>{t("crm.col.conf")}</span>
         </div>
         {advice.map((a, i) => (
           <div key={`${a.kind}-${i}`} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
@@ -136,7 +138,7 @@ export function CrmMetricsPage() {
             <span style={{ flex: 0.8, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{a.confidence}</span>
           </div>
         ))}
-        {advice.length === 0 ? <EmptyState>Chưa có advice.</EmptyState> : null}
+        {advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
       </Card>
     </div>
   );

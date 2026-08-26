@@ -1,3 +1,4 @@
+import { useDemoT } from "../demo/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -7,18 +8,19 @@ import { SectionHeader } from "../ui/SectionHeader";
 import { taskKpis, taskTimeline } from "../demo/mock";
 
 export function TasksPage({ onChat }: { onChat: () => void }) {
+  const { d } = useDemoT();
   return (
     <div style={{ padding: "26px 28px 60px", display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionHeader
         icon="check"
-        title="Việc của tôi"
-        description="Việc sinh ra từ cuộc họp, tin nhắn và nhịp ngày — Agent làm phần rủi ro thấp, phần chạm khách luôn dừng ở bản nháp chờ anh duyệt."
+        title={d("tasks.title")}
+        description={d("tasks.desc")}
         actions={
           <>
             <DemoBadge />
-            <Button>Nhận khách</Button>
+            <Button>{d("tasks.receive")}</Button>
             <Button variant="primary" onClick={onChat}>
-              Vào Tin nhắn
+              {d("tasks.chat")}
             </Button>
           </>
         }

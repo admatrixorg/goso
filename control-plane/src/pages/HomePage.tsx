@@ -1,3 +1,4 @@
+import { useDemoT } from "../demo/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -6,8 +7,9 @@ import { Icon } from "../ui/Icon";
 import { agentChips, inbox, meetSources, recentMeetings, weekStats } from "../demo/mock";
 
 export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onChat: () => void }) {
+  const { d, t } = useDemoT();
   const h = new Date().getHours();
-  const greet = h < 11 ? "Chào buổi sáng" : h < 14 ? "Chào buổi trưa" : h < 18 ? "Chào buổi chiều" : "Chào buổi tối";
+  const greet = h < 11 ? d("home.greet.morning") : h < 14 ? d("home.greet.noon") : h < 18 ? d("home.greet.afternoon") : d("home.greet.evening");
 
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
@@ -18,7 +20,7 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
               <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.6px" }}>{greet}</div>
               <DemoBadge />
             </div>
-            <div style={{ fontSize: 13.5, color: "var(--text-3)", marginTop: 7 }}>Hôm nay anh muốn ZAgent làm gì?</div>
+            <div style={{ fontSize: 13.5, color: "var(--text-3)", marginTop: 7 }}>{d("home.prompt")}</div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -48,15 +50,15 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
                 }}
               >
                 <Icon name="bolt" size={13} />
-                Agent
+                {t("chat.agent")}
               </span>
               <span style={{ flex: 1, fontSize: 13, color: "var(--text-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                Ví dụ: tóm tắt 3 cuộc họp tuần này và cho biết deal nào đang chậm
+                {d("home.example")}
               </span>
               <button
                 type="button"
                 onClick={onChat}
-                aria-label="Gửi cho Agent"
+                aria-label={t("chat.send")}
                 style={{
                   width: 32,
                   height: 32,
@@ -95,10 +97,10 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
 
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)" }}>NGUỒN CUỘC HỌP</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)" }}>{d("home.sources")}</div>
               <div style={{ flex: 1 }} />
               <Button icon="plus" variant="secondary" style={{ padding: "6px 12px" }}>
-                Thêm nguồn
+                {d("home.addSource")}
               </Button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 11 }}>
@@ -131,7 +133,7 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{m.note}</div>
                   {m.needsConnect ? (
                     <Button variant="quiet" style={{ alignSelf: "flex-start", padding: "5px 12px" }}>
-                      Kết nối
+                      {t("common.connect")}
                     </Button>
                   ) : null}
                 </Card>
@@ -151,17 +153,17 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
                 <Icon name="shield" size={15} />
               </span>
               <div style={{ fontSize: 12, color: "var(--warn-text)", lineHeight: 1.6 }}>
-                ZAgent chỉ đọc bản ghi khi cuộc họp đã bật ghi hình trên nền tảng gốc và người tham dự đã được thông báo. Bản ghi lưu trong tổ chức của anh, không dùng để huấn luyện mô hình.
+                {d("home.privacy")}
               </div>
             </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)" }}>CUỘC HỌP GẦN ĐÂY</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)" }}>{d("home.recent")}</div>
               <div style={{ flex: 1 }} />
               <button type="button" onClick={onMeetings} style={{ background: "none", border: "none", fontSize: 12.5, color: "var(--accent)", fontWeight: 500 }}>
-                Xem tất cả
+                {d("home.seeAll")}
               </button>
             </div>
             <Card>
@@ -230,7 +232,7 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
 
       <div style={{ width: 268, flex: "none", padding: "34px 24px 56px", display: "flex", flexDirection: "column", gap: 24 }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)", marginBottom: 11 }}>CẦN ANH XỬ LÝ</div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)", marginBottom: 11 }}>{d("home.inbox")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {inbox.map((n) => (
               <div key={n.label} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "7px 8px", borderRadius: 8, fontSize: 12.5 }}>
@@ -241,7 +243,7 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)", marginBottom: 11 }}>TUẦN NÀY</div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".7px", color: "var(--text-3)", marginBottom: 11 }}>{d("home.week")}</div>
           {weekStats.map((w) => (
             <div key={w.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px", fontSize: 12.5, color: "var(--text-2)" }}>
               <span style={{ flex: 1 }}>{w.label}</span>

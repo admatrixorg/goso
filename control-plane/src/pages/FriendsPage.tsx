@@ -1,16 +1,18 @@
+import { useDemoT } from "../demo/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { DemoBadge } from "../ui/DemoBadge";
 import { friends } from "../demo/mock";
 
 export function FriendsPage() {
+  const { d } = useDemoT();
   return (
     <div style={{ display: "flex", height: "100%", background: "var(--card)" }}>
       <div style={{ width: 230, flex: "none", borderRight: "1px solid var(--border)", padding: 12, display: "flex", flexDirection: "column", gap: 9 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: "var(--text-2)" }}>
-          NICK ZALO CỦA BẠN <DemoBadge />
+          {d("friends.nicks")} <DemoBadge />
         </div>
-        <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "var(--text-4)" }}>Tìm nick…</div>
+        <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "var(--text-4)" }}>{d("friends.search")}</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", border: "1.5px solid var(--accent)", background: "var(--accent-soft)", borderRadius: 10, padding: "8px 10px" }}>
           <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#c0392b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 11 }}>
             PN
@@ -21,16 +23,16 @@ export function FriendsPage() {
           </div>
         </div>
         <div style={{ marginTop: "auto", fontSize: 11, color: "var(--text-3)" }}>
-          <span style={{ color: "var(--green)" }}>●</span> DEMO · không gọi Zalo
+          <span style={{ color: "var(--green)" }}>●</span> {d("friends.note")}
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "12px 16px", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>Bạn bè</div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{d("friends.title")}</div>
           <DemoBadge />
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             <Button icon="refresh" iconGesture>
-              Làm mới ngay
+              {d("friends.refresh")}
             </Button>
           </div>
         </div>
@@ -53,14 +55,14 @@ export function FriendsPage() {
                 </div>
               </div>
               <span style={{ flex: 1 }}>
-                <Badge tone="positive">Đã kết bạn</Badge>
+                <Badge tone="positive">{d("friends.friended")}</Badge>
               </span>
               <span style={{ width: 58, fontVariantNumeric: "tabular-nums" }}>{f.scoreN}</span>
               <span style={{ width: 56, fontVariantNumeric: "tabular-nums", color: "var(--text-2)" }}>{f.msgs}</span>
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>4 hàng DEMO — chưa nối nick Zalo.</div>
+        <div style={{ fontSize: 12, color: "var(--text-3)", fontStyle: "italic" }}>{d("friends.hint")}</div>
       </div>
     </div>
   );
