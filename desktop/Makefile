@@ -1,11 +1,17 @@
-# GOSO Desktop — Wails v2 skeleton (SPEC 009)
+# GOSO Desktop — Wails v2 (SPEC 009 + SPEC 024)
 
 .PHONY: verify vet fmt fmt-fix test frontend build help
+
+GOPATH_BIN := $(shell go env GOPATH)/bin
+WAILS ?= $(shell command -v wails 2>/dev/null)
+ifeq ($(WAILS),)
+WAILS := $(GOPATH_BIN)/wails
+endif
 
 help:
 	@echo "Targets: verify | vet | fmt | test | frontend | build"
 
-# AC-04: green without Wails/CGO (CI-safe). Frontend is built by `make build`.
+# AC-01: green without Wails/CGO (CI-safe). Frontend + darwin app: `make build`.
 verify: vet fmt test
 	@echo "==> desktop verify: OK"
 
@@ -23,12 +29,24 @@ test:
 
 frontend:
 	npm --prefix frontend install
-	npm --prefix frontend run verify
+	VITE_DEMO_MODE=false npm --prefix frontend run verify
+	@js=$$(ls frontend/dist/assets/*.js 2>/dev/null | head -1); \
+	test -n "$$js" || (echo "frontend bundle missing"; exit 1); \
+	if grep -q "Trang chủ" "$$js" || grep -q "Vinh Phát" "$$js"; then \
+		echo "AC-03 FAIL: DEMO labels leaked into $$js"; exit 1; \
+	fi; \
+	for label in Agent Phiên Chat "Kết nối" "Nhật ký"; do \
+		grep -q "$$label" "$$js" || { echo "AC-03 FAIL: missing tab $$label in $$js"; exit 1; }; \
+	done; \
+	echo "==> desktop frontend: 5 live tabs, DEMO hidden ($$js)"
 
+# Unsigned darwin app (SPEC 024). No Developer ID, no notarization.
+# -m / -nosyncgomod keep go.mod untouched. Local ad-hoc sign may be applied by the toolchain so the .app launches.
 build: frontend
-	@if command -v wails >/dev/null 2>&1; then \
-		wails build; \
-	else \
-		echo "wails CLI not found. Install: go install github.com/wailsapp/wails/v2/cmd/wails@latest"; \
+	@if [ ! -x "$(WAILS)" ]; then \
+		echo "wails CLI not found. Install: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0"; \
+		echo "Ensure \$$(go env GOPATH)/bin is on PATH."; \
 		exit 1; \
 	fi
+	PATH="$(GOPATH_BIN):$$PATH" $(WAILS) build -tags wails -platform darwin/arm64 -m -nosyncgomod
+	@echo "==> unsigned app: desktop/build/bin/GOSO.app (not notarized)"

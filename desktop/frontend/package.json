@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && VITE_DEMO_MODE=false vite build",
     "typecheck": "tsc --noEmit",
-    "verify": "tsc --noEmit && vite build",
+    "verify": "tsc --noEmit && VITE_DEMO_MODE=false vite build",
     "preview": "vite preview"
   },
   "dependencies": {
