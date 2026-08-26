@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,6 +77,7 @@ func NewRouter(opt Options) http.Handler {
 		mux.HandleFunc("POST /api/chat", handleChat(opt.Store, opt.Meter))
 	}
 	mux.HandleFunc("GET /api/usage", handleUsage(opt.Meter))
+	mux.HandleFunc("GET /api/quota", handleQuota(opt.Meter))
 	registerConnectorRoutes(mux, opt)
 	return mux
 }
@@ -245,6 +247,9 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
+		if rejectIfQuotaExceeded(w, meter) {
+			return
+		}
 		// Persist user message and echo reply (stub for LLM in SPEC 003).
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "user", Content: body.Message})
 		reply := "echo: " + body.Message
@@ -271,6 +276,9 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 		sess, err := st.GetSession(body.SessionID)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "user", Content: body.Message})
@@ -323,6 +331,28 @@ func handleUsage(meter *billing.Store) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, meter.Query(q))
 	}
+}
+
+func handleQuota(meter *billing.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, meter.QuotaStatus(time.Now().UTC()))
+	}
+}
+
+// rejectIfQuotaExceeded writes HTTP 429 {error:quota_exceeded} when the daily
+// cap is already reached. Check runs before recording a new chat.
+func rejectIfQuotaExceeded(w http.ResponseWriter, meter *billing.Store) bool {
+	limit := billing.DayLimit()
+	if limit <= 0 {
+		return false
+	}
+	today := meter.TodayTotals(time.Now().UTC())
+	if !billing.Exceeded(today, limit) {
+		return false
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(billing.SecondsUntilUTCMidnight(time.Now().UTC())))
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "quota_exceeded"})
+	return true
 }
 
 // RouterWithDeps builds mux with LLM and channel deps (used in main).

@@ -37,6 +37,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestAgentsAndSessions(t *testing.T) {
+	t.Setenv("GOSO_QUOTA_DAY", "")
 	_, h := newTestServer()
 	// create agent
 	w := httptest.NewRecorder()
@@ -113,6 +114,7 @@ func TestAgentsAndSessions(t *testing.T) {
 }
 
 func TestUsageAPI(t *testing.T) {
+	t.Setenv("GOSO_QUOTA_DAY", "")
 	st := store.New()
 	meter := billing.New()
 	h := RouterWithBilling(st, "0.1.0", llm.Echo{}, nil, nil, nil, meter)
@@ -204,5 +206,188 @@ func TestValidation(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 400 {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func setupChat(t *testing.T, h http.Handler) (agentID, sessID string) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"q1","display_name":"Q1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create agent %d %s", w.Code, w.Body.String())
+	}
+	var a map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &a)
+	agentID = a["id"].(string)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/sessions", bytes.NewBufferString(`{"agent_id":"`+agentID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create session %d %s", w.Code, w.Body.String())
+	}
+	var sess map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &sess)
+	return agentID, sess["id"].(string)
+}
+
+func postChat(h http.Handler, sessID, msg string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sessID+`","message":"`+msg+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	return w
+}
+
+func TestQuotaAPI_Disabled(t *testing.T) {
+	// AC-02: quota disabled (0) never 429 even after many chats.
+	t.Setenv("GOSO_QUOTA_DAY", "0")
+	st := store.New()
+	meter := billing.New()
+	h := RouterWithBilling(st, "0.1.0", llm.Echo{}, nil, nil, nil, meter)
+	_, sessID := setupChat(t, h)
+
+	for i := 0; i < 5; i++ {
+		w := postChat(h, sessID, "hello quota")
+		if w.Code != 200 {
+			t.Fatalf("chat %d status %d %s", i, w.Code, w.Body.String())
+		}
+	}
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/quota", nil))
+	if w.Code != 200 {
+		t.Fatalf("quota %d %s", w.Code, w.Body.String())
+	}
+	var q map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &q)
+	if q["enabled"] != false {
+		t.Fatalf("enabled %+v", q)
+	}
+	if q["requestsToday"].(float64) != 5 {
+		t.Fatalf("requestsToday %v body %s", q["requestsToday"], w.Body.String())
+	}
+	day, _ := q["day"].(map[string]any)
+	if day["limit"].(float64) != 0 {
+		t.Fatalf("limit %v", day)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != 200 {
+		t.Fatalf("healthz %d", w.Code)
+	}
+}
+
+func TestQuotaAPI_SecondChat429(t *testing.T) {
+	// AC-03: GOSO_QUOTA_DAY=1 → first chat 200, second 429.
+	t.Setenv("GOSO_QUOTA_DAY", "1")
+	st := store.New()
+	meter := billing.New()
+	h := RouterWithBilling(st, "0.1.0", llm.Echo{}, nil, nil, nil, meter)
+	agentID, sessID := setupChat(t, h)
+
+	w := postChat(h, sessID, "abcd")
+	if w.Code != 200 {
+		t.Fatalf("first chat %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/quota", nil))
+	if w.Code != 200 {
+		t.Fatalf("quota %d %s", w.Code, w.Body.String())
+	}
+	var q map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &q)
+	if q["enabled"] != true {
+		t.Fatalf("enabled %+v", q)
+	}
+	if q["requestsToday"].(float64) != 1 {
+		t.Fatalf("requestsToday %v", q["requestsToday"])
+	}
+	if q["inputTokensToday"].(float64) < 1 {
+		t.Fatalf("inputTokensToday %v", q["inputTokensToday"])
+	}
+	day, _ := q["day"].(map[string]any)
+	if day["limit"].(float64) != 1 || day["used"].(float64) < 1 {
+		t.Fatalf("day %v", day)
+	}
+
+	w = postChat(h, sessID, "abcd")
+	if w.Code != 429 {
+		t.Fatalf("second chat want 429, got %d %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After")
+	}
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["error"] != "quota_exceeded" {
+		t.Fatalf("body %s", w.Body.String())
+	}
+
+	// AC-01: GET /api/usage still 200; 429 must not record a second call.
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/usage?agent_id="+agentID, nil))
+	if w.Code != 200 {
+		t.Fatalf("usage %d %s", w.Code, w.Body.String())
+	}
+	var usage map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &usage)
+	if usage["calls"].(float64) != 1 {
+		t.Fatalf("calls after 429 %v", usage)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != 200 {
+		t.Fatalf("healthz must never 429, got %d", w.Code)
+	}
+}
+
+func TestHandleChat_QuotaWrappers(t *testing.T) {
+	t.Setenv("GOSO_QUOTA_DAY", "1")
+	st := store.New()
+	a, err := st.CreateAgent(store.Agent{AgentKey: "wrap", DisplayName: "W"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession(store.Session{AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"session_id":"` + sess.ID + `","message":"abcd"}`
+
+	meter := billing.New()
+	echo := handleChat(st, meter)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(body))
+	echo.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("handleChat first %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(body))
+	echo.ServeHTTP(w, req)
+	if w.Code != 429 {
+		t.Fatalf("handleChat second %d %s", w.Code, w.Body.String())
+	}
+
+	meter2 := billing.New()
+	llmH := handleChatWithLLM(st, llm.Echo{}, meter2)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(body))
+	llmH.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("handleChatWithLLM first %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(body))
+	llmH.ServeHTTP(w, req)
+	if w.Code != 429 {
+		t.Fatalf("handleChatWithLLM second %d %s", w.Code, w.Body.String())
 	}
 }

@@ -276,6 +276,9 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
+		if rejectIfQuotaExceeded(w, meter) {
+			return
+		}
 		out, err := rt.Chat(r.Context(), body.SessionID, body.Message)
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, err.Error())
