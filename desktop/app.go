@@ -76,3 +76,12 @@ func (a *App) DBPath() string {
 func (a *App) Version() string {
 	return host.Version
 }
+
+// LocalToken returns the generated/stored admin token for the Control Plane client.
+// Empty when GOSO_DEV_MODE is set. Never log this value (SPEC 016 / 024).
+func (a *App) LocalToken() string {
+	if err := a.ensure(); err != nil || a.rt == nil {
+		return ""
+	}
+	return a.rt.AdminToken()
+}

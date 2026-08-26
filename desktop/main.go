@@ -21,8 +21,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:  "GOSO",
-		Width:  1100,
-		Height: 800,
+		Width:  1320,
+		Height: 860,
 		AssetServer: &assetserver.Options{
 			Assets:     assets,
 			Middleware: app.middleware(),

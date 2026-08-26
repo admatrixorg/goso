@@ -1,4 +1,4 @@
-// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+// Copyright (c) 2026 MQ Global — GOSO Desktop. Clean-room implementation.
 
 package host
 
@@ -21,8 +21,38 @@ type Runtime struct {
 	DBPath  string
 	Handler http.Handler
 	Status  goso.LocalStatus
+	Token   secret
 	close   func() error
 	once    sync.Once
+}
+
+// AdminToken returns the local admin token (empty in GOSO_DEV_MODE). Never log it.
+func (r *Runtime) AdminToken() string {
+	if r == nil {
+		return ""
+	}
+	return string(r.Token)
+}
+
+func appSupportDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join("data")
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "GOSO")
+	case "windows":
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			return filepath.Join(appdata, "GOSO")
+		}
+		return filepath.Join(home, "AppData", "Roaming", "GOSO")
+	default:
+		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+			return filepath.Join(xdg, "GOSO")
+		}
+		return filepath.Join(home, ".local", "share", "GOSO")
+	}
 }
 
 // DefaultDBPath returns the desktop SQLite path.
@@ -35,27 +65,12 @@ func DefaultDBPath() string {
 	if p := os.Getenv("GOSO_DB_PATH"); p != "" {
 		return p
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join("data", "goso.db")
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "GOSO", "goso.db")
-	case "windows":
-		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			return filepath.Join(appdata, "GOSO", "goso.db")
-		}
-		return filepath.Join(home, "AppData", "Roaming", "GOSO", "goso.db")
-	default:
-		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return filepath.Join(xdg, "GOSO", "goso.db")
-		}
-		return filepath.Join(home, ".local", "share", "GOSO", "goso.db")
-	}
+	return filepath.Join(appSupportDir(), "goso.db")
 }
 
 // Start opens the gateway store (via gateway.OpenLocal — no domain duplicate) and assembles the HTTP handler.
+// SPEC 024 / 016: unless GOSO_DEV_MODE is set, a local admin token is generated and stored next to the DB
+// (never logged) and exported as GOSO_ADMIN_TOKEN so /api/* requires Bearer.
 func Start() (*Runtime, error) {
 	path := DefaultDBPath()
 	if path != "" && path != ":memory:" {
@@ -65,11 +80,20 @@ func Start() (*Runtime, error) {
 			}
 		}
 	}
+	tok, err := ResolveAdminToken()
+	if err != nil {
+		return nil, err
+	}
+	if tok != "" {
+		if err := os.Setenv("GOSO_ADMIN_TOKEN", tok); err != nil {
+			return nil, err
+		}
+	}
 	h, closeFn, status, err := goso.OpenLocal(path, Version)
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{DBPath: path, Handler: h, Status: status, close: closeFn}, nil
+	return &Runtime{DBPath: path, Handler: h, Status: status, Token: secret(tok), close: closeFn}, nil
 }
 
 // Close releases the store (idempotent).
