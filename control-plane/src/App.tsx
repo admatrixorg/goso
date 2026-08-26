@@ -13,9 +13,12 @@ import { CalendarPage } from "./pages/CalendarPage";
 import { GalleryPage } from "./pages/GalleryPage";
 import { MarketingPage } from "./pages/MarketingPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { HeatmapPage } from "./pages/HeatmapPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { isDemoMode } from "./demo/mode";
+import { demoOverviewItems, demoTop, demoWorkExtra } from "./demo/nav";
+import { useI18n, type Locale } from "./i18n";
 
 const DEMO = isDemoMode();
 
@@ -31,67 +34,47 @@ export type Tab =
   | "calendar"
   | "gallery"
   | "marketing"
+  | "heatmap"
   | "connectors"
   | "events"
   | "settings";
 
-const TOP_LIVE: { id: Tab; label: string }[] = [
-  { id: "crm", label: "Tổng quan" },
-  { id: "chat", label: "Chat" },
-  { id: "connectors", label: "Kết nối" },
-  { id: "events", label: "Nhật ký" },
-];
-const TOP: { id: Tab; label: string }[] = DEMO
-  ? [{ id: "home", label: "Trang chủ" }, { id: "tasks", label: "Việc của tôi" }, ...TOP_LIVE]
-  : TOP_LIVE;
+function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
+  return [
+    { id: "crm", label: t("nav.overview") },
+    { id: "chat", label: t("nav.chat") },
+    { id: "connectors", label: t("nav.connectors") },
+    { id: "events", label: t("nav.events") },
+  ];
+}
 
-const SIDE_LIVE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = [
-  {
-    group: "TỔNG QUAN",
-    items: [{ id: "crm", label: "Tổng quan", ic: "gauge" }],
-  },
-  {
-    group: "LÀM VIỆC",
-    items: [
-      { id: "agents", label: "Agent", ic: "bolt" },
-      { id: "sessions", label: "Phiên", ic: "list" },
-      { id: "chat", label: "Chat", ic: "msg" },
-    ],
-  },
-  {
-    group: "HỆ THỐNG",
-    items: [
-      { id: "connectors", label: "Kết nối", ic: "hook" },
-      { id: "events", label: "Nhật ký", ic: "history" },
-    ],
-  },
-];
-const SIDE: { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] = DEMO
-  ? [
-      {
-        group: "TỔNG QUAN",
-        items: [
-          { id: "home", label: "Trang chủ", ic: "dash" },
-          { id: "tasks", label: "Việc của tôi", ic: "check" },
-          { id: "crm", label: "Tổng quan", ic: "gauge" },
-          { id: "meetings", label: "Cuộc họp", ic: "mic" },
-        ],
-      },
-      {
-        group: "LÀM VIỆC",
-        items: [
-          { id: "agents", label: "Agent", ic: "bolt" },
-          { id: "sessions", label: "Phiên", ic: "list" },
-          { id: "chat", label: "Chat", ic: "msg" },
-          { id: "friends", label: "Bạn bè", ic: "friends" },
-          { id: "calendar", label: "Lịch hẹn", ic: "cal" },
-          { id: "gallery", label: "Kho ảnh", ic: "gallery" },
-          { id: "marketing", label: "Marketing", ic: "mega" },
-        ],
-      },
-      SIDE_LIVE[2],
-    ]
-  : SIDE_LIVE;
+function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] {
+  return [
+    {
+      group: t("nav.group.overview"),
+      items: [
+        { id: "crm", label: t("nav.overview"), ic: "gauge" },
+        { id: "heatmap", label: t("nav.heatmap"), ic: "report" },
+      ],
+    },
+    {
+      group: t("nav.group.work"),
+      items: [
+        { id: "agents", label: t("nav.agents"), ic: "bolt" },
+        { id: "sessions", label: t("nav.sessions"), ic: "list" },
+        { id: "chat", label: t("nav.chat"), ic: "msg" },
+        { id: "marketing", label: t("nav.marketing"), ic: "mega" },
+      ],
+    },
+    {
+      group: t("nav.group.system"),
+      items: [
+        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
+        { id: "events", label: t("nav.events"), ic: "history" },
+      ],
+    },
+  ];
+}
 
 function useTheme() {
   const [dark, setDark] = useState(() => document.body.classList.contains("dark"));
@@ -102,10 +85,32 @@ function useTheme() {
 }
 
 export default function App() {
+  const { t, locale, setLocale } = useI18n();
   const [sessionId, setSessionId] = useState("");
   const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
+
+  const top = DEMO ? [...demoTop(locale), ...liveTop(t)] : liveTop(t);
+  const side = DEMO
+    ? [
+        {
+          group: t("nav.group.overview"),
+          items: [...demoOverviewItems(locale), { id: "heatmap" as const, label: t("nav.heatmap"), ic: "report" as const }],
+        },
+        {
+          group: t("nav.group.work"),
+          items: [
+            { id: "agents" as const, label: t("nav.agents"), ic: "bolt" as const },
+            { id: "sessions" as const, label: t("nav.sessions"), ic: "list" as const },
+            { id: "chat" as const, label: t("nav.chat"), ic: "msg" as const },
+            { id: "marketing" as const, label: t("nav.marketing"), ic: "mega" as const },
+            ...demoWorkExtra(locale),
+          ],
+        },
+        liveSide(t)[2],
+      ]
+    : liveSide(t);
 
   function go(id: Tab) {
     setTab(id);
@@ -144,7 +149,7 @@ export default function App() {
           </div>
           <div style={{ fontWeight: 600, fontSize: 14, letterSpacing: "-.2px", color: "var(--text)" }}>ZAgent</div>
         </div>
-        {TOP.map((it) => {
+        {top.map((it) => {
           const on = tab === it.id;
           return (
             <button
@@ -194,7 +199,7 @@ export default function App() {
                 animation: "zPulse 1.8s linear infinite",
               }}
             />
-            Gateway
+            {t("chrome.gateway")}
           </div>
           <div
             data-ig="search"
@@ -215,11 +220,12 @@ export default function App() {
               className="z-field"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm kiếm…"
-              aria-label="Tìm kiếm"
+              placeholder={t("chrome.search")}
+              aria-label={t("chrome.search")}
               style={{ border: "none", background: "transparent", padding: 0, minHeight: 0, width: "100%" }}
             />
           </div>
+          <LangToggle locale={locale} setLocale={setLocale} />
           <button
             type="button"
             onClick={toggle}
@@ -236,7 +242,7 @@ export default function App() {
               background: "var(--card)",
             }}
           >
-            ◐ {dark ? "Tối" : "Sáng"}
+            ◐ {dark ? t("chrome.dark") : t("chrome.light")}
           </button>
           <span data-ig="bell" style={{ position: "relative", color: "var(--text-2)", display: "flex", alignItems: "center" }}>
             <span data-ig-part="">
@@ -276,10 +282,10 @@ export default function App() {
               minHeight: 34,
             }}
           >
-            <span style={{ flex: 1 }}>Tìm nhanh</span>
+            <span style={{ flex: 1 }}>{t("chrome.quickSearch")}</span>
             <span style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
           </div>
-          {SIDE.map((g) => {
+          {side.map((g) => {
             const items = g.items;
             if (!items.length) return null;
             return (
@@ -352,7 +358,7 @@ export default function App() {
               <span data-ig-part="">
                 <Icon name="gear" size={15} />
               </span>
-              <span style={{ flex: 1 }}>Cài đặt</span>
+              <span style={{ flex: 1 }}>{t("nav.settings")}</span>
             </button>
             <div
               style={{
@@ -393,6 +399,7 @@ export default function App() {
           {DEMO && tab === "meetings" && <MeetingsPage />}
           {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
           {tab === "crm" && <CrmMetricsPage />}
+          {tab === "heatmap" && <HeatmapPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
             <SessionsPage
@@ -420,12 +427,51 @@ export default function App() {
           {DEMO && tab === "friends" && <FriendsPage />}
           {DEMO && tab === "calendar" && <CalendarPage />}
           {DEMO && tab === "gallery" && <GalleryPage />}
-          {DEMO && tab === "marketing" && <MarketingPage />}
+          {tab === "marketing" && <MarketingPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "events" && <EventsPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LangToggle({ locale, setLocale }: { locale: Locale; setLocale: (l: Locale) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Language"
+      style={{
+        display: "flex",
+        border: "1px solid var(--border)",
+        borderRadius: 999,
+        overflow: "hidden",
+        background: "var(--card)",
+      }}
+    >
+      {(["vi", "en"] as const).map((l) => {
+        const on = locale === l;
+        return (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setLocale(l)}
+            aria-pressed={on}
+            style={{
+              border: "none",
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: ".4px",
+              background: on ? "var(--accent-soft)" : "transparent",
+              color: on ? "var(--accent)" : "var(--text-3)",
+            }}
+          >
+            {l.toUpperCase()}
+          </button>
+        );
+      })}
     </div>
   );
 }

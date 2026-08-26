@@ -1,3 +1,4 @@
+import { useDemoT } from "../demo/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -6,31 +7,32 @@ import { SectionHeader } from "../ui/SectionHeader";
 import { allMeetings } from "../demo/mock";
 
 export function MeetingsPage() {
+  const { d, t } = useDemoT();
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
         icon="mic"
-        title="Cuộc họp"
-        description="Họp xong thì việc gì phải làm, ai cam kết gì, deal nào vừa đổi ý — ZAgent đọc bản ghi rồi đề xuất, anh chỉ duyệt."
+        title={d("meetings.title")}
+        description={d("meetings.desc")}
         actions={
           <>
             <DemoBadge />
             <Button icon="refresh" iconGesture>
-              Làm mới
+              {t("common.refresh")}
             </Button>
             <Button variant="primary" icon="plus">
-              Tải bản ghi lên
+              {d("meetings.upload")}
             </Button>
           </>
         }
       />
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "8px 10px", display: "flex", gap: 4, fontSize: 12.5, width: "fit-content" }}>
-        <span style={{ padding: "5px 14px", borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }}>Tuần này</span>
-        <span style={{ padding: "5px 14px", color: "var(--text-2)" }}>Tháng này</span>
-        <span style={{ padding: "5px 14px", color: "var(--text-2)" }}>Tất cả</span>
+        <span style={{ padding: "5px 14px", borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }}>{d("meetings.week")}</span>
+        <span style={{ padding: "5px 14px", color: "var(--text-2)" }}>{d("meetings.month")}</span>
+        <span style={{ padding: "5px 14px", color: "var(--text-2)" }}>{d("meetings.all")}</span>
       </div>
       <Card>
-        <CardHeader icon="list" title="Bản ghi đã nhận" meta={`${allMeetings.length} cuộc họp · 7 ngày · DEMO`} />
+        <CardHeader icon="list" title={d("meetings.list")} meta={`${allMeetings.length} · DEMO`} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2.6 }}>CUỘC HỌP</span>
           <span style={{ flex: 1.2 }}>THỜI GIAN</span>

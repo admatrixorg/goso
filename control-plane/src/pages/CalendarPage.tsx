@@ -1,3 +1,4 @@
+import { useDemoT } from "../demo/i18n";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { DemoBadge } from "../ui/DemoBadge";
@@ -16,24 +17,25 @@ const weekDays = [
 ];
 
 export function CalendarPage() {
+  const { d } = useDemoT();
   return (
     <div style={{ padding: "14px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
       <SectionHeader
         icon="cal"
-        title="Lịch hẹn"
-        description="0 lịch · tuần DEMO — chưa có API lịch. Click slot trống không tạo sự kiện thật."
+        title={d("cal.title")}
+        description={d("cal.desc")}
         actions={
           <>
             <DemoBadge />
             <Button variant="primary" icon="plus">
-              Tạo nhắc hẹn
+              {d("cal.create")}
             </Button>
           </>
         }
       />
       <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 10, padding: 3, width: "fit-content", fontSize: 12.5 }}>
-        <span style={{ background: "var(--btn-dark-bg)", color: "var(--btn-dark-fg)", borderRadius: 7, padding: "5px 16px", fontWeight: 600 }}>Tuần</span>
-        <span style={{ padding: "5px 16px", color: "var(--text-2)" }}>Danh sách</span>
+        <span style={{ background: "var(--btn-dark-bg)", color: "var(--btn-dark-fg)", borderRadius: 7, padding: "5px 16px", fontWeight: 600 }}>{d("cal.week")}</span>
+        <span style={{ padding: "5px 16px", color: "var(--text-2)" }}>{d("cal.list")}</span>
       </div>
       <Card style={{ overflow: "hidden" }}>
         <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
@@ -42,7 +44,7 @@ export function CalendarPage() {
             <div key={w.dow} style={{ flex: 1, textAlign: "center", padding: "8px 0", borderLeft: "1px solid var(--border-soft)", background: i === 6 ? "var(--today)" : undefined }}>
               <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text-3)" }}>{w.dow}</div>
               <div style={{ fontSize: 17, fontWeight: 700 }}>{w.num}</div>
-              <div style={{ fontSize: 9.5, color: "var(--text-4)" }}>0 lịch</div>
+              <div style={{ fontSize: 9.5, color: "var(--text-4)" }}>{d("cal.none")}</div>
             </div>
           ))}
         </div>
@@ -56,7 +58,7 @@ export function CalendarPage() {
             ))}
           </div>
         ))}
-        <EmptyState>Không có lịch hẹn.</EmptyState>
+        <EmptyState>{d("cal.empty")}</EmptyState>
       </Card>
     </div>
   );

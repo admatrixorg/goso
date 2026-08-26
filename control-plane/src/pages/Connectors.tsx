@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Agent, type Connector } from "../api/client";
+import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -15,6 +16,7 @@ function healthTone(h?: string): "positive" | "warning" | "critical" | "neutral"
 }
 
 export function ConnectorsPage() {
+  const { t } = useI18n();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
@@ -67,15 +69,15 @@ export function ConnectorsPage() {
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
         icon="hook"
-        title="Kết nối"
-        description="Connector HTTP/MCP tới hệ thống ngoài (goso-crm). Gateway không chứa code ZaloCRM — chỉ gọi API."
+        title={t("connectors.title")}
+        description={t("connectors.desc")}
         actions={
           <>
             <Button icon="refresh" iconGesture onClick={() => void load()}>
-              Làm mới
+              {t("common.refresh")}
             </Button>
             <Button variant="primary" icon="plus" onClick={() => void create()}>
-              Đăng ký
+              {t("connectors.register")}
             </Button>
           </>
         }
@@ -97,13 +99,13 @@ export function ConnectorsPage() {
         />
       </Card>
       <Card>
-        <CardHeader icon="device" title="Connector đã đăng ký" meta={`${connectors.length} kết nối`} />
+        <CardHeader icon="device" title={t("connectors.list")} meta={t("connectors.meta", { n: connectors.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-          <span style={{ flex: 1.2 }}>TÊN</span>
-          <span style={{ flex: 1 }}>TRANSPORT</span>
-          <span style={{ flex: 2.4 }}>ENDPOINT</span>
-          <span style={{ flex: 1 }}>SỨC KHOẺ</span>
-          <span style={{ flex: 0.8, textAlign: "right" }}>BẬT</span>
+          <span style={{ flex: 1.2 }}>{t("connectors.col.name")}</span>
+          <span style={{ flex: 1 }}>{t("connectors.col.transport")}</span>
+          <span style={{ flex: 2.4 }}>{t("connectors.col.endpoint")}</span>
+          <span style={{ flex: 1 }}>{t("connectors.col.health")}</span>
+          <span style={{ flex: 0.8, textAlign: "right" }}>{t("connectors.col.on")}</span>
         </div>
         {connectors.map((c) => (
           <div key={c.name} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
@@ -114,17 +116,17 @@ export function ConnectorsPage() {
               <Badge tone={healthTone(c.health)}>{c.health ?? "—"}</Badge>
             </span>
             <span style={{ flex: 0.8, textAlign: "right" }}>
-              <Badge tone={c.enabled ? "positive" : "neutral"}>{c.enabled ? "bật" : "tắt"}</Badge>
+              <Badge tone={c.enabled ? "positive" : "neutral"}>{c.enabled ? t("common.enabled") : t("common.disabled")}</Badge>
             </span>
           </div>
         ))}
-        {connectors.length === 0 ? <EmptyState>Chưa có connector.</EmptyState> : null}
+        {connectors.length === 0 ? <EmptyState>{t("connectors.empty")}</EmptyState> : null}
       </Card>
       <Card>
-        <CardHeader icon="user-check" title="Gán vào agent" />
+        <CardHeader icon="user-check" title={t("connectors.assign")} />
         <div style={{ padding: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <select className="z-field" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            <option value="">agent…</option>
+            <option value="">{t("connectors.pickAgent")}</option>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.display_name || a.agent_key}
@@ -132,7 +134,7 @@ export function ConnectorsPage() {
             ))}
           </select>
           <select className="z-field" value={linkName} onChange={(e) => setLinkName(e.target.value)}>
-            <option value="">connector…</option>
+            <option value="">{t("connectors.pickConnector")}</option>
             {connectors.map((c) => (
               <option key={c.name} value={c.name}>
                 {c.name}
@@ -140,7 +142,7 @@ export function ConnectorsPage() {
             ))}
           </select>
           <Button variant="primary" onClick={() => void assign()}>
-            Gán
+            {t("connectors.assignBtn")}
           </Button>
         </div>
       </Card>

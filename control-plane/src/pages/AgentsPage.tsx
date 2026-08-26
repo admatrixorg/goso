@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type Agent } from "../api/client";
+import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 
 export function AgentsPage() {
+  const { t } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
   const [key, setKey] = useState("");
@@ -40,15 +42,15 @@ export function AgentsPage() {
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
         icon="bolt"
-        title="Agent"
-        description="Agent LLM của gateway — mỗi agent có model, session và tool connector riêng. Tạo xong thì gắn connector ở Kết nối."
+        title={t("agents.title")}
+        description={t("agents.desc")}
         actions={
           <>
             <Button icon="refresh" iconGesture onClick={() => void load()}>
-              Làm mới
+              {t("common.refresh")}
             </Button>
             <Button variant="primary" icon="plus" onClick={() => void create()}>
-              Tạo agent
+              {t("agents.create")}
             </Button>
           </>
         }
@@ -59,12 +61,12 @@ export function AgentsPage() {
         <input className="z-field" placeholder="display_name" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <Card>
-        <CardHeader icon="user" title="Danh sách agent" meta={`${agents.length} agent`} />
+        <CardHeader icon="user" title={t("agents.list")} meta={t("agents.meta", { n: agents.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-          <span style={{ flex: 1.4 }}>KEY</span>
-          <span style={{ flex: 2 }}>TÊN</span>
-          <span style={{ flex: 2 }}>ID</span>
-          <span style={{ flex: 1.2 }}>MODEL</span>
+          <span style={{ flex: 1.4 }}>{t("agents.col.key")}</span>
+          <span style={{ flex: 2 }}>{t("agents.col.name")}</span>
+          <span style={{ flex: 2 }}>{t("agents.col.id")}</span>
+          <span style={{ flex: 1.2 }}>{t("agents.col.model")}</span>
         </div>
         {agents.map((a) => (
           <div
@@ -77,7 +79,7 @@ export function AgentsPage() {
             <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.model || "—"}</span>
           </div>
         ))}
-        {agents.length === 0 ? <EmptyState>Chưa có agent.</EmptyState> : null}
+        {agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

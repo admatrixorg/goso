@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type Message } from "../api/client";
+import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon } from "../ui/Icon";
 import { SectionHeader } from "../ui/SectionHeader";
 
 export function ChatPage({ sessionId }: { sessionId: string }) {
+  const { t } = useI18n();
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [err, setErr] = useState("");
@@ -37,8 +39,8 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
   if (!sessionId) {
     return (
       <div style={{ padding: "14px 22px 40px" }}>
-        <SectionHeader icon="msg" title="Chat" description="Chọn một phiên bên trái để đọc tin và gửi. Agent chạy trên gateway, không gửi Zalo từ đây." />
-        <EmptyState>Chưa chọn phiên.</EmptyState>
+        <SectionHeader icon="msg" title={t("chat.title")} description={t("chat.desc")} />
+        <EmptyState>{t("chat.emptySession")}</EmptyState>
       </div>
     );
   }
@@ -48,11 +50,11 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       <div style={{ padding: "14px 22px 0" }}>
         <SectionHeader
           icon="msg"
-          title="Chat"
-          description={`Phiên ${sessionId} — tin user/assistant/tool từ gateway.`}
+          title={t("chat.title")}
+          description={t("chat.descSession", { id: sessionId })}
           actions={
             <Button icon="refresh" iconGesture onClick={() => void load()}>
-              Làm mới
+              {t("common.refresh")}
             </Button>
           }
         />
@@ -78,7 +80,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
             <div style={{ whiteSpace: "pre-wrap", textWrap: "pretty" as const }}>{m.content}</div>
           </div>
         ))}
-        {msgs.length === 0 ? <EmptyState>Chưa có tin nhắn.</EmptyState> : null}
+        {msgs.length === 0 ? <EmptyState>{t("chat.empty")}</EmptyState> : null}
       </div>
       <div
         style={{
@@ -105,7 +107,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
           }}
         >
           <Icon name="bolt" size={13} />
-          Agent
+          {t("chat.agent")}
         </span>
         <input
           className="z-field"
@@ -113,12 +115,12 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void send()}
-          placeholder="Nhắn cho agent…"
+          placeholder={t("chat.placeholder")}
         />
         <button
           type="button"
           onClick={() => void send()}
-          aria-label="Gửi cho Agent"
+          aria-label={t("chat.send")}
           style={{
             width: 32,
             height: 32,

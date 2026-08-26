@@ -4,4 +4,4 @@ export function isDemoMode(): boolean {
   return import.meta.env.VITE_DEMO_MODE === "true" || import.meta.env.VITE_DEMO_MODE === "1";
 }
 
-export const DEMO_TABS = ["home", "tasks", "meetings", "friends", "calendar", "gallery", "marketing"] as const;
+export const DEMO_TABS = ["home", "tasks", "meetings", "friends", "calendar", "gallery"] as const;
