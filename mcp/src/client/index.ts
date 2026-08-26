@@ -3,5 +3,5 @@
  * with retry, circuit breaker, and error mapping.
  */
 
-export { GoClawClient } from "./goclaw-client.js";
-export type { GoClawClientOptions } from "./goclaw-client.js";
+export { GosoClient } from "./goso-client.js";
+export type { GosoClientOptions } from "./goso-client.js";

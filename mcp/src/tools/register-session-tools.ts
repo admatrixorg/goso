@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerSessionTools(server: McpServer, client: GoClawClient): void {
+export function registerSessionTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_session_list",
+    "goso_session_list",
     "List chat sessions, optionally filtered by agent",
     {
       agent_id: z.string().optional().describe("Filter by agent ID"),
@@ -31,7 +31,7 @@ export function registerSessionTools(server: McpServer, client: GoClawClient): v
   );
 
   server.tool(
-    "goclaw_session_preview",
+    "goso_session_preview",
     "Preview recent messages in a chat session",
     {
       session_key: z.string().describe("Session key"),
@@ -54,7 +54,7 @@ export function registerSessionTools(server: McpServer, client: GoClawClient): v
   );
 
   server.tool(
-    "goclaw_session_delete",
+    "goso_session_delete",
     "Delete a chat session permanently",
     { session_key: z.string().describe("Session key to delete") },
     async ({ session_key }) => {
@@ -68,7 +68,7 @@ export function registerSessionTools(server: McpServer, client: GoClawClient): v
   );
 
   server.tool(
-    "goclaw_session_reset",
+    "goso_session_reset",
     "Reset a chat session (clear message history)",
     { session_key: z.string().describe("Session key to reset") },
     async ({ session_key }) => {
@@ -82,7 +82,7 @@ export function registerSessionTools(server: McpServer, client: GoClawClient): v
   );
 
   server.tool(
-    "goclaw_session_label",
+    "goso_session_label",
     "Set a label/title for a chat session",
     {
       session_key: z.string().describe("Session key"),

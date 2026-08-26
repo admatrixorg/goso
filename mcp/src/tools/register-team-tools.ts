@@ -2,11 +2,11 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerTeamTools(server: McpServer, client: GoClawClient): void {
-  server.tool("goclaw_team_list", "List all teams in GoClaw", {}, async () => {
+export function registerTeamTools(server: McpServer, client: GosoClient): void {
+  server.tool("goso_team_list", "List all teams in GoClaw", {}, async () => {
     try {
       const teams = await client.teams.listTeams();
       if (!teams.length) return { content: [{ type: "text", text: "No teams." }] };
@@ -20,7 +20,7 @@ export function registerTeamTools(server: McpServer, client: GoClawClient): void
   });
 
   server.tool(
-    "goclaw_team_get",
+    "goso_team_get",
     "Get team details",
     { id: z.string().describe("Team ID") },
     async ({ id }) => {
@@ -41,7 +41,7 @@ export function registerTeamTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_team_create",
+    "goso_team_create",
     "Create a new agent team",
     {
       name: z.string().describe("Team name"),
@@ -59,7 +59,7 @@ export function registerTeamTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_team_update",
+    "goso_team_update",
     "Update a team's settings",
     {
       id: z.string().describe("Team ID"),
@@ -78,7 +78,7 @@ export function registerTeamTools(server: McpServer, client: GoClawClient): void
   );
 
   server.tool(
-    "goclaw_team_delete",
+    "goso_team_delete",
     "Delete a team",
     { id: z.string().describe("Team ID") },
     async ({ id }) => {

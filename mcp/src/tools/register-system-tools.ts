@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerSystemTools(server: McpServer, client: GoClawClient): void {
+export function registerSystemTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_health",
+    "goso_health",
     "Check GoClaw gateway health status",
     {},
     async () => {
@@ -28,7 +28,7 @@ export function registerSystemTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_status",
+    "goso_status",
     "Get GoClaw gateway status including version, uptime, and connection counts",
     {},
     async () => {
@@ -56,7 +56,7 @@ export function registerSystemTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_models_list",
+    "goso_models_list",
     "List all available LLM models across all configured providers",
     {},
     async () => {

@@ -2,7 +2,7 @@
 
 MCP (Model Context Protocol) server for [GOSO](https://github.com/mqglobal/goso) Gateway management. Rebrand of `goclaw-mcp`: same 66 tools, dual transport (`stdio` + Streamable HTTP), env vars `GOSO_*`.
 
-Tool names stay `goclaw_*` in this release (aliases in a later spec).
+Tool names are `goso_*`.
 
 ## Quick Start
 
@@ -93,23 +93,21 @@ Legacy mapping: `GOCLAW_SERVER` → `GOSO_GATEWAY_URL`, `GOCLAW_TOKEN` → `GOSO
 
 ## Available tools (66)
 
-Unchanged names from `goclaw-mcp`:
-
 | Domain | Count | Examples |
 |--------|-------|----------|
-| System | 3 | `goclaw_health`, `goclaw_status`, `goclaw_models_list` |
-| Agents | 13 | `goclaw_agent_list`, `goclaw_agent_create`, … |
-| Sessions | 5 | `goclaw_session_list`, `goclaw_session_preview`, … |
-| Configuration | 3 | `goclaw_config_get`, `goclaw_config_apply`, `goclaw_config_patch` |
-| Providers | 5 | `goclaw_provider_list`, `goclaw_provider_create`, … |
-| MCP Servers | 7 | `goclaw_mcp_server_list`, … |
-| Skills | 5 | `goclaw_skill_list`, … |
-| Custom Tools | 6 | `goclaw_custom_tool_list`, `goclaw_custom_tool_invoke`, … |
-| Cron | 6 | `goclaw_cron_list`, `goclaw_cron_run`, … |
-| Teams | 5 | `goclaw_team_list`, … |
-| Traces | 2 | `goclaw_trace_list`, `goclaw_trace_get` |
-| Channels | 2 | `goclaw_channel_list`, `goclaw_channel_toggle` |
-| Memory | 4 | `goclaw_memory_list`, `goclaw_memory_create`, … |
+| System | 3 | `goso_health`, `goso_status`, `goso_models_list` |
+| Agents | 13 | `goso_agent_list`, `goso_agent_create`, … |
+| Sessions | 5 | `goso_session_list`, `goso_session_preview`, … |
+| Configuration | 3 | `goso_config_get`, `goso_config_apply`, `goso_config_patch` |
+| Providers | 5 | `goso_provider_list`, `goso_provider_create`, … |
+| MCP Servers | 7 | `goso_mcp_server_list`, … |
+| Skills | 5 | `goso_skill_list`, … |
+| Custom Tools | 6 | `goso_custom_tool_list`, `goso_custom_tool_invoke`, … |
+| Cron | 6 | `goso_cron_list`, `goso_cron_run`, … |
+| Teams | 5 | `goso_team_list`, … |
+| Traces | 2 | `goso_trace_list`, `goso_trace_get` |
+| Channels | 2 | `goso_channel_list`, `goso_channel_toggle` |
+| Memory | 4 | `goso_memory_list`, `goso_memory_create`, … |
 
 Covers gateway administration: agents, sessions, channels, providers.
 

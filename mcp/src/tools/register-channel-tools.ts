@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerChannelTools(server: McpServer, client: GoClawClient): void {
+export function registerChannelTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_channel_list",
+    "goso_channel_list",
     "List all messaging channels (Telegram, Discord, etc.)",
     {},
     async () => {
@@ -28,7 +28,7 @@ export function registerChannelTools(server: McpServer, client: GoClawClient): v
   );
 
   server.tool(
-    "goclaw_channel_toggle",
+    "goso_channel_toggle",
     "Enable or disable a messaging channel",
     {
       channel: z.string().describe("Channel name"),

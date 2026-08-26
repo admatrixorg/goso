@@ -21,7 +21,7 @@ describe("goso-mcp identity", () => {
     expect(pkg.bin["goso-mcp-http"]).toBe("./dist/http.js");
   });
 
-  it("keeps 66 goclaw_* tools", () => {
+  it("keeps 66 goso_* tools", () => {
     const dir = join(here, "../../src/tools");
     let count = 0;
     for (const f of readdirSync(dir)) {

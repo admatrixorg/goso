@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerConfigTools(server: McpServer, client: GoClawClient): void {
+export function registerConfigTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_config_get",
+    "goso_config_get",
     "Get current GoClaw gateway configuration (or a specific section)",
     {
       section: z.string().optional().describe("Config section (e.g. gateway, agents, tools, channels)"),
@@ -30,7 +30,7 @@ export function registerConfigTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_config_apply",
+    "goso_config_apply",
     "Apply a full configuration to the GoClaw gateway (overwrites current config). Use with caution.",
     {
       config: z
@@ -48,7 +48,7 @@ export function registerConfigTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_config_patch",
+    "goso_config_patch",
     "Patch specific fields in the GoClaw gateway configuration",
     {
       patches: z

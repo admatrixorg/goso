@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerMemoryTools(server: McpServer, client: GoClawClient): void {
+export function registerMemoryTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_memory_list",
+    "goso_memory_list",
     "List memory documents stored for an agent",
     {
       agent_id: z.string().describe("Agent ID"),
@@ -28,7 +28,7 @@ export function registerMemoryTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_memory_get",
+    "goso_memory_get",
     "Read a memory document's content",
     { id: z.string().describe("Memory document ID") },
     async ({ id }) => {
@@ -46,7 +46,7 @@ export function registerMemoryTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_memory_create",
+    "goso_memory_create",
     "Store a new memory document for an agent",
     {
       agent_id: z.string().describe("Agent ID"),
@@ -64,7 +64,7 @@ export function registerMemoryTools(server: McpServer, client: GoClawClient): vo
   );
 
   server.tool(
-    "goclaw_memory_delete",
+    "goso_memory_delete",
     "Delete a memory document",
     { id: z.string().describe("Memory document ID") },
     async ({ id }) => {

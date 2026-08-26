@@ -3,7 +3,7 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { registerSystemTools } from "./register-system-tools.js";
 import { registerAgentTools } from "./register-agent-tools.js";
 import { registerSessionTools } from "./register-session-tools.js";
@@ -19,7 +19,7 @@ import { registerChannelTools } from "./register-channel-tools.js";
 import { registerMemoryTools } from "./register-memory-tools.js";
 import { logger } from "../lib/logger.js";
 
-export function registerAllTools(server: McpServer, client: GoClawClient): void {
+export function registerAllTools(server: McpServer, client: GosoClient): void {
   registerSystemTools(server, client);
   registerAgentTools(server, client);
   registerSessionTools(server, client);

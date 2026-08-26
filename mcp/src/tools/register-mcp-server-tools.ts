@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerMcpServerTools(server: McpServer, client: GoClawClient): void {
+export function registerMcpServerTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_mcp_server_list",
+    "goso_mcp_server_list",
     "List all registered MCP servers in GoClaw",
     {},
     async () => {
@@ -25,7 +25,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_get",
+    "goso_mcp_server_get",
     "Get details of a registered MCP server",
     { id: z.string().describe("MCP server ID") },
     async ({ id }) => {
@@ -46,7 +46,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_create",
+    "goso_mcp_server_create",
     "Register a new MCP server in GoClaw",
     {
       name: z.string().describe("Server name"),
@@ -70,7 +70,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_update",
+    "goso_mcp_server_update",
     "Update a registered MCP server's configuration",
     {
       id: z.string().describe("MCP server ID"),
@@ -92,7 +92,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_delete",
+    "goso_mcp_server_delete",
     "Remove a registered MCP server from GoClaw",
     { id: z.string().describe("MCP server ID") },
     async ({ id }) => {
@@ -106,7 +106,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_grant_agent",
+    "goso_mcp_server_grant_agent",
     "Grant an agent access to an MCP server",
     {
       server_id: z.string().describe("MCP server ID"),
@@ -123,7 +123,7 @@ export function registerMcpServerTools(server: McpServer, client: GoClawClient):
   );
 
   server.tool(
-    "goclaw_mcp_server_grant_user",
+    "goso_mcp_server_grant_user",
     "Grant a user access to an MCP server",
     {
       server_id: z.string().describe("MCP server ID"),

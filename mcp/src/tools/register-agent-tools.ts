@@ -2,14 +2,14 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerAgentTools(server: McpServer, client: GoClawClient): void {
+export function registerAgentTools(server: McpServer, client: GosoClient): void {
   // --- CRUD ---
 
   server.tool(
-    "goclaw_agent_list",
+    "goso_agent_list",
     "List all agents configured in GoClaw gateway",
     { include_deleted: z.boolean().optional().describe("Include soft-deleted agents") },
     async ({ include_deleted }) => {
@@ -30,7 +30,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_get",
+    "goso_agent_get",
     "Get detailed information about a specific agent",
     { id: z.string().describe("Agent ID or agent_key") },
     async ({ id }) => {
@@ -55,7 +55,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_create",
+    "goso_agent_create",
     "Create a new agent in GoClaw gateway",
     {
       agent_key: z.string().describe("Unique agent identifier (lowercase, no spaces)"),
@@ -85,7 +85,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_update",
+    "goso_agent_update",
     "Update an existing agent's settings",
     {
       id: z.string().describe("Agent ID"),
@@ -111,7 +111,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_delete",
+    "goso_agent_delete",
     "Delete an agent (soft delete)",
     { id: z.string().describe("Agent ID") },
     async ({ id }) => {
@@ -127,7 +127,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   // --- Context Files ---
 
   server.tool(
-    "goclaw_agent_files_list",
+    "goso_agent_files_list",
     "List context files (SOUL.md, IDENTITY.md, etc.) for an agent",
     { agent_id: z.string().describe("Agent ID") },
     async ({ agent_id }) => {
@@ -143,7 +143,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_files_get",
+    "goso_agent_files_get",
     "Read a specific context file for an agent",
     {
       agent_id: z.string().describe("Agent ID"),
@@ -164,7 +164,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_files_set",
+    "goso_agent_files_set",
     "Create or update a context file for an agent",
     {
       agent_id: z.string().describe("Agent ID"),
@@ -182,7 +182,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_files_delete",
+    "goso_agent_files_delete",
     "Delete a context file from an agent",
     {
       agent_id: z.string().describe("Agent ID"),
@@ -201,7 +201,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   // --- Links ---
 
   server.tool(
-    "goclaw_agent_links_list",
+    "goso_agent_links_list",
     "List delegation links for an agent (which agents it can delegate to)",
     { agent_id: z.string().describe("Agent ID") },
     async ({ agent_id }) => {
@@ -219,7 +219,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_links_set",
+    "goso_agent_links_set",
     "Create or update a delegation link between agents",
     {
       agent_id: z.string().describe("Source agent ID"),
@@ -241,7 +241,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_agent_links_remove",
+    "goso_agent_links_remove",
     "Remove a delegation link between agents",
     {
       agent_id: z.string().describe("Source agent ID"),
@@ -264,7 +264,7 @@ export function registerAgentTools(server: McpServer, client: GoClawClient): voi
   // --- Shares ---
 
   server.tool(
-    "goclaw_agent_share",
+    "goso_agent_share",
     "Share an agent with a user",
     {
       agent_id: z.string().describe("Agent ID"),

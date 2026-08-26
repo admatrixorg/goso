@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerProviderTools(server: McpServer, client: GoClawClient): void {
+export function registerProviderTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_provider_list",
+    "goso_provider_list",
     "List all configured LLM providers",
     {},
     async () => {
@@ -25,7 +25,7 @@ export function registerProviderTools(server: McpServer, client: GoClawClient): 
   );
 
   server.tool(
-    "goclaw_provider_get",
+    "goso_provider_get",
     "Get details of a specific LLM provider",
     { id: z.string().describe("Provider ID") },
     async ({ id }) => {
@@ -46,7 +46,7 @@ export function registerProviderTools(server: McpServer, client: GoClawClient): 
   );
 
   server.tool(
-    "goclaw_provider_create",
+    "goso_provider_create",
     "Add a new LLM provider to GoClaw",
     {
       name: z.string().describe("Provider name"),
@@ -66,7 +66,7 @@ export function registerProviderTools(server: McpServer, client: GoClawClient): 
   );
 
   server.tool(
-    "goclaw_provider_update",
+    "goso_provider_update",
     "Update an LLM provider's configuration",
     {
       id: z.string().describe("Provider ID"),
@@ -87,7 +87,7 @@ export function registerProviderTools(server: McpServer, client: GoClawClient): 
   );
 
   server.tool(
-    "goclaw_provider_delete",
+    "goso_provider_delete",
     "Remove an LLM provider from GoClaw",
     { id: z.string().describe("Provider ID") },
     async ({ id }) => {

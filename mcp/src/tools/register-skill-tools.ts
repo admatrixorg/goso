@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { GoClawClient } from "../client/index.js";
+import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
-export function registerSkillTools(server: McpServer, client: GoClawClient): void {
+export function registerSkillTools(server: McpServer, client: GosoClient): void {
   server.tool(
-    "goclaw_skill_list",
+    "goso_skill_list",
     "List all available skills in GoClaw",
     {},
     async () => {
@@ -25,7 +25,7 @@ export function registerSkillTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_skill_get",
+    "goso_skill_get",
     "Get details of a specific skill",
     { id: z.string().describe("Skill ID") },
     async ({ id }) => {
@@ -46,7 +46,7 @@ export function registerSkillTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_skill_update",
+    "goso_skill_update",
     "Update a skill's metadata",
     {
       id: z.string().describe("Skill ID"),
@@ -65,7 +65,7 @@ export function registerSkillTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_skill_grant_agent",
+    "goso_skill_grant_agent",
     "Grant an agent access to a skill",
     {
       skill_id: z.string().describe("Skill ID"),
@@ -82,7 +82,7 @@ export function registerSkillTools(server: McpServer, client: GoClawClient): voi
   );
 
   server.tool(
-    "goclaw_skill_grant_user",
+    "goso_skill_grant_user",
     "Grant a user access to a skill",
     {
       skill_id: z.string().describe("Skill ID"),
