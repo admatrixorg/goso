@@ -181,6 +181,14 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS cron_jobs (
+			id TEXT PRIMARY KEY,
+			spec TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			message TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			last_run TEXT
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {

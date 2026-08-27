@@ -31,6 +31,7 @@ func TestV1AliasesMatchAPI(t *testing.T) {
 		"/skills",
 		"/webhooks",
 		"/teams",
+		"/cron",
 		"/memory?session_id=" + sess.ID,
 	} {
 		assertSameGET(t, h, "/api"+path, "/v1"+path)
@@ -62,12 +63,6 @@ func TestV1DoesNotInventCRUD(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/agents/"+a.ID, nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("GET /v1/agents/{id} must not be invented, got %d %s", w.Code, w.Body.String())
-	}
-
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/cron", nil))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("GET /v1/cron must not be invented, got %d %s", w.Code, w.Body.String())
 	}
 }
 

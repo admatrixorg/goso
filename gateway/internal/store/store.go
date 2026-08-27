@@ -84,6 +84,19 @@ type Session struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Cron job persistence (SPEC 054). Cap is store-side; empty list is a no-op for the runner.
+const CronJobCap = 20
+
+// CronJob is one scheduled chat into a session.
+type CronJob struct {
+	ID        string     `json:"id"`
+	Spec      string     `json:"spec"`
+	SessionID string     `json:"session_id"`
+	Message   string     `json:"message"`
+	Enabled   bool       `json:"enabled"`
+	LastRun   *time.Time `json:"last_run,omitempty"`
+}
+
 // Message represents a chat message.
 type Message struct {
 	ID        string    `json:"id"`
@@ -226,12 +239,18 @@ type StoreIface interface {
 	EvolutionApplied(agentID, suggestionID string) bool
 	PutSecret(SecretRow) error
 	GetSecret(name string) (*SecretRow, error)
+	CreateCronJob(CronJob) (*CronJob, error)
+	ListCronJobs() []*CronJob
+	GetCronJob(string) (*CronJob, error)
+	DeleteCronJob(string) error
+	MarkCronRun(id string, at time.Time) error
 }
 
 var (
 	ErrNotFound = errors.New("not found")
 	ErrExists   = errors.New("already exists")
 	ErrLiteCap  = errors.New("lite cap exceeded")
+	ErrCronCap  = errors.New("cron job cap exceeded")
 )
 
 // LiteEnabled reports whether GOSO_LITE=1 (or true) is set.
@@ -260,6 +279,7 @@ type Store struct {
 	evoApplied  map[string]map[string]bool // agent_id -> suggestion_id
 	secrets     map[string]SecretRow
 	toolFlags   map[string]bool
+	cronJobs    map[string]*CronJob
 	seq         int64
 }
 
@@ -296,6 +316,7 @@ func New() *Store {
 		evoApplied:  make(map[string]map[string]bool),
 		secrets:     make(map[string]SecretRow),
 		toolFlags:   make(map[string]bool),
+		cronJobs:    make(map[string]*CronJob),
 	}
 }
 
