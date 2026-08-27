@@ -15,6 +15,7 @@ mkdir -p data
 export GOSO_ADMIN_TOKEN='<token-dài-ngẫu-nhiên>'
 export GOSO_DB_PATH=data/goso.db
 export GOSO_VAULT_DIR=data/vault
+# export GOSO_SKILLS_DIR=data/skills   # empty = use_skill fail-closed
 export GOSO_ENV=production
 export GOSO_RATE_LIMIT=60
 go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
