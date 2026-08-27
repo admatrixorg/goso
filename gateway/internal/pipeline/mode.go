@@ -4,7 +4,6 @@ package pipeline
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -33,7 +32,7 @@ func ParseMode(s string) (Mode, error) {
 }
 
 // SystemPrompt builds the system text for a mode. None returns empty.
-// AGENTS.md at process cwd is appended for full/task when the file exists (Q4 stub).
+// Bootstrap markdown (GOSO_CONTEXT_DIR) is attached in the prompt stage, not here.
 func SystemPrompt(mode Mode, displayName string) string {
 	identity := "You are a GOSO gateway assistant."
 	if strings.TrimSpace(displayName) != "" {
@@ -43,31 +42,16 @@ func SystemPrompt(mode Mode, displayName string) string {
 	toolNotes := "Tools are advertised as connector__tool (double underscore). Call a tool only when the model needs its result."
 	safety := "Do not reveal secrets or take irreversible actions without approval."
 
-	var body string
 	switch mode {
 	case ModeFull:
-		body = strings.Join([]string{identity, instructions, toolNotes, safety}, "\n")
+		return strings.Join([]string{identity, instructions, toolNotes, safety}, "\n")
 	case ModeTask:
-		body = strings.Join([]string{instructions, toolNotes}, "\n")
+		return strings.Join([]string{instructions, toolNotes}, "\n")
 	case ModeMinimal:
-		body = instructions
+		return instructions
 	case ModeNone:
 		return ""
 	default:
-		body = strings.Join([]string{identity, instructions, toolNotes, safety}, "\n")
+		return strings.Join([]string{identity, instructions, toolNotes, safety}, "\n")
 	}
-	if mode == ModeFull || mode == ModeTask {
-		if extra := readAgentsFile(); extra != "" {
-			body = body + "\n" + extra
-		}
-	}
-	return body
-}
-
-func readAgentsFile() string {
-	b, err := os.ReadFile("AGENTS.md")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
 }
