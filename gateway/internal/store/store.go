@@ -178,6 +178,10 @@ type StoreIface interface {
 	ListConnectors() []*ConnectorRecord
 	GetConnector(string) (*ConnectorRecord, error)
 	SetConnectorEnabled(name string, enabled bool) error
+	UpdateConnector(name string, enabled *bool, endpoint *string, credentialRef *string) (*ConnectorRecord, error)
+	GetToolFlag(name string) bool
+	SetToolFlag(name string, enabled bool) error
+	ListToolFlags() map[string]bool
 	LinkAgentConnector(agentID, connectorName string) error
 	ListAgentConnectors(agentID string) ([]string, error)
 	PutMemory(Memory) (*Memory, error)
@@ -255,6 +259,7 @@ type Store struct {
 	metrics     map[string]*AgentMetrics
 	evoApplied  map[string]map[string]bool // agent_id -> suggestion_id
 	secrets     map[string]SecretRow
+	toolFlags   map[string]bool
 	seq         int64
 }
 
@@ -290,6 +295,7 @@ func New() *Store {
 		metrics:     make(map[string]*AgentMetrics),
 		evoApplied:  make(map[string]map[string]bool),
 		secrets:     make(map[string]SecretRow),
+		toolFlags:   make(map[string]bool),
 	}
 }
 
@@ -555,6 +561,53 @@ func (s *Store) SetConnectorEnabled(name string, enabled bool) error {
 	}
 	v.Enabled = enabled
 	return nil
+}
+
+func (s *Store) UpdateConnector(name string, enabled *bool, endpoint *string, credentialRef *string) (*ConnectorRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.connectors[name]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	if enabled != nil {
+		v.Enabled = *enabled
+	}
+	if endpoint != nil {
+		v.Endpoint = *endpoint
+	}
+	if credentialRef != nil {
+		v.CredentialRef = *credentialRef
+	}
+	cp := *v
+	return &cp, nil
+}
+
+func (s *Store) GetToolFlag(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.toolFlags[strings.TrimSpace(name)]
+}
+
+func (s *Store) SetToolFlag(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.toolFlags[name] = enabled
+	return nil
+}
+
+func (s *Store) ListToolFlags() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]bool, len(s.toolFlags))
+	for k, v := range s.toolFlags {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Store) LinkAgentConnector(agentID, connectorName string) error {

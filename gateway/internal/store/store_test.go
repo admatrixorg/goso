@@ -183,4 +183,27 @@ func TestStore_ConnectorAndLink(t *testing.T) {
 	if got.Enabled {
 		t.Fatal("expected disabled")
 	}
+	ep := "http://127.0.0.1:9"
+	on := true
+	upd, err := s.UpdateConnector("zalocrm", &on, &ep, nil)
+	if err != nil || !upd.Enabled || upd.Endpoint != ep {
+		t.Fatalf("update %v %+v", err, upd)
+	}
+}
+
+func TestStore_ToolFlagsDefaultOff(t *testing.T) {
+	s := New()
+	if s.GetToolFlag("web_search") {
+		t.Fatal("default off")
+	}
+	if err := s.SetToolFlag("web_search", true); err != nil {
+		t.Fatal(err)
+	}
+	if !s.GetToolFlag("web_search") {
+		t.Fatal("enabled")
+	}
+	flags := s.ListToolFlags()
+	if !flags["web_search"] {
+		t.Fatalf("%v", flags)
+	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
+	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -33,7 +34,8 @@ type Status struct {
 	RateLimit int
 }
 
-// DefaultProvider picks Anthropic, else OpenAI, else the first named OpenAI-compat, else echo.
+// DefaultProvider picks GOSO_LLM_PROVIDER if constructed, else router9 if
+// constructed, else Anthropic, OpenAI, first named OpenAI-compat, else echo.
 // GOSO_E2E_SCRIPTED=1 selects a test-only ToolChat provider (not for production).
 func DefaultProvider() llm.Provider {
 	if envTruthy(os.Getenv("GOSO_E2E_SCRIPTED")) && strings.EqualFold(strings.TrimSpace(os.Getenv("GOSO_ENV")), "test") {
@@ -55,6 +57,9 @@ func loadConnectors(st store.StoreIface, connReg *connector.Registry) {
 			CredentialRef: rec.CredentialRef, SchemaVersion: rec.SchemaVersion,
 			ManifestURL: rec.ManifestURL, ManifestJSON: rec.ManifestJSON,
 			TimeoutMS: rec.TimeoutMS, Retries: rec.Retries,
+		}
+		if tok, err := secrets.Get(st, connector.TokenSecretName(rec.Name)); err == nil {
+			cfg.BearerToken = string(tok)
 		}
 		c, err := connector.Build(cfg)
 		if err != nil {

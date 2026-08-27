@@ -3,6 +3,7 @@
 package llm
 
 import (
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -15,7 +16,8 @@ type Registry struct {
 
 // NewRegistry builds providers from environment.
 // Native: GOSO_ANTHROPIC_API_KEY, GOSO_OPENAI_API_KEY.
-// Named OpenAI-compat: see OpenAICompatProviders. Empty key → provider absent.
+// Named OpenAI-compat: see OpenAICompatProviders. Empty key → provider absent
+// except router9, which constructs when GOSO_ROUTER9_BASE_URL is non-empty.
 func NewRegistry() *Registry {
 	m := make(map[string]Provider)
 	if key := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_API_KEY")); key != "" {
@@ -26,19 +28,31 @@ func NewRegistry() *Registry {
 	}
 	for _, spec := range OpenAICompatProviders() {
 		key := strings.TrimSpace(os.Getenv(spec.EnvKey))
-		if key == "" {
+		base := spec.BaseURL
+		if spec.EnvURL != "" {
+			u := strings.TrimSpace(os.Getenv(spec.EnvURL))
+			if u == "" {
+				continue
+			}
+			base = u
+		} else if key == "" {
 			continue
 		}
 		model := strings.TrimSpace(os.Getenv(spec.EnvModel))
 		if model == "" {
 			model = spec.Model
 		}
-		m[spec.Name] = &OpenAI{
-			APIKey:  key,
-			Model:   model,
-			BaseURL: spec.BaseURL,
-			Label:   spec.Name,
+		o := &OpenAI{
+			APIKey:        key,
+			Model:         model,
+			BaseURL:       base,
+			Label:         spec.Name,
+			AllowEmptyKey: spec.AllowEmptyKey,
 		}
+		if spec.Timeout > 0 {
+			o.Client = &http.Client{Timeout: spec.Timeout}
+		}
+		m[spec.Name] = o
 	}
 	m["echo"] = Echo{}
 	return &Registry{providers: m}
@@ -88,10 +102,19 @@ var preferredOrder = []string{
 	"openrouter", "groq", "deepseek", "gemini", "mistral", "xai", "minimax", "dashscope",
 }
 
-// Preferred picks anthropic, else openai, else the first configured named compat, else echo.
+// Preferred picks GOSO_LLM_PROVIDER if that name exists, else router9 if
+// constructed, else anthropic, openai, first configured named compat, else echo.
 func (r *Registry) Preferred() Provider {
 	if r == nil {
 		return Echo{}
+	}
+	if name := strings.TrimSpace(os.Getenv("GOSO_LLM_PROVIDER")); name != "" {
+		if p, ok := r.providers[name]; ok {
+			return p
+		}
+	}
+	if p, ok := r.providers["router9"]; ok {
+		return p
 	}
 	for _, name := range preferredOrder {
 		if p, ok := r.providers[name]; ok {

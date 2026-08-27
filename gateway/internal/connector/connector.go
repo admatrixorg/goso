@@ -25,6 +25,11 @@ const (
 	DefaultCRMURL = "http://127.0.0.1:8089"
 )
 
+// TokenSecretName is the secrets-table key for a connector token.
+func TokenSecretName(name string) string {
+	return "connector/" + strings.TrimSpace(name) + "/token"
+}
+
 // DefaultCRMEndpoint returns GOSOCRM_API_URL or the local CRM default.
 func DefaultCRMEndpoint() string {
 	if v := strings.TrimSpace(os.Getenv("GOSOCRM_API_URL")); v != "" {
@@ -95,7 +100,7 @@ func Build(cfg Config) (Connector, error) {
 			cfg.Endpoint = DefaultCRMEndpoint()
 		}
 	}
-	if cfg.BearerToken == "" && cfg.CredentialRef != "" {
+	if cfg.BearerToken == "" && cfg.CredentialRef != "" && !strings.HasPrefix(cfg.CredentialRef, "secret:") && cfg.CredentialRef != "token_set" {
 		cfg.BearerToken = os.Getenv(cfg.CredentialRef)
 	}
 

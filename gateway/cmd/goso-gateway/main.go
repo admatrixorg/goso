@@ -70,6 +70,9 @@ Environment:
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
+  GOSO_ROUTER9_BASE_URL    Construct named provider router9 when set (key optional)
+  GOSO_LLM_PROVIDER        Force Preferred() name when that provider exists
+  GOSO_WEB_SEARCH          ddg or 1 = DuckDuckGo Instant Answer for builtin web_search
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)

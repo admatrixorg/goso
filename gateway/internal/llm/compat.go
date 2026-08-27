@@ -2,17 +2,23 @@
 
 package llm
 
-// OpenAICompat is a named OpenAI-compatible endpoint (SPEC 039).
+import "time"
+
+// OpenAICompat is a named OpenAI-compatible endpoint (SPEC 039 / 044).
 type OpenAICompat struct {
-	Name     string
-	EnvKey   string
-	EnvModel string
-	BaseURL  string
-	Model    string
+	Name          string
+	EnvKey        string
+	EnvModel      string
+	EnvURL        string // if set, construct when this env is non-empty; key may be empty
+	BaseURL       string
+	Model         string
+	AllowEmptyKey bool
+	Timeout       time.Duration
 }
 
 // OpenAICompatProviders is the named catalog: openrouter, groq, deepseek,
-// gemini, mistral, xai, minimax, dashscope. Construct only when EnvKey is set.
+// gemini, mistral, xai, minimax, dashscope, router9.
+// Default: construct only when EnvKey is set. router9 constructs when EnvURL is set.
 func OpenAICompatProviders() []OpenAICompat {
 	return []OpenAICompat{
 		{Name: "openrouter", EnvKey: "GOSO_OPENROUTER_API_KEY", EnvModel: "GOSO_OPENROUTER_MODEL", BaseURL: "https://openrouter.ai/api", Model: "openai/gpt-4o-mini"},
@@ -23,5 +29,10 @@ func OpenAICompatProviders() []OpenAICompat {
 		{Name: "xai", EnvKey: "GOSO_XAI_API_KEY", EnvModel: "GOSO_XAI_MODEL", BaseURL: "https://api.x.ai", Model: "grok-2-1212"},
 		{Name: "minimax", EnvKey: "GOSO_MINIMAX_API_KEY", EnvModel: "GOSO_MINIMAX_MODEL", BaseURL: "https://api.minimax.io", Model: "MiniMax-Text-01"},
 		{Name: "dashscope", EnvKey: "GOSO_DASHSCOPE_API_KEY", EnvModel: "GOSO_DASHSCOPE_MODEL", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode", Model: "qwen-plus"},
+		{
+			Name: "router9", EnvKey: "GOSO_ROUTER9_API_KEY", EnvModel: "GOSO_ROUTER9_MODEL",
+			EnvURL: "GOSO_ROUTER9_BASE_URL", BaseURL: "http://127.0.0.1:20127/v1",
+			Model: "cx/gpt-5.6-sol", AllowEmptyKey: true, Timeout: 120 * time.Second,
+		},
 	}
 }

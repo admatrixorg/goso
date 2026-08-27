@@ -104,6 +104,20 @@ func TestSQLiteStore_ConnectorLink(t *testing.T) {
 	if err != nil || len(names) != 1 {
 		t.Fatalf("links %v %v", err, names)
 	}
+	if s.GetToolFlag("web_search") {
+		t.Fatal("default off")
+	}
+	if err := s.SetToolFlag("web_search", true); err != nil {
+		t.Fatal(err)
+	}
+	if !s.GetToolFlag("web_search") {
+		t.Fatal("flag")
+	}
+	ep := "http://y"
+	upd, err := s.UpdateConnector("pos", nil, &ep, nil)
+	if err != nil || upd.Endpoint != ep {
+		t.Fatalf("update %v %+v", err, upd)
+	}
 }
 
 func TestSQLiteStore_Memory(t *testing.T) {

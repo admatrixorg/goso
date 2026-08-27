@@ -62,6 +62,57 @@ func TestOpenAI_NamedLabelAndChatTools(t *testing.T) {
 	}
 }
 
+func TestOpenAI_Router9EmptyKeyAndV1Base(t *testing.T) {
+	var sawPath, sawAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}` + "\n\ndata: [DONE]\n"))
+	}))
+	defer srv.Close()
+	p := &OpenAI{
+		APIKey: "", BaseURL: srv.URL + "/v1", Client: srv.Client(),
+		Label: "router9", AllowEmptyKey: true,
+	}
+	reply, err := p.Chat(t.Context(), []Message{{Role: "user", Content: "hi"}})
+	if err != nil || reply != "pong" {
+		t.Fatalf("chat %v %q", err, reply)
+	}
+	if sawPath != "/v1/chat/completions" {
+		t.Fatalf("path %s (must not be /v1/v1/chat/completions)", sawPath)
+	}
+	if sawAuth != "" {
+		t.Fatalf("auth %q", sawAuth)
+	}
+}
+
+func TestOpenAI_GroqStillAppendsV1(t *testing.T) {
+	var sawPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		if r.Header.Get("Authorization") != "Bearer k-groq" {
+			t.Errorf("auth %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
+		})
+	}))
+	defer srv.Close()
+	p := &OpenAI{APIKey: "k-groq", BaseURL: srv.URL, Client: srv.Client(), Label: "groq"}
+	reply, err := p.Chat(t.Context(), []Message{{Role: "user", Content: "hi"}})
+	if err != nil || reply != "ok" {
+		t.Fatalf("groq %v %q", err, reply)
+	}
+	if sawPath != "/v1/chat/completions" {
+		t.Fatalf("path %s", sawPath)
+	}
+	if _, err := (&OpenAI{Label: "groq"}).Chat(t.Context(), []Message{{Role: "user", Content: "hi"}}); err == nil || !strings.Contains(err.Error(), "missing API key") {
+		t.Fatalf("empty groq key: %v", err)
+	}
+}
+
 func TestAnthropic_CacheControlFull(t *testing.T) {
 	var sawCache bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
