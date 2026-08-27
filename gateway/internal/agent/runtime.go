@@ -15,6 +15,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/team"
 )
 
 // BoundTool is a tool advertised to the LLM, namespaced by connector.
@@ -269,6 +270,9 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 	if err != nil {
 		return nil, err
 	}
+	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
+		rt.Store.RecordChatRun(sess.AgentID)
+	}
 	res := &ChatResult{SessionID: sessionID}
 	if out != nil {
 		res.Reply = out.Reply
@@ -284,7 +288,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	if err != nil {
 		return nil, err
 	}
-	out := make([]llm.ToolSpec, 0, len(tools))
+	out := make([]llm.ToolSpec, 0, len(tools)+3)
 	for _, bt := range tools {
 		out = append(out, llm.ToolSpec{
 			Name:        pipeline.AdvertiseName(bt.Connector, bt.Tool.Name),
@@ -293,10 +297,39 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 			InputSchema: bt.Tool.InputSchema,
 		})
 	}
+	mode := team.ResolveMode(a.rt.Store, agentID)
+	out = append(out, team.ToolSpecs(mode)...)
+	if a.rt.Store != nil && agentID != "" {
+		names := make([]string, 0, len(out))
+		for _, t := range out {
+			names = append(names, t.Name)
+		}
+		a.rt.Store.RecordAdvertisedTools(agentID, names)
+	}
 	return out, nil
 }
 
-func (a runtimeTools) Call(ctx context.Context, call llm.ToolCall) (pipeline.CallOutcome, error) {
+func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCall) (pipeline.CallOutcome, error) {
+	if pipeline.IsOrchestrationTool(call.Name) {
+		svc := &team.Service{Store: a.rt.Store, Chat: a.rt.chatText}
+		body, err := svc.Dispatch(ctx, agentID, call)
+		failed := err != nil
+		if a.rt.Store != nil {
+			a.rt.Store.RecordToolUse(agentID, call.Name, failed)
+		}
+		out := pipeline.CallOutcome{Content: body}
+		out.Trace.Tool = call.Name
+		if failed {
+			out.Trace.Status = "error"
+			out.Trace.Error = err.Error()
+			if out.Content == "" {
+				out.Content = err.Error()
+			}
+			return out, err
+		}
+		out.Trace.Status = "ok"
+		return out, nil
+	}
 	conn, tool := pipeline.ResolveCall(call)
 	cr, err := a.rt.CallTool(ctx, conn, tool, call.Arguments)
 	out := pipeline.CallOutcome{}
@@ -319,7 +352,22 @@ func (a runtimeTools) Call(ctx context.Context, call llm.ToolCall) (pipeline.Cal
 		out.Trace = pipeline.ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: err.Error()}
 		out.Content = err.Error()
 	}
+	if a.rt.Store != nil {
+		failed := err != nil || out.Trace.Status == "error" || out.Trace.Status == "connector_unavailable"
+		a.rt.Store.RecordToolUse(agentID, pipeline.AdvertiseName(conn, tool), failed)
+	}
 	return out, err
+}
+
+func (rt *Runtime) chatText(ctx context.Context, sessionID, message string) (string, error) {
+	out, err := rt.Chat(ctx, sessionID, message)
+	if err != nil {
+		return "", err
+	}
+	if out == nil {
+		return "", nil
+	}
+	return out.Reply, nil
 }
 
 func toAgentTraces(in []pipeline.ToolTrace) []Trace {

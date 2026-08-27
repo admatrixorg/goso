@@ -30,6 +30,22 @@ func SplitAdvertised(name string) (connector, tool string, ok bool) {
 	return "", name, false
 }
 
+// IsOrchestrationTool reports spawn / delegate / team_tasks (no connector).
+func IsOrchestrationTool(name string) bool {
+	n := strings.TrimSpace(name)
+	if i := strings.Index(n, "__"); i > 0 {
+		n = n[i+2:]
+	} else if i := strings.Index(n, "."); i > 0 {
+		n = n[i+1:]
+	}
+	switch n {
+	case "spawn", "delegate", "team_tasks":
+		return true
+	default:
+		return false
+	}
+}
+
 // ResolveCall maps a ToolCall to connector + tool names for Runtime.CallTool.
 func ResolveCall(call llm.ToolCall) (connector, tool string) {
 	if c, t, ok := SplitAdvertised(call.Name); ok {

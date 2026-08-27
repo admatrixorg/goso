@@ -6,7 +6,7 @@ import type { GosoClient } from "../client/index.js";
 import { handleToolError } from "../lib/errors.js";
 
 export function registerTeamTools(server: McpServer, client: GosoClient): void {
-  server.tool("goso_team_list", "List all teams in GoClaw", {}, async () => {
+  server.tool("goso_team_list", "List all GOSO agent teams", {}, async () => {
     try {
       const teams = await client.teams.listTeams();
       if (!teams.length) return { content: [{ type: "text", text: "No teams." }] };
