@@ -15,7 +15,7 @@ import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
 
-type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "placeholders" | "theme";
+type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "theme";
 
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t } = useI18n();
@@ -65,7 +65,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       group: t("settings.group.system"),
       items: [
         { id: "billing", label: t("settings.billing"), ic: "flag" },
-        { id: "placeholders", label: t("settings.placeholders"), ic: "layers" },
         { id: "theme", label: t("settings.theme"), ic: "sun" },
       ],
     },
@@ -90,9 +89,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         setDisplayName(a.displayName ?? "");
       } else if (page === "billing") {
         const d = await settingsApi.billing(id);
-        setDeveloping(d.status || "developing");
-      } else if (page === "placeholders") {
-        const d = await settingsApi.placeholders(id);
         setDeveloping(d.status || "developing");
       }
     } catch (e) {
@@ -397,9 +393,9 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
           </>
         )}
 
-        {(page === "billing" || page === "placeholders") && (
+        {page === "billing" && (
           <>
-            <div style={{ fontSize: 21, fontWeight: 700 }}>{page === "billing" ? t("settings.billing") : t("settings.placeholders")}</div>
+            <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.billing")}</div>
             <Card style={{ padding: 18 }}>
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{t("common.developing")}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.6 }}>{t("settings.developingHint")}</div>
