@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Agent, type Connector } from "../api/client";
+import { skillsApi, type SkillInfo } from "../api/skills";
 import { toolsApi, type AgentTool } from "../api/tools";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
@@ -22,6 +23,9 @@ export function FunctionsPage() {
   const [connName, setConnName] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [skillsErr, setSkillsErr] = useState("");
 
   const selected = connectors.find((c) => c.name === connName);
 
@@ -61,8 +65,23 @@ export function FunctionsPage() {
     }
   }
 
+  async function loadSkills() {
+    setSkillsLoading(true);
+    try {
+      const j = await skillsApi.list();
+      setSkills(j.skills ?? []);
+      setSkillsErr("");
+    } catch (e) {
+      setSkills([]);
+      setSkillsErr(formatPublicError(e));
+    } finally {
+      setSkillsLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadAgents();
+    void loadSkills();
   }, []);
 
   useEffect(() => {
@@ -116,6 +135,7 @@ export function FunctionsPage() {
             onClick={() => {
               void loadAgents();
               void loadTools(agentId);
+              void loadSkills();
             }}
           >
             {t("common.refresh")}
@@ -225,6 +245,35 @@ export function FunctionsPage() {
           ) : null}
           {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
         </div>
+      </Card>
+      <Card>
+        <CardHeader icon="doc" title={t("functions.skills")} meta={t("functions.skills.meta", { n: skills.length })} />
+        {skillsErr ? <StatusLine kind="error">{skillsErr}</StatusLine> : null}
+        <div
+          style={{
+            display: "flex",
+            padding: "8px 16px",
+            borderBottom: "1px solid var(--border-soft)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: ".4px",
+            color: "var(--text-3)",
+          }}
+        >
+          <span style={{ flex: 1.4 }}>{t("functions.skills.col.name")}</span>
+          <span style={{ flex: 2 }}>{t("functions.skills.col.path")}</span>
+        </div>
+        {skills.map((s) => (
+          <div
+            key={s.name}
+            style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}
+          >
+            <span style={{ flex: 1.4, fontWeight: 600 }}>{s.name}</span>
+            <span style={{ flex: 2, color: "var(--text-2)" }}>{s.path}</span>
+          </div>
+        ))}
+        {skillsLoading ? <StatusLine kind="loading" /> : null}
+        {!skillsLoading && !skillsErr && skills.length === 0 ? <EmptyState>{t("functions.skills.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

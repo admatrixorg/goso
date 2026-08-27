@@ -148,6 +148,11 @@ export const en: Record<MsgKey, string> = {
   "functions.tokenHint": "Password field — the API never echoes the value. Leave empty to keep the stored token.",
   "functions.saveConnector": "Save connector",
   "functions.emptyConnectors": "No connectors yet.",
+  "functions.skills": "Skills",
+  "functions.skills.meta": "{n} skills",
+  "functions.skills.empty": "No skills. Set GOSO_SKILLS_DIR to a folder of one-level SKILL.md subdirs.",
+  "functions.skills.col.name": "NAME",
+  "functions.skills.col.path": "PATH",
 
   "events.title": "Events",
   "events.desc": "Who changed what on a connector — attempt, success, error, pending_approval. No secrets.",
