@@ -92,6 +92,9 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_LITE | (off) | `1` caps **5 agents** and **1 team** (SPEC 038). 6th `POST /api/agents` and 2nd team → 400. |
 | GOSO_ANTHROPIC_API_KEY / GOSO_OPENAI_API_KEY | (empty) | Native LLM keys. Empty → provider absent; `echo` always remains. |
 | GOSO_OPENROUTER_API_KEY, GOSO_GROQ_API_KEY, GOSO_DEEPSEEK_API_KEY, GOSO_GEMINI_API_KEY, GOSO_MISTRAL_API_KEY, GOSO_XAI_API_KEY, GOSO_MINIMAX_API_KEY, GOSO_DASHSCOPE_API_KEY | (empty) | Named OpenAI-compat providers (SPEC 039). Empty = absent. `GET /api/providers` lists configured names only. |
+| GOSO_ROUTER9_BASE_URL | (unset = absent) | SPEC 044. Set to `http://127.0.0.1:20127/v1` to construct named provider `router9`. Key optional (`GOSO_ROUTER9_API_KEY` may be empty). Model default `cx/gpt-5.6-sol`. |
+| GOSO_LLM_PROVIDER | (unset) | Force Preferred() name (e.g. `router9`) when that provider is constructed. |
+| GOSO_WEB_SEARCH | (off) | `ddg` or `1` enables builtin `web_search` (DuckDuckGo Instant Answer). Empty = fail-closed `not_configured`. |
 | GOSO_TELEGRAM_BOT_TOKEN, GOSO_ZALO_OA_ACCESS_TOKEN, GOSO_ZALO_PERSONAL_TOKEN, GOSO_DISCORD_BOT_TOKEN, GOSO_SLACK_BOT_TOKEN, GOSO_FEISHU_APP_SECRET, GOSO_WHATSAPP_ACCESS_TOKEN | (empty) | Channel tokens (SPEC 040). Empty = still listed on `GET /api/channels` with `configured: false`. Live values = DI-01..07, not in git. WhatsApp adapter is Cloud API shaped (native vs Business = DI-01). |
 | GOSO_WS_ORIGINS | (empty = allow all) | Comma-separated WebSocket Origin allowlist. Empty keeps previous allow-all behaviour. |
 | GOSO_ENV | development | Môi trường |
