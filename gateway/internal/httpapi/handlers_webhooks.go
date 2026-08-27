@@ -21,8 +21,15 @@ func registerWebhookRoutes(mux *http.ServeMux, opt Options) {
 	}
 	st := opt.Store
 	provider := opt.Provider
+	mux.HandleFunc("GET /api/webhooks", handleListWebhooks(reg))
 	mux.HandleFunc("POST /api/webhooks", handleCreateWebhook(reg))
 	mux.HandleFunc("POST /api/webhooks/llm", handleWebhookLLM(reg, st, provider))
+}
+
+func handleListWebhooks(reg *webhook.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"webhooks": reg.List()})
+	}
 }
 
 func handleCreateWebhook(reg *webhook.Registry) http.HandlerFunc {

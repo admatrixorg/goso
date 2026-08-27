@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { webhooksApi, type WebhookCreated } from "../api/webhooks";
+import { useEffect, useState } from "react";
+import { webhooksApi, type WebhookCreated, type WebhookPublic } from "../api/webhooks";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -23,24 +23,47 @@ function asCreated(j: WebhookCreated): LastCreate {
   };
 }
 
+function asPublic(rows: WebhookPublic[] | undefined): WebhookPublic[] {
+  return (rows ?? [])
+    .map((w) => ({
+      id: typeof w?.id === "string" ? w.id : "",
+      token_prefix: typeof w?.token_prefix === "string" ? w.token_prefix : "",
+    }))
+    .filter((w) => w.id);
+}
+
 export function WebhooksPage() {
   const { t } = useI18n();
+  const [rows, setRows] = useState<WebhookPublic[]>([]);
   const [last, setLast] = useState<LastCreate | null>(null);
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState("");
 
-  async function create() {
-    setLoading(true);
+  async function load() {
     try {
-      const created = asCreated(await webhooksApi.create());
-      setLast(created);
-      setCopied("");
+      const j = await webhooksApi.list();
+      setRows(asPublic(j.webhooks));
       setErr("");
     } catch (e) {
       setErr(formatPublicError(e));
     } finally {
       setLoading(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function create() {
+    try {
+      const created = asCreated(await webhooksApi.create());
+      setLast(created);
+      setCopied("");
+      setErr("");
+      await load();
+    } catch (e) {
+      setErr(formatPublicError(e));
     }
   }
 
@@ -68,16 +91,37 @@ export function WebhooksPage() {
         title={t("webhooks.title")}
         description={t("webhooks.desc")}
         actions={
-          <Button variant="primary" icon="plus" onClick={() => void create()}>
-            {t("webhooks.create")}
-          </Button>
+          <>
+            <Button icon="refresh" iconGesture onClick={() => void load()}>
+              {t("common.refresh")}
+            </Button>
+            <Button variant="primary" icon="plus" onClick={() => void create()}>
+              {t("webhooks.create")}
+            </Button>
+          </>
         }
       />
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noList")}</p>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noSecrets")}</p>
+      <Card>
+        <CardHeader icon="hook" title={t("webhooks.list")} meta={t("webhooks.meta", { n: rows.length })} />
+        <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
+          <span style={{ flex: 2 }}>{t("webhooks.col.id")}</span>
+          <span style={{ flex: 1 }}>{t("webhooks.col.prefix")}</span>
+        </div>
+        {rows.map((w) => (
+          <div key={w.id} style={{ display: "flex", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
+            <code style={{ flex: 2, fontSize: 12 }}>{w.id}</code>
+            <code style={{ flex: 1, fontSize: 12 }}>{w.token_prefix}</code>
+          </div>
+        ))}
+        {loading ? <StatusLine kind="loading" /> : rows.length === 0 ? <EmptyState>{t("webhooks.empty")}</EmptyState> : null}
+      </Card>
       <Card>
         <CardHeader icon="lock" title={t("webhooks.last")} />
-        {loading ? <StatusLine kind="loading" /> : !last ? <EmptyState>{t("webhooks.empty")}</EmptyState> : (
+        {!last ? (
+          <EmptyState>{t("webhooks.lastEmpty")}</EmptyState>
+        ) : (
           <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10, fontSize: 12.5 }}>
             <p style={{ margin: 0, color: "var(--text-3)" }}>{t("webhooks.secretOnce")}</p>
             {copied ? <p style={{ margin: 0, color: "var(--green)" }}>{copied}</p> : null}

@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- `GET /api/webhooks` list `{webhooks:[{id, token_prefix}]}` (SPEC 047); never token/hmac. Control-plane Webhooks tab loads the registry (StatusLine loading/empty/error); last-created secret still once then redacted.
 - router9 catalog default `ocg/deepseek-v4-flash` (SPEC 045); `GOSO_ROUTER9_MODEL` still overrides including `cx/*`. SQLite IDs use a random hex suffix so gateway restart no longer collides on `YYYYMMDD-1`.
 - Named provider `router9` + Functions page (SPEC 044): construct when `GOSO_ROUTER9_BASE_URL` is set (API key optional empty); OpenAI-compat URL join avoids `/v1/v1`; timeout ≥120s; trailing `data: [DONE]` tolerated. Builtin tools `web_search`/`sandbox`/`browser`/`media` default OFF fail-closed (DDG Instant Answer only when `GOSO_WEB_SEARCH=ddg|1`; no process spawn). HTTP `GET /api/agents/{id}/tools`, `PATCH /api/agents/{id}/tools/{name}`, `PATCH /api/connectors/{name}` (token never returned; `token_set` boolean). Control-plane Functions tab (vi+en). Do not treat live `cx/gpt-5.6-sol` 401 as a product success.
 - Nested in-memory spans + optional OTLP (SPEC 042): chat run records `agent` parent with `llm`/`tool` children; `GET /api/traces` returns `{traces, spans}`; `cache_read_tokens` defaults to 0 (Anthropic `cache_read_input_tokens` parsed when present). `GOSO_OTEL_ENDPOINT` empty → noop exporter; set → thin HTTP JSON export. Fake exporter in tests. No Grafana Cloud keys (DI-18). JSON access log and `/metrics` unchanged.
