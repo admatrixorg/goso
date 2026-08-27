@@ -5,11 +5,13 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function ProvidersPage() {
   const { t } = useI18n();
   const [names, setNames] = useState<string[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
@@ -17,7 +19,9 @@ export function ProvidersPage() {
       setNames((j.providers ?? []).filter((n) => typeof n === "string"));
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -36,7 +40,7 @@ export function ProvidersPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("providers.noSecrets")}</p>
       <Card>
         <CardHeader icon="bolt" title={t("providers.list")} meta={t("providers.meta", { n: names.length })} />
@@ -48,7 +52,7 @@ export function ProvidersPage() {
             <span style={{ flex: 1, fontWeight: 600 }}>{n}</span>
           </div>
         ))}
-        {names.length === 0 ? <EmptyState>{t("providers.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : names.length === 0 ? <EmptyState>{t("providers.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

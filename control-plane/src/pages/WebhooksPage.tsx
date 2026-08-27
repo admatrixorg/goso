@@ -5,6 +5,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type LastCreate = {
   id: string;
@@ -26,16 +27,20 @@ export function WebhooksPage() {
   const { t } = useI18n();
   const [last, setLast] = useState<LastCreate | null>(null);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState("");
 
   async function create() {
+    setLoading(true);
     try {
       const created = asCreated(await webhooksApi.create());
       setLast(created);
       setCopied("");
       setErr("");
     } catch (e) {
-      setErr(String(e).replace(/wh_[A-Za-z0-9]+/g, "wh_[redacted]"));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -52,7 +57,7 @@ export function WebhooksPage() {
       });
       setCopied(t("webhooks.copied"));
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -68,11 +73,11 @@ export function WebhooksPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noList")}</p>
       <Card>
         <CardHeader icon="lock" title={t("webhooks.last")} />
-        {!last ? <EmptyState>{t("webhooks.empty")}</EmptyState> : (
+        {loading ? <StatusLine kind="loading" /> : !last ? <EmptyState>{t("webhooks.empty")}</EmptyState> : (
           <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10, fontSize: 12.5 }}>
             <p style={{ margin: 0, color: "var(--text-3)" }}>{t("webhooks.secretOnce")}</p>
             {copied ? <p style={{ margin: 0, color: "var(--green)" }}>{copied}</p> : null}

@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 function healthTone(h?: string): "positive" | "warning" | "critical" | "neutral" {
   const s = (h || "").toLowerCase();
@@ -20,6 +21,7 @@ export function ConnectorsPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("zalocrm");
   const [transport, setTransport] = useState("http");
   const [endpoint, setEndpoint] = useState("http://127.0.0.1:8089");
@@ -33,7 +35,9 @@ export function ConnectorsPage() {
       setAgents(a.agents ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -51,7 +55,7 @@ export function ConnectorsPage() {
       });
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -61,7 +65,7 @@ export function ConnectorsPage() {
       await api.linkAgentConnector(agentId, linkName);
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -82,7 +86,7 @@ export function ConnectorsPage() {
           </>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card style={{ padding: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input className="z-field" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
         <select className="z-field" value={transport} onChange={(e) => setTransport(e.target.value)}>
@@ -120,7 +124,7 @@ export function ConnectorsPage() {
             </span>
           </div>
         ))}
-        {connectors.length === 0 ? <EmptyState>{t("connectors.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("connectors.empty")}</EmptyState> : null}
       </Card>
       <Card>
         <CardHeader icon="user-check" title={t("connectors.assign")} />

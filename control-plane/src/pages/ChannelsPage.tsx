@@ -6,11 +6,13 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function ChannelsPage() {
   const { t } = useI18n();
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
@@ -22,7 +24,9 @@ export function ChannelsPage() {
       setRows(list.filter((c) => c.name));
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -41,7 +45,7 @@ export function ChannelsPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
         <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: rows.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
@@ -56,7 +60,7 @@ export function ChannelsPage() {
             </span>
           </div>
         ))}
-        {rows.length === 0 ? <EmptyState>{t("channels.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : rows.length === 0 ? <EmptyState>{t("channels.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

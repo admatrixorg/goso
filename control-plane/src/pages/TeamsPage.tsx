@@ -15,6 +15,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 const COLS = ["todo", "doing", "done"] as const;
 
@@ -35,6 +36,7 @@ export function TeamsPage() {
   const [links, setLinks] = useState<AgentLink[]>([]);
   const [suggestions, setSuggestions] = useState<EvolutionSuggestion[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const [name, setName] = useState("");
   const [lead, setLead] = useState("");
@@ -54,7 +56,9 @@ export function TeamsPage() {
       setAgents(a.agents ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -83,7 +87,7 @@ export function TeamsPage() {
       }
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -103,7 +107,7 @@ export function TeamsPage() {
       await loadTeams();
       setSelected(tm.id);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -114,7 +118,7 @@ export function TeamsPage() {
       setMemberId("");
       await loadDetail(selected);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -125,7 +129,7 @@ export function TeamsPage() {
       setTaskTitle("");
       await loadDetail(selected);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -136,7 +140,7 @@ export function TeamsPage() {
       await teamsApi.updateTask(selected, task.id, { status: next, title: task.title });
       await loadDetail(selected);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -147,7 +151,7 @@ export function TeamsPage() {
       setMsgBody("");
       await loadDetail(selected);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -158,7 +162,7 @@ export function TeamsPage() {
       setToAgent("");
       await loadDetail(selected, linkAgent.trim());
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -168,7 +172,7 @@ export function TeamsPage() {
       await teamsApi.applyEvolution(linkAgent.trim(), sid);
       await loadDetail(selected, linkAgent.trim());
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -195,7 +199,7 @@ export function TeamsPage() {
           </>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="z-field" placeholder={t("teams.name")} value={name} onChange={(e) => setName(e.target.value)} />
         <select className="z-field" value={lead} onChange={(e) => setLead(e.target.value)} aria-label={t("teams.lead")}>
@@ -233,7 +237,7 @@ export function TeamsPage() {
               </button>
             );
           })}
-          {teams.length === 0 ? <EmptyState>{t("teams.empty")}</EmptyState> : null}
+          {loading ? <StatusLine kind="loading" /> : teams.length === 0 ? <EmptyState>{t("teams.empty")}</EmptyState> : null}
         </Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           {!selected ? <EmptyState>{t("teams.pick")}</EmptyState> : null}

@@ -7,6 +7,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function FunctionsPage() {
   const { t } = useI18n();
@@ -15,6 +16,8 @@ export function FunctionsPage() {
   const [agentId, setAgentId] = useState("");
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [toolsLoading, setToolsLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [connName, setConnName] = useState("");
   const [endpoint, setEndpoint] = useState("");
@@ -29,7 +32,9 @@ export function FunctionsPage() {
       setConnectors(c.connectors ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -37,18 +42,22 @@ export function FunctionsPage() {
     if (!id) {
       setTools([]);
       setNotFound(false);
+      setToolsLoading(false);
       return;
     }
+    setToolsLoading(true);
     try {
       const j = await toolsApi.list(id);
       setTools(j.tools ?? []);
       setNotFound(false);
       setErr("");
     } catch (e) {
-      const msg = String(e);
+      const msg = formatPublicError(e);
       setTools([]);
-      setNotFound(msg.startsWith("404"));
+      setNotFound(msg.includes("404"));
       setErr(msg);
+    } finally {
+      setToolsLoading(false);
     }
   }
 
@@ -77,7 +86,7 @@ export function FunctionsPage() {
       await loadTools(agentId);
       await loadAgents();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -90,7 +99,7 @@ export function FunctionsPage() {
       setToken("");
       await loadAgents();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -113,7 +122,7 @@ export function FunctionsPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card style={{ padding: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <select className="z-field" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
           <option value="">{t("functions.pickAgent")}</option>
@@ -161,9 +170,10 @@ export function FunctionsPage() {
             </span>
           </div>
         ))}
-        {!agentId ? <EmptyState>{t("functions.emptyAgent")}</EmptyState> : null}
-        {agentId && notFound ? <EmptyState>{t("functions.notFound")}</EmptyState> : null}
-        {agentId && !notFound && tools.length === 0 ? <EmptyState>{t("functions.empty")}</EmptyState> : null}
+        {loading || toolsLoading ? <StatusLine kind="loading" /> : null}
+        {!loading && !toolsLoading && !agentId ? <EmptyState>{t("functions.emptyAgent")}</EmptyState> : null}
+        {!loading && !toolsLoading && agentId && notFound ? <EmptyState>{t("functions.notFound")}</EmptyState> : null}
+        {!loading && !toolsLoading && agentId && !notFound && tools.length === 0 ? <EmptyState>{t("functions.empty")}</EmptyState> : null}
       </Card>
       <Card>
         <CardHeader icon="hook" title={t("functions.connectors")} />
@@ -213,7 +223,7 @@ export function FunctionsPage() {
               </div>
             </>
           ) : null}
-          {connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
+          {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
         </div>
       </Card>
     </div>

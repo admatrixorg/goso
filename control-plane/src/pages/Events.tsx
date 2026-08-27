@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 function kindTone(k: string): "positive" | "warning" | "critical" | "neutral" | "accent" {
   if (k.includes("error") || k.includes("fail")) return "critical";
@@ -21,6 +22,7 @@ export function EventsPage() {
   const [kind, setKind] = useState("");
   const [connector, setConnector] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
@@ -32,7 +34,9 @@ export function EventsPage() {
       setEvents(j.events ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -51,7 +55,7 @@ export function EventsPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="z-field" placeholder="kind" value={kind} onChange={(e) => setKind(e.target.value)} />
         <input className="z-field" placeholder="connector" value={connector} onChange={(e) => setConnector(e.target.value)} />
@@ -76,7 +80,7 @@ export function EventsPage() {
             <span style={{ flex: 2.2, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.summary}</span>
           </div>
         ))}
-        {events.length === 0 ? <EmptyState>{t("events.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : events.length === 0 ? <EmptyState>{t("events.empty")}</EmptyState> : null}
       </Card>
     </div>
   );
