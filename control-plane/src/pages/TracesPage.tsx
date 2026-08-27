@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 function childrenOf(spans: TraceSpan[], parentId: string): TraceSpan[] {
   return spans.filter((s) => (s.parent_id || "") === parentId);
@@ -61,6 +62,7 @@ export function TracesPage() {
   const [traces, setTraces] = useState<LlmTrace[]>([]);
   const [spans, setSpans] = useState<SpanTree[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
@@ -69,7 +71,9 @@ export function TracesPage() {
       setSpans(j.spans ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -88,7 +92,7 @@ export function TracesPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
         <CardHeader icon="history" title={t("traces.list")} meta={t("traces.meta", { n: traces.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
@@ -107,14 +111,14 @@ export function TracesPage() {
             <span style={{ flex: 2, color: "var(--red)" }}>{tr.error || ""}</span>
           </div>
         ))}
-        {traces.length === 0 ? <EmptyState>{t("traces.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : traces.length === 0 ? <EmptyState>{t("traces.empty")}</EmptyState> : null}
       </Card>
       <Card>
         <CardHeader icon="layers" title={t("traces.spans")} meta={String(spans.length)} />
         {spans.map((tree, i) => (
           <SpanTreeCard key={tree.trace_id || i} tree={tree} i={i} />
         ))}
-        {spans.length === 0 ? <EmptyState>{t("traces.emptySpans")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : spans.length === 0 ? <EmptyState>{t("traces.emptySpans")}</EmptyState> : null}
       </Card>
     </div>
   );

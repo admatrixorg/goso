@@ -5,6 +5,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function VaultPage() {
   const { t } = useI18n();
@@ -15,6 +16,7 @@ export function VaultPage() {
   const [hits, setHits] = useState<VaultSearchHit[] | null>(null);
   const [sync, setSync] = useState<VaultSyncResult | null>(null);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -25,7 +27,9 @@ export function VaultPage() {
       setDocs(j.docs ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -39,7 +43,7 @@ export function VaultPage() {
       setBody(d.body ?? "");
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -57,7 +61,7 @@ export function VaultPage() {
       setHits(await vaultApi.search(query));
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -69,7 +73,7 @@ export function VaultPage() {
       await load();
       await openDoc(d.id);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -79,7 +83,7 @@ export function VaultPage() {
       await load();
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -103,7 +107,7 @@ export function VaultPage() {
           </>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       {sync ? (
         <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-2)" }}>
           {t("vault.syncResult", { upserted: sync.upserted, skipped: sync.skipped, deleted: sync.deleted })}
@@ -158,7 +162,7 @@ export function VaultPage() {
               <span style={{ flex: 2, color: "var(--text-3)" }}>{d.path}</span>
             </div>
           ))}
-          {docs.length === 0 ? <EmptyState>{t("vault.empty")}</EmptyState> : null}
+          {loading ? <StatusLine kind="loading" /> : docs.length === 0 ? <EmptyState>{t("vault.empty")}</EmptyState> : null}
         </Card>
         <Card>
           <CardHeader icon="hook" title={t("vault.links")} meta={selected?.title} />

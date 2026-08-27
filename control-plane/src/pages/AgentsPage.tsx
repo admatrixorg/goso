@@ -5,11 +5,13 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function AgentsPage() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
 
@@ -19,7 +21,9 @@ export function AgentsPage() {
       setAgents(j.agents ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -34,7 +38,7 @@ export function AgentsPage() {
       setName("");
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -55,7 +59,7 @@ export function AgentsPage() {
           </>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="z-field" placeholder="agent_key" value={key} onChange={(e) => setKey(e.target.value)} />
         <input className="z-field" placeholder="display_name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -79,7 +83,7 @@ export function AgentsPage() {
             <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.model || "—"}</span>
           </div>
         ))}
-        {agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

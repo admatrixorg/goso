@@ -5,11 +5,13 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void; compact?: boolean }) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
@@ -17,7 +19,9 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
       setSessions(j.sessions ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -33,29 +37,32 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
             {t("common.refresh")}
           </Button>
         </div>
-        {err ? <p style={{ color: "var(--red)", fontSize: 12, margin: 0 }}>{err}</p> : null}
-        {sessions.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onPick(s.id)}
-            style={{
-              display: "block",
-              textAlign: "left",
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 11,
-              padding: "10px 12px",
-              transition: "background var(--dur-hover) var(--ease-standard)",
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {s.label || s.id}
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
-          </button>
-        ))}
-        {sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
+        {err ? <StatusLine kind="error">{err}</StatusLine> : null}
+        {loading ? <StatusLine kind="loading" /> : null}
+        {!loading
+          ? sessions.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onPick(s.id)}
+                style={{
+                  display: "block",
+                  textAlign: "left",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                  transition: "background var(--dur-hover) var(--ease-standard)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.label || s.id}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
+              </button>
+            ))
+          : null}
+        {!loading && sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
       </div>
     );
   }
@@ -72,7 +79,7 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
         <CardHeader icon="msg" title={t("sessions.open")} meta={t("sessions.meta", { n: sessions.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
@@ -98,7 +105,7 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
             <span style={{ flex: 1.2, textAlign: "right", color: "var(--accent)", fontWeight: 600, fontSize: 12 }}>{t("sessions.openChat")}</span>
           </div>
         ))}
-        {sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
+        {loading ? <StatusLine kind="loading" /> : sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

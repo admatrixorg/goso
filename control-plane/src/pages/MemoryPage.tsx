@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function MemoryPage() {
   const { t } = useI18n();
@@ -14,6 +15,8 @@ export function MemoryPage() {
   const [notes, setNotes] = useState<MemoryNote[]>([]);
   const [hits, setHits] = useState<MemoryHit[] | null>(null);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [q, setQ] = useState("");
   const [body, setBody] = useState("");
 
@@ -23,21 +26,27 @@ export function MemoryPage() {
       setSessions(j.sessions ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setLoading(false);
     }
   }
 
   async function loadNotes(sid: string) {
     if (!sid) {
       setNotes([]);
+      setNotesLoading(false);
       return;
     }
+    setNotesLoading(true);
     try {
       const j = await memoryApi.list(sid);
       setNotes(j.memories ?? []);
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
+    } finally {
+      setNotesLoading(false);
     }
   }
 
@@ -56,7 +65,7 @@ export function MemoryPage() {
       setBody("");
       await loadNotes(sessionId);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -70,7 +79,7 @@ export function MemoryPage() {
       setHits(await memoryApi.search(query));
       setErr("");
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -86,7 +95,7 @@ export function MemoryPage() {
           </Button>
         }
       />
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <select className="z-field" value={sessionId} onChange={(e) => setSessionId(e.target.value)} aria-label={t("memory.session")}>
           <option value="">{t("memory.pickSession")}</option>
@@ -137,7 +146,7 @@ export function MemoryPage() {
             <span style={{ flex: 4, color: "var(--text-2)" }}>{n.body}</span>
           </div>
         ))}
-        {notes.length === 0 ? <EmptyState>{t("memory.empty")}</EmptyState> : null}
+        {loading || notesLoading ? <StatusLine kind="loading" /> : notes.length === 0 ? <EmptyState>{t("memory.empty")}</EmptyState> : null}
       </Card>
     </div>
   );
