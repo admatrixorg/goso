@@ -113,6 +113,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("POST /api/agents", handleCreateAgent(st))
 	mux.HandleFunc("GET /api/agents", handleListAgents(st))
 	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
+	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
@@ -199,6 +200,60 @@ func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 		a, err := st.GetAgent(id)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	}
+}
+
+func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		cur, err := st.GetAgent(id)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		var body struct {
+			OrchestrationMode *string `json:"orchestration_mode"`
+			Model             *string `json:"model"`
+			Instructions      *string `json:"instructions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		upd := store.Agent{
+			ID:                cur.ID,
+			Instructions:      cur.Instructions,
+			OrchestrationMode: cur.OrchestrationMode,
+			Model:             cur.Model,
+		}
+		if body.OrchestrationMode != nil {
+			mode, err := parseOrchMode(*body.OrchestrationMode)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if mode == "" {
+				writeErr(w, http.StatusBadRequest, `unknown orchestration_mode ""`)
+				return
+			}
+			upd.OrchestrationMode = mode
+		}
+		if body.Model != nil {
+			upd.Model = *body.Model
+		}
+		if body.Instructions != nil {
+			upd.Instructions = *body.Instructions
+		}
+		a, err := st.UpdateAgent(upd)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, a)

@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- `PATCH /api/agents/{id}` `{orchestration_mode?: auto|explicit|manual, model?, instructions?}` (SPEC 048). Invalid mode 400; missing agent 404. Agents page mode select PATCHes on change; Teams page shows each member's mode (select when the agent list includes the field). i18n vi+en. StatusLine loading/error.
 - `GET /api/webhooks` list `{webhooks:[{id, token_prefix}]}` (SPEC 047); never token/hmac. Control-plane Webhooks tab loads the registry (StatusLine loading/empty/error); last-created secret still once then redacted.
 - router9 catalog default `ocg/deepseek-v4-flash` (SPEC 045); `GOSO_ROUTER9_MODEL` still overrides including `cx/*`. SQLite IDs use a random hex suffix so gateway restart no longer collides on `YYYYMMDD-1`.
 - Named provider `router9` + Functions page (SPEC 044): construct when `GOSO_ROUTER9_BASE_URL` is set (API key optional empty); OpenAI-compat URL join avoids `/v1/v1`; timeout ≥120s; trailing `data: [DONE]` tolerated. Builtin tools `web_search`/`sandbox`/`browser`/`media` default OFF fail-closed (DDG Instant Answer only when `GOSO_WEB_SEARCH=ddg|1`; no process spawn). HTTP `GET /api/agents/{id}/tools`, `PATCH /api/agents/{id}/tools/{name}`, `PATCH /api/connectors/{name}` (token never returned; `token_set` boolean). Control-plane Functions tab (vi+en). Do not treat live `cx/gpt-5.6-sol` 401 as a product success.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Agent } from "../api/client";
+import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import {
   teamsApi,
   type EvolutionSuggestion,
@@ -9,7 +9,7 @@ import {
   type TeamMessage,
   type TeamTask,
 } from "../api/teams";
-import { useI18n } from "../i18n";
+import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -23,6 +23,13 @@ function nextStatus(s: string): string | null {
   if (s === "todo") return "doing";
   if (s === "doing") return "done";
   return null;
+}
+
+function modeLabelKey(mode: string): MsgKey {
+  if (mode === "auto") return "agents.mode.auto";
+  if (mode === "explicit") return "agents.mode.explicit";
+  if (mode === "manual") return "agents.mode.manual";
+  return "agents.mode.unset";
 }
 
 export function TeamsPage() {
@@ -176,6 +183,16 @@ export function TeamsPage() {
     }
   }
 
+  async function patchMemberMode(agentId: string, mode: string) {
+    if (!ORCHESTRATION_MODES.includes(mode as (typeof ORCHESTRATION_MODES)[number])) return;
+    try {
+      await api.updateAgent(agentId, { orchestration_mode: mode });
+      await loadTeams();
+    } catch (e) {
+      setErr(formatPublicError(e));
+    }
+  }
+
   const colLabel: Record<(typeof COLS)[number], string> = {
     todo: t("teams.todo"),
     doing: t("teams.doing"),
@@ -259,12 +276,33 @@ export function TeamsPage() {
                     {t("teams.addMember")}
                   </Button>
                 </div>
-                {members.map((m) => (
-                  <div key={m.agent_id} style={{ display: "flex", padding: "10px 16px", fontSize: 12.5, borderTop: "1px solid var(--border-soft)" }}>
-                    <span style={{ flex: 2, fontWeight: 600 }}>{m.agent_id}</span>
-                    <span style={{ flex: 1, color: "var(--text-2)" }}>{m.role}</span>
-                  </div>
-                ))}
+                {members.map((m) => {
+                  const ag = agents.find((x) => x.id === m.agent_id);
+                  const mode = ag?.orchestration_mode || "";
+                  return (
+                    <div key={m.agent_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", fontSize: 12.5, borderTop: "1px solid var(--border-soft)" }}>
+                      <span style={{ flex: 2, fontWeight: 600 }}>{m.agent_id}</span>
+                      <span style={{ flex: 1, color: "var(--text-2)" }}>{m.role}</span>
+                      {ag ? (
+                        <select
+                          className="z-field"
+                          aria-label={t("teams.col.mode")}
+                          value={mode}
+                          onChange={(e) => void patchMemberMode(m.agent_id, e.target.value)}
+                        >
+                          {mode ? null : <option value="">{t("agents.mode.unset")}</option>}
+                          {ORCHESTRATION_MODES.map((x) => (
+                            <option key={x} value={x}>
+                              {t(modeLabelKey(x))}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span style={{ color: "var(--text-3)" }}>{t(modeLabelKey(mode))}</span>
+                      )}
+                    </div>
+                  );
+                })}
                 {members.length === 0 ? <EmptyState>{t("teams.emptyMembers")}</EmptyState> : null}
               </Card>
               <Card>
