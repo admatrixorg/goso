@@ -73,6 +73,7 @@ Environment:
   GOSO_ROUTER9_BASE_URL    Construct named provider router9 when set (key optional)
   GOSO_LLM_PROVIDER        Force Preferred() name when that provider exists
   GOSO_WEB_SEARCH          ddg or 1 = DuckDuckGo Instant Answer for builtin web_search
+  GOSO_SKILLS_DIR          One-level SKILL.md folders for builtin use_skill; empty = fail-closed
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)

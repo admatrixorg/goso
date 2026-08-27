@@ -132,6 +132,8 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /api/vault/docs", handleListVaultDocs(st))
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
 
+	mux.HandleFunc("GET /api/skills", handleListSkills())
+
 	registerTeamRoutes(mux, st)
 
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.

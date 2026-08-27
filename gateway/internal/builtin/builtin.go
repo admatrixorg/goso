@@ -5,6 +5,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/skill"
 )
 
 // ConnectorName is the synthetic connector id for built-in tools.
@@ -24,6 +26,7 @@ const (
 	ToolSandbox   = "sandbox"
 	ToolBrowser   = "browser"
 	ToolMedia     = "media"
+	ToolUseSkill  = "use_skill"
 )
 
 // InstantAnswerBase is the DuckDuckGo Instant Answer endpoint.
@@ -66,6 +69,12 @@ var catalog = []Spec{
 		RequiresApproval: true,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{}}`),
 	},
+	{
+		Name:             ToolUseSkill,
+		Description:      "Read a local SKILL.md by folder name. Fail-closed unless GOSO_SKILLS_DIR is set. Never executes skill scripts.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
+	},
 }
 
 // Catalog returns the builtin tool list (always advertised).
@@ -78,7 +87,7 @@ func Catalog() []Spec {
 // IsName reports whether name is a builtin tool.
 func IsName(name string) bool {
 	switch strings.TrimSpace(name) {
-	case ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia:
+	case ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill:
 		return true
 	}
 	return false
@@ -126,10 +135,64 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 			return notConfigured(name), nil
 		}
 		return webSearch(ctx, args)
+	case ToolUseSkill:
+		return useSkill(args)
 	default:
 		// sandbox, browser, media: persist UI flags but never exec/docker/chrome/ffmpeg.
 		return notConfigured(name), nil
 	}
+}
+
+func skillNameArg(args map[string]any) string {
+	if args == nil {
+		return ""
+	}
+	for _, k := range []string{"name", "skill"} {
+		if v, ok := args[k]; ok {
+			if s, ok := v.(string); ok {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
+func useSkill(args map[string]any) (*connector.InvokeResult, error) {
+	if !skill.Configured() {
+		return notConfigured(ToolUseSkill), nil
+	}
+	n := skillNameArg(args)
+	doc, err := skill.Load(n)
+	if err != nil {
+		status := "error"
+		msg := "read failed"
+		if errors.Is(err, skill.ErrNotConfigured) {
+			return notConfigured(ToolUseSkill), nil
+		}
+		if errors.Is(err, skill.ErrNotFound) {
+			status = "not_found"
+			msg = "not_found"
+		}
+		if errors.Is(err, skill.ErrPathEscape) {
+			msg = "path escape"
+		}
+		return &connector.InvokeResult{
+			Tool:      ToolUseSkill,
+			Connector: ConnectorName,
+			Status:    status,
+			Content:   map[string]any{"error": msg},
+		}, nil
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolUseSkill,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content: map[string]any{
+			"name": doc.Name,
+			"path": doc.Path,
+			"body": doc.Body,
+		},
+	}, nil
 }
 
 func queryArg(args map[string]any) string {

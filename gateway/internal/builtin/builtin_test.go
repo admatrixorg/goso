@@ -7,15 +7,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestCatalog_FourTools(t *testing.T) {
+func TestCatalog_FiveTools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 4 {
+	if len(got) != 5 {
 		t.Fatalf("len %d", len(got))
 	}
-	if !IsName("web_search") || !IsName("sandbox") || !IsName("browser") || !IsName("media") {
+	if !IsName("web_search") || !IsName("sandbox") || !IsName("browser") || !IsName("media") || !IsName("use_skill") {
 		t.Fatal("names")
 	}
 	if Catalog()[0].RequiresApproval {
@@ -23,6 +25,9 @@ func TestCatalog_FourTools(t *testing.T) {
 	}
 	if !Catalog()[1].RequiresApproval || !Catalog()[2].RequiresApproval || !Catalog()[3].RequiresApproval {
 		t.Fatal("sandbox/browser/media require approval")
+	}
+	if Catalog()[4].Name != ToolUseSkill || Catalog()[4].RequiresApproval {
+		t.Fatal("use_skill must not require approval")
 	}
 }
 
@@ -38,7 +43,8 @@ func TestInvoke_UnconfiguredNoNetwork(t *testing.T) {
 	InstantAnswerBase = srv.URL
 	defer func() { InstantAnswerBase = prev }()
 
-	for _, name := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia} {
+	t.Setenv("GOSO_SKILLS_DIR", "")
+	for _, name := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill} {
 		res, err := Invoke(context.Background(), name, map[string]any{"q": "goso"}, false)
 		if err != nil {
 			t.Fatalf("%s err %v", name, err)
@@ -115,6 +121,45 @@ func TestInvoke_SandboxNeverSpawns(t *testing.T) {
 	t.Setenv("GOSO_WEB_SEARCH", "ddg")
 	res, err := Invoke(context.Background(), ToolSandbox, map[string]any{"cmd": "true"}, true)
 	if err != nil || res.Status != "not_configured" {
+		t.Fatalf("%v %+v", err, res)
+	}
+}
+
+func TestInvoke_UseSkillTempDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "demo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "demo", "SKILL.md"), []byte("# hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	res, err := Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "demo"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil || res.Status != "ok" {
+		t.Fatalf("%+v", res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["body"] != "# hi" || m["name"] != "demo" {
+		t.Fatalf("content %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "../demo"}, false)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("escape %v %+v", err, res)
+	}
+	res, err = Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "missing"}, false)
+	if err != nil || res.Status != "not_found" {
+		t.Fatalf("missing %v %+v", err, res)
+	}
+}
+
+func TestInvoke_UseSkillEmptyEnv(t *testing.T) {
+	t.Setenv("GOSO_SKILLS_DIR", "")
+	res, err := Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "demo"}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
 		t.Fatalf("%v %+v", err, res)
 	}
 }

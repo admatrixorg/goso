@@ -52,7 +52,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	var sawSearch, sawSandbox bool
+	var sawSearch, sawSandbox, sawSkill bool
 	for _, tl := range listed.Tools {
 		if tl.Name == "web_search" {
 			sawSearch = true
@@ -66,8 +66,14 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 				t.Fatalf("sandbox %+v", tl)
 			}
 		}
+		if tl.Name == "use_skill" {
+			sawSkill = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
+				t.Fatalf("use_skill %+v", tl)
+			}
+		}
 	}
-	if !sawSearch || !sawSandbox {
+	if !sawSearch || !sawSandbox || !sawSkill {
 		t.Fatalf("builtins missing %s", w.Body.String())
 	}
 
