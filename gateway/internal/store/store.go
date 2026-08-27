@@ -5,6 +5,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,6 +34,29 @@ type Message struct {
 	Role      string    `json:"role"` // user | assistant | tool
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// Memory kinds for L1 episodic notes and FTS-backed message hits.
+const (
+	KindEpisodic = "episodic"
+	KindMessage  = "message"
+)
+
+// Memory is an L1 episodic (or caller-supplied) note.
+type Memory struct {
+	ID        string    `json:"id"`
+	SessionID string    `json:"session_id"`
+	Kind      string    `json:"kind"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// SearchHit is one FTS5 / substring match.
+type SearchHit struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	Kind      string `json:"kind"`
+	Snippet   string `json:"snippet"`
 }
 
 // ConnectorRecord is a persisted connector registration (config only, no secrets).
@@ -66,6 +90,11 @@ type StoreIface interface {
 	SetConnectorEnabled(name string, enabled bool) error
 	LinkAgentConnector(agentID, connectorName string) error
 	ListAgentConnectors(agentID string) ([]string, error)
+	PutMemory(Memory) (*Memory, error)
+	ListMemories(string) ([]*Memory, error)
+	SaveSummary(sessionID, body string) (*Memory, error)
+	LatestSummary(sessionID string) (*Memory, error)
+	SearchMemory(q string) ([]SearchHit, error)
 }
 
 var (
@@ -79,6 +108,7 @@ type Store struct {
 	agents     map[string]*Agent
 	sessions   map[string]*Session
 	messages   map[string][]*Message // session_id -> messages
+	memories   map[string][]*Memory  // session_id -> memories
 	connectors map[string]*ConnectorRecord
 	agentConns map[string]map[string]struct{} // agent_id -> connector names
 	seq        int64
@@ -101,6 +131,7 @@ func New() *Store {
 		agents:     make(map[string]*Agent),
 		sessions:   make(map[string]*Session),
 		messages:   make(map[string][]*Message),
+		memories:   make(map[string][]*Memory),
 		connectors: make(map[string]*ConnectorRecord),
 		agentConns: make(map[string]map[string]struct{}),
 	}
@@ -109,6 +140,54 @@ func New() *Store {
 func (s *Store) nextID() string {
 	s.seq++
 	return time.Now().UTC().Format("20060102") + "-" + itoa(s.seq)
+}
+
+// SnippetAround returns a window of runes around the first case-insensitive match of q.
+func SnippetAround(body, q string, window int) string {
+	if window <= 0 {
+		window = 80
+	}
+	br := []rune(body)
+	if len(br) == 0 {
+		return ""
+	}
+	qr := []rune(strings.ToLower(q))
+	bl := []rune(strings.ToLower(body))
+	idx := -1
+	if len(qr) > 0 && len(qr) <= len(bl) {
+		for i := 0; i+len(qr) <= len(bl); i++ {
+			match := true
+			for j := range qr {
+				if bl[i+j] != qr[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				idx = i
+				break
+			}
+		}
+	}
+	if idx < 0 {
+		if len(br) <= window {
+			return body
+		}
+		return string(br[:window])
+	}
+	start := idx - window/4
+	if start < 0 {
+		start = 0
+	}
+	end := start + window
+	if end > len(br) {
+		end = len(br)
+		start = end - window
+		if start < 0 {
+			start = 0
+		}
+	}
+	return string(br[start:end])
 }
 
 func itoa(n int64) string {
@@ -326,6 +405,138 @@ func (s *Store) ListAgentConnectors(agentID string) ([]string, error) {
 	out := make([]string, 0, len(set))
 	for name := range set {
 		out = append(out, name)
+	}
+	return out, nil
+}
+
+// --- Memory ---
+
+func (s *Store) PutMemory(m Memory) (*Memory, error) {
+	if m.SessionID == "" {
+		return nil, errors.New("session_id is required")
+	}
+	if strings.TrimSpace(m.Body) == "" {
+		return nil, errors.New("body is required")
+	}
+	if m.Kind == "" {
+		m.Kind = KindEpisodic
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.sessions[m.SessionID]; !ok {
+		return nil, errors.New("session not found")
+	}
+	m.ID = s.nextID()
+	m.CreatedAt = time.Now().UTC()
+	cp := m
+	s.memories[cp.SessionID] = append(s.memories[cp.SessionID], &cp)
+	return &cp, nil
+}
+
+func (s *Store) ListMemories(sessionID string) ([]*Memory, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, ErrNotFound
+	}
+	list := s.memories[sessionID]
+	out := make([]*Memory, len(list))
+	for i, m := range list {
+		cp := *m
+		out[i] = &cp
+	}
+	if out == nil {
+		out = []*Memory{}
+	}
+	return out, nil
+}
+
+func (s *Store) SaveSummary(sessionID, body string) (*Memory, error) {
+	if sessionID == "" {
+		return nil, errors.New("session_id is required")
+	}
+	if strings.TrimSpace(body) == "" {
+		return nil, errors.New("body is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, errors.New("session not found")
+	}
+	list := s.memories[sessionID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i] != nil && list[i].Kind == KindEpisodic {
+			list[i].Body = body
+			list[i].CreatedAt = time.Now().UTC()
+			cp := *list[i]
+			return &cp, nil
+		}
+	}
+	m := Memory{
+		ID:        s.nextID(),
+		SessionID: sessionID,
+		Kind:      KindEpisodic,
+		Body:      body,
+		CreatedAt: time.Now().UTC(),
+	}
+	s.memories[sessionID] = append(s.memories[sessionID], &m)
+	cp := m
+	return &cp, nil
+}
+
+func (s *Store) LatestSummary(sessionID string) (*Memory, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, ErrNotFound
+	}
+	list := s.memories[sessionID]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i] != nil && list[i].Kind == KindEpisodic {
+			cp := *list[i]
+			return &cp, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) SearchMemory(q string) ([]SearchHit, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return []SearchHit{}, nil
+	}
+	needle := strings.ToLower(q)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []SearchHit
+	for _, list := range s.memories {
+		for _, m := range list {
+			if m == nil {
+				continue
+			}
+			if strings.Contains(strings.ToLower(m.Body), needle) {
+				out = append(out, SearchHit{
+					ID: m.ID, SessionID: m.SessionID, Kind: m.Kind,
+					Snippet: SnippetAround(m.Body, q, 80),
+				})
+			}
+		}
+	}
+	for sid, msgs := range s.messages {
+		for _, m := range msgs {
+			if m == nil {
+				continue
+			}
+			if strings.Contains(strings.ToLower(m.Content), needle) {
+				out = append(out, SearchHit{
+					ID: m.ID, SessionID: sid, Kind: KindMessage,
+					Snippet: SnippetAround(m.Content, q, 80),
+				})
+			}
+		}
+	}
+	if out == nil {
+		out = []SearchHit{}
 	}
 	return out, nil
 }

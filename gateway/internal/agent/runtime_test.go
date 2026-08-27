@@ -92,6 +92,77 @@ func TestTools_InvokeStoresRoleToolAndTrace(t *testing.T) {
 	}
 }
 
+func TestChat_EchoTurnsWriteSummaryAndNextPrompt(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
+
+	for i := 0; i < 11; i++ {
+		if _, err := rt.Chat(context.Background(), sess.ID, "turn-start-"+itoa(i+1)); err != nil {
+			t.Fatalf("chat %d: %v", i+1, err)
+		}
+	}
+	if _, err := rt.Chat(context.Background(), sess.ID, "omega-end"); err != nil {
+		t.Fatalf("chat 12: %v", err)
+	}
+	sum, err := st.LatestSummary(sess.ID)
+	if err != nil || sum == nil || sum.Kind != store.KindEpisodic {
+		t.Fatalf("summary %v %v", err, sum)
+	}
+	if !strings.Contains(sum.Body, "turn-start-1") || !strings.Contains(sum.Body, "omega-end") {
+		t.Fatalf("echo summary %q", sum.Body)
+	}
+	if n := len([]rune(sum.Body)); n > 500 {
+		t.Fatalf("summary runes %d", n)
+	}
+
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "next-ok"}}}
+	rt.LLM = scripted
+	if _, err := rt.Chat(context.Background(), sess.ID, "follow-up"); err != nil {
+		t.Fatalf("follow-up: %v", err)
+	}
+	if len(scripted.Recorded) == 0 {
+		t.Fatal("expected recorded prompt")
+	}
+	found := false
+	for _, m := range scripted.Recorded[0] {
+		if m.Role == "system" && strings.Contains(m.Content, "Previous summary:") && strings.Contains(m.Content, "omega-end") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("previous summary missing: %#v", scripted.Recorded[0])
+	}
+}
+
+func TestChat_SummarizeFlag(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
+	if _, err := rt.ChatOpts(context.Background(), sess.ID, "solo-user", "", true); err != nil {
+		t.Fatalf("ChatOpts: %v", err)
+	}
+	sum, err := st.LatestSummary(sess.ID)
+	if err != nil || sum == nil || !strings.Contains(sum.Body, "solo-user") {
+		t.Fatalf("flag summary %v %v", err, sum)
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	b := make([]byte, 0, 8)
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}
+
 func TestChat_EchoNoTools(t *testing.T) {
 	st := store.New()
 	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})

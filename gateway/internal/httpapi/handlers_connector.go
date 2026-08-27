@@ -281,7 +281,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
-		out, err := rt.ChatWithMode(r.Context(), body.SessionID, body.Message, body.PromptMode)
+		out, err := rt.ChatOpts(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize))
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, err.Error())
 			return

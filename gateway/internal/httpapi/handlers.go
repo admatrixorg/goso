@@ -101,6 +101,10 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("POST /api/sessions/{id}/messages", handleAddMessage(st))
 	mux.HandleFunc("GET /api/sessions/{id}/messages", handleListMessages(st))
 
+	mux.HandleFunc("GET /api/memory/search", handleSearchMemory(st))
+	mux.HandleFunc("GET /api/memory", handleListMemory(st))
+	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
+
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.
 	return mux
 }
@@ -229,10 +233,26 @@ func handleListMessages(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
+type boolish bool
+
+func (b *boolish) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	switch strings.ToLower(s) {
+	case "true", "1", `"true"`, `"1"`:
+		*b = true
+	case "false", "0", `"false"`, `"0"`, "null", "":
+		*b = false
+	default:
+		return errors.New("invalid summarize flag")
+	}
+	return nil
+}
+
 type chatBody struct {
-	SessionID  string `json:"session_id"`
-	Message    string `json:"message"`
-	PromptMode string `json:"prompt_mode"`
+	SessionID  string  `json:"session_id"`
+	Message    string  `json:"message"`
+	PromptMode string  `json:"prompt_mode"`
+	Summarize  boolish `json:"summarize"`
 }
 
 func decodeChatBody(r *http.Request) (chatBody, error) {
@@ -245,6 +265,10 @@ func decodeChatBody(r *http.Request) (chatBody, error) {
 	}
 	if _, err := pipeline.ParseMode(body.PromptMode); err != nil {
 		return body, err
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("summarize"))
+	if q == "1" || strings.EqualFold(q, "true") {
+		body.Summarize = true
 	}
 	return body, nil
 }

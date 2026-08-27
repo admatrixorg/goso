@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,7 +16,8 @@ import (
 
 // SQLiteStore persists agents/sessions/messages in SQLite.
 type SQLiteStore struct {
-	db *sql.DB
+	db  *sql.DB
+	fts bool
 }
 
 // OpenSQLite opens (and migrates) a SQLite DB at path. Use ":memory:" for in-memory.
@@ -94,13 +96,61 @@ func (s *SQLiteStore) migrate() error {
 			FOREIGN KEY(agent_id) REFERENCES agents(id),
 			FOREIGN KEY(connector_name) REFERENCES connectors(name)
 		)`,
+		`CREATE TABLE IF NOT EXISTS memories (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY(session_id) REFERENCES sessions(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id, created_at)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	s.initFTS()
 	return nil
+}
+
+func (s *SQLiteStore) initFTS() {
+	s.fts = false
+	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+		id UNINDEXED,
+		session_id UNINDEXED,
+		kind UNINDEXED,
+		body
+	)`); err != nil {
+		return
+	}
+	triggers := []string{
+		`CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+			INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, new.kind, new.body);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+			DELETE FROM memory_fts WHERE id = old.id;
+			INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, new.kind, new.body);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+			INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, 'message', new.content);
+		END`,
+	}
+	for _, stmt := range triggers {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return
+		}
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM memory_fts`).Scan(&n); err != nil {
+		return
+	}
+	if n == 0 {
+		_, _ = s.db.Exec(`INSERT INTO memory_fts(id, session_id, kind, body) SELECT id, session_id, kind, body FROM memories`)
+		_, _ = s.db.Exec(`INSERT INTO memory_fts(id, session_id, kind, body) SELECT id, session_id, 'message', content FROM messages`)
+	}
+	s.fts = true
 }
 
 // Close closes the DB.
@@ -442,4 +492,180 @@ var sqliteSeq int64
 func newID() string {
 	sqliteSeq++
 	return time.Now().UTC().Format("20060102") + "-" + itoa(sqliteSeq)
+}
+
+// --- Memory ---
+
+func (s *SQLiteStore) PutMemory(m Memory) (*Memory, error) {
+	if m.SessionID == "" {
+		return nil, errors.New("session_id is required")
+	}
+	if strings.TrimSpace(m.Body) == "" {
+		return nil, errors.New("body is required")
+	}
+	if m.Kind == "" {
+		m.Kind = KindEpisodic
+	}
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, m.SessionID).Scan(&cnt); err != nil {
+		return nil, err
+	}
+	if cnt == 0 {
+		return nil, errors.New("session not found")
+	}
+	m.ID = newID()
+	m.CreatedAt = time.Now().UTC()
+	_, err := s.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at) VALUES(?,?,?,?,?)`,
+		m.ID, m.SessionID, m.Kind, m.Body, formatTime(m.CreatedAt))
+	if err != nil {
+		return nil, err
+	}
+	cp := m
+	return &cp, nil
+}
+
+func (s *SQLiteStore) ListMemories(sessionID string) ([]*Memory, error) {
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, sessionID).Scan(&cnt); err != nil {
+		return nil, err
+	}
+	if cnt == 0 {
+		return nil, ErrNotFound
+	}
+	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Memory
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	if out == nil {
+		out = []*Memory{}
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) SaveSummary(sessionID, body string) (*Memory, error) {
+	if sessionID == "" {
+		return nil, errors.New("session_id is required")
+	}
+	if strings.TrimSpace(body) == "" {
+		return nil, errors.New("body is required")
+	}
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, sessionID).Scan(&cnt); err != nil {
+		return nil, err
+	}
+	if cnt == 0 {
+		return nil, errors.New("session not found")
+	}
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	existing, err := scanMemory(row)
+	if err == nil && existing != nil {
+		existing.Body = body
+		existing.CreatedAt = time.Now().UTC()
+		_, err = s.db.Exec(`UPDATE memories SET body=?, created_at=? WHERE id=?`, existing.Body, formatTime(existing.CreatedAt), existing.ID)
+		if err != nil {
+			return nil, err
+		}
+		return existing, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return s.PutMemory(Memory{SessionID: sessionID, Kind: KindEpisodic, Body: body})
+}
+
+func (s *SQLiteStore) LatestSummary(sessionID string) (*Memory, error) {
+	var cnt int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, sessionID).Scan(&cnt); err != nil {
+		return nil, err
+	}
+	if cnt == 0 {
+		return nil, ErrNotFound
+	}
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	m, err := scanMemory(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (s *SQLiteStore) SearchMemory(q string) ([]SearchHit, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return []SearchHit{}, nil
+	}
+	if s.fts {
+		if hits, err := s.searchFTS(q); err == nil {
+			return hits, nil
+		}
+	}
+	return s.searchInstr(q)
+}
+
+func (s *SQLiteStore) searchFTS(q string) ([]SearchHit, error) {
+	phrase := strings.ReplaceAll(q, `"`, `""`)
+	rows, err := s.db.Query(`SELECT id, session_id, kind, snippet(memory_fts, 3, '', '', '…', 16)
+		FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank LIMIT 50`, `"`+phrase+`"`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SearchHit
+	for rows.Next() {
+		var h SearchHit
+		if err := rows.Scan(&h.ID, &h.SessionID, &h.Kind, &h.Snippet); err != nil {
+			continue
+		}
+		out = append(out, h)
+	}
+	if out == nil {
+		out = []SearchHit{}
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) searchInstr(q string) ([]SearchHit, error) {
+	rows, err := s.db.Query(`SELECT id, session_id, kind, body FROM (
+			SELECT id, session_id, kind, body FROM memories WHERE instr(lower(body), lower(?)) > 0
+			UNION ALL
+			SELECT id, session_id, 'message', content FROM messages WHERE instr(lower(content), lower(?)) > 0
+		) LIMIT 50`, q, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SearchHit
+	for rows.Next() {
+		var id, sid, kind, body string
+		if err := rows.Scan(&id, &sid, &kind, &body); err != nil {
+			continue
+		}
+		out = append(out, SearchHit{ID: id, SessionID: sid, Kind: kind, Snippet: SnippetAround(body, q, 80)})
+	}
+	if out == nil {
+		out = []SearchHit{}
+	}
+	return out, nil
+}
+
+func scanMemory(sc scanner) (*Memory, error) {
+	var m Memory
+	var ts string
+	if err := sc.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts); err != nil {
+		return nil, err
+	}
+	m.CreatedAt = parseTime(ts)
+	return &m, nil
 }

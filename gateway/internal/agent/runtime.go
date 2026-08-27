@@ -241,6 +241,11 @@ func (rt *Runtime) Chat(ctx context.Context, sessionID, message string) (*ChatRe
 
 // ChatWithMode runs the pipeline with an explicit prompt_mode (empty = full).
 func (rt *Runtime) ChatWithMode(ctx context.Context, sessionID, message, promptMode string) (*ChatResult, error) {
+	return rt.ChatOpts(ctx, sessionID, message, promptMode, false)
+}
+
+// ChatOpts is ChatWithMode plus a summarize flag (summarize=1).
+func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode string, summarize bool) (*ChatResult, error) {
 	if rt.Store == nil {
 		return nil, errors.New("store required")
 	}
@@ -253,8 +258,13 @@ func (rt *Runtime) ChatWithMode(ctx context.Context, sessionID, message, promptM
 		hooks = pipeline.NewDispatcher()
 	}
 	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, rt.LLM, hooks)
-	runner.Memory = rt.Memory
-	runner.Summarize = rt.Summarize
+	if rt.Memory != nil {
+		runner.Memory = rt.Memory
+	}
+	if rt.Summarize != nil {
+		runner.Summarize = rt.Summarize
+	}
+	runner.ForceSummarize = summarize
 	out, err := runner.Run(ctx, sessionID, message, mode)
 	if err != nil {
 		return nil, err
