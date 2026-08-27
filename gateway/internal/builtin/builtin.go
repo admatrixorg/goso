@@ -75,6 +75,18 @@ var catalog = []Spec{
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
 	},
+	{
+		Name:             ToolReadFile,
+		Description:      "Read a file inside GOSO_WORKSPACE. Fail-closed unless GOSO_WORKSPACE is set. Cap 1MiB. No exec.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
+	},
+	{
+		Name:             ToolWriteFile,
+		Description:      "Write a file inside GOSO_WORKSPACE. Fail-closed unless GOSO_WORKSPACE is set. Creates parent dirs in-jail only. Requires approval. No exec or delete.",
+		RequiresApproval: true,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`),
+	},
 }
 
 // Catalog returns the builtin tool list (always advertised).
@@ -87,7 +99,7 @@ func Catalog() []Spec {
 // IsName reports whether name is a builtin tool.
 func IsName(name string) bool {
 	switch strings.TrimSpace(name) {
-	case ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill:
+	case ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill, ToolReadFile, ToolWriteFile:
 		return true
 	}
 	return false
@@ -124,6 +136,7 @@ func notConfigured(name string) *connector.InvokeResult {
 
 // Invoke runs a builtin tool. sandbox/browser/media never spawn.
 // web_search networks only when the UI flag is on and GOSO_WEB_SEARCH=ddg|1.
+// read_file/write_file fail-closed unless GOSO_WORKSPACE is set; they never exec.
 func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled bool) (*connector.InvokeResult, error) {
 	name = strings.TrimSpace(name)
 	if !IsName(name) {
@@ -137,6 +150,10 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return webSearch(ctx, args)
 	case ToolUseSkill:
 		return useSkill(args)
+	case ToolReadFile:
+		return readFile(args)
+	case ToolWriteFile:
+		return writeFile(args)
 	default:
 		// sandbox, browser, media: persist UI flags but never exec/docker/chrome/ffmpeg.
 		return notConfigured(name), nil

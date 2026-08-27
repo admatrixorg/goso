@@ -153,6 +153,7 @@ export const en: Record<MsgKey, string> = {
   "functions.skills.empty": "No skills. Set GOSO_SKILLS_DIR to a folder of one-level SKILL.md subdirs.",
   "functions.skills.col.name": "NAME",
   "functions.skills.col.path": "PATH",
+  "functions.workspace.note": "read_file / write_file jail to GOSO_WORKSPACE. Empty env is fail-closed (not_configured, no FS). write_file requires approval.",
 
   "events.title": "Events",
   "events.desc": "Who changed what on a connector — attempt, success, error, pending_approval. No secrets.",

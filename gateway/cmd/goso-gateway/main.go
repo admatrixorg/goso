@@ -91,7 +91,7 @@ Environment:
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
   GOSO_INJECTION           log (default) or block prompt-injection matches on /api/chat
   GOSO_SSRF                1 = block literal localhost/private IPs on connector HTTP
-  GOSO_WORKSPACE           Optional write jail; tools/vault cannot write outside
+  GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = read_file/write_file fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
   GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.
 

@@ -155,6 +155,7 @@ export function FunctionsPage() {
       </Card>
       <Card>
         <CardHeader icon="build" title={t("functions.tools")} meta={t("functions.meta", { n: tools.length })} />
+        <p style={{ margin: 0, padding: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("functions.workspace.note")}</p>
         <div
           style={{
             display: "flex",

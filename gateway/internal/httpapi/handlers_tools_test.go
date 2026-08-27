@@ -16,6 +16,7 @@ import (
 
 func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	t.Setenv("GOSO_WEB_SEARCH", "")
+	t.Setenv("GOSO_WORKSPACE", "")
 	st := store.New()
 	h := NewRouter(Options{Store: st, Version: "0.1.0"})
 
@@ -52,7 +53,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	var sawSearch, sawSandbox, sawSkill bool
+	var sawSearch, sawSandbox, sawSkill, sawRead, sawWrite bool
 	for _, tl := range listed.Tools {
 		if tl.Name == "web_search" {
 			sawSearch = true
@@ -72,8 +73,20 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 				t.Fatalf("use_skill %+v", tl)
 			}
 		}
+		if tl.Name == "read_file" {
+			sawRead = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
+				t.Fatalf("read_file %+v", tl)
+			}
+		}
+		if tl.Name == "write_file" {
+			sawWrite = true
+			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval {
+				t.Fatalf("write_file %+v", tl)
+			}
+		}
 	}
-	if !sawSearch || !sawSandbox || !sawSkill {
+	if !sawSearch || !sawSandbox || !sawSkill || !sawRead || !sawWrite {
 		t.Fatalf("builtins missing %s", w.Body.String())
 	}
 
@@ -94,6 +107,15 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "not_configured") {
 		t.Fatalf("invoke without env %d %s", w.Code, w.Body.String())
+	}
+
+	t.Setenv("GOSO_WORKSPACE", "")
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/tools/invoke", bytes.NewBufferString(`{"connector":"builtin","tool":"write_file","arguments":{"path":"a.md","content":"x"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "not_configured") {
+		t.Fatalf("write_file without workspace %d %s", w.Code, w.Body.String())
 	}
 }
 
