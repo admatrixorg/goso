@@ -39,6 +39,10 @@ curl -sS http://127.0.0.1:8080/healthz
 
 `/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN`, trừ khi `GOSO_DEV_MODE=1`. Optional `GOSO_VIEW_TOKEN` may GET `/healthz` `/api/agents` `/api/sessions` (and a single id segment) but not POST chat or `.../messages`. Token rỗng + không dev-mode → 401.
 
+`GET /api/traces` returns LLM traces plus nested span trees. `GET /metrics` and JSON access logs stay as in SPEC 008.
+
+Optional OTLP: set `GOSO_OTEL_ENDPOINT` to a collector HTTP JSON URL. Empty (default) = no export. Do not put Grafana Cloud API keys in env (DI-18).
+
 Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
 ## 2. Backup SQLite

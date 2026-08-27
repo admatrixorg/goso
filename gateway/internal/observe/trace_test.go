@@ -104,6 +104,9 @@ func TestTracedProvider_RecordsSuccessAndError(t *testing.T) {
 	if tr.Provider != "echo" || tr.Model != "echo" || tr.Error != "" || tr.RequestID != "req-llm-1" {
 		t.Fatalf("trace %+v", tr)
 	}
+	if tr.CacheReadTokens != 0 {
+		t.Fatalf("cache_read_tokens %d", tr.CacheReadTokens)
+	}
 	if obs.Snapshot().LLMCallCount != 1 {
 		t.Fatalf("llm count %d", obs.Snapshot().LLMCallCount)
 	}
@@ -121,6 +124,17 @@ func TestTracedProvider_RecordsSuccessAndError(t *testing.T) {
 	}
 	if obs.Snapshot().LLMCallCount != 2 {
 		t.Fatalf("llm count %d", obs.Snapshot().LLMCallCount)
+	}
+}
+
+func TestWrap_PreservesToolChatOnlyWhenInnerHasIt(t *testing.T) {
+	obs := NewWithWriter(&bytes.Buffer{})
+	if _, ok := obs.Wrap(llm.Echo{}).(llm.ToolChat); ok {
+		t.Fatal("echo wrap must not grow ToolChat")
+	}
+	inner := &llm.Scripted{Replies: []llm.Reply{{Text: "ok"}}}
+	if _, ok := obs.Wrap(inner).(llm.ToolChat); !ok {
+		t.Fatal("scripted wrap must keep ToolChat")
 	}
 }
 
@@ -165,5 +179,11 @@ func TestHandleTraces(t *testing.T) {
 	}
 	if body.Traces[0].Model != "m4" {
 		t.Fatalf("newest %s", body.Traces[0].Model)
+	}
+	if body.Traces[0].CacheReadTokens != 0 {
+		t.Fatalf("cache_read_tokens %d", body.Traces[0].CacheReadTokens)
+	}
+	if !strings.Contains(w.Body.String(), `"spans"`) {
+		t.Fatalf("GET /api/traces missing spans: %s", w.Body.String())
 	}
 }

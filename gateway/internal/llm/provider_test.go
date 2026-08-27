@@ -90,12 +90,41 @@ func TestAnthropic_UsageFromProvider(t *testing.T) {
 	if u.Estimated || u.PromptTokens != 9 || u.CompletionTokens != 3 {
 		t.Fatalf("usage %+v", u)
 	}
+	if u.CacheReadTokens != 0 {
+		t.Fatalf("cache_read_tokens default %d", u.CacheReadTokens)
+	}
+}
+
+func TestAnthropic_CacheReadTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "cached"}},
+			"usage": map[string]int{
+				"input_tokens":            9,
+				"output_tokens":           3,
+				"cache_read_input_tokens": 4,
+			},
+		})
+	}))
+	defer srv.Close()
+	p := &Anthropic{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client()}
+	_, u, err := p.ChatUsage(context.Background(), []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.CacheReadTokens != 4 {
+		t.Fatalf("cache_read_tokens %d", u.CacheReadTokens)
+	}
 }
 
 func TestEstimateUsage_WhenProviderOmits(t *testing.T) {
 	u := EstimateUsage([]Message{{Role: "user", Content: "abcd"}}, "abcdefgh")
 	if !u.Estimated || u.PromptTokens != 1 || u.CompletionTokens != 2 {
 		t.Fatalf("estimate %+v", u)
+	}
+	if u.CacheReadTokens != 0 {
+		t.Fatalf("estimate cache_read_tokens %d", u.CacheReadTokens)
 	}
 }
 

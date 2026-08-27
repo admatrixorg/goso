@@ -13,6 +13,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -37,9 +38,10 @@ type Trace struct {
 
 // ChatResult is returned by Runtime.Chat.
 type ChatResult struct {
-	Reply     string  `json:"reply"`
-	SessionID string  `json:"session_id"`
-	Trace     []Trace `json:"trace,omitempty"`
+	Reply     string         `json:"reply"`
+	SessionID string         `json:"session_id"`
+	Trace     []Trace        `json:"trace,omitempty"`
+	Spans     []observe.Span `json:"spans,omitempty"`
 }
 
 // CallResult is a single tool-layer invocation (direct or from chat).
@@ -59,6 +61,7 @@ type Runtime struct {
 	Hooks     *pipeline.Dispatcher
 	Memory    pipeline.StageFunc
 	Summarize pipeline.StageFunc
+	Observer  *observe.Observer
 }
 
 // New constructs a Runtime. Missing deps are allocated empty.
@@ -272,6 +275,9 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 	}
 	runner.ForceSummarize = summarize
 	out, err := runner.Run(ctx, sessionID, message, mode)
+	if out != nil && rt.Observer != nil {
+		rt.Observer.RecordSpans(out.Spans)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +288,7 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 	if out != nil {
 		res.Reply = out.Reply
 		res.Trace = toAgentTraces(out.Trace)
+		res.Spans = out.Spans
 	}
 	return res, nil
 }

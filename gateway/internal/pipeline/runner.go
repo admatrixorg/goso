@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
@@ -67,6 +68,7 @@ type Result struct {
 	Reply     string
 	SessionID string
 	Trace     []ToolTrace
+	Spans     []observe.Span
 }
 
 // Runner is the 8-stage chat pipeline.
@@ -103,7 +105,7 @@ func NewRunner(st store.StoreIface, tools ToolService, provider llm.Provider, ho
 }
 
 // Run executes context → history → prompt → loop(think, act, observe) → memory → summarize.
-func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode) (*Result, error) {
+func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode) (res *Result, err error) {
 	if r == nil || r.Store == nil {
 		return nil, fmt.Errorf("store required")
 	}
@@ -116,6 +118,21 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	if mode == "" {
 		mode = ModeFull
 	}
+
+	ctx = observe.WithCollector(ctx, observe.NewCollector())
+	ctx, agentSpan := observe.StartSpan(ctx, observe.KindAgent, "agent")
+	agentSpan.SetAttr("session_id", sessionID)
+	if rid := observe.RequestIDFromContext(ctx); rid != "" {
+		agentSpan.SetAttr("request_id", rid)
+	}
+	defer func() {
+		agentSpan.End(err)
+		spans := observe.SpansFrom(ctx)
+		if res == nil {
+			res = &Result{SessionID: sessionID}
+		}
+		res.Spans = spans
+	}()
 
 	st, err := r.loadContext(sessionID, mode)
 	if err != nil {
@@ -187,7 +204,8 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	r.memory(ctx, st)
 	r.summarize(ctx, st)
 	r.Hooks.Fire(ctx, Event{Name: Stop, SessionID: st.SessionID, AgentID: st.AgentID})
-	return &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces}, nil
+	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces}
+	return res, nil
 }
 
 func (r *Runner) loadContext(sessionID string, mode Mode) (*State, error) {
@@ -235,12 +253,23 @@ func (r *Runner) attachPrompt(st *State) {
 	st.Messages = append([]llm.Message{{Role: "system", Content: sys}}, st.Messages...)
 }
 
-func (r *Runner) think(ctx context.Context, st *State) (llm.Reply, error) {
-	if tc, ok := r.LLM.(llm.ToolChat); ok {
-		return tc.ChatTools(ctx, st.Messages, st.Tools)
+func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err error) {
+	name := "llm"
+	if r.LLM != nil {
+		name = r.LLM.Name()
 	}
-	text, err := r.LLM.Chat(ctx, st.Messages)
-	return llm.Reply{Text: text}, err
+	_, span := observe.StartSpan(ctx, observe.KindLLM, name)
+	defer func() { span.End(err) }()
+	if tc, ok := r.LLM.(llm.ToolChat); ok {
+		reply, err = tc.ChatTools(ctx, st.Messages, st.Tools)
+	} else {
+		var text string
+		var usage llm.Usage
+		text, usage, err = llm.ChatUsage(ctx, r.LLM, st.Messages)
+		reply = llm.Reply{Text: text, Usage: usage}
+	}
+	span.SetCacheReadTokens(reply.Usage.CacheReadTokens)
+	return reply, err
 }
 
 func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.Reply) (pending bool, err error) {
@@ -267,6 +296,7 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 			Connector: conn,
 			Arguments: args,
 		})
+		_, toolSpan := observe.StartSpan(ctx, observe.KindTool, call.Name)
 		var out CallOutcome
 		if !isAdvertised(call, st.Tools) {
 			out.Trace = ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: "tool not advertised"}
@@ -280,6 +310,10 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 			out.Content = out.Trace.Error
 			err = nil
 		}
+		if out.Trace.Status != "" || out.Trace.Error != "" {
+			toolSpan.SetStatus(out.Trace.Status, out.Trace.Error)
+		}
+		toolSpan.End(err)
 		if out.Trace.Connector == "" {
 			out.Trace.Connector = conn
 		}
