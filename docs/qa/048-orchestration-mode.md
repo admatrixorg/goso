@@ -23,7 +23,7 @@ Do not bind or kill demo ports `:8082` `:8091` `:3000` `:18080` `:18088`. Coordi
 
 ## Proof
 
-- httptest: create with `orchestration_mode=auto`; PATCH to `manual`; GET shows `manual`; bad mode 400; missing id 404 (`TestPatchAgentOrchestrationMode`).
+- httptest: create with `orchestration_mode=auto` and `instructions=keep-me`; PATCH to `manual`; GET shows `manual` and still `keep-me`; bad mode and present-empty mode 400; missing id 404 (`TestPatchAgentOrchestrationMode`).
 - Same test PATCHes optional `model` + `instructions` without clearing the mode.
 
 ## Non-goals

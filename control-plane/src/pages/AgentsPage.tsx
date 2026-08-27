@@ -107,6 +107,7 @@ export function AgentsPage() {
                 className="z-field"
                 aria-label={t("agents.col.mode")}
                 value={a.orchestration_mode || ""}
+                disabled={loading}
                 onChange={(e) => void patchMode(a.id, e.target.value)}
               >
                 {a.orchestration_mode ? null : <option value="">{t("agents.mode.unset")}</option>}

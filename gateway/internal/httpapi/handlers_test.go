@@ -213,7 +213,7 @@ func TestValidation(t *testing.T) {
 func TestPatchAgentOrchestrationMode(t *testing.T) {
 	_, h := newTestServer()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"orch","display_name":"Orch","orchestration_mode":"auto"}`))
+	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"orch","display_name":"Orch","orchestration_mode":"auto","instructions":"keep-me"}`))
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(w, req)
 	if w.Code != 201 {
@@ -241,6 +241,9 @@ func TestPatchAgentOrchestrationMode(t *testing.T) {
 	if patched.OrchestrationMode != "manual" {
 		t.Fatalf("patch orchestration_mode %q", patched.OrchestrationMode)
 	}
+	if patched.Instructions != "keep-me" {
+		t.Fatalf("patch wiped instructions %q", patched.Instructions)
+	}
 
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+created.ID, nil))
@@ -254,6 +257,9 @@ func TestPatchAgentOrchestrationMode(t *testing.T) {
 	if got.OrchestrationMode != "manual" {
 		t.Fatalf("get orchestration_mode %q", got.OrchestrationMode)
 	}
+	if got.Instructions != "keep-me" {
+		t.Fatalf("get wiped instructions %q", got.Instructions)
+	}
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"orchestration_mode":"banana"}`))
@@ -261,6 +267,14 @@ func TestPatchAgentOrchestrationMode(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 400 {
 		t.Fatalf("bad mode expected 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"orchestration_mode":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("empty mode expected 400, got %d %s", w.Code, w.Body.String())
 	}
 
 	w = httptest.NewRecorder()

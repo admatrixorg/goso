@@ -235,6 +235,10 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 				writeErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
+			if mode == "" {
+				writeErr(w, http.StatusBadRequest, `unknown orchestration_mode ""`)
+				return
+			}
 			upd.OrchestrationMode = mode
 		}
 		if body.Model != nil {
