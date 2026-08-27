@@ -440,7 +440,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		}
 		out, err := rt.ChatOpts(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize))
 		if err != nil {
-			writeErr(w, http.StatusBadGateway, err.Error())
+			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)
 			return
 		}
 		name := "echo"
@@ -452,7 +452,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			reply = out.Reply
 		}
 		recordUsage(meter, sess.AgentID, name, llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
-		writeJSON(w, http.StatusOK, out)
+		respondChat(w, r, body, reply, out, nil, 0)
 	}
 }
 

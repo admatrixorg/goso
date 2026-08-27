@@ -1,0 +1,102 @@
+// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+
+package httpapi
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+)
+
+func chatWantsStream(r *http.Request, body chatBody) bool {
+	if body.Stream {
+		return true
+	}
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/event-stream")
+}
+
+func splitSSEDeltas(s string) []string {
+	runes := []rune(s)
+	if len(runes) < 2 {
+		return []string{s, ""}
+	}
+	mid := len(runes) / 2
+	return []string{string(runes[:mid]), string(runes[mid:])}
+}
+
+type sseWriter struct {
+	w       http.ResponseWriter
+	f       http.Flusher
+	started bool
+}
+
+func newSSEWriter(w http.ResponseWriter) *sseWriter {
+	f, _ := w.(http.Flusher)
+	return &sseWriter{w: w, f: f}
+}
+
+func (s *sseWriter) start() {
+	if s.started {
+		return
+	}
+	s.w.Header().Set("Content-Type", "text/event-stream")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.WriteHeader(http.StatusOK)
+	s.started = true
+	if s.f != nil {
+		s.f.Flush()
+	}
+}
+
+func (s *sseWriter) data(payload string) {
+	s.start()
+	fmt.Fprintf(s.w, "data: %s\n\n", payload)
+	if s.f != nil {
+		s.f.Flush()
+	}
+}
+
+func (s *sseWriter) event(name, payload string) {
+	s.start()
+	fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, payload)
+	if s.f != nil {
+		s.f.Flush()
+	}
+}
+
+func writeChatSSE(w http.ResponseWriter, reply string) {
+	sw := newSSEWriter(w)
+	for _, d := range splitSSEDeltas(reply) {
+		payload, _ := json.Marshal(map[string]string{"delta": d})
+		sw.data(string(payload))
+	}
+	sw.data("[DONE]")
+}
+
+func writeChatSSEError(w http.ResponseWriter, msg string) {
+	sw := newSSEWriter(w)
+	payload, err := json.Marshal(map[string]string{"error": msg})
+	if err != nil {
+		sw.event("error", `{"error":"stream error"}`)
+		return
+	}
+	sw.event("error", string(payload))
+}
+
+func respondChat(w http.ResponseWriter, r *http.Request, body chatBody, reply string, jsonOK any, err error, errStatus int) {
+	stream := chatWantsStream(r, body)
+	if err != nil {
+		if stream {
+			writeChatSSEError(w, err.Error())
+			return
+		}
+		writeErr(w, errStatus, err.Error())
+		return
+	}
+	if stream {
+		writeChatSSE(w, reply)
+		return
+	}
+	writeJSON(w, http.StatusOK, jsonOK)
+}

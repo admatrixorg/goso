@@ -357,6 +357,7 @@ type chatBody struct {
 	Message    string  `json:"message"`
 	PromptMode string  `json:"prompt_mode"`
 	Summarize  boolish `json:"summarize"`
+	Stream     bool    `json:"stream"`
 }
 
 func decodeChatBody(r *http.Request) (chatBody, error) {
@@ -424,7 +425,7 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 		reply := "echo: " + body.Message
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "assistant", Content: reply})
 		recordUsage(meter, sess.AgentID, "echo", llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
-		writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "session_id": body.SessionID})
+		respondChat(w, r, body, reply, map[string]any{"reply": reply, "session_id": body.SessionID}, nil, 0)
 	}
 }
 
@@ -463,12 +464,12 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 		}
 		reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
 		if err != nil {
-			writeErr(w, http.StatusBadGateway, err.Error())
+			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)
 			return
 		}
 		_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "assistant", Content: reply})
 		recordUsage(meter, sess.AgentID, provider.Name(), usage)
-		writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "session_id": body.SessionID})
+		respondChat(w, r, body, reply, map[string]any{"reply": reply, "session_id": body.SessionID}, nil, 0)
 	}
 }
 

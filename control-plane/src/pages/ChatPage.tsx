@@ -54,6 +54,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
     setLoading(true);
     setMsgs([]);
     setErr("");
+    setSending(false);
     void load(sessionId, gen);
   }, [sessionId]);
 
@@ -69,28 +70,41 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       content: text,
       created_at: new Date().toISOString(),
     };
+    const asst: Message = {
+      id: localId("local-asst"),
+      session_id: forSession,
+      role: "assistant",
+      content: "",
+      created_at: new Date().toISOString(),
+    };
     setSending(true);
-    setMsgs((m) => [...m, userMsg]);
+    setMsgs((m) => [...m, userMsg, asst]);
     setInput("");
     setErr("");
     try {
-      await api.chat({ session_id: forSession, message: text });
+      await api.chatStream({ session_id: forSession, message: text }, (delta) => {
+        if (!stillCurrent(forSession, gen)) return;
+        setMsgs((m) => m.map((x) => (x.id === asst.id ? { ...x, content: x.content + delta } : x)));
+      });
       if (!stillCurrent(forSession, gen)) return;
       await load(forSession, gen);
     } catch (e) {
       if (!stillCurrent(forSession, gen)) return;
       const msg = formatPublicError(e);
       setErr(msg);
-      setMsgs((m) => [
-        ...m,
-        {
-          id: localId("local-err"),
-          session_id: forSession,
-          role: "assistant",
-          content: msg,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      setMsgs((m) => {
+        const without = m.filter((x) => x.id !== asst.id);
+        return [
+          ...without,
+          {
+            id: localId("local-err"),
+            session_id: forSession,
+            role: "assistant",
+            content: msg,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
     } finally {
       if (stillCurrent(forSession, gen)) setSending(false);
     }
