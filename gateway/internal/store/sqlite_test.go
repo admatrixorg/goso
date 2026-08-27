@@ -117,3 +117,44 @@ func TestSQLiteStore_Memory(t *testing.T) {
 		t.Fatal("mem agent no ID")
 	}
 }
+
+func TestSQLiteStore_FTSAndSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fts.db")
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	a, _ := s.CreateAgent(Agent{AgentKey: "k", DisplayName: "K"})
+	sess, _ := s.CreateSession(Session{AgentID: a.ID})
+	_, err = s.PutMemory(Memory{SessionID: sess.ID, Body: "episodic pineapple note"})
+	if err != nil {
+		t.Fatalf("PutMemory: %v", err)
+	}
+	_, _ = s.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "talk about mango"})
+	hits, err := s.SearchMemory("pineapple")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("fts pineapple %v %v fts=%v", err, hits, s.fts)
+	}
+	hits, err = s.SearchMemory("mango")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("fts mango %v %v", err, hits)
+	}
+	none, err := s.SearchMemory("zzzz-absent")
+	if err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("empty %v %v", err, none)
+	}
+	sum, err := s.SaveSummary(sess.ID, "alpha omega")
+	if err != nil {
+		t.Fatalf("SaveSummary: %v", err)
+	}
+	sum2, err := s.SaveSummary(sess.ID, "alpha omega 2")
+	if err != nil || sum2.ID != sum.ID {
+		t.Fatalf("upsert %v %v", err, sum2)
+	}
+	got, err := s.LatestSummary(sess.ID)
+	if err != nil || got.Body != "alpha omega 2" {
+		t.Fatalf("latest %v %v", err, got)
+	}
+}

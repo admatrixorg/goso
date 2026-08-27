@@ -39,20 +39,22 @@ type ToolService interface {
 	Call(ctx context.Context, call llm.ToolCall) (CallOutcome, error)
 }
 
-// StageFunc is a named plug-in point (memory / summarize in later specs).
+// StageFunc is a named plug-in point (memory / summarize).
 type StageFunc func(ctx context.Context, st *State) error
 
 // State is the per-run context passed through stages.
 type State struct {
-	SessionID   string
-	AgentID     string
-	Mode        Mode
-	DisplayName string
-	Messages    []llm.Message
-	Tools       []llm.ToolSpec
-	Traces      []ToolTrace
-	Reply       string
-	Pending     bool
+	SessionID      string
+	AgentID        string
+	Mode           Mode
+	DisplayName    string
+	Messages       []llm.Message
+	Tools          []llm.ToolSpec
+	Traces         []ToolTrace
+	Reply          string
+	Pending        bool
+	ForceSummarize bool
+	Provider       llm.Provider
 }
 
 // Result is returned to Runtime.Chat.
@@ -64,14 +66,15 @@ type Result struct {
 
 // Runner is the 8-stage chat pipeline.
 type Runner struct {
-	Store     store.StoreIface
-	Tools     ToolService
-	LLM       llm.Provider
-	Hooks     *Dispatcher
-	MaxIter   int
-	Cap       int
-	Memory    StageFunc
-	Summarize StageFunc
+	Store          store.StoreIface
+	Tools          ToolService
+	LLM            llm.Provider
+	Hooks          *Dispatcher
+	MaxIter        int
+	Cap            int
+	Memory         StageFunc
+	Summarize      StageFunc
+	ForceSummarize bool
 }
 
 // NewRunner fills defaults (max 20, cap 50, empty hooks).
@@ -83,12 +86,14 @@ func NewRunner(st store.StoreIface, tools ToolService, provider llm.Provider, ho
 		provider = llm.Echo{}
 	}
 	return &Runner{
-		Store:   st,
-		Tools:   tools,
-		LLM:     provider,
-		Hooks:   hooks,
-		MaxIter: MaxIterations,
-		Cap:     HistoryCap,
+		Store:     st,
+		Tools:     tools,
+		LLM:       provider,
+		Hooks:     hooks,
+		MaxIter:   MaxIterations,
+		Cap:       HistoryCap,
+		Memory:    MemoryStage(st),
+		Summarize: SummarizeStage(st),
 	}
 }
 
@@ -111,6 +116,8 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	if err != nil {
 		return nil, err
 	}
+	st.ForceSummarize = r.ForceSummarize
+	st.Provider = r.LLM
 	if isFirstUserTurn(r.Store, sessionID) {
 		r.Hooks.Fire(ctx, Event{Name: SessionStart, SessionID: st.SessionID, AgentID: st.AgentID})
 	}
@@ -195,7 +202,7 @@ func (r *Runner) loadHistory(st *State) error {
 	if err != nil {
 		return err
 	}
-	st.Messages = Sanitize(CapLast(ToLLM(raw), r.Cap))
+	st.Messages = prependSummary(r.Store, st.SessionID, Sanitize(CapLast(ToLLM(raw), r.Cap)))
 	return nil
 }
 

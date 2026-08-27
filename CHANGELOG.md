@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- Memory L0/L1 (SPEC 036): episodic session summaries, FTS5/substring `GET /api/memory/search`, `GET`/`POST /api/memory`. Pipeline summarize/memory stages filled; no pgvector.
 - Hardening (SPEC 013): `make verify` chạy gitleaks + semgrep (bắt buộc trên CI, skip nếu thiếu tool ở local) và `scripts/e2e.sh`.
 - `docs/RUNBOOK.md` — khởi động, backup SQLite, xoay token, sự cố.
 - `docs/RELEASE.md` — checklist version / changelog / tag.

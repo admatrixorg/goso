@@ -68,6 +68,45 @@ func TestStore_SessionAndMessage(t *testing.T) {
 	}
 }
 
+func TestStore_MemoryAndSearch(t *testing.T) {
+	s := New()
+	a, _ := s.CreateAgent(Agent{AgentKey: "mem", DisplayName: "M"})
+	sess, _ := s.CreateSession(Session{AgentID: a.ID})
+	_, err := s.PutMemory(Memory{SessionID: sess.ID, Body: "alpha needle omega"})
+	if err != nil {
+		t.Fatalf("PutMemory: %v", err)
+	}
+	list, err := s.ListMemories(sess.ID)
+	if err != nil || len(list) != 1 || list[0].Kind != KindEpisodic {
+		t.Fatalf("ListMemories %v %v", err, list)
+	}
+	hits, err := s.SearchMemory("needle")
+	if err != nil || len(hits) != 1 || hits[0].Kind != KindEpisodic {
+		t.Fatalf("search memory %v %v", err, hits)
+	}
+	_, _ = s.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "user mentioned zebra"})
+	hits, err = s.SearchMemory("zebra")
+	if err != nil || len(hits) != 1 || hits[0].Kind != KindMessage {
+		t.Fatalf("search message %v %v", err, hits)
+	}
+	empty, err := s.SearchMemory("no-such-token")
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("empty search %v %v", err, empty)
+	}
+	sum, err := s.SaveSummary(sess.ID, "first last")
+	if err != nil || sum.Body != "first last" {
+		t.Fatalf("SaveSummary %v %v", err, sum)
+	}
+	sum2, err := s.SaveSummary(sess.ID, "updated")
+	if err != nil || sum2.ID != sum.ID || sum2.Body != "updated" {
+		t.Fatalf("upsert %v %v", err, sum2)
+	}
+	got, err := s.LatestSummary(sess.ID)
+	if err != nil || got.Body != "updated" {
+		t.Fatalf("LatestSummary %v %v", err, got)
+	}
+}
+
 func TestStore_ConnectorAndLink(t *testing.T) {
 	s := New()
 	a, _ := s.CreateAgent(Agent{AgentKey: "k", DisplayName: "K"})
