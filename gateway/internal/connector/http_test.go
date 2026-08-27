@@ -70,6 +70,25 @@ func TestHTTPTransport_ManifestURLAndInvoke(t *testing.T) {
 	}
 }
 
+func TestHTTPTransport_SSRFBlocksLocalhost(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "1")
+	c, err := Build(Config{
+		Name:         "ssrf",
+		Transport:    TransportHTTP,
+		Endpoint:     "http://127.0.0.1:9",
+		ManifestJSON: json.RawMessage(`{"schema_version":"1.0","tools":[{"name":"x","input_schema":{"type":"object"}}]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Invoke(context.Background(), "x", map[string]any{}); err == nil {
+		t.Fatal("expected SSRF block")
+	}
+	if err := c.Health(context.Background()); err == nil {
+		t.Fatal("expected SSRF block on health")
+	}
+}
+
 func TestHTTPTransport_InlineManifest(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {

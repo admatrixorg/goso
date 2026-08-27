@@ -157,6 +157,13 @@ type ConnectorRecord struct {
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
+// SecretRow is an AES-256-GCM ciphertext blob (never plaintext).
+type SecretRow struct {
+	Name  string
+	Nonce []byte
+	CT    []byte
+}
+
 // StoreIface is satisfied by both Store (memory) and SQLiteStore.
 type StoreIface interface {
 	CreateAgent(Agent) (*Agent, error)
@@ -213,6 +220,8 @@ type StoreIface interface {
 	GetAgentMetrics(agentID string) AgentMetrics
 	MarkEvolutionApplied(agentID, suggestionID string) error
 	EvolutionApplied(agentID, suggestionID string) bool
+	PutSecret(SecretRow) error
+	GetSecret(name string) (*SecretRow, error)
 }
 
 var (
@@ -245,6 +254,7 @@ type Store struct {
 	agentLinks  map[string][]string       // from -> to ids
 	metrics     map[string]*AgentMetrics
 	evoApplied  map[string]map[string]bool // agent_id -> suggestion_id
+	secrets     map[string]SecretRow
 	seq         int64
 }
 
@@ -279,6 +289,7 @@ func New() *Store {
 		agentLinks:  make(map[string][]string),
 		metrics:     make(map[string]*AgentMetrics),
 		evoApplied:  make(map[string]map[string]bool),
+		secrets:     make(map[string]SecretRow),
 	}
 }
 

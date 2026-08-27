@@ -83,7 +83,12 @@ Environment:
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team (SPEC 038)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
+  GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
+  GOSO_INJECTION           log (default) or block prompt-injection matches on /api/chat
+  GOSO_SSRF                1 = block literal localhost/private IPs on connector HTTP
+  GOSO_WORKSPACE           Optional write jail; tools/vault cannot write outside
+  GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
 
 `, name, version)
 }

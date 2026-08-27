@@ -13,6 +13,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -89,6 +90,81 @@ func TestTools_InvokeStoresRoleToolAndTrace(t *testing.T) {
 	}
 	if out.Reply != "found A" {
 		t.Fatalf("reply %q", out.Reply)
+	}
+	if len(scripted.Recorded) < 2 {
+		t.Fatalf("recorded %d", len(scripted.Recorded))
+	}
+	foundWrap := false
+	for _, m := range scripted.Recorded[1] {
+		if m.Role == "tool" && strings.Contains(m.Content, security.UntrustedBegin) && strings.Contains(m.Content, security.UntrustedEnd) {
+			foundWrap = true
+		}
+	}
+	if !foundWrap {
+		t.Fatalf("expected untrusted wrap in LLM tool message: %#v", scripted.Recorded[1])
+	}
+}
+
+func TestChat_NextTurnKeepsUntrustedWrap(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	reg := connector.NewRegistry()
+	_ = reg.Register(connector.NewFake("zalocrm", []connector.Tool{crmTool("contact_search", false)}))
+	scripted := &llm.Scripted{Replies: []llm.Reply{
+		{ToolCalls: []llm.ToolCall{{ID: "tc1", Name: "zalocrm__contact_search", Arguments: map[string]any{"query": "A"}}}},
+		{Text: "found A"},
+		{Text: "later"},
+	}}
+	rt := New(st, reg, approval.New(0), eventstore.New(64), scripted)
+	if _, err := rt.Chat(context.Background(), sess.ID, "search A"); err != nil {
+		t.Fatal(err)
+	}
+	n := len(scripted.Recorded)
+	if _, err := rt.Chat(context.Background(), sess.ID, "follow-up"); err != nil {
+		t.Fatal(err)
+	}
+	if len(scripted.Recorded) <= n {
+		t.Fatal("expected second-turn prompt")
+	}
+	foundWrap := false
+	for _, m := range scripted.Recorded[n] {
+		if m.Role == "tool" && strings.Contains(m.Content, security.UntrustedBegin) {
+			foundWrap = true
+		}
+	}
+	if !foundWrap {
+		t.Fatalf("next turn missing wrap: %#v", scripted.Recorded[n])
+	}
+}
+
+func TestCallTool_RejectsDotDotPath(t *testing.T) {
+	st := store.New()
+	reg := connector.NewRegistry()
+	_ = reg.Register(connector.NewFake("fs", []connector.Tool{{
+		Name:        "read",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+	}}))
+	rt := New(st, reg, approval.New(0), eventstore.New(64), llm.Echo{})
+	_, err := rt.CallTool(context.Background(), "fs", "read", map[string]any{"path": "../etc/passwd"})
+	if err == nil || !strings.Contains(err.Error(), "path escape") {
+		t.Fatalf("expected path escape, got %v", err)
+	}
+}
+
+func TestCallTool_WorkspaceAbsolute(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	st := store.New()
+	reg := connector.NewRegistry()
+	_ = reg.Register(connector.NewFake("fs", []connector.Tool{{
+		Name:        "write",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+	}}))
+	rt := New(st, reg, approval.New(0), eventstore.New(64), llm.Echo{})
+	_, err := rt.CallTool(context.Background(), "fs", "write", map[string]any{"path": "/etc/passwd"})
+	if err == nil {
+		t.Fatal("expected outside workspace")
 	}
 }
 

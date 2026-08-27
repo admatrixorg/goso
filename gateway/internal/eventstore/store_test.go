@@ -43,6 +43,20 @@ func TestEventStore_NoCredentials(t *testing.T) {
 	}
 }
 
+func TestEventStore_TokenShapes(t *testing.T) {
+	s := New(32)
+	e := s.Append(Event{
+		Kind:    KindAttempt,
+		Summary: "key sk-abcdefghijklmnopqrstuvwxyz Bearer abcdefghijklmnop leftover",
+	})
+	if strings.Contains(e.Summary, "sk-abcdefghijklmnopqrstuvwxyz") || strings.Contains(e.Summary, "Bearer abcdefghijklmnop") {
+		t.Fatalf("token shape leaked: %s", e.Summary)
+	}
+	if !strings.Contains(e.Summary, "[redacted]") {
+		t.Fatalf("expected redaction, got %s", e.Summary)
+	}
+}
+
 func TestEventStore_RingCap(t *testing.T) {
 	s := New(32)
 	for i := 0; i < 40; i++ {

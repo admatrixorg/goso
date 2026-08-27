@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
 )
@@ -160,6 +161,54 @@ func TestWebhookLLMBypassesAdmin(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("llm webhook %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestViewToken_GETOnly(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "admin-041")
+	t.Setenv("GOSO_VIEW_TOKEN", "view-041")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	h, _ := New(store.New(), "test")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET agents %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET sessions %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"session_id":"x","message":"hi"}`))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST chat %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMaxBytesReader_API(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	h, _ := New(store.New(), "test")
+	body := bytes.Repeat([]byte("a"), security.MaxAPIBody+8)
+	req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code == http.StatusCreated {
+		t.Fatalf("oversized body must not create: %d %s", rr.Code, rr.Body.String())
 	}
 }
 

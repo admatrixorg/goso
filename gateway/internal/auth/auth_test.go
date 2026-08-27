@@ -52,6 +52,86 @@ func TestRequireToken_PassAndFail(t *testing.T) {
 	}
 }
 
+func TestRequireToken_ConstantTimeBearer(t *testing.T) {
+	mw := RequireToken("secret-041", []string{"/healthz"})
+	h := mw(okHandler())
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer secret-041")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("match 200, got %d", w.Code)
+	}
+	req = httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer secret-040")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 401 {
+		t.Fatalf("mismatch 401, got %d", w.Code)
+	}
+}
+
+func TestRequireTokens_ViewGETOnly(t *testing.T) {
+	mw := RequireTokens("admin-041", "view-041", []string{"/healthz"})
+	h := mw(okHandler())
+
+	get := httptest.NewRequest("GET", "/api/agents", nil)
+	get.Header.Set("Authorization", "Bearer view-041")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 200 {
+		t.Fatalf("view GET agents 200, got %d", w.Code)
+	}
+
+	sess := httptest.NewRequest("GET", "/api/sessions", nil)
+	sess.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, sess)
+	if w.Code != 200 {
+		t.Fatalf("view GET sessions 200, got %d", w.Code)
+	}
+
+	post := httptest.NewRequest("POST", "/api/chat", nil)
+	post.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, post)
+	if w.Code != 403 {
+		t.Fatalf("view POST chat 403, got %d", w.Code)
+	}
+
+	one := httptest.NewRequest("GET", "/api/agents/abc", nil)
+	one.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, one)
+	if w.Code != 200 {
+		t.Fatalf("view GET agent id 200, got %d", w.Code)
+	}
+
+	msgs := httptest.NewRequest("GET", "/api/sessions/abc/messages", nil)
+	msgs.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, msgs)
+	if w.Code != 403 {
+		t.Fatalf("view GET messages 403, got %d", w.Code)
+	}
+
+	other := httptest.NewRequest("GET", "/api/vault/docs", nil)
+	other.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, other)
+	if w.Code != 403 {
+		t.Fatalf("view GET vault 403, got %d", w.Code)
+	}
+
+	admin := httptest.NewRequest("POST", "/api/chat", nil)
+	admin.Header.Set("Authorization", "Bearer admin-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, admin)
+	if w.Code != 200 {
+		t.Fatalf("admin POST 200, got %d", w.Code)
+	}
+}
+
 func TestRequireToken_EmptyRefuses(t *testing.T) {
 	mw := RequireToken("", []string{"/healthz"})
 	h := mw(okHandler())

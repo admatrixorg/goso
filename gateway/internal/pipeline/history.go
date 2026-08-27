@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -56,7 +57,9 @@ func ToLLM(msgs []*store.Message) []llm.Message {
 		case "tool":
 			if id, content, ok := decodeTool(m.Content); ok {
 				lm.ToolCallID = id
-				lm.Content = content
+				lm.Content = security.WrapUntrusted(content)
+			} else {
+				lm.Content = security.WrapUntrusted(m.Content)
 			}
 		}
 		out = append(out, lm)

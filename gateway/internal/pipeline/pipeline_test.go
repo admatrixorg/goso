@@ -3,9 +3,11 @@
 package pipeline
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -138,5 +140,8 @@ func TestToLLM_RoundTripToolUse(t *testing.T) {
 	})
 	if len(msgs) != 2 || len(msgs[0].ToolCalls) != 1 || msgs[1].ToolCallID != "1" {
 		t.Fatalf("%#v", msgs)
+	}
+	if !strings.Contains(msgs[1].Content, security.UntrustedBegin) || !strings.Contains(msgs[1].Content, security.UntrustedEnd) {
+		t.Fatalf("expected untrusted wrap %#v", msgs[1])
 	}
 }

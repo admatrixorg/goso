@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
 )
@@ -295,7 +296,11 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 			Role:      "tool",
 			Content:   EncodeTool(call.ID, content),
 		})
-		st.Messages = append(st.Messages, llm.Message{Role: "tool", Content: content, ToolCallID: call.ID})
+		st.Messages = append(st.Messages, llm.Message{
+			Role:       "tool",
+			Content:    security.WrapUntrusted(content),
+			ToolCallID: call.ID,
+		})
 		r.Hooks.Fire(ctx, Event{
 			Name:      PostToolUse,
 			SessionID: st.SessionID,

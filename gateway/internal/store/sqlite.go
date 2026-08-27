@@ -169,6 +169,11 @@ func (s *SQLiteStore) migrate() error {
 			suggestion_id TEXT NOT NULL,
 			PRIMARY KEY(agent_id, suggestion_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS secrets (
+			name TEXT PRIMARY KEY,
+			nonce BLOB NOT NULL,
+			ct BLOB NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
