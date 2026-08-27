@@ -26,7 +26,17 @@ export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T>
   return (await res.json()) as T;
 }
 
-export type Agent = { id: string; agent_key: string; display_name: string; model?: string; created_at: string };
+export const ORCHESTRATION_MODES = ["auto", "explicit", "manual"] as const;
+export type OrchestrationMode = (typeof ORCHESTRATION_MODES)[number];
+export type Agent = {
+  id: string;
+  agent_key: string;
+  display_name: string;
+  model?: string;
+  instructions?: string;
+  orchestration_mode?: string;
+  created_at: string;
+};
 export type Session = { id: string; agent_id: string; label?: string; created_at: string };
 export type Message = { id: string; session_id: string; role: string; content: string; created_at: string };
 export type Connector = {
@@ -58,6 +68,8 @@ export const api = {
   getAgent: (id: string) => jsonFetch<Agent>(`/api/agents/${id}`),
   createAgent: (body: { agent_key: string; display_name: string; model?: string }) =>
     jsonFetch<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
+  updateAgent: (id: string, body: { orchestration_mode?: string; model?: string; instructions?: string }) =>
+    jsonFetch<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   listSessions: () => jsonFetch<{ sessions: Session[] }>("/api/sessions"),
   createSession: (body: { agent_id: string; label?: string }) =>
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
