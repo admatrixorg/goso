@@ -93,4 +93,10 @@ func TestHandleTraces_SpanTrees(t *testing.T) {
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"cache_read_tokens":0`)) {
 		t.Fatalf("expected cache_read_tokens default 0 in %s", raw)
 	}
+
+	wV1 := httptest.NewRecorder()
+	mux.ServeHTTP(wV1, httptest.NewRequest("GET", "/v1/traces", nil))
+	if wV1.Code != w.Code || wV1.Body.String() != w.Body.String() {
+		t.Fatalf("GET /v1/traces %d %s vs /api/traces %d %s", wV1.Code, wV1.Body.String(), w.Code, w.Body.String())
+	}
 }
