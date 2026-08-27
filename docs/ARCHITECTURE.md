@@ -19,6 +19,7 @@ Giai đoạn B (3–5 tháng): Thay dần Gateway bằng GOSO Gateway Go
                     ┌─────────┴─────────┐
                     │ Desktop Wails     │
                     │ SQLite FTS5       │
+                    │ Knowledge vault   │
                     └───────────────────┘
 ```
 

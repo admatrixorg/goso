@@ -158,3 +158,43 @@ func TestSQLiteStore_FTSAndSummary(t *testing.T) {
 		t.Fatalf("latest %v %v", err, got)
 	}
 }
+
+func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenSQLite(filepath.Join(dir, "vault.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "wikilink pineapple [[Beta]]"})
+	if err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	if err := s.ReplaceVaultLinks(a.ID, []string{"Beta"}); err != nil {
+		t.Fatalf("links: %v", err)
+	}
+	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "mango [[Alpha]]"})
+	if err != nil {
+		t.Fatalf("beta: %v", err)
+	}
+	if err := s.ReplaceVaultLinks(b.ID, []string{"Alpha"}); err != nil {
+		t.Fatalf("beta links: %v", err)
+	}
+	_ = s.ReResolveVaultLinks()
+	ob, ib, err := s.ListVaultDocLinks(a.ID)
+	if err != nil || len(ob) != 1 || ob[0].ToID != b.ID || len(ib) != 1 {
+		t.Fatalf("edges %v %#v %#v", err, ob, ib)
+	}
+	hits, err := s.SearchVault("pineapple")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("fts pineapple %v %#v vaultFTS=%v", err, hits, s.vaultFTS)
+	}
+	hits, err = s.SearchVault("mango")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("fts mango %v %#v", err, hits)
+	}
+	none, err := s.SearchVault("zzzz-absent")
+	if err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("empty %v %#v", err, none)
+	}
+}

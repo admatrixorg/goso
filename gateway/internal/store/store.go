@@ -59,6 +59,32 @@ type SearchHit struct {
 	Snippet   string `json:"snippet"`
 }
 
+// VaultDoc is a knowledge-vault registry row. Disk is source of truth after sync;
+// Body is an optional cache.
+type VaultDoc struct {
+	ID     string    `json:"id"`
+	Title  string    `json:"title"`
+	Path   string    `json:"path"`
+	SHA256 string    `json:"sha256"`
+	Mtime  time.Time `json:"mtime"`
+	Body   string    `json:"body,omitempty"`
+}
+
+// VaultLink is one [[wikilink]] edge. ToID is empty until the target resolves.
+type VaultLink struct {
+	FromID string `json:"from_id"`
+	ToID   string `json:"to_id,omitempty"`
+	Raw    string `json:"raw"`
+}
+
+// VaultSearchHit is one lexical (FTS5 / substring) vault match. Semantic search is DI-09.
+type VaultSearchHit struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Path    string `json:"path"`
+	Snippet string `json:"snippet"`
+}
+
 // ConnectorRecord is a persisted connector registration (config only, no secrets).
 type ConnectorRecord struct {
 	Name          string          `json:"name"`
@@ -95,6 +121,16 @@ type StoreIface interface {
 	SaveSummary(sessionID, body string) (*Memory, error)
 	LatestSummary(sessionID string) (*Memory, error)
 	SearchMemory(q string) ([]SearchHit, error)
+	PutVaultDoc(VaultDoc) (*VaultDoc, error)
+	GetVaultDoc(string) (*VaultDoc, error)
+	ListVaultDocs() []*VaultDoc
+	FindVaultDocByPath(string) (*VaultDoc, error)
+	FindVaultDocByTitle(string) (*VaultDoc, error)
+	DeleteVaultDoc(string) error
+	ReplaceVaultLinks(fromID string, raws []string) error
+	ListVaultDocLinks(id string) ([]VaultLink, []VaultLink, error)
+	SearchVault(q string) ([]VaultSearchHit, error)
+	ReResolveVaultLinks() error
 }
 
 var (
@@ -111,8 +147,12 @@ type Store struct {
 	memories   map[string][]*Memory  // session_id -> memories
 	connectors map[string]*ConnectorRecord
 	agentConns map[string]map[string]struct{} // agent_id -> connector names
+	vaultDocs  map[string]*VaultDoc
+	vaultLinks map[string][]VaultLink // from_id -> outbound
 	seq        int64
 }
+
+var _ StoreIface = (*Store)(nil)
 
 func Open(path string) (StoreIface, func() error, error) {
 	if path == "" || path == ":memory:" {
@@ -134,6 +174,8 @@ func New() *Store {
 		memories:   make(map[string][]*Memory),
 		connectors: make(map[string]*ConnectorRecord),
 		agentConns: make(map[string]map[string]struct{}),
+		vaultDocs:  make(map[string]*VaultDoc),
+		vaultLinks: make(map[string][]VaultLink),
 	}
 }
 

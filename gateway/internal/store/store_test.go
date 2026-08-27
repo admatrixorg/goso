@@ -107,6 +107,58 @@ func TestStore_MemoryAndSearch(t *testing.T) {
 	}
 }
 
+func TestStore_VaultWikilinksAndSearch(t *testing.T) {
+	s := New()
+	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "see [[Beta]] needle"})
+	if err != nil || a.ID == "" {
+		t.Fatalf("put alpha: %v %#v", err, a)
+	}
+	if err := s.ReplaceVaultLinks(a.ID, []string{"Beta"}); err != nil {
+		t.Fatalf("links: %v", err)
+	}
+	ob, ib, err := s.ListVaultDocLinks(a.ID)
+	if err != nil || len(ob) != 1 || ob[0].ToID != "" || ob[0].Raw != "[[Beta]]" {
+		t.Fatalf("unresolved %v %#v %#v", err, ob, ib)
+	}
+	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "see [[Alpha]]"})
+	if err != nil {
+		t.Fatalf("put beta: %v", err)
+	}
+	if err := s.ReplaceVaultLinks(b.ID, []string{"Alpha"}); err != nil {
+		t.Fatalf("beta links: %v", err)
+	}
+	_ = s.ReResolveVaultLinks()
+	ob, ib, err = s.ListVaultDocLinks(a.ID)
+	if err != nil || len(ob) != 1 || ob[0].ToID != b.ID {
+		t.Fatalf("alpha outbound %v %#v", err, ob)
+	}
+	if len(ib) != 1 || ib[0].FromID != b.ID {
+		t.Fatalf("alpha inbound %#v", ib)
+	}
+	obB, ibB, err := s.ListVaultDocLinks(b.ID)
+	if err != nil || len(obB) != 1 || obB[0].ToID != a.ID || len(ibB) != 1 {
+		t.Fatalf("beta edges %v %#v %#v", err, obB, ibB)
+	}
+	hits, err := s.SearchVault("needle")
+	if err != nil || len(hits) != 1 || hits[0].ID != a.ID {
+		t.Fatalf("search %v %#v", err, hits)
+	}
+	empty, err := s.SearchVault("no-such-token")
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("empty %v %#v", err, empty)
+	}
+	if _, err := s.GetVaultDoc("missing"); err != ErrNotFound {
+		t.Fatalf("get missing: %v", err)
+	}
+	if err := s.DeleteVaultDoc(b.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	ob, _, _ = s.ListVaultDocLinks(a.ID)
+	if len(ob) != 1 || ob[0].ToID != "" {
+		t.Fatalf("dangling after delete %#v", ob)
+	}
+}
+
 func TestStore_ConnectorAndLink(t *testing.T) {
 	s := New()
 	a, _ := s.CreateAgent(Agent{AgentKey: "k", DisplayName: "K"})
