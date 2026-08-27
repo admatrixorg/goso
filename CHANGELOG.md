@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- Skills loader + builtin `use_skill` (SPEC 049). Empty `GOSO_SKILLS_DIR` fail-closed (`not_configured` / `{skills:[]}`, no FS walk). When set: one-level `<name>/SKILL.md`, 64KiB cap, path jail (`..` / absolute / workspace). `GET /api/skills` names only (`?name=` body). Functions page Skills card. No script exec.
 - `PATCH /api/agents/{id}` `{orchestration_mode?: auto|explicit|manual, model?, instructions?}` (SPEC 048). Invalid mode 400; missing agent 404. Agents page mode select PATCHes on change; Teams page shows each member's mode (select when the agent list includes the field). i18n vi+en. StatusLine loading/error.
 - `GET /api/webhooks` list `{webhooks:[{id, token_prefix}]}` (SPEC 047); never token/hmac. Control-plane Webhooks tab loads the registry (StatusLine loading/empty/error); last-created secret still once then redacted.
 - router9 catalog default `ocg/deepseek-v4-flash` (SPEC 045); `GOSO_ROUTER9_MODEL` still overrides including `cx/*`. SQLite IDs use a random hex suffix so gateway restart no longer collides on `YYYYMMDD-1`.

@@ -146,6 +146,11 @@ export const vi = {
   "functions.tokenHint": "Ô mật khẩu — giá trị không echo từ API. Để trống = giữ nguyên.",
   "functions.saveConnector": "Lưu connector",
   "functions.emptyConnectors": "Chưa có connector.",
+  "functions.skills": "Skills",
+  "functions.skills.meta": "{n} skills",
+  "functions.skills.empty": "Chưa có skill. Đặt GOSO_SKILLS_DIR (một cấp thư mục chứa SKILL.md).",
+  "functions.skills.col.name": "TÊN",
+  "functions.skills.col.path": "PATH",
 
   "events.title": "Nhật ký",
   "events.desc": "Ai đổi gì trên connector — attempt, success, error, pending_approval. Không chứa secret.",
