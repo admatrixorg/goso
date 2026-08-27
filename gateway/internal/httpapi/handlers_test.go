@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
@@ -413,5 +414,29 @@ func TestChat_PromptModeTaskOK(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProvidersAPI_ConfiguredNamesOnly(t *testing.T) {
+	st := store.New()
+	h := NewRouter(Options{
+		Store: st, Version: "0.1.0", Provider: llm.Echo{},
+		ProviderNames: []string{"echo", "groq"},
+	})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/providers", nil))
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(body["providers"])
+	if string(raw) != `["echo","groq"]` {
+		t.Fatalf("providers %s", raw)
+	}
+	if strings.Contains(w.Body.String(), "sk-") || strings.Contains(w.Body.String(), "gsk_") {
+		t.Fatal("response leaked a key")
 	}
 }

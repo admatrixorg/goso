@@ -9,15 +9,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // Anthropic calls Anthropic Messages API via net/http.
 type Anthropic struct {
-	APIKey  string
-	Model   string
-	BaseURL string // default https://api.anthropic.com
-	Client  *http.Client
+	APIKey    string
+	Model     string
+	BaseURL   string // default https://api.anthropic.com
+	Client    *http.Client
+	CacheMode string // "full" includes cache_control; other values are ignored
 }
 
 func (a *Anthropic) Name() string { return "anthropic" }
@@ -50,7 +52,7 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 	// Simplify: map all to user/assistant, system -> user.
 	type inMsg struct {
 		Role    string `json:"role"`
-		Content string `json:"content"`
+		Content any    `json:"content"`
 	}
 	var in []inMsg
 	var system string
@@ -64,21 +66,32 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 			in = append(in, inMsg{Role: "user", Content: m.Content})
 		}
 	}
-	body, _ := json.Marshal(map[string]any{
+	fullCache := strings.EqualFold(strings.TrimSpace(a.CacheMode), "full")
+	payload := map[string]any{
 		"model":      model,
 		"max_tokens": 1024,
 		"messages":   in,
-		"system":     system,
-	})
-	// Anthropic API expects system as string if present; omit if empty.
-	if system == "" {
-		// re-marshal without system
-		body, _ = json.Marshal(map[string]any{
-			"model":      model,
-			"max_tokens": 1024,
-			"messages":   in,
-		})
 	}
+	if system != "" {
+		if fullCache {
+			payload["system"] = []map[string]any{{
+				"type": "text", "text": system,
+				"cache_control": map[string]string{"type": "ephemeral"},
+			}}
+		} else {
+			payload["system"] = system
+		}
+	}
+	if fullCache && len(in) > 0 {
+		last := in[len(in)-1]
+		text, _ := last.Content.(string)
+		in[len(in)-1] = inMsg{Role: last.Role, Content: []map[string]any{{
+			"type": "text", "text": text,
+			"cache_control": map[string]string{"type": "ephemeral"},
+		}}}
+		payload["messages"] = in
+	}
+	body, _ := json.Marshal(payload)
 	client := a.Client
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}

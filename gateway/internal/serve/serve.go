@@ -32,21 +32,13 @@ type Status struct {
 	RateLimit int
 }
 
-// DefaultProvider picks Anthropic, else OpenAI, else echo — same rules as the CLI.
+// DefaultProvider picks Anthropic, else OpenAI, else the first named OpenAI-compat, else echo.
 // GOSO_E2E_SCRIPTED=1 selects a test-only ToolChat provider (not for production).
 func DefaultProvider() llm.Provider {
 	if envTruthy(os.Getenv("GOSO_E2E_SCRIPTED")) && strings.EqualFold(strings.TrimSpace(os.Getenv("GOSO_ENV")), "test") {
 		return llm.NewE2EScripted()
 	}
-	reg := llm.NewRegistry()
-	provider := reg.Get("anthropic")
-	if !reg.HasReal() {
-		return llm.Echo{}
-	}
-	if provider.Name() == "echo" {
-		return reg.Get("openai")
-	}
-	return provider
+	return llm.NewRegistry().Preferred()
 }
 
 func loadConnectors(st store.StoreIface, connReg *connector.Registry) {
@@ -99,6 +91,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 		Store: st, Version: version, Provider: provider,
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
+		ProviderNames: llm.NewRegistry().List(),
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux)
 	obs.Register(mux)

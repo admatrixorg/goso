@@ -33,6 +33,8 @@ type Options struct {
 	TG       http.HandlerFunc
 	ZP       http.HandlerFunc
 	ZO       http.HandlerFunc
+	// ProviderNames is GET /api/providers (configured names only, never secrets).
+	ProviderNames []string
 }
 
 func (o *Options) defaults() {
@@ -64,11 +66,15 @@ func NewRouter(opt Options) http.Handler {
 	mux := routerBase(opt.Store, opt.Version)
 	registerChannels(mux, opt.TG, opt.ZP, opt.ZO)
 	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		name := "echo"
-		if opt.Provider != nil {
-			name = opt.Provider.Name()
+		names := opt.ProviderNames
+		if len(names) == 0 {
+			name := "echo"
+			if opt.Provider != nil {
+				name = opt.Provider.Name()
+			}
+			names = []string{name}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"providers": []string{name}})
+		writeJSON(w, http.StatusOK, map[string]any{"providers": names})
 	})
 	if opt.Runtime != nil {
 		mux.HandleFunc("POST /api/chat", handleChatRuntime(opt.Runtime, opt.Store, opt.Meter, opt.Provider))

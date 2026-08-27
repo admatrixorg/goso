@@ -76,6 +76,7 @@ Tất cả secret đi qua env, không commit. Đổi giá trị rồi **restart 
 | `GOSO_ADMIN_TOKEN` | Bearer `/api/*`, `/ws` | Sinh token mới (`openssl rand -hex 32`), set env, restart, cập nhật client/control-plane (`VITE_GOSO_ADMIN_TOKEN` / `localStorage.goso_token`). Token cũ hết hiệu lực ngay. |
 | `GOSO_ANTHROPIC_API_KEY` | LLM Anthropic | Tạo key mới trên console Anthropic, set env, restart. Key cũ revoke trên console. |
 | `GOSO_OPENAI_API_KEY` | LLM OpenAI | Tương tự. |
+| `GOSO_OPENROUTER_API_KEY` / `GOSO_GROQ_API_KEY` / `GOSO_DEEPSEEK_API_KEY` / `GOSO_GEMINI_API_KEY` / `GOSO_MISTRAL_API_KEY` / `GOSO_XAI_API_KEY` / `GOSO_MINIMAX_API_KEY` / `GOSO_DASHSCOPE_API_KEY` | Named OpenAI-compat (SPEC 039) | Tạo key trên console vendor, set env, restart. Empty = provider absent. |
 | `GOSO_TELEGRAM_BOT_TOKEN` | Telegram `sendMessage` | `@BotFather` /revoke rồi token mới, cập nhật webhook nếu có. |
 | `GOSO_ZALO_OA_ACCESS_TOKEN` | Zalo OA | Làm mới access token OA, restart. |
 | `GOSO_ZALO_PERSONAL_TOKEN` | Zalo Personal | Làm mới token, restart. |
@@ -109,7 +110,7 @@ Nếu `GOSO_ADMIN_TOKEN` rỗng và không có `GOSO_DEV_MODE=1`: `/api/*` trả
 
 ### Chat trả `echo: ...` thay vì model thật
 
-- Chưa set `GOSO_ANTHROPIC_API_KEY` / `GOSO_OPENAI_API_KEY` → provider `echo`.
+- Chưa set native / named LLM keys (`GOSO_ANTHROPIC_API_KEY`, `GOSO_OPENAI_API_KEY`, `GOSO_GROQ_API_KEY`, …) → provider `echo`. `GET /api/providers` lists configured names only (never secrets).
 - Key sai → LLM 502 (`Bad Gateway`). Kiểm tra key, không commit key.
 
 ### SQLite lỗi / dữ liệu mất
