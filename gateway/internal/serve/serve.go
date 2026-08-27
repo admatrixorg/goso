@@ -3,11 +3,13 @@
 package serve
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
@@ -15,6 +17,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -107,6 +110,9 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.Register(mux)
+	if !testing.Testing() {
+		go cron.Loop(context.Background(), st, httpapi.FireSessionChat(rt, st, provider, meter))
+	}
 	return mux
 }
 

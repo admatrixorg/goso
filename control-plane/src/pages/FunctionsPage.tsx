@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Agent, type Connector } from "../api/client";
+import { api, type Agent, type Connector, type Session } from "../api/client";
+import { cronApi, type CronJob } from "../api/cron";
 import { skillsApi, type SkillInfo } from "../api/skills";
 import { toolsApi, type AgentTool } from "../api/tools";
 import { useI18n } from "../i18n";
@@ -26,6 +27,13 @@ export function FunctionsPage() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsErr, setSkillsErr] = useState("");
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const [cronLoading, setCronLoading] = useState(true);
+  const [cronErr, setCronErr] = useState("");
+  const [cronSpec, setCronSpec] = useState("every:1h");
+  const [cronSession, setCronSession] = useState("");
+  const [cronMessage, setCronMessage] = useState("");
 
   const selected = connectors.find((c) => c.name === connName);
 
@@ -79,9 +87,25 @@ export function FunctionsPage() {
     }
   }
 
+  async function loadCron() {
+    setCronLoading(true);
+    try {
+      const [jobs, sess] = await Promise.all([cronApi.list(), api.listSessions()]);
+      setCronJobs(jobs.jobs ?? []);
+      setSessions(sess.sessions ?? []);
+      setCronErr("");
+    } catch (e) {
+      setCronJobs([]);
+      setCronErr(formatPublicError(e));
+    } finally {
+      setCronLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadAgents();
     void loadSkills();
+    void loadCron();
   }, []);
 
   useEffect(() => {
@@ -122,6 +146,28 @@ export function FunctionsPage() {
     }
   }
 
+  async function createCron() {
+    if (!cronSpec.trim() || !cronSession || !cronMessage.trim()) return;
+    try {
+      await cronApi.create({ spec: cronSpec.trim(), session_id: cronSession, message: cronMessage.trim() });
+      setCronMessage("");
+      setCronErr("");
+      await loadCron();
+    } catch (e) {
+      setCronErr(formatPublicError(e));
+    }
+  }
+
+  async function deleteCron(id: string) {
+    try {
+      await cronApi.remove(id);
+      setCronErr("");
+      await loadCron();
+    } catch (e) {
+      setCronErr(formatPublicError(e));
+    }
+  }
+
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
@@ -136,6 +182,7 @@ export function FunctionsPage() {
               void loadAgents();
               void loadTools(agentId);
               void loadSkills();
+              void loadCron();
             }}
           >
             {t("common.refresh")}
@@ -275,6 +322,81 @@ export function FunctionsPage() {
         ))}
         {skillsLoading ? <StatusLine kind="loading" /> : null}
         {!skillsLoading && !skillsErr && skills.length === 0 ? <EmptyState>{t("functions.skills.empty")}</EmptyState> : null}
+      </Card>
+      <Card>
+        <CardHeader icon="timer" title={t("functions.cron")} meta={t("functions.cron.meta", { n: cronJobs.length })} />
+        {cronErr ? <StatusLine kind="error">{cronErr}</StatusLine> : null}
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
+              {t("functions.cron.spec")}
+              <input
+                className="z-field"
+                style={{ display: "block", width: "100%", marginTop: 4 }}
+                value={cronSpec}
+                onChange={(e) => setCronSpec(e.target.value)}
+              />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
+              {t("functions.cron.session")}
+              <select className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={cronSession} onChange={(e) => setCronSession(e.target.value)}>
+                <option value="">{t("functions.cron.pickSession")}</option>
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label || s.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "2 1 220px" }}>
+              {t("functions.cron.message")}
+              <input
+                className="z-field"
+                style={{ display: "block", width: "100%", marginTop: 4 }}
+                value={cronMessage}
+                onChange={(e) => setCronMessage(e.target.value)}
+              />
+            </label>
+            <Button variant="primary" onClick={() => void createCron()}>
+              {t("functions.cron.create")}
+            </Button>
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            padding: "8px 16px",
+            borderBottom: "1px solid var(--border-soft)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: ".4px",
+            color: "var(--text-3)",
+          }}
+        >
+          <span style={{ flex: 1.2 }}>{t("functions.cron.col.spec")}</span>
+          <span style={{ flex: 1.2 }}>{t("functions.cron.col.session")}</span>
+          <span style={{ flex: 1.6 }}>{t("functions.cron.col.message")}</span>
+          <span style={{ flex: 1 }}>{t("functions.cron.col.last")}</span>
+          <span style={{ flex: 0.6 }} />
+        </div>
+        {cronJobs.map((job) => (
+          <div
+            key={job.id}
+            style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8 }}
+          >
+            <span style={{ flex: 1.2, fontWeight: 600 }}>{job.spec}</span>
+            <span style={{ flex: 1.2, color: "var(--text-2)" }}>{job.session_id}</span>
+            <span style={{ flex: 1.6, color: "var(--text-2)" }}>{job.message}</span>
+            <span style={{ flex: 1, color: "var(--text-3)" }}>{job.last_run || "—"}</span>
+            <span style={{ flex: 0.6, textAlign: "right" }}>
+              <Button variant="ghost" onClick={() => void deleteCron(job.id)}>
+                {t("common.delete")}
+              </Button>
+            </span>
+          </div>
+        ))}
+        {cronLoading ? <StatusLine kind="loading" /> : null}
+        {!cronLoading && !cronErr && cronJobs.length === 0 ? <EmptyState>{t("functions.cron.empty")}</EmptyState> : null}
       </Card>
     </div>
   );

@@ -105,4 +105,6 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |
 | GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042). Empty = no export. Do **not** put Grafana Cloud keys here (DI-18). |
 
+Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute ticker. `GET/POST/DELETE /api/cron` (aliased at `/v1/cron`). Specs: `every:Nm|Nh` or optional 5-field (`*`, decimal, `*/n`) evaluated in **UTC**. Cap 20 jobs. Empty list is a no-op. Failed fires are retried next tick. No OS crontab and no extra env.
+
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
