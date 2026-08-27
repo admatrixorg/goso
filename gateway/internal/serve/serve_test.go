@@ -94,3 +94,41 @@ func TestNewRequiresToken(t *testing.T) {
 		t.Fatalf("bearer /api/agents %d %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestProvidersListsConfigured(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	t.Setenv("GOSO_ANTHROPIC_API_KEY", "")
+	t.Setenv("GOSO_OPENAI_API_KEY", "")
+	t.Setenv("GOSO_OPENROUTER_API_KEY", "")
+	t.Setenv("GOSO_GROQ_API_KEY", "k-groq")
+	t.Setenv("GOSO_DEEPSEEK_API_KEY", "")
+	t.Setenv("GOSO_GEMINI_API_KEY", "")
+	t.Setenv("GOSO_MISTRAL_API_KEY", "")
+	t.Setenv("GOSO_XAI_API_KEY", "")
+	t.Setenv("GOSO_MINIMAX_API_KEY", "")
+	t.Setenv("GOSO_DASHSCOPE_API_KEY", "")
+	h, status := New(store.New(), "test")
+	if status.Provider != "groq" {
+		t.Fatalf("default provider %s", status.Provider)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/providers", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Providers []string `json:"providers"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, n := range body.Providers {
+		got[n] = true
+	}
+	if !got["echo"] || !got["groq"] || got["openai"] || got["anthropic"] {
+		t.Fatalf("providers %+v", body.Providers)
+	}
+}

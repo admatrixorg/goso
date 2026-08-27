@@ -99,9 +99,21 @@ func TestEstimateUsage_WhenProviderOmits(t *testing.T) {
 	}
 }
 
-func TestRegistry(t *testing.T) {
+func clearProviderEnv(t *testing.T) {
+	t.Helper()
 	t.Setenv("GOSO_ANTHROPIC_API_KEY", "")
+	t.Setenv("GOSO_ANTHROPIC_MODEL", "")
+	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "")
 	t.Setenv("GOSO_OPENAI_API_KEY", "")
+	t.Setenv("GOSO_OPENAI_MODEL", "")
+	for _, c := range OpenAICompatProviders() {
+		t.Setenv(c.EnvKey, "")
+		t.Setenv(c.EnvModel, "")
+	}
+}
+
+func TestRegistry(t *testing.T) {
+	clearProviderEnv(t)
 	r := NewRegistry()
 	if r.HasReal() {
 		t.Fatal("expected no real provider")
@@ -109,9 +121,64 @@ func TestRegistry(t *testing.T) {
 	if r.Get("anthropic").Name() != "echo" {
 		t.Fatal("expected echo fallback")
 	}
+	if r.Preferred().Name() != "echo" {
+		t.Fatal("expected preferred echo")
+	}
+	got := map[string]bool{}
+	for _, n := range r.List() {
+		got[n] = true
+	}
+	if !got["echo"] || len(got) != 1 {
+		t.Fatalf("list %+v", r.List())
+	}
 	t.Setenv("GOSO_ANTHROPIC_API_KEY", "k1")
 	r = NewRegistry()
 	if !r.HasReal() || r.Get("anthropic").Name() != "anthropic" {
 		t.Fatal("expected anthropic")
+	}
+}
+
+func TestRegistry_NamedCompat(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("GOSO_GROQ_API_KEY", "k-groq")
+	r := NewRegistry()
+	if !r.HasReal() || r.Get("groq").Name() != "groq" {
+		t.Fatal("expected groq")
+	}
+	if r.Get("openrouter").Name() != "echo" {
+		t.Fatal("empty openrouter must be absent")
+	}
+	if r.Preferred().Name() != "groq" {
+		t.Fatalf("preferred %s", r.Preferred().Name())
+	}
+	p, ok := r.Get("groq").(*OpenAI)
+	if !ok || p.BaseURL != "https://api.groq.com/openai" {
+		t.Fatalf("groq %+v", p)
+	}
+}
+
+func TestRegistry_PreferredAnthropicOverNamed(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("GOSO_ANTHROPIC_API_KEY", "k1")
+	t.Setenv("GOSO_GROQ_API_KEY", "k-groq")
+	r := NewRegistry()
+	if r.Preferred().Name() != "anthropic" {
+		t.Fatalf("preferred %s", r.Preferred().Name())
+	}
+}
+
+func TestOpenAICompatCatalog(t *testing.T) {
+	want := []string{"openrouter", "groq", "deepseek", "gemini", "mistral", "xai", "minimax", "dashscope"}
+	got := OpenAICompatProviders()
+	if len(got) != len(want) {
+		t.Fatalf("len %d", len(got))
+	}
+	for i, spec := range got {
+		if spec.Name != want[i] {
+			t.Fatalf("name[%d] %s", i, spec.Name)
+		}
+		if spec.BaseURL == "" || spec.EnvKey == "" || spec.Model == "" {
+			t.Fatalf("incomplete %+v", spec)
+		}
 	}
 }

@@ -67,8 +67,9 @@ gateway flags:
 Environment:
   GOSO_PORT                Port (default 8080)
   GOSO_HOST                Bind host (default 127.0.0.1; Docker uses 0.0.0.0)
-  GOSO_ANTHROPIC_API_KEY   Anthropic key (optional, falls back to echo)
+  GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
+  GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)

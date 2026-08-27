@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- Named LLM providers (SPEC 039): OpenAI-compat `openrouter` `groq` `deepseek` `gemini` `mistral` `xai` `minimax` `dashscope` via BaseURL+env; `GET /api/providers` lists configured names; Claude CLI / Codex / ACP fail-closed stubs; SSE parser for `stream=true`. Empty env → provider absent, echo fallback. Live keys = DI-20 (not in git).
 - Knowledge vault (SPEC 037): `[[wikilink]]` bidirectional registry, FTS5/substring `GET /api/vault/search`, filesystem sync under `GOSO_VAULT_DIR`, HTTP `/api/vault/docs` `/links` `POST /api/vault/sync`. Lexical only; semantic = DI-09.
 - Memory L0/L1 (SPEC 036): episodic session summaries, FTS5/substring `GET /api/memory/search`, `GET`/`POST /api/memory`. Pipeline summarize/memory stages filled; no pgvector.
 - Hardening (SPEC 013): `make verify` chạy gitleaks + semgrep (bắt buộc trên CI, skip nếu thiếu tool ở local) và `scripts/e2e.sh`.
