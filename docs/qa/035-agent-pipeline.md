@@ -20,7 +20,7 @@ If the loop hits 20 iterations without final text, the reply is `max_iterations`
 
 Pending approval still stops the loop and appears on `ChatResult.Trace`.
 
-Q2 cache-boundary and Q4 bootstrap file tree are out of 035. `AGENTS.md` in process cwd is appended to full/task when present; missing files are skipped.
+Q2 cache-boundary is out of 035. Q4 bootstrap file tree is SPEC 051 (`GOSO_CONTEXT_DIR`); the cwd `AGENTS.md` stub was removed.
 
 ## Commands
 

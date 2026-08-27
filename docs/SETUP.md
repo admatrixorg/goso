@@ -96,6 +96,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_LLM_PROVIDER | (unset) | Force Preferred() name (e.g. `router9`) when that provider is constructed. |
 | GOSO_WEB_SEARCH | (off) | `ddg` or `1` enables builtin `web_search` (DuckDuckGo Instant Answer). Empty = fail-closed `not_configured`. |
 | GOSO_SKILLS_DIR | (empty) | One-level skill folders (`<dir>/<name>/SKILL.md`). Empty = fail-closed: builtin `use_skill` returns `not_configured` and `GET /api/skills` is `{skills:[]}`. No script exec. Cap 64KiB. |
+| GOSO_CONTEXT_DIR | (empty) | Bootstrap markdown dir (SPEC 051). Empty = no inject. When set: read only direct children `SOUL.md`, `IDENTITY.md`, `AGENTS.md` (optional `USER.md`), 32KiB each, labeled system text in the pipeline prompt stage. Does not change `display_name` / `agent_key`. Missing dir and `..` are no-ops. |
 | GOSO_TELEGRAM_BOT_TOKEN, GOSO_ZALO_OA_ACCESS_TOKEN, GOSO_ZALO_PERSONAL_TOKEN, GOSO_DISCORD_BOT_TOKEN, GOSO_SLACK_BOT_TOKEN, GOSO_FEISHU_APP_SECRET, GOSO_WHATSAPP_ACCESS_TOKEN | (empty) | Channel tokens (SPEC 040). Empty = still listed on `GET /api/channels` with `configured: false`. Live values = DI-01..07, not in git. WhatsApp adapter is Cloud API shaped (native vs Business = DI-01). |
 | GOSO_WS_ORIGINS | (empty = allow all) | Comma-separated WebSocket Origin allowlist. Empty keeps previous allow-all behaviour. |
 | GOSO_ENV | development | Môi trường |

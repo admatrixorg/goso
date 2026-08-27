@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- Bootstrap context files from `GOSO_CONTEXT_DIR` (SPEC 051 / Q4). Empty env = no inject. When set: load direct children `SOUL.md`, `IDENTITY.md`, `AGENTS.md` (optional `USER.md`), 32KiB each, as labeled system text in the pipeline prompt stage. Missing dir and path escape (`..`) are no-ops. Does not change `display_name` / `agent_key`. Settings one-line (vi+en).
 - Filesystem builtins `read_file` `{path}` and `write_file` `{path, content}` (SPEC 050). Empty `GOSO_WORKSPACE` fail-closed (`not_configured`, no FS). When set: jail under the workspace, reject `..` / absolute outside / symlink escape, read cap 1MiB, write creates in-jail parent dirs only. `write_file` `requires_approval: true`. Advertised on `GET /api/agents/{id}/tools`. Functions page workspace note + approval badge. No exec or delete.
 - Skills loader + builtin `use_skill` (SPEC 049). Empty `GOSO_SKILLS_DIR` fail-closed (`not_configured` / `{skills:[]}`, no FS walk). When set: one-level `<name>/SKILL.md`, 64KiB cap, path jail (`..` / absolute / workspace). `GET /api/skills` names only (`?name=` body). Functions page Skills card. No script exec.
 - `PATCH /api/agents/{id}` `{orchestration_mode?: auto|explicit|manual, model?, instructions?}` (SPEC 048). Invalid mode 400; missing agent 404. Agents page mode select PATCHes on change; Teams page shows each member's mode (select when the agent list includes the field). i18n vi+en. StatusLine loading/error.

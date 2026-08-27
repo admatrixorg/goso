@@ -247,6 +247,9 @@ func (r *Runner) attachPrompt(st *State) {
 	if ins := strings.TrimSpace(st.Instructions); ins != "" && st.Mode != ModeNone {
 		sys = strings.TrimSpace(sys + "\n" + ins)
 	}
+	if boot := strings.TrimSpace(BootstrapText()); boot != "" && st.Mode != ModeNone {
+		sys = strings.TrimSpace(sys + "\n" + boot)
+	}
 	if sys == "" {
 		return
 	}
