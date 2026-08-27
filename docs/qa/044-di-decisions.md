@@ -4,7 +4,7 @@ Date: 2026-08-27. User delegated remaining DIs to the coordinator. No vendor spe
 
 | ID | Topic | Decision | Implement now | Notes |
 |----|-------|----------|---------------|-------|
-| DI-20 / model | Live LLM | **9Router** `http://127.0.0.1:20127/v1`, named provider `router9`, default model `cx/gpt-5.6-sol`. Key optional empty. Construct when `GOSO_ROUTER9_BASE_URL` set. | Yes (SPEC 044) | User-locked. `/v1/models` 200. `cx/gpt-5.6-sol` may 401 if upstream Codex session expired — report real output, do not fake. |
+| DI-20 / model | Live LLM | **9Router** `http://127.0.0.1:20127/v1`, named provider `router9`, default model `cx/gpt-5.6-sol`. Key optional empty. Construct when `GOSO_ROUTER9_BASE_URL` set. | Yes (SPEC 044) | User-locked. `/v1/models` 200 (no auth). Chat **401 token_expired** — Codex `~/.codex/auth.json` mtime 2026-08-24. **Not a goso bug.** Fix = user `codex login`, then re-smoke. Do not fake a sol completion. |
 | DI-search | `web_search` tool | Default **OFF** fail-closed. Enable with `GOSO_WEB_SEARCH=ddg` (DuckDuckGo Instant Answer, no key). Router `search:true` is a **model capability**, not a GOSO HTTP search API. | Yes (tool + flag) | No Brave/SerpAPI keys. |
 | DI-09 | Gateway Postgres / pgvector | **Keep SQLite + FTS5** (036/037). Do not switch default store. | Docs only | Upgrade path: host Postgres 16 + `CREATE EXTENSION vector`; dual-write embeddings later; FTS5 remains lexical fallback. Blocked on **host providing** PG — parked, does not block 044. |
 | DI-12 | Docker sandbox | **OFF** default. Tool `sandbox` → `not_configured`, no spawn. | Stub + UI flag | Needs image + policy later. |

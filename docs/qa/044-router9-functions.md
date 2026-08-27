@@ -19,9 +19,35 @@ Date: 2026-08-27. Clean-room. No ZaloCRM / goclaw-source copy. No banned author 
 | `PATCH /api/connectors/{name}` | `{enabled?, endpoint?, token?}`. Token written to secret store; **never** returned. GET/list show `token_set: bool` and mask `credential_ref` when it looks like a secret. Empty token = unchanged. |
 | Control-plane Functions | Live sidebar tab (not DEMO-only). Agent picker, tool table, connector URL + password token. i18n vi+en. |
 
-Unit tests do **not** call live `127.0.0.1:20127`. Advisor probe: `GET /v1/models` was 200; `POST /v1/chat/completions` with `cx/gpt-5.6-sol` may return **401 Codex token expired**. This document does **not** claim a live sol success.
+Unit tests do **not** call live `127.0.0.1:20127`. Router native `search:true` is a **model capability**, not a GOSO HTTP search API.
 
-Router native `search:true` is a **model capability**, not a GOSO HTTP search API.
+## Live smoke (2026-08-27) — BLOCKED by 401, not a success
+
+Coordinator + user probes against 9Router `http://127.0.0.1:20127`. **Do not treat this SPEC as a live-chat green.**
+
+| Probe | Result |
+|-------|--------|
+| `GET /v1/models` (no auth) | **HTTP 200**. 35 models including `cx/gpt-5.6-sol` and `cx/gpt-5.6-sol-review` (400K ctx, search+vision+tools). |
+| `POST /v1/chat/completions` model `cx/gpt-5.6-sol` | **HTTP 401**. Body: `[codex/gpt-5.6-sol] token_expired` / `"Provided authentication token is expired. Please try signing in again."` |
+| User long probe | Same 401 with Bearer = Codex `id_token` from `~/.codex/auth.json` (file mtime **2026-08-24**, token stale). `/v1/models` does not need that token; **chat does**. |
+| Gateway pipeline `POST /api/chat` with `GOSO_ROUTER9_MODEL=cx/gpt-5.6-sol` | **HTTP 502**, error `router9 401: … token_expired`. Log: `provider=router9 model=cx/gpt-5.6-sol`. Evidence: `/tmp/goso-044-demo/chat-sol-rerun.json`, `sol-direct.json`, `models.json`. |
+
+**Fix (user):** `codex login` (or equivalent) to refresh `~/.codex/auth.json`, then re-run `POST /v1/chat/completions` and `POST :18080/api/chat`. Coordinator will not wait mid-SPEC.
+
+This document **does not** claim a successful `cx/gpt-5.6-sol` completion. Any other 9Router model that happened to answer is **not** the locked live-smoke target.
+
+## Functions / tools evidence (independent of 401)
+
+Live demo (no Codex):
+
+```
+GET http://127.0.0.1:3000/api/providers          → 200 {"providers":["echo","router9"]}
+GET http://127.0.0.1:3000/api/agents/20260827-1/tools → 200
+  web_search/sandbox/browser/media  connector=builtin  enabled=false
+GET http://127.0.0.1:3000/                       → 200
+```
+
+Unit tests (httptest, no 20127): `gateway/internal/httpapi/handlers_tools_test.go` covers GET/PATCH `/api/agents/{id}/tools` and connector PATCH; `gateway/internal/builtin/builtin_test.go` covers fail-closed + fake DDG. Connector tools (zalocrm-style) stay on existing `handlers_connector_test.go` fake HTTP server.
 
 ## Env (already in SETUP.md / `.env.example`)
 
@@ -37,7 +63,7 @@ GOSO_WEB_SEARCH=          # empty = fail-closed; ddg or 1 = Instant Answer
 
 | Item | Status |
 |------|--------|
-| Live `cx/gpt-5.6-sol` chat | May 401 if upstream Codex session expired. Report real output; do not fake PONG. |
+| Live `cx/gpt-5.6-sol` chat | **Blocked.** 401 `token_expired` (Codex `~/.codex/auth.json` dated 2026-08-24). Fix = user `codex login`, then re-smoke. Not a product bug. |
 | Postgres / pgvector (DI-09) | Parked. SQLite + FTS5 remains default. |
 | OAuth / Apple / Stripe / K8s / Grafana / Tailscale / Redis | Non-goals. |
 | Channel live tokens | User supplies later; adapters already list `configured: false`. |
