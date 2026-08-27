@@ -12,22 +12,31 @@ import (
 	"testing"
 )
 
-func TestCatalog_FiveTools(t *testing.T) {
+func TestCatalog_SevenTools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 5 {
+	if len(got) != 7 {
 		t.Fatalf("len %d", len(got))
 	}
-	if !IsName("web_search") || !IsName("sandbox") || !IsName("browser") || !IsName("media") || !IsName("use_skill") {
-		t.Fatal("names")
+	byName := map[string]Spec{}
+	for _, s := range got {
+		byName[s.Name] = s
 	}
-	if Catalog()[0].RequiresApproval {
-		t.Fatal("web_search must not require approval")
+	for _, n := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill, ToolReadFile, ToolWriteFile} {
+		if !IsName(n) {
+			t.Fatalf("IsName %s", n)
+		}
+		if _, ok := byName[n]; !ok {
+			t.Fatalf("missing %s", n)
+		}
 	}
-	if !Catalog()[1].RequiresApproval || !Catalog()[2].RequiresApproval || !Catalog()[3].RequiresApproval {
+	if byName[ToolWebSearch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolReadFile].RequiresApproval {
+		t.Fatal("web_search/use_skill/read_file must not require approval")
+	}
+	if !byName[ToolSandbox].RequiresApproval || !byName[ToolBrowser].RequiresApproval || !byName[ToolMedia].RequiresApproval {
 		t.Fatal("sandbox/browser/media require approval")
 	}
-	if Catalog()[4].Name != ToolUseSkill || Catalog()[4].RequiresApproval {
-		t.Fatal("use_skill must not require approval")
+	if !byName[ToolWriteFile].RequiresApproval {
+		t.Fatal("write_file requires approval")
 	}
 }
 
@@ -44,7 +53,8 @@ func TestInvoke_UnconfiguredNoNetwork(t *testing.T) {
 	defer func() { InstantAnswerBase = prev }()
 
 	t.Setenv("GOSO_SKILLS_DIR", "")
-	for _, name := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill} {
+	t.Setenv("GOSO_WORKSPACE", "")
+	for _, name := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill, ToolReadFile, ToolWriteFile} {
 		res, err := Invoke(context.Background(), name, map[string]any{"q": "goso"}, false)
 		if err != nil {
 			t.Fatalf("%s err %v", name, err)

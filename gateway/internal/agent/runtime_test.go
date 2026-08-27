@@ -63,7 +63,7 @@ func TestTools_ListFromAgentConnectors(t *testing.T) {
 	if len(crm) != 1 || crm[0].Tool.Name != "contact_search" {
 		t.Fatalf("expected only linked crm tools, got %v", crm)
 	}
-	if builtins != 5 {
+	if builtins != 7 {
 		t.Fatalf("builtins %d", builtins)
 	}
 }
