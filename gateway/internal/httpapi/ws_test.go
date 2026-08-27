@@ -127,3 +127,23 @@ func TestWS_OriginAllowlist(t *testing.T) {
 	}
 	_ = c.Close()
 }
+
+func TestWS_ReadLimit(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterWS(mux, store.New(), llm.Echo{})
+	u, closer := wsURL(t, mux)
+	t.Cleanup(closer)
+	c, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	big := strings.Repeat("x", 512*1024+32)
+	if err := c.WriteMessage(websocket.TextMessage, []byte(`{"op":"ping","payload":"`+big+`"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = c.ReadMessage()
+	if err == nil {
+		t.Fatal("expected read limit error")
+	}
+}

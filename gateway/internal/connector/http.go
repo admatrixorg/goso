@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/security"
 )
 
 type httpConnector struct {
@@ -41,6 +43,7 @@ func newHTTPConnector(cfg Config) (Connector, error) {
 	if c.client == nil {
 		c.client = &http.Client{Timeout: cfg.Timeout}
 	}
+	security.GuardClient(c.client)
 	if len(cfg.ManifestJSON) > 0 {
 		m, err := ParseManifest(cfg.ManifestJSON)
 		if err != nil {
@@ -169,6 +172,9 @@ func (c *httpConnector) loadManifest(ctx context.Context) (*Manifest, error) {
 }
 
 func (c *httpConnector) do(ctx context.Context, method, url string, body []byte) (*http.Response, error) {
+	if err := security.CheckURL(url); err != nil {
+		return nil, err
+	}
 	var rdr io.Reader
 	if body != nil {
 		rdr = bytes.NewReader(body)
@@ -190,11 +196,15 @@ func (c *httpConnector) do(ctx context.Context, method, url string, body []byte)
 // goso never executes the mutation itself.
 func RelayDecision(ctx context.Context, client *http.Client, endpoint, token, approvalID, decision string, extra map[string]any) error {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{}
 	}
+	security.GuardClient(client)
 	endpoint = strings.TrimRight(endpoint, "/")
 	if endpoint == "" || approvalID == "" {
 		return nil
+	}
+	if err := security.CheckURL(endpoint); err != nil {
+		return err
 	}
 	payload := map[string]any{"decision": decision, "approval_id": approvalID}
 	for k, v := range extra {

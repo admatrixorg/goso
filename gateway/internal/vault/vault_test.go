@@ -186,6 +186,23 @@ func TestSync_SQLiteFTSHit(t *testing.T) {
 	}
 }
 
+func TestPut_WorkspaceAndDotDot(t *testing.T) {
+	ws := t.TempDir()
+	outside := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	svc := New(store.New(), outside)
+	if _, err := svc.Put("Nope", "body"); err == nil {
+		t.Fatal("expected outside workspace")
+	}
+	inside := New(store.New(), filepath.Join(ws, "vault"))
+	if _, err := inside.Put("Ok", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inside.absPath("../escape.md"); err == nil {
+		t.Fatal("expected path escape")
+	}
+}
+
 func TestUnderRootRejectsEscape(t *testing.T) {
 	root := t.TempDir()
 	if underRoot(root, filepath.Join(root, "..", "nope.md")) {

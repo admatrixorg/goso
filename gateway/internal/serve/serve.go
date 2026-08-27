@@ -20,6 +20,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -116,6 +117,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	mux := Mux(st, version, provider, obs, meter)
 
 	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
+	viewToken := os.Getenv("GOSO_VIEW_TOKEN")
 	rateLimit := 60
 	if v := os.Getenv("GOSO_RATE_LIMIT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -124,21 +126,21 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	}
 
 	devMode := envTruthy(os.Getenv("GOSO_DEV_MODE"))
-	var handler http.Handler = mux
+	var handler http.Handler = security.LimitAPI(mux)
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
-	if adminToken != "" || !devMode {
+	if adminToken != "" || viewToken != "" || !devMode {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
-		handler = auth.RequireToken(adminToken, []string{"/healthz", "/api/webhooks/llm"})(handler)
+		handler = auth.RequireTokens(adminToken, viewToken, []string{"/healthz", "/api/webhooks/llm"})(handler)
 	}
 	handler = obs.Middleware(handler)
 
 	return handler, Status{
 		Provider:  provider.Name(),
 		HasReal:   provider.Name() != "echo",
-		Auth:      adminToken != "",
-		DevMode:   devMode && adminToken == "",
+		Auth:      adminToken != "" || viewToken != "",
+		DevMode:   devMode && adminToken == "" && viewToken == "",
 		RateLimit: rateLimit,
 	}
 }

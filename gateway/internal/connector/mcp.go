@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/security"
 )
 
 // StdioPipes lets tests inject an in-process MCP stdio pair (no subprocess).
@@ -56,6 +58,7 @@ func newMCPHTTP(cfg Config) (Connector, error) {
 	if c.client == nil {
 		c.client = &http.Client{Timeout: cfg.Timeout}
 	}
+	security.GuardClient(c.client)
 	if len(cfg.ManifestJSON) > 0 {
 		m, err := ParseManifest(cfg.ManifestJSON)
 		if err != nil {
@@ -179,6 +182,9 @@ func (c *mcpClient) rpc(ctx context.Context, method string, params any) (json.Ra
 }
 
 func (c *mcpClient) rpcHTTP(ctx context.Context, payload []byte, id int64) (json.RawMessage, error) {
+	if err := security.CheckURL(c.endpoint); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err

@@ -28,6 +28,7 @@ Giai đoạn B (3–5 tháng): Thay dần Gateway bằng GOSO Gateway Go
 - **Clean-room**: không copy code GoClaw (CC BY-NC 4.0), chỉ học ý tưởng/hành vi.
 - **DDD**: domain (config, health, session...) tách khỏi infra (HTTP, DB, channel).
 - **Harness trước**: Makefile/CI/hooks/pre-commit khóa trước khi thêm nghiệp vụ.
+- **Security (SPEC 041)**: Bearer `crypto/subtle.ConstantTimeCompare`; `/api` 1MiB; WS 512KiB; injection scan; optional SSRF + workspace jail; AES-256-GCM `secrets` table. SQLite tenancy light — no Postgres `tenant_id` (DI-09).
 
 ## Cấu trúc repo (SPEC 001)
 

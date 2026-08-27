@@ -273,6 +273,9 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
+		if rejectInjectedChat(w, body.Message) {
+			return
+		}
 		sess, err := st.GetSession(body.SessionID)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")

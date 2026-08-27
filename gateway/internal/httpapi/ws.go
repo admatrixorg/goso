@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -54,6 +55,7 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 			return
 		}
 		defer conn.Close()
+		conn.SetReadLimit(security.MaxWSRead)
 		if provider == nil {
 			provider = llm.Echo{}
 		}

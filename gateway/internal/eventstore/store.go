@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -100,7 +101,13 @@ func NewTraceID() string {
 
 var secretKeys = []string{"token", "password", "secret", "authorization", "api_key", "apikey", "bearer", "credential"}
 
-// Redact strips credential-like JSON keys and bearer tokens from a summary.
+var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._\-+=/]+)`)
+
+func redactTokenShapes(s string) string {
+	return tokenShape.ReplaceAllString(s, "[redacted]")
+}
+
+// Redact strips credential-like JSON keys and bearer/sk- token shapes from a summary.
 func Redact(s string) string {
 	if s == "" {
 		return s
@@ -110,14 +117,10 @@ func Redact(s string) string {
 		redactValue(v)
 		b, err := json.Marshal(v)
 		if err == nil {
-			return string(b)
+			return redactTokenShapes(string(b))
 		}
 	}
-	out := s
-	for _, k := range secretKeys {
-		out = strings.ReplaceAll(out, k, k)
-	}
-	return out
+	return redactTokenShapes(s)
 }
 
 func redactValue(v any) {

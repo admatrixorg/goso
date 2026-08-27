@@ -5,6 +5,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
 )
@@ -318,6 +320,19 @@ func decodeChatBody(r *http.Request) (chatBody, error) {
 
 var errChatRequired = errors.New("session_id and message are required")
 
+func rejectInjectedChat(w http.ResponseWriter, message string) bool {
+	matched, block := security.InspectChat(message)
+	if matched == "" {
+		return false
+	}
+	log.Printf("goso injection: matched %q mode=%s", matched, security.InjectionMode())
+	if block {
+		writeErr(w, http.StatusBadRequest, "injection blocked")
+		return true
+	}
+	return false
+}
+
 func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := decodeChatBody(r)
@@ -332,6 +347,9 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 				return
 			}
 			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if rejectInjectedChat(w, body.Message) {
 			return
 		}
 		sess, err := st.GetSession(body.SessionID)
@@ -365,6 +383,9 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 				return
 			}
 			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if rejectInjectedChat(w, body.Message) {
 			return
 		}
 		sess, err := st.GetSession(body.SessionID)

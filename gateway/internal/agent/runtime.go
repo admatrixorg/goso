@@ -14,6 +14,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
 )
@@ -121,6 +122,10 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 		Kind:      eventstore.KindAttempt,
 		Summary:   eventstore.SummarizeArgs(args),
 	})
+
+	if err := security.RejectPathArgs(args); err != nil {
+		return rt.fail(traceID, connectorName, tool, start, err)
+	}
 
 	c, err := rt.Registry.Lookup(connectorName)
 	if err != nil {

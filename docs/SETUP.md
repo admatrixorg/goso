@@ -81,6 +81,11 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_HOST | 127.0.0.1 | Bind host (Docker: `0.0.0.0`) |
 | GOSO_LOG_LEVEL | info | Mức log |
 | GOSO_ADMIN_TOKEN | (rỗng → 401) | Bearer `/api/*` và `/ws`. Passthrough chỉ khi `GOSO_DEV_MODE=1`. |
+| GOSO_VIEW_TOKEN | (rỗng) | Optional GET-only Bearer for `/healthz` `/api/agents` `/api/sessions`. POST `/api/chat` → 403. |
+| GOSO_INJECTION | log | `log` (default) or `block`. Scan user chat for documented injection patterns; block → 400 on `/api/chat`. |
+| GOSO_SSRF | off | `1` blocks literal localhost/private IPs on connector HTTP. Default off so local fake e2e works. |
+| GOSO_WORKSPACE | (rỗng) | Optional write jail. Tools/vault cannot write outside this directory. |
+| GOSO_MASTER_KEY | (rỗng) | 32-byte hex AES-256-GCM key for `secrets(name, nonce, ct)`. Empty → refuse persist; env provider keys still work. |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
 | GOSO_VAULT_DIR | `data/vault` | Thư mục markdown/text knowledge vault (`*.md` `*.txt`). Optional `TEAM.md` is prepended to the team system note (SPEC 038). |

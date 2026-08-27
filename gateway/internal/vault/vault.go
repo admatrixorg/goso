@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -166,10 +167,16 @@ func uniqueRel(root, rel string) string {
 }
 
 func (s *Service) absPath(rel string) (string, error) {
+	if security.HasDotDot(rel) {
+		return "", errors.New("path escape")
+	}
 	rel = filepath.FromSlash(rel)
 	p := filepath.Join(s.Root, rel)
 	if !underRoot(s.Root, p) {
 		return "", errors.New("path escape")
+	}
+	if err := security.Confine(p); err != nil {
+		return "", err
 	}
 	return p, nil
 }
@@ -183,6 +190,9 @@ func (s *Service) Put(title, body string) (*store.VaultDoc, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, errors.New("title is required")
+	}
+	if err := security.Confine(s.Root); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return nil, err
@@ -302,6 +312,9 @@ func fileInsideRoot(root, path string) bool {
 }
 
 func (s *Service) collectFiles() ([]diskFile, error) {
+	if err := security.Confine(s.Root); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return nil, err
 	}

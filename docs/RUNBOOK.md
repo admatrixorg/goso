@@ -37,7 +37,7 @@ curl -sS http://127.0.0.1:8080/healthz
 # {"ok":true,"version":"0.1.0"}
 ```
 
-`/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN`, trừ khi `GOSO_DEV_MODE=1`. Token rỗng + không dev-mode → 401.
+`/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN`, trừ khi `GOSO_DEV_MODE=1`. Optional `GOSO_VIEW_TOKEN` may GET `/healthz` `/api/agents` `/api/sessions` (and a single id segment) but not POST chat or `.../messages`. Token rỗng + không dev-mode → 401.
 
 Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
@@ -74,6 +74,8 @@ Tất cả secret đi qua env, không commit. Đổi giá trị rồi **restart 
 | Biến | Dùng cho | Cách xoay |
 |------|----------|-----------|
 | `GOSO_ADMIN_TOKEN` | Bearer `/api/*`, `/ws` | Sinh token mới (`openssl rand -hex 32`), set env, restart, cập nhật client/control-plane (`VITE_GOSO_ADMIN_TOKEN` / `localStorage.goso_token`). Token cũ hết hiệu lực ngay. |
+| `GOSO_VIEW_TOKEN` | GET `/healthz` `/api/agents` `/api/sessions` | Optional viewer Bearer. POST chat → 403. Rotate like admin token. |
+| `GOSO_MASTER_KEY` | AES-256-GCM `secrets` table | `openssl rand -hex 32`. Empty = refuse store (env LLM keys still work). Losing the key loses stored blobs. |
 | `GOSO_ANTHROPIC_API_KEY` | LLM Anthropic | Tạo key mới trên console Anthropic, set env, restart. Key cũ revoke trên console. |
 | `GOSO_OPENAI_API_KEY` | LLM OpenAI | Tương tự. |
 | `GOSO_OPENROUTER_API_KEY` / `GOSO_GROQ_API_KEY` / `GOSO_DEEPSEEK_API_KEY` / `GOSO_GEMINI_API_KEY` / `GOSO_MISTRAL_API_KEY` / `GOSO_XAI_API_KEY` / `GOSO_MINIMAX_API_KEY` / `GOSO_DASHSCOPE_API_KEY` | Named OpenAI-compat (SPEC 039) | Tạo key trên console vendor, set env, restart. Empty = provider absent. |
