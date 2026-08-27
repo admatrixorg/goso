@@ -9,6 +9,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/team"
 )
 
 const (
@@ -36,7 +37,7 @@ type CallOutcome struct {
 // ToolService lists advertised tools and executes model-requested calls.
 type ToolService interface {
 	List(ctx context.Context, agentID string) ([]llm.ToolSpec, error)
-	Call(ctx context.Context, call llm.ToolCall) (CallOutcome, error)
+	Call(ctx context.Context, agentID string, call llm.ToolCall) (CallOutcome, error)
 }
 
 // StageFunc is a named plug-in point (memory / summarize).
@@ -48,6 +49,9 @@ type State struct {
 	AgentID        string
 	Mode           Mode
 	DisplayName    string
+	Instructions   string
+	TeamNote       string
+	TeamFile       string
 	Messages       []llm.Message
 	Tools          []llm.ToolSpec
 	Traces         []ToolTrace
@@ -193,7 +197,10 @@ func (r *Runner) loadContext(sessionID string, mode Mode) (*State, error) {
 	st := &State{SessionID: sessionID, AgentID: sess.AgentID, Mode: mode}
 	if a, err := r.Store.GetAgent(sess.AgentID); err == nil && a != nil {
 		st.DisplayName = a.DisplayName
+		st.Instructions = a.Instructions
 	}
+	st.TeamNote = team.Note(r.Store, sess.AgentID)
+	st.TeamFile = team.ReadTEAMFile()
 	return st, nil
 }
 
@@ -208,6 +215,19 @@ func (r *Runner) loadHistory(st *State) error {
 
 func (r *Runner) attachPrompt(st *State) {
 	sys := SystemPrompt(st.Mode, st.DisplayName)
+	if note := strings.TrimSpace(st.TeamNote); note != "" {
+		if sys == "" {
+			sys = note
+		} else {
+			sys = note + "\n" + sys
+		}
+	}
+	if extra := strings.TrimSpace(st.TeamFile); extra != "" && st.Mode != ModeNone {
+		sys = strings.TrimSpace(sys + "\n" + extra)
+	}
+	if ins := strings.TrimSpace(st.Instructions); ins != "" && st.Mode != ModeNone {
+		sys = strings.TrimSpace(sys + "\n" + ins)
+	}
 	if sys == "" {
 		return
 	}
@@ -252,7 +272,8 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 			out.Content = out.Trace.Error
 			err = nil
 		} else if r.Tools != nil {
-			out, err = r.Tools.Call(ctx, call)
+			// spawn / delegate / team_tasks stay in the act stage (not connector).
+			out, err = r.Tools.Call(ctx, st.AgentID, call)
 		} else {
 			out.Trace = ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: "no tool service"}
 			out.Content = out.Trace.Error

@@ -41,6 +41,15 @@ func TestSystemPrompt_Modes(t *testing.T) {
 	}
 }
 
+func TestIsOrchestrationTool(t *testing.T) {
+	if !IsOrchestrationTool("delegate") || !IsOrchestrationTool("spawn") || !IsOrchestrationTool("team_tasks") {
+		t.Fatal("expected orchestration names")
+	}
+	if IsOrchestrationTool("zalocrm__contact_search") {
+		t.Fatal("connector tool is not orchestration")
+	}
+}
+
 func TestAdvertiseAndResolve(t *testing.T) {
 	name := AdvertiseName("zalocrm", "contact_search")
 	if name != "zalocrm__contact_search" {

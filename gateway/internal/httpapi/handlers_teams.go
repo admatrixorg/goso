@@ -1,0 +1,331 @@
+// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+
+package httpapi
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/team"
+)
+
+func parseOrchMode(s string) (string, error) {
+	return team.ParseMode(s)
+}
+
+func registerTeamRoutes(mux *http.ServeMux, st store.StoreIface) {
+	mux.HandleFunc("POST /api/teams", handleCreateTeam(st))
+	mux.HandleFunc("GET /api/teams", handleListTeams(st))
+	mux.HandleFunc("GET /api/teams/{id}/members", handleListMembers(st))
+	mux.HandleFunc("POST /api/teams/{id}/members", handleAddMember(st))
+	mux.HandleFunc("DELETE /api/teams/{id}/members/{agent_id}", handleRemoveMember(st))
+	mux.HandleFunc("GET /api/teams/{id}/tasks", handleListTasks(st))
+	mux.HandleFunc("POST /api/teams/{id}/tasks", handleCreateTask(st))
+	mux.HandleFunc("PATCH /api/teams/{id}/tasks/{tid}", handleUpdateTask(st))
+	mux.HandleFunc("GET /api/teams/{id}/messages", handleListMessagesTeam(st))
+	mux.HandleFunc("POST /api/teams/{id}/messages", handleCreateMessageTeam(st))
+	mux.HandleFunc("GET /api/teams/{id}", handleGetTeam(st))
+	mux.HandleFunc("PUT /api/teams/{id}", handleUpdateTeam(st))
+	mux.HandleFunc("DELETE /api/teams/{id}", handleDeleteTeam(st))
+
+	mux.HandleFunc("GET /api/agents/{id}/links", handleListLinks(st))
+	mux.HandleFunc("POST /api/agents/{id}/links", handleAddLink(st))
+	mux.HandleFunc("GET /api/agents/{id}/evolution", handleEvolution(st))
+	mux.HandleFunc("POST /api/agents/{id}/evolution/{sid}/apply", handleEvolutionApply(st))
+}
+
+func handleCreateTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name        string `json:"name"`
+			LeadAgentID string `json:"lead_agent_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		t, err := st.CreateTeam(store.Team{Name: body.Name, LeadAgentID: strings.TrimSpace(body.LeadAgentID)})
+		if err != nil {
+			if errors.Is(err, store.ErrLiteCap) {
+				writeErr(w, http.StatusBadRequest, "lite cap: max 1 team")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, t)
+	}
+}
+
+func handleListTeams(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list := st.ListTeams()
+		if list == nil {
+			list = []*store.Team{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"teams": list})
+	}
+}
+
+func handleGetTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, err := st.GetTeam(strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		members, _ := st.ListTeamMembers(t.ID)
+		if members == nil {
+			members = []*store.TeamMember{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"team": t, "members": members})
+	}
+}
+
+func handleUpdateTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		var body struct {
+			Name        string `json:"name"`
+			LeadAgentID string `json:"lead_agent_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		t, err := st.UpdateTeam(store.Team{ID: id, Name: body.Name, LeadAgentID: body.LeadAgentID})
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "team not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, t)
+	}
+}
+
+func handleDeleteTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := st.DeleteTeam(strings.TrimSpace(r.PathValue("id"))); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+func handleListMembers(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := st.ListTeamMembers(strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"members": list})
+	}
+}
+
+func handleAddMember(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		teamID := strings.TrimSpace(r.PathValue("id"))
+		var body struct {
+			AgentID string `json:"agent_id"`
+			Role    string `json:"role"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		m, err := st.AddTeamMember(store.TeamMember{TeamID: teamID, AgentID: body.AgentID, Role: body.Role})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, m)
+	}
+}
+
+func handleRemoveMember(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := st.RemoveTeamMember(strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(r.PathValue("agent_id")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "member not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+func handleListTasks(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := st.ListTeamTasks(strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(r.URL.Query().Get("status")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tasks": list})
+	}
+}
+
+func handleCreateTask(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		teamID := strings.TrimSpace(r.PathValue("id"))
+		var body struct {
+			Title           string `json:"title"`
+			Status          string `json:"status"`
+			AssigneeAgentID string `json:"assignee_agent_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		task, err := st.CreateTeamTask(store.TeamTask{
+			TeamID: teamID, Title: body.Title, Status: body.Status, AssigneeAgentID: body.AssigneeAgentID,
+		})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, task)
+	}
+}
+
+func handleUpdateTask(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tid := strings.TrimSpace(r.PathValue("tid"))
+		var body struct {
+			Title           string `json:"title"`
+			Status          string `json:"status"`
+			AssigneeAgentID string `json:"assignee_agent_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		task, err := st.UpdateTeamTask(store.TeamTask{
+			ID: tid, Title: body.Title, Status: body.Status, AssigneeAgentID: body.AssigneeAgentID,
+		})
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "task not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, task)
+	}
+}
+
+func handleListMessagesTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := st.ListTeamMessages(strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"messages": list})
+	}
+}
+
+func handleCreateMessageTeam(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		teamID := strings.TrimSpace(r.PathValue("id"))
+		var body struct {
+			FromAgentID string `json:"from_agent_id"`
+			Body        string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		m, err := st.CreateTeamMessage(store.TeamMessage{
+			TeamID: teamID, FromAgentID: body.FromAgentID, Body: body.Body,
+		})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, m)
+	}
+}
+
+func handleListLinks(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := st.ListAgentLinks(strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"links": list})
+	}
+}
+
+func handleAddLink(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		from := strings.TrimSpace(r.PathValue("id"))
+		var body struct {
+			ToAgentID     string `json:"to_agent_id"`
+			Bidirectional bool   `json:"bidirectional"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if err := st.AddAgentLink(from, strings.TrimSpace(body.ToAgentID)); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if body.Bidirectional {
+			_ = st.AddAgentLink(strings.TrimSpace(body.ToAgentID), from)
+		}
+		links, _ := st.ListAgentLinks(from)
+		writeJSON(w, http.StatusCreated, map[string]any{"links": links})
+	}
+}
+
+func handleEvolution(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := st.GetAgent(id); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		sugs := team.Suggestions(st, id)
+		writeJSON(w, http.StatusOK, map[string]any{"suggestions": sugs})
+	}
+}
+
+func handleEvolutionApply(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		sid := strings.TrimSpace(r.PathValue("sid"))
+		var raw map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		for k := range raw {
+			if team.ForbiddenWrite(k) {
+				writeErr(w, http.StatusBadRequest, "apply rejected: cannot change protected fields")
+				return
+			}
+		}
+		if team.ForbiddenWrite(sid) {
+			writeErr(w, http.StatusBadRequest, "apply rejected: cannot change protected fields")
+			return
+		}
+		a, err := team.Apply(st, id, sid)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	}
+}

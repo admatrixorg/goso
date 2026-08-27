@@ -5,6 +5,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -12,11 +13,67 @@ import (
 
 // Agent represents an AI agent.
 type Agent struct {
+	ID                string    `json:"id"`
+	AgentKey          string    `json:"agent_key"`
+	DisplayName       string    `json:"display_name"`
+	Model             string    `json:"model,omitempty"`
+	Instructions      string    `json:"instructions,omitempty"`
+	OrchestrationMode string    `json:"orchestration_mode,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+// Lite caps when GOSO_LITE=1 (desktop default may set this later).
+const (
+	LiteMaxAgents = 5
+	LiteMaxTeams  = 1
+)
+
+// Team is a lead + members group with a shared board and mailbox.
+type Team struct {
 	ID          string    `json:"id"`
-	AgentKey    string    `json:"agent_key"`
-	DisplayName string    `json:"display_name"`
-	Model       string    `json:"model,omitempty"`
+	Name        string    `json:"name"`
+	LeadAgentID string    `json:"lead_agent_id,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// TeamMember is one agent on a team (role lead|member).
+type TeamMember struct {
+	TeamID  string `json:"team_id"`
+	AgentID string `json:"agent_id"`
+	Role    string `json:"role"`
+}
+
+// TeamTask is a Kanban card (status todo|doing|done).
+type TeamTask struct {
+	ID              string `json:"id"`
+	TeamID          string `json:"team_id"`
+	Title           string `json:"title"`
+	Status          string `json:"status"`
+	AssigneeAgentID string `json:"assignee_agent_id,omitempty"`
+}
+
+// TeamMessage is one mailbox row.
+type TeamMessage struct {
+	ID          string    `json:"id"`
+	TeamID      string    `json:"team_id"`
+	FromAgentID string    `json:"from_agent_id"`
+	Body        string    `json:"body"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// AgentLink is a one-way delegation edge. Bidirectional = two rows.
+type AgentLink struct {
+	FromAgentID string `json:"from_agent_id"`
+	ToAgentID   string `json:"to_agent_id"`
+}
+
+// AgentMetrics counts chat runs and tool outcomes for self-evolution.
+type AgentMetrics struct {
+	AgentID    string         `json:"agent_id"`
+	ChatRuns   int            `json:"chat_runs"`
+	ToolErrors int            `json:"tool_errors"`
+	ToolUses   map[string]int `json:"tool_uses,omitempty"`
+	Advertised []string       `json:"advertised,omitempty"`
 }
 
 // Session represents a conversation session.
@@ -131,25 +188,64 @@ type StoreIface interface {
 	ListVaultDocLinks(id string) ([]VaultLink, []VaultLink, error)
 	SearchVault(q string) ([]VaultSearchHit, error)
 	ReResolveVaultLinks() error
+	UpdateAgent(Agent) (*Agent, error)
+	CreateTeam(Team) (*Team, error)
+	ListTeams() []*Team
+	GetTeam(string) (*Team, error)
+	UpdateTeam(Team) (*Team, error)
+	DeleteTeam(string) error
+	AddTeamMember(TeamMember) (*TeamMember, error)
+	ListTeamMembers(teamID string) ([]*TeamMember, error)
+	RemoveTeamMember(teamID, agentID string) error
+	TeamOfAgent(agentID string) (*Team, error)
+	CreateTeamTask(TeamTask) (*TeamTask, error)
+	ListTeamTasks(teamID, status string) ([]*TeamTask, error)
+	GetTeamTask(string) (*TeamTask, error)
+	UpdateTeamTask(TeamTask) (*TeamTask, error)
+	CreateTeamMessage(TeamMessage) (*TeamMessage, error)
+	ListTeamMessages(teamID string) ([]*TeamMessage, error)
+	AddAgentLink(fromID, toID string) error
+	ListAgentLinks(fromID string) ([]AgentLink, error)
+	HasAgentLink(fromID, toID string) bool
+	RecordChatRun(agentID string)
+	RecordToolUse(agentID, tool string, failed bool)
+	RecordAdvertisedTools(agentID string, names []string)
+	GetAgentMetrics(agentID string) AgentMetrics
+	MarkEvolutionApplied(agentID, suggestionID string) error
+	EvolutionApplied(agentID, suggestionID string) bool
 }
 
 var (
 	ErrNotFound = errors.New("not found")
 	ErrExists   = errors.New("already exists")
+	ErrLiteCap  = errors.New("lite cap exceeded")
 )
+
+// LiteEnabled reports whether GOSO_LITE=1 (or true) is set.
+func LiteEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("GOSO_LITE"))
+	return v == "1" || strings.EqualFold(v, "true")
+}
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
-	mu         sync.RWMutex
-	agents     map[string]*Agent
-	sessions   map[string]*Session
-	messages   map[string][]*Message // session_id -> messages
-	memories   map[string][]*Memory  // session_id -> memories
-	connectors map[string]*ConnectorRecord
-	agentConns map[string]map[string]struct{} // agent_id -> connector names
-	vaultDocs  map[string]*VaultDoc
-	vaultLinks map[string][]VaultLink // from_id -> outbound
-	seq        int64
+	mu          sync.RWMutex
+	agents      map[string]*Agent
+	sessions    map[string]*Session
+	messages    map[string][]*Message // session_id -> messages
+	memories    map[string][]*Memory  // session_id -> memories
+	connectors  map[string]*ConnectorRecord
+	agentConns  map[string]map[string]struct{} // agent_id -> connector names
+	vaultDocs   map[string]*VaultDoc
+	vaultLinks  map[string][]VaultLink // from_id -> outbound
+	teams       map[string]*Team
+	teamMembers map[string][]*TeamMember  // team_id
+	teamTasks   map[string]*TeamTask      // task id
+	teamMsgs    map[string][]*TeamMessage // team_id
+	agentLinks  map[string][]string       // from -> to ids
+	metrics     map[string]*AgentMetrics
+	evoApplied  map[string]map[string]bool // agent_id -> suggestion_id
+	seq         int64
 }
 
 var _ StoreIface = (*Store)(nil)
@@ -168,14 +264,21 @@ func Open(path string) (StoreIface, func() error, error) {
 
 func New() *Store {
 	return &Store{
-		agents:     make(map[string]*Agent),
-		sessions:   make(map[string]*Session),
-		messages:   make(map[string][]*Message),
-		memories:   make(map[string][]*Memory),
-		connectors: make(map[string]*ConnectorRecord),
-		agentConns: make(map[string]map[string]struct{}),
-		vaultDocs:  make(map[string]*VaultDoc),
-		vaultLinks: make(map[string][]VaultLink),
+		agents:      make(map[string]*Agent),
+		sessions:    make(map[string]*Session),
+		messages:    make(map[string][]*Message),
+		memories:    make(map[string][]*Memory),
+		connectors:  make(map[string]*ConnectorRecord),
+		agentConns:  make(map[string]map[string]struct{}),
+		vaultDocs:   make(map[string]*VaultDoc),
+		vaultLinks:  make(map[string][]VaultLink),
+		teams:       make(map[string]*Team),
+		teamMembers: make(map[string][]*TeamMember),
+		teamTasks:   make(map[string]*TeamTask),
+		teamMsgs:    make(map[string][]*TeamMessage),
+		agentLinks:  make(map[string][]string),
+		metrics:     make(map[string]*AgentMetrics),
+		evoApplied:  make(map[string]map[string]bool),
 	}
 }
 
@@ -252,6 +355,9 @@ func (s *Store) CreateAgent(a Agent) (*Agent, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if LiteEnabled() && len(s.agents) >= LiteMaxAgents {
+		return nil, ErrLiteCap
+	}
 	for _, v := range s.agents {
 		if v.AgentKey == a.AgentKey {
 			return nil, ErrExists
@@ -283,6 +389,28 @@ func (s *Store) GetAgent(id string) (*Agent, error) {
 		return nil, ErrNotFound
 	}
 	cp := *v
+	return &cp, nil
+}
+
+func (s *Store) UpdateAgent(a Agent) (*Agent, error) {
+	if strings.TrimSpace(a.ID) == "" {
+		return nil, errors.New("id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.agents[a.ID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	// Prompt prefix and mode only. Never rewrite agent_key or display_name.
+	cur.Instructions = a.Instructions
+	if strings.TrimSpace(a.OrchestrationMode) != "" {
+		cur.OrchestrationMode = a.OrchestrationMode
+	}
+	if strings.TrimSpace(a.Model) != "" {
+		cur.Model = a.Model
+	}
+	cp := *cur
 	return &cp, nil
 }
 

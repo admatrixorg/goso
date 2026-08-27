@@ -112,6 +112,8 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /api/vault/docs", handleListVaultDocs(st))
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
 
+	registerTeamRoutes(mux, st)
+
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.
 	return mux
 }
@@ -119,9 +121,11 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			AgentKey    string `json:"agent_key"`
-			DisplayName string `json:"display_name"`
-			Model       string `json:"model"`
+			AgentKey          string `json:"agent_key"`
+			DisplayName       string `json:"display_name"`
+			Model             string `json:"model"`
+			Instructions      string `json:"instructions"`
+			OrchestrationMode string `json:"orchestration_mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -132,10 +136,25 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "agent_key is required")
 			return
 		}
-		a, err := st.CreateAgent(store.Agent{AgentKey: body.AgentKey, DisplayName: body.DisplayName, Model: body.Model})
+		mode, err := parseOrchMode(body.OrchestrationMode)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a, err := st.CreateAgent(store.Agent{
+			AgentKey:          body.AgentKey,
+			DisplayName:       body.DisplayName,
+			Model:             body.Model,
+			Instructions:      body.Instructions,
+			OrchestrationMode: mode,
+		})
 		if err != nil {
 			if errors.Is(err, store.ErrExists) {
 				writeErr(w, http.StatusConflict, "agent_key already exists")
+				return
+			}
+			if errors.Is(err, store.ErrLiteCap) {
+				writeErr(w, http.StatusBadRequest, "lite cap: max 5 agents")
 				return
 			}
 			writeErr(w, http.StatusBadRequest, err.Error())

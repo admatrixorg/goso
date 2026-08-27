@@ -124,12 +124,59 @@ func (s *SQLiteStore) migrate() error {
 			PRIMARY KEY(from_id, raw)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_vault_links_to ON vault_links(to_id)`,
+		`CREATE TABLE IF NOT EXISTS teams (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			lead_agent_id TEXT,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS team_members (
+			team_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			PRIMARY KEY(team_id, agent_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS team_tasks (
+			id TEXT PRIMARY KEY,
+			team_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			status TEXT NOT NULL,
+			assignee_agent_id TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_team_tasks_team ON team_tasks(team_id, status)`,
+		`CREATE TABLE IF NOT EXISTS team_messages (
+			id TEXT PRIMARY KEY,
+			team_id TEXT NOT NULL,
+			from_agent_id TEXT,
+			body TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_team_messages_team ON team_messages(team_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS agent_links (
+			from_agent_id TEXT NOT NULL,
+			to_agent_id TEXT NOT NULL,
+			PRIMARY KEY(from_agent_id, to_agent_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_metrics (
+			agent_id TEXT PRIMARY KEY,
+			chat_runs INTEGER NOT NULL DEFAULT 0,
+			tool_errors INTEGER NOT NULL DEFAULT 0,
+			tool_uses_json TEXT,
+			advertised_json TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS evolution_applies (
+			agent_id TEXT NOT NULL,
+			suggestion_id TEXT NOT NULL,
+			PRIMARY KEY(agent_id, suggestion_id)
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN instructions TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN orchestration_mode TEXT`)
 	s.initFTS()
 	s.initVaultFTS()
 	return nil
@@ -229,34 +276,58 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 	if a.AgentKey == "" {
 		return nil, errors.New("agent_key is required")
 	}
+	if LiteEnabled() {
+		var n int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n >= LiteMaxAgents {
+			return nil, ErrLiteCap
+		}
+	}
 	a.ID = newID()
 	a.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, created_at) VALUES(?,?,?,?,?)`,
-		a.ID, a.AgentKey, a.DisplayName, a.Model, formatTime(a.CreatedAt))
+	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, instructions, orchestration_mode, created_at) VALUES(?,?,?,?,?,?,?)`,
+		a.ID, a.AgentKey, a.DisplayName, a.Model, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt))
 	if err != nil {
-		// unique violation
+		if LiteEnabled() {
+			var n int
+			if e := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&n); e == nil && n >= LiteMaxAgents {
+				return nil, ErrLiteCap
+			}
+		}
 		return nil, ErrExists
 	}
 	cp := a
 	return &cp, nil
 }
 
+func scanAgent(sc scanner) (*Agent, error) {
+	var a Agent
+	var ts string
+	var instructions, mode sql.NullString
+	if err := sc.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &instructions, &mode, &ts); err != nil {
+		return nil, err
+	}
+	a.Instructions = instructions.String
+	a.OrchestrationMode = mode.String
+	a.CreatedAt = parseTime(ts)
+	return &a, nil
+}
+
 func (s *SQLiteStore) ListAgents() []*Agent {
-	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, created_at FROM agents ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, instructions, orchestration_mode, created_at FROM agents ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 	var out []*Agent
 	for rows.Next() {
-		var a Agent
-		var ts string
-		if err := rows.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &ts); err != nil {
+		a, err := scanAgent(rows)
+		if err != nil {
 			continue
 		}
-		a.CreatedAt = parseTime(ts)
-		cp := a
-		out = append(out, &cp)
+		out = append(out, a)
 	}
 	if out == nil {
 		out = []*Agent{}
@@ -265,18 +336,38 @@ func (s *SQLiteStore) ListAgents() []*Agent {
 }
 
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
-	var a Agent
-	var ts string
-	err := s.db.QueryRow(`SELECT id, agent_key, display_name, model, created_at FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &ts)
+	row := s.db.QueryRow(`SELECT id, agent_key, display_name, model, instructions, orchestration_mode, created_at FROM agents WHERE id=?`, id)
+	a, err := scanAgent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	a.CreatedAt = parseTime(ts)
-	return &a, nil
+	return a, nil
+}
+
+func (s *SQLiteStore) UpdateAgent(a Agent) (*Agent, error) {
+	if strings.TrimSpace(a.ID) == "" {
+		return nil, errors.New("id is required")
+	}
+	cur, err := s.GetAgent(a.ID)
+	if err != nil {
+		return nil, err
+	}
+	cur.Instructions = a.Instructions
+	if strings.TrimSpace(a.OrchestrationMode) != "" {
+		cur.OrchestrationMode = a.OrchestrationMode
+	}
+	if strings.TrimSpace(a.Model) != "" {
+		cur.Model = a.Model
+	}
+	_, err = s.db.Exec(`UPDATE agents SET instructions=?, orchestration_mode=?, model=? WHERE id=?`,
+		cur.Instructions, cur.OrchestrationMode, cur.Model, cur.ID)
+	if err != nil {
+		return nil, err
+	}
+	return cur, nil
 }
 
 // --- Session ---
