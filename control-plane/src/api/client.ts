@@ -26,6 +26,107 @@ export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T>
   return (await res.json()) as T;
 }
 
+export type ChatReply = { reply: string; session_id: string; trace?: unknown[] };
+export type ChatBody = { session_id: string; message: string };
+
+function isEventStream(ct: string | null): boolean {
+  return (ct || "").toLowerCase().includes("text/event-stream");
+}
+
+async function chatJSON(body: ChatBody, onDelta?: (delta: string) => void): Promise<ChatReply> {
+  const j = await jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) });
+  if (j.reply && onDelta) onDelta(j.reply);
+  return j;
+}
+
+async function readChatSSE(stream: ReadableStream<Uint8Array>, onDelta: (delta: string) => void): Promise<string> {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let reply = "";
+  const flushBlock = (raw: string) => {
+    let ev = "";
+    let data = "";
+    for (const line of raw.split("\n")) {
+      if (line.startsWith(":")) continue;
+      if (line.startsWith("event:")) {
+        ev = line.slice(6).trim();
+        continue;
+      }
+      if (line.startsWith("data:")) {
+        const part = line.slice(5).trimStart();
+        data = data ? `${data}\n${part}` : part;
+      }
+    }
+    if (!data && !ev) return;
+    if (ev === "error") {
+      let msg = data;
+      try {
+        const j = JSON.parse(data) as { error?: string };
+        if (j.error) msg = j.error;
+      } catch {
+        /* keep raw data */
+      }
+      throw new Error(msg);
+    }
+    if (data === "[DONE]") return;
+    try {
+      const j = JSON.parse(data) as { delta?: string };
+      if (typeof j.delta === "string" && j.delta) {
+        reply += j.delta;
+        onDelta(j.delta);
+      }
+    } catch {
+      /* ignore comments / keep-alives */
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      let idx: number;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const raw = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        flushBlock(raw);
+      }
+    }
+    buf += dec.decode().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (buf.trim()) flushBlock(buf.replace(/\n+$/, ""));
+  } finally {
+    reader.releaseLock();
+  }
+  return reply;
+}
+
+/** Prefer SSE (Accept + stream:true). Fall back to JSON POST on 406 or non-stream responses. */
+export async function chatStream(body: ChatBody, onDelta: (delta: string) => void): Promise<ChatReply> {
+  const canStream = typeof fetch === "function" && typeof ReadableStream !== "undefined";
+  if (!canStream) return chatJSON(body, onDelta);
+  const res = await fetch(`${base()}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...authHeader(),
+    },
+    body: JSON.stringify({ ...body, stream: true }),
+  });
+  if (res.status === 406) return chatJSON(body, onDelta);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${text}`);
+  }
+  if (!isEventStream(res.headers.get("content-type")) || !res.body) {
+    const j = (await res.json()) as ChatReply;
+    if (j.reply) onDelta(j.reply);
+    return j;
+  }
+  const reply = await readChatSSE(res.body, onDelta);
+  return { reply, session_id: body.session_id };
+}
+
 export const ORCHESTRATION_MODES = ["auto", "explicit", "manual"] as const;
 export type OrchestrationMode = (typeof ORCHESTRATION_MODES)[number];
 export type Agent = {
@@ -74,8 +175,8 @@ export const api = {
   createSession: (body: { agent_id: string; label?: string }) =>
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
-  chat: (body: { session_id: string; message: string }) =>
-    jsonFetch<{ reply: string; session_id: string; trace?: unknown[] }>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
+  chat: (body: ChatBody) => jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
+  chatStream,
   providers: () => jsonFetch<{ providers: string[] }>("/api/providers"),
   channels: () => jsonFetch<{ channels: Channel[] }>("/api/channels"),
   listConnectors: () => jsonFetch<{ connectors: Connector[] }>("/api/connectors"),
