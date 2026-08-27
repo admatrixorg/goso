@@ -14,6 +14,13 @@ import { GalleryPage } from "./pages/GalleryPage";
 import { MarketingPage } from "./pages/MarketingPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HeatmapPage } from "./pages/HeatmapPage";
+import { TeamsPage } from "./pages/TeamsPage";
+import { VaultPage } from "./pages/VaultPage";
+import { MemoryPage } from "./pages/MemoryPage";
+import { ProvidersPage } from "./pages/ProvidersPage";
+import { ChannelsPage } from "./pages/ChannelsPage";
+import { WebhooksPage } from "./pages/WebhooksPage";
+import { TracesPage } from "./pages/TracesPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { isDemoMode } from "./demo/mode";
@@ -37,6 +44,13 @@ export type Tab =
   | "heatmap"
   | "connectors"
   | "events"
+  | "teams"
+  | "vault"
+  | "memory"
+  | "providers"
+  | "channels"
+  | "webhooks"
+  | "traces"
   | "settings";
 
 function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
@@ -64,6 +78,9 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "sessions", label: t("nav.sessions"), ic: "list" },
         { id: "chat", label: t("nav.chat"), ic: "msg" },
         { id: "marketing", label: t("nav.marketing"), ic: "mega" },
+        { id: "teams", label: t("nav.teams"), ic: "layers" },
+        { id: "vault", label: t("nav.vault"), ic: "doc" },
+        { id: "memory", label: t("nav.memory"), ic: "inbox" },
       ],
     },
     {
@@ -71,6 +88,10 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       items: [
         { id: "connectors", label: t("nav.connectors"), ic: "hook" },
         { id: "events", label: t("nav.events"), ic: "history" },
+        { id: "providers", label: t("nav.providers"), ic: "bolt" },
+        { id: "channels", label: t("nav.channels"), ic: "device" },
+        { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
+        { id: "traces", label: t("nav.traces"), ic: "history" },
       ],
     },
   ];
@@ -105,6 +126,9 @@ export default function App() {
             { id: "sessions" as const, label: t("nav.sessions"), ic: "list" as const },
             { id: "chat" as const, label: t("nav.chat"), ic: "msg" as const },
             { id: "marketing" as const, label: t("nav.marketing"), ic: "mega" as const },
+            { id: "teams" as const, label: t("nav.teams"), ic: "layers" as const },
+            { id: "vault" as const, label: t("nav.vault"), ic: "doc" as const },
+            { id: "memory" as const, label: t("nav.memory"), ic: "inbox" as const },
             ...demoWorkExtra(locale),
           ],
         },
@@ -428,6 +452,13 @@ export default function App() {
           {DEMO && tab === "calendar" && <CalendarPage />}
           {DEMO && tab === "gallery" && <GalleryPage />}
           {tab === "marketing" && <MarketingPage />}
+          {tab === "teams" && <TeamsPage />}
+          {tab === "vault" && <VaultPage />}
+          {tab === "memory" && <MemoryPage />}
+          {tab === "providers" && <ProvidersPage />}
+          {tab === "channels" && <ChannelsPage />}
+          {tab === "webhooks" && <WebhooksPage />}
+          {tab === "traces" && <TracesPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "events" && <EventsPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}

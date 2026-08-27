@@ -13,7 +13,7 @@ function authHeader(): Record<string, string> {
   return {};
 }
 
-async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${base()}${path}`;
   const res = await fetch(url, {
     ...init,
@@ -49,6 +49,7 @@ export type GatewayEvent = {
   summary: string;
 };
 export type Approval = { approval_id: string; status: string; connector: string; tool: string };
+export type Channel = { name: string; configured: boolean };
 
 export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),
@@ -63,7 +64,7 @@ export const api = {
   chat: (body: { session_id: string; message: string }) =>
     jsonFetch<{ reply: string; session_id: string; trace?: unknown[] }>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
   providers: () => jsonFetch<{ providers: string[] }>("/api/providers"),
-  channels: () => jsonFetch<{ channels: string[] }>("/api/channels"),
+  channels: () => jsonFetch<{ channels: Channel[] }>("/api/channels"),
   listConnectors: () => jsonFetch<{ connectors: Connector[] }>("/api/connectors"),
   createConnector: (body: {
     name: string;
