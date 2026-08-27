@@ -15,6 +15,7 @@ import (
 func TestNewHealthzAndAgent(t *testing.T) {
 	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
 	st := store.New()
 	h, status := New(st, "test")
 	if !status.DevMode {

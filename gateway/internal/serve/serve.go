@@ -33,7 +33,11 @@ type Status struct {
 }
 
 // DefaultProvider picks Anthropic, else OpenAI, else echo — same rules as the CLI.
+// GOSO_E2E_SCRIPTED=1 selects a test-only ToolChat provider (not for production).
 func DefaultProvider() llm.Provider {
+	if envTruthy(os.Getenv("GOSO_E2E_SCRIPTED")) && strings.EqualFold(strings.TrimSpace(os.Getenv("GOSO_ENV")), "test") {
+		return llm.NewE2EScripted()
+	}
 	reg := llm.NewRegistry()
 	provider := reg.Get("anthropic")
 	if !reg.HasReal() {

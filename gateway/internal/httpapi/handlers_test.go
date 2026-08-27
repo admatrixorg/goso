@@ -391,3 +391,27 @@ func TestHandleChat_QuotaWrappers(t *testing.T) {
 		t.Fatalf("handleChatWithLLM second %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestChat_PromptModeUnknown400(t *testing.T) {
+	h := Router(store.New(), "0.1.0")
+	_, sessID := setupChat(t, h)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sessID+`","message":"hi","prompt_mode":"weird"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("want 400, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChat_PromptModeTaskOK(t *testing.T) {
+	h := Router(store.New(), "0.1.0")
+	_, sessID := setupChat(t, h)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sessID+`","message":"hi","prompt_mode":"task"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d %s", w.Code, w.Body.String())
+	}
+}

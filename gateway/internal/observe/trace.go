@@ -142,6 +142,23 @@ func (t *tracedProvider) Name() string { return t.inner.Name() }
 func (t *tracedProvider) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	start := time.Now()
 	reply, err := t.inner.Chat(ctx, messages)
+	t.record(ctx, start, err)
+	return reply, err
+}
+
+func (t *tracedProvider) ChatTools(ctx context.Context, messages []llm.Message, tools []llm.ToolSpec) (llm.Reply, error) {
+	start := time.Now()
+	if inner, ok := t.inner.(llm.ToolChat); ok {
+		reply, err := inner.ChatTools(ctx, messages, tools)
+		t.record(ctx, start, err)
+		return reply, err
+	}
+	text, err := t.inner.Chat(ctx, messages)
+	t.record(ctx, start, err)
+	return llm.Reply{Text: text}, err
+}
+
+func (t *tracedProvider) record(ctx context.Context, start time.Time, err error) {
 	tr := Trace{
 		Time:      time.Now().UTC(),
 		Provider:  t.inner.Name(),
@@ -153,7 +170,6 @@ func (t *tracedProvider) Chat(ctx context.Context, messages []llm.Message) (stri
 		tr.Error = err.Error()
 	}
 	t.obs.Record(tr)
-	return reply, err
 }
 
 type namedModel interface {

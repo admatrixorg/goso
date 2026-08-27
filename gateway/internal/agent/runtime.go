@@ -7,14 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -50,11 +49,14 @@ type CallResult struct {
 
 // Runtime is the Tool Layer: connector tools + LLM + session messages.
 type Runtime struct {
-	Store    store.StoreIface
-	Registry *connector.Registry
-	Gate     *approval.Gate
-	Events   *eventstore.Store
-	LLM      llm.Provider
+	Store     store.StoreIface
+	Registry  *connector.Registry
+	Gate      *approval.Gate
+	Events    *eventstore.Store
+	LLM       llm.Provider
+	Hooks     *pipeline.Dispatcher
+	Memory    pipeline.StageFunc
+	Summarize pipeline.StageFunc
 }
 
 // New constructs a Runtime. Missing deps are allocated empty.
@@ -71,7 +73,7 @@ func New(st store.StoreIface, reg *connector.Registry, gate *approval.Gate, ev *
 	if provider == nil {
 		provider = llm.Echo{}
 	}
-	return &Runtime{Store: st, Registry: reg, Gate: gate, Events: ev, LLM: provider}
+	return &Runtime{Store: st, Registry: reg, Gate: gate, Events: ev, LLM: provider, Hooks: pipeline.NewDispatcher()}
 }
 
 // ListTools returns tools from connectors linked to the agent (or all if none linked).
@@ -232,172 +234,100 @@ func (rt *Runtime) fail(traceID, connectorName, tool string, start time.Time, er
 	return &CallResult{Trace: tr}, err
 }
 
-// Chat persists the user message, optionally invokes matched tools, then asks the LLM.
+// Chat runs the 8-stage pipeline with the default prompt mode (full).
 func (rt *Runtime) Chat(ctx context.Context, sessionID, message string) (*ChatResult, error) {
+	return rt.ChatWithMode(ctx, sessionID, message, "")
+}
+
+// ChatWithMode runs the pipeline with an explicit prompt_mode (empty = full).
+func (rt *Runtime) ChatWithMode(ctx context.Context, sessionID, message, promptMode string) (*ChatResult, error) {
 	if rt.Store == nil {
 		return nil, errors.New("store required")
 	}
-	sess, err := rt.Store.GetSession(sessionID)
+	mode, err := pipeline.ParseMode(promptMode)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := rt.Store.AddMessage(store.Message{SessionID: sessionID, Role: "user", Content: message}); err != nil {
-		return nil, err
+	hooks := rt.Hooks
+	if hooks == nil {
+		hooks = pipeline.NewDispatcher()
 	}
-
-	var traces []Trace
-	tools, _ := rt.ListTools(ctx, sess.AgentID)
-	for _, call := range matchTools(message, tools) {
-		cr, err := rt.CallTool(ctx, call.Connector, call.Tool, call.Args)
-		if cr != nil {
-			traces = append(traces, cr.Trace)
-			content := ""
-			if err != nil {
-				content = asJSON(map[string]any{"error": err.Error(), "trace": cr.Trace})
-			} else if cr.Result != nil {
-				content = asJSON(cr.Result)
-			}
-			_, _ = rt.Store.AddMessage(store.Message{SessionID: sessionID, Role: "tool", Content: content})
-		} else if err != nil {
-			traces = append(traces, Trace{Connector: call.Connector, Tool: call.Tool, Status: "error", Error: err.Error()})
-		}
-	}
-
-	history, err := rt.Store.ListMessages(sessionID)
+	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, rt.LLM, hooks)
+	runner.Memory = rt.Memory
+	runner.Summarize = rt.Summarize
+	out, err := runner.Run(ctx, sessionID, message, mode)
 	if err != nil {
 		return nil, err
 	}
-	var msgs []llm.Message
-	for _, m := range history {
-		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
+	res := &ChatResult{SessionID: sessionID}
+	if out != nil {
+		res.Reply = out.Reply
+		res.Trace = toAgentTraces(out.Trace)
 	}
-	reply, err := rt.LLM.Chat(ctx, msgs)
-	if err != nil {
-		return nil, err
-	}
-	if pending := firstPending(traces); pending != "" && !strings.Contains(reply, "pending_approval") {
-		reply = reply + "\npending_approval: " + pending
-	}
-	_, _ = rt.Store.AddMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: reply})
-	return &ChatResult{Reply: reply, SessionID: sessionID, Trace: traces}, nil
+	return res, nil
 }
 
-type intendedCall struct {
-	Connector string
-	Tool      string
-	Args      map[string]any
-}
+type runtimeTools struct{ rt *Runtime }
 
-func matchTools(message string, tools []BoundTool) []intendedCall {
-	lower := strings.ToLower(message)
-	var out []intendedCall
-	seen := map[string]struct{}{}
+func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec, error) {
+	tools, err := a.rt.ListTools(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]llm.ToolSpec, 0, len(tools))
 	for _, bt := range tools {
-		key := bt.Connector + "/" + bt.Tool.Name
-		name := strings.ToLower(bt.Tool.Name)
-		matched := strings.Contains(lower, name)
-		if !matched {
-			matched = intentMatch(lower, name, bt.Tool)
-		}
-		if !matched {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, intendedCall{
-			Connector: bt.Connector,
-			Tool:      bt.Tool.Name,
-			Args:      extractArgs(message, bt.Tool),
+		out = append(out, llm.ToolSpec{
+			Name:        pipeline.AdvertiseName(bt.Connector, bt.Tool.Name),
+			Description: bt.Tool.Description,
+			Connector:   bt.Connector,
+			InputSchema: bt.Tool.InputSchema,
 		})
 	}
+	return out, nil
+}
+
+func (a runtimeTools) Call(ctx context.Context, call llm.ToolCall) (pipeline.CallOutcome, error) {
+	conn, tool := pipeline.ResolveCall(call)
+	cr, err := a.rt.CallTool(ctx, conn, tool, call.Arguments)
+	out := pipeline.CallOutcome{}
+	if cr != nil {
+		out.Pending = cr.Pending
+		out.Trace = pipeline.ToolTrace{
+			Connector:  cr.Trace.Connector,
+			Tool:       cr.Trace.Tool,
+			LatencyMS:  cr.Trace.LatencyMS,
+			Status:     cr.Trace.Status,
+			ApprovalID: cr.Trace.ApprovalID,
+			Error:      cr.Trace.Error,
+		}
+		if err != nil {
+			out.Content = asJSON(map[string]any{"error": err.Error(), "trace": cr.Trace})
+		} else if cr.Result != nil {
+			out.Content = asJSON(cr.Result)
+		}
+	} else if err != nil {
+		out.Trace = pipeline.ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: err.Error()}
+		out.Content = err.Error()
+	}
+	return out, err
+}
+
+func toAgentTraces(in []pipeline.ToolTrace) []Trace {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]Trace, len(in))
+	for i, t := range in {
+		out[i] = Trace{
+			Connector:  t.Connector,
+			Tool:       t.Tool,
+			LatencyMS:  t.LatencyMS,
+			Status:     t.Status,
+			ApprovalID: t.ApprovalID,
+			Error:      t.Error,
+		}
+	}
 	return out
-}
-
-func intentMatch(lower, name string, tool connector.Tool) bool {
-	if name == "contact_search" || strings.Contains(name, "contact") {
-		if strings.Contains(lower, "tìm khách") || strings.Contains(lower, "tim khach") ||
-			strings.Contains(lower, "search contact") || strings.Contains(lower, "find customer") {
-			return true
-		}
-	}
-	if strings.Contains(name, "order") && (strings.Contains(lower, "đơn") || strings.Contains(lower, "order")) {
-		return true
-	}
-	if tool.RequiresApproval && (strings.Contains(name, "message_send") || strings.Contains(name, "send")) {
-		if strings.Contains(lower, "gửi tin") || strings.Contains(lower, "gui tin") || strings.Contains(lower, "send message") {
-			return true
-		}
-	}
-	if strings.Contains(name, "price") && (strings.Contains(lower, "đổi giá") || strings.Contains(lower, "change price")) {
-		return true
-	}
-	return false
-}
-
-func extractArgs(message string, tool connector.Tool) map[string]any {
-	args := map[string]any{}
-	if i := strings.Index(message, "{"); i >= 0 {
-		var parsed map[string]any
-		if json.Unmarshal([]byte(message[i:]), &parsed) == nil {
-			return parsed
-		}
-	}
-	lower := strings.ToLower(message)
-	query := strings.TrimSpace(message)
-	for _, prefix := range []string{"tìm khách", "tim khach", "search contact", "find customer"} {
-		if idx := strings.Index(lower, prefix); idx >= 0 {
-			query = strings.TrimSpace(message[idx+len(prefix):])
-			break
-		}
-	}
-	query = strings.TrimFunc(query, func(r rune) bool { return unicode.IsSpace(r) || r == ':' || r == '-' })
-	if query == "" {
-		query = strings.TrimSpace(message)
-	}
-	var schema map[string]any
-	_ = json.Unmarshal(tool.InputSchema, &schema)
-	req, _ := schema["required"].([]any)
-	props, _ := schema["properties"].(map[string]any)
-	if len(req) > 0 {
-		for _, x := range req {
-			name, _ := x.(string)
-			if name == "" {
-				continue
-			}
-			switch name {
-			case "query", "q", "text", "message":
-				args[name] = query
-			case "contact_id":
-				args[name] = query
-			case "order_id":
-				args[name] = query
-			case "sku":
-				args[name] = query
-			case "price":
-				args[name] = 0
-			default:
-				args[name] = query
-			}
-		}
-		return args
-	}
-	if _, ok := props["query"]; ok {
-		args["query"] = query
-		return args
-	}
-	args["query"] = query
-	return args
-}
-
-func firstPending(tr []Trace) string {
-	for _, t := range tr {
-		if t.Status == "pending_approval" && t.ApprovalID != "" {
-			return t.ApprovalID
-		}
-	}
-	return ""
 }
 
 func asJSON(v any) string {
