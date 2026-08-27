@@ -64,6 +64,8 @@ Priority (user): **pipeline → memory → vault → teams → providers → cha
 - `docs/qa/034-goclaw-parity-matrix.md` — inventory table + matrix + decision items + proposed SPEC ids 035+
 - Commit on `admatrixmdp/spec034-parity-matrix` only. **Do not merge. Do not write `gateway/` product code.**
 
+Worker 1 matrix (2026-08-27): [`docs/qa/034-goclaw-parity-matrix.md`](../../docs/qa/034-goclaw-parity-matrix.md)
+
 ## Later workers (after Dat presents matrix)
 
 Self-written Go, tests, `go test` / `go build`, agpl-check 0, merge `--no-ff`, `docs/qa/03x-*.md`. Still no paste from goclaw-source.
