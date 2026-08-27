@@ -172,6 +172,7 @@ GOSO_RATE_LIMIT=0 \
 GOSO_DB_PATH= \
 GOSO_ENV=test \
 GOSO_PORT=0 \
+GOSO_E2E_SCRIPTED=1 \
   "$BIN" gateway --host "$HOST" --port 0 >"$GW_LOG" 2>&1 &
 GW_PID=$!
 
@@ -240,9 +241,9 @@ curl -sf -H "$AUTH" -H "Content-Type: application/json" \
   "$BASE/api/sessions" > /tmp/goso-e2e-sess.json || fail "create session"
 SID="$(json_get id < /tmp/goso-e2e-sess.json)"
 
-echo "==> chat: tìm khách A"
+echo "==> chat: search A (scripted ToolChat, not keyword match)"
 curl -sf -H "$AUTH" -H "Content-Type: application/json" \
-  -d "{\"session_id\":\"$SID\",\"message\":\"tìm khách A\"}" \
+  -d "{\"session_id\":\"$SID\",\"message\":\"search A\"}" \
   "$BASE/api/chat" > /tmp/goso-e2e-chat.json || fail "chat"
 CHAT="$(cat /tmp/goso-e2e-chat.json)"
 echo "$CHAT" | grep -q contact_search || echo "$CHAT" | grep -q '"trace"' || fail "chat missing tool trace: $CHAT"

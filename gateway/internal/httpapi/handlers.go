@@ -16,6 +16,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -228,18 +229,42 @@ func handleListMessages(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
+type chatBody struct {
+	SessionID  string `json:"session_id"`
+	Message    string `json:"message"`
+	PromptMode string `json:"prompt_mode"`
+}
+
+func decodeChatBody(r *http.Request) (chatBody, error) {
+	var body chatBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return body, err
+	}
+	if strings.TrimSpace(body.SessionID) == "" || strings.TrimSpace(body.Message) == "" {
+		return body, errChatRequired
+	}
+	if _, err := pipeline.ParseMode(body.PromptMode); err != nil {
+		return body, err
+	}
+	return body, nil
+}
+
+var errChatRequired = errors.New("session_id and message are required")
+
 func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			SessionID string `json:"session_id"`
-			Message   string `json:"message"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		body, err := decodeChatBody(r)
+		if err != nil {
+			if errors.Is(err, errChatRequired) {
+				writeErr(w, http.StatusBadRequest, errChatRequired.Error())
+				return
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "unknown prompt_mode") {
+				writeErr(w, http.StatusBadRequest, msg)
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if strings.TrimSpace(body.SessionID) == "" || strings.TrimSpace(body.Message) == "" {
-			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
 		sess, err := st.GetSession(body.SessionID)
@@ -261,16 +286,18 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 
 func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			SessionID string `json:"session_id"`
-			Message   string `json:"message"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		body, err := decodeChatBody(r)
+		if err != nil {
+			if errors.Is(err, errChatRequired) {
+				writeErr(w, http.StatusBadRequest, errChatRequired.Error())
+				return
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "unknown prompt_mode") {
+				writeErr(w, http.StatusBadRequest, msg)
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if strings.TrimSpace(body.SessionID) == "" || strings.TrimSpace(body.Message) == "" {
-			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
 		sess, err := st.GetSession(body.SessionID)

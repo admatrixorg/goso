@@ -6,8 +6,10 @@ import "context"
 
 // Message is a chat turn.
 type Message struct {
-	Role    string `json:"role"` // user | assistant | system
-	Content string `json:"content"`
+	Role       string     `json:"role"` // user | assistant | system | tool
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // Provider can generate a reply from a conversation.

@@ -259,16 +259,18 @@ func handleToolInvoke(opt Options) http.HandlerFunc {
 
 func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.Store, provider llm.Provider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			SessionID string `json:"session_id"`
-			Message   string `json:"message"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		body, err := decodeChatBody(r)
+		if err != nil {
+			if errors.Is(err, errChatRequired) {
+				writeErr(w, http.StatusBadRequest, errChatRequired.Error())
+				return
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "unknown prompt_mode") {
+				writeErr(w, http.StatusBadRequest, msg)
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if strings.TrimSpace(body.SessionID) == "" || strings.TrimSpace(body.Message) == "" {
-			writeErr(w, http.StatusBadRequest, "session_id and message are required")
 			return
 		}
 		sess, err := st.GetSession(body.SessionID)
@@ -279,7 +281,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
-		out, err := rt.Chat(r.Context(), body.SessionID, body.Message)
+		out, err := rt.ChatWithMode(r.Context(), body.SessionID, body.Message, body.PromptMode)
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, err.Error())
 			return

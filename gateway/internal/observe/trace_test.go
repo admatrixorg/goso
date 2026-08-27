@@ -124,6 +124,23 @@ func TestTracedProvider_RecordsSuccessAndError(t *testing.T) {
 	}
 }
 
+func TestTracedProvider_ForwardsChatTools(t *testing.T) {
+	obs := New()
+	inner := &llm.Scripted{Replies: []llm.Reply{{Text: "via-tools"}}}
+	p := obs.Wrap(inner)
+	tc, ok := p.(llm.ToolChat)
+	if !ok {
+		t.Fatal("wrap must keep ToolChat")
+	}
+	reply, err := tc.ChatTools(context.Background(), []llm.Message{{Role: "user", Content: "hi"}}, nil)
+	if err != nil || reply.Text != "via-tools" {
+		t.Fatalf("ChatTools %v %+v", err, reply)
+	}
+	if obs.Snapshot().LLMCallCount != 1 {
+		t.Fatalf("llm count %d", obs.Snapshot().LLMCallCount)
+	}
+}
+
 func TestHandleTraces(t *testing.T) {
 	obs := NewWithWriter(&bytes.Buffer{})
 	for i := 0; i < 5; i++ {
