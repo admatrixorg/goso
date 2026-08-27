@@ -12,7 +12,7 @@ Live smoke (env, before 045 merge): `POST /api/chat` router9 `ocg/deepseek-v4-fl
 | **048** | Agents/Teams UI: `orchestration_mode` auto/explicit/manual | Field on POST `/api/agents`; no PATCH agent + no picker. |
 | **049** | Skills loader + `use_skill` (K6) | THIẾU. Fail-closed without `GOSO_SKILLS_DIR`. |
 | **050** | Filesystem tools in `GOSO_WORKSPACE` jail (K1) | THIẾU. No spawn outside jail. |
-| **051** | Bootstrap context files SOUL/IDENTITY/AGENTS (Q4) | THIẾU. Inject into pipeline prompt stage. |
+| **051** | Bootstrap context files SOUL/IDENTITY/AGENTS (Q4) | DONE. `GOSO_CONTEXT_DIR` inject in pipeline prompt stage. |
 | **052** | MCP `/v1/*` aliases to gateway `/api/*` | R16/M5/T5/K10 PARTIAL. |
 | **053** | Chat SSE in control-plane | D3 PARTIAL. Gateway stream reader exists (039). |
 | **054** | Cron / heartbeat tools (K8) | THIẾU. SQLite schedule, fail-closed. |
