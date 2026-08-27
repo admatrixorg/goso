@@ -16,9 +16,12 @@ import (
 
 // SQLiteStore persists agents/sessions/messages in SQLite.
 type SQLiteStore struct {
-	db  *sql.DB
-	fts bool
+	db       *sql.DB
+	fts      bool
+	vaultFTS bool
 }
+
+var _ StoreIface = (*SQLiteStore)(nil)
 
 // OpenSQLite opens (and migrates) a SQLite DB at path. Use ":memory:" for in-memory.
 func OpenSQLite(path string) (*SQLiteStore, error) {
@@ -105,6 +108,22 @@ func (s *SQLiteStore) migrate() error {
 			FOREIGN KEY(session_id) REFERENCES sessions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS vault_docs (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			path TEXT NOT NULL UNIQUE,
+			sha256 TEXT NOT NULL,
+			mtime TEXT NOT NULL,
+			body TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_vault_docs_title ON vault_docs(title)`,
+		`CREATE TABLE IF NOT EXISTS vault_links (
+			from_id TEXT NOT NULL,
+			to_id TEXT NOT NULL DEFAULT '',
+			raw TEXT NOT NULL,
+			PRIMARY KEY(from_id, raw)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_vault_links_to ON vault_links(to_id)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -112,6 +131,7 @@ func (s *SQLiteStore) migrate() error {
 		}
 	}
 	s.initFTS()
+	s.initVaultFTS()
 	return nil
 }
 
@@ -151,6 +171,43 @@ func (s *SQLiteStore) initFTS() {
 		_, _ = s.db.Exec(`INSERT INTO memory_fts(id, session_id, kind, body) SELECT id, session_id, 'message', content FROM messages`)
 	}
 	s.fts = true
+}
+
+func (s *SQLiteStore) initVaultFTS() {
+	s.vaultFTS = false
+	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts USING fts5(
+		id UNINDEXED,
+		title,
+		body,
+		path UNINDEXED
+	)`); err != nil {
+		return
+	}
+	triggers := []string{
+		`CREATE TRIGGER IF NOT EXISTS vault_docs_ai AFTER INSERT ON vault_docs BEGIN
+			INSERT INTO vault_fts(id, title, body, path) VALUES (new.id, new.title, new.body, new.path);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS vault_docs_au AFTER UPDATE ON vault_docs BEGIN
+			DELETE FROM vault_fts WHERE id = old.id;
+			INSERT INTO vault_fts(id, title, body, path) VALUES (new.id, new.title, new.body, new.path);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS vault_docs_ad AFTER DELETE ON vault_docs BEGIN
+			DELETE FROM vault_fts WHERE id = old.id;
+		END`,
+	}
+	for _, stmt := range triggers {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return
+		}
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM vault_fts`).Scan(&n); err != nil {
+		return
+	}
+	if n == 0 {
+		_, _ = s.db.Exec(`INSERT INTO vault_fts(id, title, body, path) SELECT id, title, body, path FROM vault_docs`)
+	}
+	s.vaultFTS = true
 }
 
 // Close closes the DB.

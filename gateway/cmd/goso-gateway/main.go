@@ -74,6 +74,7 @@ Environment:
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)
   GOSO_ENV                 Environment (default development)
   GOSO_DB_PATH             SQLite path (default :memory:)
+  GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
 

@@ -105,6 +105,13 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /api/memory", handleListMemory(st))
 	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
 
+	mux.HandleFunc("GET /api/vault/search", handleSearchVault(st))
+	mux.HandleFunc("POST /api/vault/sync", handleSyncVault(st))
+	mux.HandleFunc("GET /api/vault/docs/{id}/links", handleVaultDocLinks(st))
+	mux.HandleFunc("GET /api/vault/docs/{id}", handleGetVaultDoc(st))
+	mux.HandleFunc("GET /api/vault/docs", handleListVaultDocs(st))
+	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
+
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.
 	return mux
 }
