@@ -210,6 +210,83 @@ func TestValidation(t *testing.T) {
 	}
 }
 
+func TestPatchAgentOrchestrationMode(t *testing.T) {
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"orch","display_name":"Orch","orchestration_mode":"auto"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create agent %d %s", w.Code, w.Body.String())
+	}
+	var created store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.OrchestrationMode != "auto" {
+		t.Fatalf("create orchestration_mode %q", created.OrchestrationMode)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"orchestration_mode":"manual"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("patch agent %d %s", w.Code, w.Body.String())
+	}
+	var patched store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("decode patch: %v", err)
+	}
+	if patched.OrchestrationMode != "manual" {
+		t.Fatalf("patch orchestration_mode %q", patched.OrchestrationMode)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+created.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("get agent %d %s", w.Code, w.Body.String())
+	}
+	var got store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode get: %v", err)
+	}
+	if got.OrchestrationMode != "manual" {
+		t.Fatalf("get orchestration_mode %q", got.OrchestrationMode)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"orchestration_mode":"banana"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("bad mode expected 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/missing", bytes.NewBufferString(`{"orchestration_mode":"auto"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("missing agent expected 404, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"model":"echo","instructions":"prefix"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("patch fields %d %s", w.Code, w.Body.String())
+	}
+	var fields store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &fields); err != nil {
+		t.Fatalf("decode fields: %v", err)
+	}
+	if fields.Model != "echo" || fields.Instructions != "prefix" || fields.OrchestrationMode != "manual" {
+		t.Fatalf("optional fields %+v", fields)
+	}
+}
+
 func setupChat(t *testing.T, h http.Handler) (agentID, sessID string) {
 	t.Helper()
 	w := httptest.NewRecorder()
