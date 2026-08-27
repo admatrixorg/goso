@@ -31,6 +31,8 @@ make build    # bin/goso-gateway
 pnpm -C mcp install && pnpm -C mcp verify
 make scan     # gitleaks + semgrep
 ./scripts/e2e.sh
+# optional live router9 (exit 0 if GOSO_ROUTER9_BASE_URL unset or /v1/models down):
+./scripts/e2e-router9.sh
 ```
 
 Cài scanner (khuyến nghị local, bắt buộc trên CI):
@@ -89,7 +91,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
 | GOSO_VAULT_DIR | `data/vault` | Thư mục markdown/text knowledge vault (`*.md` `*.txt`). Optional `TEAM.md` is prepended to the team system note (SPEC 038). |
-| GOSO_LITE | (off) | `1` caps **5 agents** and **1 team** (SPEC 038). 6th `POST /api/agents` and 2nd team → 400. |
+| GOSO_LITE | (off) | `1` caps **5 agents** and **1 team** (SPEC 038). Control-plane Channels page shows one-line “Lite: channels off” (SPEC 055); `GET /api/channels` still lists adapters with `"lite": true`. 6th `POST /api/agents` and 2nd team → 400. |
 | GOSO_ANTHROPIC_API_KEY / GOSO_OPENAI_API_KEY | (empty) | Native LLM keys. Empty → provider absent; `echo` always remains. |
 | GOSO_OPENROUTER_API_KEY, GOSO_GROQ_API_KEY, GOSO_DEEPSEEK_API_KEY, GOSO_GEMINI_API_KEY, GOSO_MISTRAL_API_KEY, GOSO_XAI_API_KEY, GOSO_MINIMAX_API_KEY, GOSO_DASHSCOPE_API_KEY | (empty) | Named OpenAI-compat providers (SPEC 039). Empty = absent. `GET /api/providers` lists configured names only. |
 | GOSO_ROUTER9_BASE_URL | (unset = absent) | SPEC 044/045. Set to `http://127.0.0.1:20127/v1` to construct named provider `router9`. Key optional (`GOSO_ROUTER9_API_KEY` may be empty). Model default `ocg/deepseek-v4-flash`. Override with `GOSO_ROUTER9_MODEL` (including `cx/*`). |
@@ -106,5 +108,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042). Empty = no export. Do **not** put Grafana Cloud keys here (DI-18). |
 
 Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute ticker. `GET/POST/DELETE /api/cron` (aliased at `/v1/cron`). Specs: `every:Nm|Nh` or optional 5-field (`*`, decimal, `*/n`) evaluated in **UTC**. Cap 20 jobs. Empty list is a no-op. Failed fires are retried next tick. No OS crontab and no extra env.
+
+Optional router9 e2e (`scripts/e2e-router9.sh`, SPEC 055): if `GOSO_ROUTER9_BASE_URL` is unset or `GET /v1/models` is not HTTP 200, the script **skips with exit 0**. If the router is up, it starts an **ephemeral** gateway (`--port 0`; does not bind `:8082` `:8091` `:3000` `:18080` `:18088`), then `POST /api/chat` with the admin Bearer (`GOSO_ADMIN_TOKEN` or `GOSO_E2E_TOKEN`) and catalog default model `ocg/deepseek-v4-flash` (`GOSO_ROUTER9_MODEL` overrides). Asserts HTTP 200 and a non-empty `reply`. No keys are hardcoded. Not part of `make verify`.
 
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
