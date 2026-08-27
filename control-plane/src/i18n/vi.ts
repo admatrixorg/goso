@@ -151,6 +151,7 @@ export const vi = {
   "functions.skills.empty": "Chưa có skill. Đặt GOSO_SKILLS_DIR (một cấp thư mục chứa SKILL.md).",
   "functions.skills.col.name": "TÊN",
   "functions.skills.col.path": "PATH",
+  "functions.workspace.note": "read_file / write_file bị giam trong GOSO_WORKSPACE. Env trống → not_configured, không đụng FS. write_file cần duyệt.",
 
   "events.title": "Nhật ký",
   "events.desc": "Ai đổi gì trên connector — attempt, success, error, pending_approval. Không chứa secret.",
