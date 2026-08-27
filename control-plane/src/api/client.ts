@@ -39,6 +39,7 @@ export type Connector = {
   health?: string;
   health_error?: string;
   created_at?: string;
+  token_set?: boolean;
 };
 export type GatewayEvent = {
   trace_id: string;

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -86,7 +87,7 @@ func (rt *Runtime) ListTools(ctx context.Context, agentID string) ([]BoundTool, 
 	names := rt.connectorNames(agentID)
 	var out []BoundTool
 	for _, name := range names {
-		c, err := rt.Registry.Lookup(name)
+		c, err := peekConnector(rt.Registry, name)
 		if err != nil {
 			continue
 		}
@@ -98,7 +99,18 @@ func (rt *Runtime) ListTools(ctx context.Context, agentID string) ([]BoundTool, 
 			out = append(out, BoundTool{Connector: name, Tool: t})
 		}
 	}
+	for _, t := range builtin.Tools() {
+		out = append(out, BoundTool{Connector: builtin.ConnectorName, Tool: t})
+	}
 	return out, nil
+}
+
+func peekConnector(reg *connector.Registry, name string) (connector.Connector, error) {
+	if reg == nil {
+		return nil, connector.ErrNotFound
+	}
+	c, _, err := reg.Peek(name)
+	return c, err
 }
 
 func (rt *Runtime) connectorNames(agentID string) []string {
@@ -128,6 +140,10 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 
 	if err := security.RejectPathArgs(args); err != nil {
 		return rt.fail(traceID, connectorName, tool, start, err)
+	}
+
+	if connectorName == builtin.ConnectorName || builtin.IsName(tool) && connectorName == "" {
+		return rt.callBuiltin(ctx, traceID, tool, args, start)
 	}
 
 	c, err := rt.Registry.Lookup(connectorName)
@@ -215,6 +231,52 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 			Status:    res.Status,
 		},
 	}, nil
+}
+
+func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args map[string]any, start time.Time) (*CallResult, error) {
+	enabled := false
+	if rt.Store != nil {
+		enabled = rt.Store.GetToolFlag(tool)
+	}
+	res, err := builtin.Invoke(ctx, tool, args, enabled)
+	lat := time.Since(start)
+	if err != nil {
+		return rt.fail(traceID, builtin.ConnectorName, tool, start, err)
+	}
+	if res == nil {
+		res = notConfiguredResult(tool)
+	}
+	res.Latency = lat
+	res.LatencyMS = lat.Milliseconds()
+	kind := eventstore.KindSuccess
+	if res.Status != "ok" {
+		kind = eventstore.KindError
+	}
+	rt.Events.Append(eventstore.Event{
+		TraceID:   traceID,
+		Connector: builtin.ConnectorName,
+		Tool:      tool,
+		Kind:      kind,
+		Summary:   eventstore.Redact(asJSON(map[string]any{"status": res.Status, "latency_ms": lat.Milliseconds()})),
+	})
+	return &CallResult{
+		Result: res,
+		Trace: Trace{
+			Connector: builtin.ConnectorName,
+			Tool:      tool,
+			LatencyMS: lat.Milliseconds(),
+			Status:    res.Status,
+		},
+	}, nil
+}
+
+func notConfiguredResult(tool string) *connector.InvokeResult {
+	return &connector.InvokeResult{
+		Tool:      tool,
+		Connector: builtin.ConnectorName,
+		Status:    "not_configured",
+		Content:   map[string]any{"error": "not_configured"},
+	}
 }
 
 func (rt *Runtime) fail(traceID, connectorName, tool string, start time.Time, err error) (*CallResult, error) {

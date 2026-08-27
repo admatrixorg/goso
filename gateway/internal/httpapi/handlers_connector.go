@@ -14,9 +14,11 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -24,8 +26,11 @@ func registerConnectorRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("POST /api/connectors", handleCreateConnector(opt))
 	mux.HandleFunc("GET /api/connectors", handleListConnectors(opt))
 	mux.HandleFunc("GET /api/connectors/{name}", handleGetConnector(opt))
+	mux.HandleFunc("PATCH /api/connectors/{name}", handlePatchConnector(opt))
 	mux.HandleFunc("POST /api/agents/{id}/connectors", handleLinkAgentConnector(opt))
 	mux.HandleFunc("GET /api/agents/{id}/connectors", handleListAgentConnectors(opt))
+	mux.HandleFunc("GET /api/agents/{id}/tools", handleListAgentTools(opt))
+	mux.HandleFunc("PATCH /api/agents/{id}/tools/{name}", handlePatchAgentTool(opt))
 	mux.HandleFunc("POST /api/approvals/{id}/decision", handleApprovalDecision(opt))
 	mux.HandleFunc("GET /api/approvals/{id}", handleGetApproval(opt))
 	mux.HandleFunc("GET /api/events", handleListEvents(opt))
@@ -63,7 +68,7 @@ func handleCreateConnector(opt Options) http.HandlerFunc {
 		if !rec.Enabled {
 			_ = opt.Registry.SetEnabled(rec.Name, false)
 		}
-		writeJSON(w, http.StatusCreated, rec)
+		writeJSON(w, http.StatusCreated, connectorPublic(opt.Store, rec))
 	}
 }
 
@@ -77,19 +82,8 @@ func handleListConnectors(opt Options) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		for _, rec := range list {
-			item := map[string]any{
-				"name":           rec.Name,
-				"transport":      rec.Transport,
-				"endpoint":       rec.Endpoint,
-				"credential_ref": rec.CredentialRef,
-				"schema_version": rec.SchemaVersion,
-				"enabled":        rec.Enabled,
-				"manifest_url":   rec.ManifestURL,
-				"timeout_ms":     rec.TimeoutMS,
-				"retries":        rec.Retries,
-				"created_at":     rec.CreatedAt,
-				"health":         "unknown",
-			}
+			item := connectorPublic(opt.Store, rec)
+			item["health"] = "unknown"
 			c, err := opt.Registry.Lookup(rec.Name)
 			if err != nil {
 				item["health"] = "unregistered"
@@ -115,7 +109,167 @@ func handleGetConnector(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "connector not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, rec)
+		writeJSON(w, http.StatusOK, connectorPublic(opt.Store, rec))
+	}
+}
+
+func handlePatchConnector(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		var body struct {
+			Enabled  *bool   `json:"enabled"`
+			Endpoint *string `json:"endpoint"`
+			Token    *string `json:"token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		var cred *string
+		if body.Token != nil {
+			tok := strings.TrimSpace(*body.Token)
+			if tok != "" {
+				secName := connector.TokenSecretName(name)
+				if err := secrets.Put(opt.Store, secName, []byte(tok)); err != nil {
+					if errors.Is(err, secrets.ErrNoMasterKey) {
+						writeErr(w, http.StatusBadRequest, "master key required to store token")
+						return
+					}
+					writeErr(w, http.StatusBadRequest, "token store failed")
+					return
+				}
+				marker := "secret:" + secName
+				cred = &marker
+			}
+		}
+		var endpoint *string
+		if body.Endpoint != nil {
+			ep := strings.TrimSpace(*body.Endpoint)
+			endpoint = &ep
+		}
+		upd, err := opt.Store.UpdateConnector(name, body.Enabled, endpoint, cred)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "connector not found")
+			return
+		}
+		if body.Enabled != nil {
+			_ = opt.Registry.SetEnabled(name, *body.Enabled)
+		}
+		if endpoint != nil || cred != nil {
+			cp := *upd
+			if err := mountConnector(opt, &cp); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if !upd.Enabled {
+				_ = opt.Registry.SetEnabled(name, false)
+			}
+		}
+		writeJSON(w, http.StatusOK, connectorPublic(opt.Store, upd))
+	}
+}
+
+func handleListAgentTools(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if _, err := opt.Store.GetAgent(id); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		tools, err := opt.Runtime.ListTools(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(tools))
+		seenBuiltin := map[string]bool{}
+		for _, bt := range tools {
+			enabled := toolEnabled(opt, bt)
+			out = append(out, map[string]any{
+				"name":              bt.Tool.Name,
+				"connector":         bt.Connector,
+				"description":       bt.Tool.Description,
+				"requires_approval": bt.Tool.RequiresApproval,
+				"enabled":           enabled,
+			})
+			if bt.Connector == builtin.ConnectorName {
+				seenBuiltin[bt.Tool.Name] = true
+			}
+		}
+		for _, spec := range builtin.Catalog() {
+			if seenBuiltin[spec.Name] {
+				continue
+			}
+			out = append(out, map[string]any{
+				"name":              spec.Name,
+				"connector":         builtin.ConnectorName,
+				"description":       spec.Description,
+				"requires_approval": spec.RequiresApproval,
+				"enabled":           opt.Store.GetToolFlag(spec.Name),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tools": out})
+	}
+}
+
+func handlePatchAgentTool(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		name := r.PathValue("name")
+		if _, err := opt.Store.GetAgent(id); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		var body struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if body.Enabled == nil {
+			writeErr(w, http.StatusBadRequest, "enabled is required")
+			return
+		}
+		enabled := *body.Enabled
+		if builtin.IsName(name) {
+			if err := opt.Store.SetToolFlag(name, enabled); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"name":      name,
+				"connector": builtin.ConnectorName,
+				"enabled":   enabled,
+			})
+			return
+		}
+		tools, err := opt.Runtime.ListTools(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		connName := ""
+		for _, bt := range tools {
+			if bt.Tool.Name == name && bt.Connector != builtin.ConnectorName {
+				connName = bt.Connector
+				break
+			}
+		}
+		if connName == "" {
+			writeErr(w, http.StatusNotFound, "tool not found")
+			return
+		}
+		if err := opt.Store.SetConnectorEnabled(connName, enabled); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		_ = opt.Registry.SetEnabled(connName, enabled)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":      name,
+			"connector": connName,
+			"enabled":   enabled,
+		})
 	}
 }
 
@@ -302,6 +456,85 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 	}
 }
 
+func looksLikeSecret(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "sk-") || strings.HasPrefix(s, "Bearer ") || strings.HasPrefix(s, "gsk_") {
+		return true
+	}
+	if strings.HasPrefix(s, "secret:") || s == "token_set" {
+		return true
+	}
+	if isEnvName(s) {
+		return false
+	}
+	return len(s) >= 24
+}
+
+func isEnvName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		if i == 0 && (c < 'A' || c > 'Z') {
+			return false
+		}
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string]any {
+	cred := rec.CredentialRef
+	if looksLikeSecret(cred) {
+		cred = "***"
+	}
+	tokenSet := false
+	if st != nil {
+		if row, err := st.GetSecret(connector.TokenSecretName(rec.Name)); err == nil && row != nil {
+			tokenSet = true
+		}
+	}
+	if !tokenSet && rec.CredentialRef != "" {
+		tokenSet = true
+	}
+	return map[string]any{
+		"name":           rec.Name,
+		"transport":      rec.Transport,
+		"endpoint":       rec.Endpoint,
+		"credential_ref": cred,
+		"schema_version": rec.SchemaVersion,
+		"enabled":        rec.Enabled,
+		"manifest_url":   rec.ManifestURL,
+		"timeout_ms":     rec.TimeoutMS,
+		"retries":        rec.Retries,
+		"created_at":     rec.CreatedAt,
+		"token_set":      tokenSet,
+	}
+}
+
+func toolEnabled(opt Options, bt agent.BoundTool) bool {
+	if bt.Connector == builtin.ConnectorName {
+		if opt.Store == nil {
+			return false
+		}
+		return opt.Store.GetToolFlag(bt.Tool.Name)
+	}
+	if opt.Store != nil {
+		if rec, err := opt.Store.GetConnector(bt.Connector); err == nil && rec != nil {
+			return rec.Enabled
+		}
+	}
+	if opt.Registry != nil {
+		return opt.Registry.Enabled(bt.Connector)
+	}
+	return false
+}
+
 func mountConnector(opt Options, rec *store.ConnectorRecord) error {
 	cfg := connector.Config{
 		Name:          rec.Name,
@@ -313,6 +546,9 @@ func mountConnector(opt Options, rec *store.ConnectorRecord) error {
 		ManifestJSON:  rec.ManifestJSON,
 		TimeoutMS:     rec.TimeoutMS,
 		Retries:       rec.Retries,
+	}
+	if tok, err := secrets.Get(opt.Store, connector.TokenSecretName(rec.Name)); err == nil {
+		cfg.BearerToken = string(tok)
 	}
 	c, err := connector.Build(cfg)
 	if err != nil {

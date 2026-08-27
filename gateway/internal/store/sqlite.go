@@ -174,6 +174,10 @@ func (s *SQLiteStore) migrate() error {
 			nonce BLOB NOT NULL,
 			ct BLOB NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS tool_flags (
+			name TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -569,6 +573,77 @@ func (s *SQLiteStore) SetConnectorEnabled(name string, enabled bool) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *SQLiteStore) UpdateConnector(name string, enabled *bool, endpoint *string, credentialRef *string) (*ConnectorRecord, error) {
+	cur, err := s.GetConnector(name)
+	if err != nil {
+		return nil, err
+	}
+	if enabled != nil {
+		cur.Enabled = *enabled
+	}
+	if endpoint != nil {
+		cur.Endpoint = *endpoint
+	}
+	if credentialRef != nil {
+		cur.CredentialRef = *credentialRef
+	}
+	en := 0
+	if cur.Enabled {
+		en = 1
+	}
+	_, err = s.db.Exec(`UPDATE connectors SET enabled=?, endpoint=?, credential_ref=? WHERE name=?`,
+		en, cur.Endpoint, cur.CredentialRef, name)
+	if err != nil {
+		return nil, err
+	}
+	return cur, nil
+}
+
+func (s *SQLiteStore) GetToolFlag(name string) bool {
+	name = strings.TrimSpace(name)
+	var en int
+	err := s.db.QueryRow(`SELECT enabled FROM tool_flags WHERE name=?`, name).Scan(&en)
+	if err != nil {
+		return false
+	}
+	return en != 0
+}
+
+func (s *SQLiteStore) SetToolFlag(name string, enabled bool) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name is required")
+	}
+	en := 0
+	if enabled {
+		en = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO tool_flags(name, enabled) VALUES(?,?)
+		 ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled`,
+		name, en,
+	)
+	return err
+}
+
+func (s *SQLiteStore) ListToolFlags() map[string]bool {
+	out := map[string]bool{}
+	rows, err := s.db.Query(`SELECT name, enabled FROM tool_flags`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var en int
+		if err := rows.Scan(&name, &en); err != nil {
+			continue
+		}
+		out[name] = en != 0
+	}
+	return out
 }
 
 func (s *SQLiteStore) LinkAgentConnector(agentID, connectorName string) error {

@@ -51,8 +51,37 @@ func TestTools_ListFromAgentConnectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools) != 1 || tools[0].Tool.Name != "contact_search" {
-		t.Fatalf("expected only linked crm tools, got %v", tools)
+	var crm []BoundTool
+	var builtins int
+	for _, bt := range tools {
+		if bt.Connector == "builtin" {
+			builtins++
+			continue
+		}
+		crm = append(crm, bt)
+	}
+	if len(crm) != 1 || crm[0].Tool.Name != "contact_search" {
+		t.Fatalf("expected only linked crm tools, got %v", crm)
+	}
+	if builtins != 4 {
+		t.Fatalf("builtins %d", builtins)
+	}
+}
+
+func TestCallTool_BuiltinNotConfigured(t *testing.T) {
+	t.Setenv("GOSO_WEB_SEARCH", "")
+	st := store.New()
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
+	cr, err := rt.CallTool(context.Background(), "builtin", "web_search", map[string]any{"q": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cr.Result == nil || cr.Result.Status != "not_configured" {
+		t.Fatalf("%+v", cr)
+	}
+	cr, err = rt.CallTool(context.Background(), "builtin", "sandbox", map[string]any{"cmd": "true"})
+	if err != nil || cr.Result.Status != "not_configured" {
+		t.Fatalf("sandbox %v %+v", err, cr)
 	}
 }
 

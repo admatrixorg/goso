@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestEcho(t *testing.T) {
@@ -135,9 +136,13 @@ func clearProviderEnv(t *testing.T) {
 	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "")
 	t.Setenv("GOSO_OPENAI_API_KEY", "")
 	t.Setenv("GOSO_OPENAI_MODEL", "")
+	t.Setenv("GOSO_LLM_PROVIDER", "")
 	for _, c := range OpenAICompatProviders() {
 		t.Setenv(c.EnvKey, "")
 		t.Setenv(c.EnvModel, "")
+		if c.EnvURL != "" {
+			t.Setenv(c.EnvURL, "")
+		}
 	}
 }
 
@@ -197,7 +202,7 @@ func TestRegistry_PreferredAnthropicOverNamed(t *testing.T) {
 }
 
 func TestOpenAICompatCatalog(t *testing.T) {
-	want := []string{"openrouter", "groq", "deepseek", "gemini", "mistral", "xai", "minimax", "dashscope"}
+	want := []string{"openrouter", "groq", "deepseek", "gemini", "mistral", "xai", "minimax", "dashscope", "router9"}
 	got := OpenAICompatProviders()
 	if len(got) != len(want) {
 		t.Fatalf("len %d", len(got))
@@ -209,5 +214,82 @@ func TestOpenAICompatCatalog(t *testing.T) {
 		if spec.BaseURL == "" || spec.EnvKey == "" || spec.Model == "" {
 			t.Fatalf("incomplete %+v", spec)
 		}
+		if spec.Name != "router9" && spec.AllowEmptyKey {
+			t.Fatalf("%s must skip empty key", spec.Name)
+		}
+	}
+}
+
+func TestRegistry_Router9ConstructsOnURLEmptyKey(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "http://127.0.0.1:20127/v1")
+	t.Setenv("GOSO_ROUTER9_API_KEY", "")
+	r := NewRegistry()
+	p, ok := r.Get("router9").(*OpenAI)
+	if !ok || p.Label != "router9" {
+		t.Fatalf("router9 %+v", r.Get("router9"))
+	}
+	if p.APIKey != "" {
+		t.Fatal("key must stay empty")
+	}
+	if p.BaseURL != "http://127.0.0.1:20127/v1" {
+		t.Fatalf("base %s", p.BaseURL)
+	}
+	if p.ModelName() != "cx/gpt-5.6-sol" {
+		t.Fatalf("model %s", p.ModelName())
+	}
+	if !p.AllowEmptyKey {
+		t.Fatal("AllowEmptyKey")
+	}
+	if p.Client == nil || p.Client.Timeout < 120*time.Second {
+		t.Fatalf("timeout %+v", p.Client)
+	}
+	found := false
+	for _, n := range r.List() {
+		if n == "router9" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("list %v", r.List())
+	}
+	if r.Preferred().Name() != "router9" {
+		t.Fatalf("preferred %s", r.Preferred().Name())
+	}
+}
+
+func TestRegistry_Router9AbsentWithoutURL(t *testing.T) {
+	clearProviderEnv(t)
+	r := NewRegistry()
+	if r.Get("router9").Name() != "echo" {
+		t.Fatal("router9 must be absent without BASE_URL")
+	}
+}
+
+func TestRegistry_LLMProviderOverride(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "http://127.0.0.1:20127/v1")
+	t.Setenv("GOSO_GROQ_API_KEY", "k-groq")
+	t.Setenv("GOSO_LLM_PROVIDER", "groq")
+	r := NewRegistry()
+	if r.Preferred().Name() != "groq" {
+		t.Fatalf("override %s", r.Preferred().Name())
+	}
+	t.Setenv("GOSO_LLM_PROVIDER", "missing")
+	r = NewRegistry()
+	if r.Preferred().Name() != "router9" {
+		t.Fatalf("unknown override falls to router9, got %s", r.Preferred().Name())
+	}
+}
+
+func TestChatCompletionsURL(t *testing.T) {
+	if got := chatCompletionsURL("http://127.0.0.1:20127/v1"); got != "http://127.0.0.1:20127/v1/chat/completions" {
+		t.Fatalf("v1 suffix %s", got)
+	}
+	if got := chatCompletionsURL("https://api.groq.com/openai"); got != "https://api.groq.com/openai/v1/chat/completions" {
+		t.Fatalf("groq %s", got)
+	}
+	if got := chatCompletionsURL("https://openrouter.ai/api/"); got != "https://openrouter.ai/api/v1/chat/completions" {
+		t.Fatalf("slash %s", got)
 	}
 }

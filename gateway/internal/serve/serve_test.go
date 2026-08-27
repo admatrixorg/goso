@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
@@ -112,6 +113,9 @@ func TestProvidersListsConfigured(t *testing.T) {
 	t.Setenv("GOSO_XAI_API_KEY", "")
 	t.Setenv("GOSO_MINIMAX_API_KEY", "")
 	t.Setenv("GOSO_DASHSCOPE_API_KEY", "")
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "")
+	t.Setenv("GOSO_ROUTER9_API_KEY", "")
+	t.Setenv("GOSO_LLM_PROVIDER", "")
 	h, status := New(store.New(), "test")
 	if status.Provider != "groq" {
 		t.Fatalf("default provider %s", status.Provider)
@@ -237,5 +241,64 @@ func TestChannelsListsSeven(t *testing.T) {
 	}
 	if len(body.Channels) != 7 {
 		t.Fatalf("channels %+v", body.Channels)
+	}
+}
+
+func TestLoadConnectors_AppliesStoredToken(t *testing.T) {
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	t.Setenv("GOSO_ANTHROPIC_API_KEY", "")
+	t.Setenv("GOSO_OPENAI_API_KEY", "")
+	t.Setenv("GOSO_GROQ_API_KEY", "")
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "")
+	t.Setenv("GOSO_LLM_PROVIDER", "")
+
+	var sawAuth string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("GET /manifest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"schema_version":"1.0","tools":[{"name":"ping","description":"p","requires_approval":false,"input_schema":{"type":"object"}}]}`))
+	})
+	mux.HandleFunc("POST /tools/ping", func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+	fake := httptest.NewServer(mux)
+	defer fake.Close()
+
+	st := store.New()
+	h, _ := New(st, "test")
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/connectors", strings.NewReader(`{"name":"crm","transport":"http","endpoint":"`+fake.URL+`","enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/connectors/crm", strings.NewReader(`{"token":"reload-token-value"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch %d %s", rr.Code, rr.Body.String())
+	}
+
+	h2, _ := New(st, "test")
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/tools/invoke", strings.NewReader(`{"connector":"crm","tool":"ping","arguments":{}}`))
+	req.Header.Set("Content-Type", "application/json")
+	h2.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("invoke %d %s", rr.Code, rr.Body.String())
+	}
+	if sawAuth != "Bearer reload-token-value" {
+		t.Fatalf("auth after reload %q", sawAuth)
 	}
 }

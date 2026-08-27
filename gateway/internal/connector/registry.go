@@ -78,6 +78,17 @@ func (r *Registry) Lookup(name string) (Connector, error) {
 	return &gated{name: name, inner: e.conn, enabled: e.enabled}, nil
 }
 
+// Peek returns the inner connector even when disabled (for listing tools).
+func (r *Registry) Peek(name string) (Connector, bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	e, ok := r.entries[name]
+	if !ok {
+		return nil, false, ErrNotFound
+	}
+	return e.conn, e.enabled, nil
+}
+
 // List returns registered connectors (gated). Order is by name.
 func (r *Registry) List() []Connector {
 	r.mu.RLock()

@@ -9,18 +9,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // OpenAI calls OpenAI Chat Completions via net/http.
 // Named OpenAI-compat providers reuse this type with Label + BaseURL.
 type OpenAI struct {
-	APIKey  string
-	Model   string
-	BaseURL string // default https://api.openai.com
-	Client  *http.Client
-	Label   string // named provider; empty → "openai"
-	Stream  bool   // when true, send stream=true and parse SSE
+	APIKey        string
+	Model         string
+	BaseURL       string // default https://api.openai.com
+	Client        *http.Client
+	Label         string // named provider; empty → "openai"
+	Stream        bool   // when true, send stream=true and parse SSE
+	AllowEmptyKey bool   // router9 may omit Authorization
 }
 
 func (o *OpenAI) Name() string {
@@ -57,7 +59,10 @@ func (o *OpenAI) ChatTools(ctx context.Context, messages []Message, tools []Tool
 }
 
 func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolSpec, stream bool) (Reply, Usage, error) {
-	if o == nil || o.APIKey == "" {
+	if o == nil {
+		return Reply{}, Usage{}, fmt.Errorf("openai: missing API key")
+	}
+	if o.APIKey == "" && !o.AllowEmptyKey {
 		return Reply{}, Usage{}, fmt.Errorf("%s: missing API key", o.Name())
 	}
 	base := o.BaseURL
@@ -81,14 +86,20 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 	}
 	client := o.Client
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		timeout := 30 * time.Second
+		if o.Label == "router9" {
+			timeout = 120 * time.Second
+		}
+		client = &http.Client{Timeout: timeout}
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", chatCompletionsURL(base), bytes.NewReader(body))
 	if err != nil {
 		return Reply{}, Usage{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+o.APIKey)
+	if o.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+o.APIKey)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return Reply{}, Usage{}, err
@@ -111,6 +122,16 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 		return Reply{}, Usage{}, err
 	}
 	return reply, fallbackUsage(messages, reply.Text, promptTok, completionTok), nil
+}
+
+// chatCompletionsURL joins BaseURL with the chat completions path.
+// If BaseURL already ends with /v1, append /chat/completions only (no /v1/v1).
+func chatCompletionsURL(base string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/chat/completions"
+	}
+	return base + "/v1/chat/completions"
 }
 
 func openaiMessages(messages []Message) []map[string]any {
@@ -168,7 +189,19 @@ func openaiTools(tools []ToolSpec) []map[string]any {
 	return out
 }
 
+func stripTrailingSSEDone(b []byte) []byte {
+	b = bytes.TrimSpace(b)
+	const marker = "data: [DONE]"
+	if i := bytes.LastIndex(b, []byte(marker)); i >= 0 {
+		if len(bytes.TrimSpace(b[i+len(marker):])) == 0 {
+			return bytes.TrimSpace(b[:i])
+		}
+	}
+	return b
+}
+
 func parseOpenAIChat(b []byte) (Reply, int, int, error) {
+	b = stripTrailingSSEDone(b)
 	var out struct {
 		Choices []struct {
 			Message struct {

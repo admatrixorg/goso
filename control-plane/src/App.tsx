@@ -3,6 +3,7 @@ import { AgentsPage } from "./pages/AgentsPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ConnectorsPage } from "./pages/Connectors";
+import { FunctionsPage } from "./pages/FunctionsPage";
 import { EventsPage } from "./pages/Events";
 import { CrmMetricsPage } from "./pages/CrmMetrics";
 import { HomePage } from "./pages/HomePage";
@@ -43,6 +44,7 @@ export type Tab =
   | "marketing"
   | "heatmap"
   | "connectors"
+  | "functions"
   | "events"
   | "teams"
   | "vault"
@@ -87,6 +89,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       group: t("nav.group.system"),
       items: [
         { id: "connectors", label: t("nav.connectors"), ic: "hook" },
+        { id: "functions", label: t("nav.functions"), ic: "build" },
         { id: "events", label: t("nav.events"), ic: "history" },
         { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "channels", label: t("nav.channels"), ic: "device" },
@@ -460,6 +463,7 @@ export default function App() {
           {tab === "webhooks" && <WebhooksPage />}
           {tab === "traces" && <TracesPage />}
           {tab === "connectors" && <ConnectorsPage />}
+          {tab === "functions" && <FunctionsPage />}
           {tab === "events" && <EventsPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
