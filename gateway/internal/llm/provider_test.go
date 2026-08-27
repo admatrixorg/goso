@@ -235,7 +235,7 @@ func TestRegistry_Router9ConstructsOnURLEmptyKey(t *testing.T) {
 	if p.BaseURL != "http://127.0.0.1:20127/v1" {
 		t.Fatalf("base %s", p.BaseURL)
 	}
-	if p.ModelName() != "cx/gpt-5.6-sol" {
+	if p.ModelName() != "ocg/deepseek-v4-flash" {
 		t.Fatalf("model %s", p.ModelName())
 	}
 	if !p.AllowEmptyKey {
@@ -255,6 +255,20 @@ func TestRegistry_Router9ConstructsOnURLEmptyKey(t *testing.T) {
 	}
 	if r.Preferred().Name() != "router9" {
 		t.Fatalf("preferred %s", r.Preferred().Name())
+	}
+}
+
+func TestRegistry_Router9ModelEnvOverride(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "http://127.0.0.1:20127/v1")
+	t.Setenv("GOSO_ROUTER9_MODEL", "cx/gpt-5.6-sol")
+	r := NewRegistry()
+	p, ok := r.Get("router9").(*OpenAI)
+	if !ok {
+		t.Fatal("router9")
+	}
+	if p.ModelName() != "cx/gpt-5.6-sol" {
+		t.Fatalf("override %s", p.ModelName())
 	}
 }
 

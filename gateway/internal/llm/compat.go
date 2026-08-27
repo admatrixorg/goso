@@ -32,7 +32,7 @@ func OpenAICompatProviders() []OpenAICompat {
 		{
 			Name: "router9", EnvKey: "GOSO_ROUTER9_API_KEY", EnvModel: "GOSO_ROUTER9_MODEL",
 			EnvURL: "GOSO_ROUTER9_BASE_URL", BaseURL: "http://127.0.0.1:20127/v1",
-			Model: "cx/gpt-5.6-sol", AllowEmptyKey: true, Timeout: 120 * time.Second,
+			Model: "ocg/deepseek-v4-flash", AllowEmptyKey: true, Timeout: 120 * time.Second,
 		},
 	}
 }

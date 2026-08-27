@@ -6,7 +6,7 @@ Date: 2026-08-27. Clean-room. No ZaloCRM / goclaw-source copy. No banned author 
 
 | Surface | Status |
 |---------|--------|
-| Named provider `router9` | Constructed when `GOSO_ROUTER9_BASE_URL` is non-empty. Default BaseURL `http://127.0.0.1:20127/v1`, model `cx/gpt-5.6-sol`. `GOSO_ROUTER9_API_KEY` may be empty (Authorization omitted). Catalog entry sits beside SPEC 039 names. |
+| Named provider `router9` | Constructed when `GOSO_ROUTER9_BASE_URL` is non-empty. Default BaseURL `http://127.0.0.1:20127/v1`. Catalog default model is `ocg/deepseek-v4-flash` (SPEC 045); `GOSO_ROUTER9_MODEL` still overrides (including `cx/*`). `GOSO_ROUTER9_API_KEY` may be empty (Authorization omitted). Catalog entry sits beside SPEC 039 names. |
 | `GOSO_LLM_PROVIDER` | Overrides `Preferred()` when that name exists. Else prefer `router9` if constructed, else anthropic/openai/named/echo. |
 | Chat URL join | BaseURL ending in `/v1` → `/chat/completions` only (no `/v1/v1`). groq/openrouter (no `/v1` suffix) still append `/v1/chat/completions`. |
 | Timeout / parse | router9 client timeout ≥ 120s. `parseOpenAIChat` strips trailing `data: [DONE]`. |
@@ -53,7 +53,7 @@ Unit tests (httptest, no 20127): `gateway/internal/httpapi/handlers_tools_test.g
 
 ```
 GOSO_ROUTER9_BASE_URL=http://127.0.0.1:20127/v1
-GOSO_ROUTER9_MODEL=cx/gpt-5.6-sol
+GOSO_ROUTER9_MODEL=ocg/deepseek-v4-flash
 GOSO_ROUTER9_API_KEY=
 GOSO_LLM_PROVIDER=router9
 GOSO_WEB_SEARCH=          # empty = fail-closed; ddg or 1 = Instant Answer
