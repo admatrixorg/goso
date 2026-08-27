@@ -78,7 +78,7 @@ func NewRouter(opt Options) http.Handler {
 	mux := routerBase(opt.Store, opt.Version)
 	registerChannels(mux, opt)
 	registerWebhookRoutes(mux, opt)
-	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
+	aliasAPI(mux, "GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
 		names := opt.ProviderNames
 		if len(names) == 0 {
 			name := "echo"
@@ -89,13 +89,15 @@ func NewRouter(opt Options) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"providers": names})
 	})
+	var chat http.HandlerFunc
 	if opt.Runtime != nil {
-		mux.HandleFunc("POST /api/chat", handleChatRuntime(opt.Runtime, opt.Store, opt.Meter, opt.Provider))
+		chat = handleChatRuntime(opt.Runtime, opt.Store, opt.Meter, opt.Provider)
 	} else if opt.Provider != nil {
-		mux.HandleFunc("POST /api/chat", handleChatWithLLM(opt.Store, opt.Provider, opt.Meter))
+		chat = handleChatWithLLM(opt.Store, opt.Provider, opt.Meter)
 	} else {
-		mux.HandleFunc("POST /api/chat", handleChat(opt.Store, opt.Meter))
+		chat = handleChat(opt.Store, opt.Meter)
 	}
+	aliasAPI(mux, "POST /api/chat", chat)
 	mux.HandleFunc("GET /api/usage", handleUsage(opt.Meter))
 	mux.HandleFunc("GET /api/quota", handleQuota(opt.Meter))
 	registerConnectorRoutes(mux, opt)
@@ -111,18 +113,18 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 
 	// Agents
 	mux.HandleFunc("POST /api/agents", handleCreateAgent(st))
-	mux.HandleFunc("GET /api/agents", handleListAgents(st))
+	aliasAPI(mux, "GET /api/agents", handleListAgents(st))
 	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
 	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
-	mux.HandleFunc("GET /api/sessions", handleListSessions(st))
+	aliasAPI(mux, "GET /api/sessions", handleListSessions(st))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", handleAddMessage(st))
 	mux.HandleFunc("GET /api/sessions/{id}/messages", handleListMessages(st))
 
 	mux.HandleFunc("GET /api/memory/search", handleSearchMemory(st))
-	mux.HandleFunc("GET /api/memory", handleListMemory(st))
+	aliasAPI(mux, "GET /api/memory", handleListMemory(st))
 	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
 
 	mux.HandleFunc("GET /api/vault/search", handleSearchVault(st))
@@ -132,7 +134,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /api/vault/docs", handleListVaultDocs(st))
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
 
-	mux.HandleFunc("GET /api/skills", handleListSkills())
+	aliasAPI(mux, "GET /api/skills", handleListSkills())
 
 	registerTeamRoutes(mux, st)
 
@@ -563,9 +565,23 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 			mux.HandleFunc(r.path, r.h)
 		}
 	}
-	mux.HandleFunc("GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
+	aliasAPI(mux, "GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"channels": channel.Catalog()})
 	})
+}
+
+// aliasAPI registers h at pattern and, when pattern is METHOD /api/..., the same h at METHOD /v1/...
+func aliasAPI(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
+	mux.HandleFunc(pattern, h)
+	method, path, ok := strings.Cut(pattern, " ")
+	if !ok {
+		return
+	}
+	rest, ok := strings.CutPrefix(path, "/api/")
+	if !ok || rest == "" {
+		return
+	}
+	mux.HandleFunc(method+" /v1/"+rest, h)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

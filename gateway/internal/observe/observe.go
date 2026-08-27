@@ -112,9 +112,10 @@ func (o *Observer) doExport(spans []Span) {
 	}
 }
 
-// Register mounts GET /api/traces, GET /api/stats, and GET /metrics.
+// Register mounts GET /api/traces (and /v1/traces), GET /api/stats, and GET /metrics.
 func (o *Observer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/traces", o.HandleTraces)
+	mux.HandleFunc("GET /v1/traces", o.HandleTraces)
 	mux.HandleFunc("GET /api/stats", o.HandleStats)
 	mux.HandleFunc("GET /api/metrics", o.HandleStats) // SPEC 018 alias
 	mux.HandleFunc("GET /metrics", o.HandleMetrics)

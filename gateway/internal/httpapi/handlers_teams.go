@@ -18,7 +18,7 @@ func parseOrchMode(s string) (string, error) {
 
 func registerTeamRoutes(mux *http.ServeMux, st store.StoreIface) {
 	mux.HandleFunc("POST /api/teams", handleCreateTeam(st))
-	mux.HandleFunc("GET /api/teams", handleListTeams(st))
+	aliasAPI(mux, "GET /api/teams", handleListTeams(st))
 	mux.HandleFunc("GET /api/teams/{id}/members", handleListMembers(st))
 	mux.HandleFunc("POST /api/teams/{id}/members", handleAddMember(st))
 	mux.HandleFunc("DELETE /api/teams/{id}/members/{agent_id}", handleRemoveMember(st))

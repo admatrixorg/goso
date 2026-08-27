@@ -1,6 +1,9 @@
 /**
  * Low-level HTTP client for GoClaw API.
  * Handles auth headers, retry with exponential backoff, circuit breaker, and error mapping.
+ *
+ * Gateway aliases GET /v1/{providers,agents,sessions,channels,traces,skills,webhooks,teams,memory}
+ * and POST /v1/chat onto the same /api handlers. Tool paths stay /v1; do not rewrite them here.
  */
 
 import { GoClawError, type ApiErrorData } from "../lib/errors.js";

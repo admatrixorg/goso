@@ -10,7 +10,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 )
 
-var viewPrefixes = []string{"/healthz", "/api/agents", "/api/sessions"}
+var viewPrefixes = []string{"/healthz", "/api/agents", "/api/sessions", "/v1/agents", "/v1/sessions"}
 
 // RequireToken returns middleware that enforces Bearer token auth.
 // An empty expected token rejects every non-bypass path with 401 (SPEC 016).
@@ -21,7 +21,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 }
 
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
-// (GET /healthz /api/agents /api/sessions only).
+// (GET /healthz /api/agents /api/sessions and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

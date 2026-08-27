@@ -91,12 +91,36 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view GET sessions 200, got %d", w.Code)
 	}
 
+	v1get := httptest.NewRequest("GET", "/v1/agents", nil)
+	v1get.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1get)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/agents 200, got %d", w.Code)
+	}
+
+	v1sess := httptest.NewRequest("GET", "/v1/sessions", nil)
+	v1sess.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1sess)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/sessions 200, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, post)
 	if w.Code != 403 {
 		t.Fatalf("view POST chat 403, got %d", w.Code)
+	}
+
+	v1post := httptest.NewRequest("POST", "/v1/chat", nil)
+	v1post.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1post)
+	if w.Code != 403 {
+		t.Fatalf("view POST /v1/chat 403, got %d", w.Code)
 	}
 
 	one := httptest.NewRequest("GET", "/api/agents/abc", nil)

@@ -21,7 +21,7 @@ func registerWebhookRoutes(mux *http.ServeMux, opt Options) {
 	}
 	st := opt.Store
 	provider := opt.Provider
-	mux.HandleFunc("GET /api/webhooks", handleListWebhooks(reg))
+	aliasAPI(mux, "GET /api/webhooks", handleListWebhooks(reg))
 	mux.HandleFunc("POST /api/webhooks", handleCreateWebhook(reg))
 	mux.HandleFunc("POST /api/webhooks/llm", handleWebhookLLM(reg, st, provider))
 }

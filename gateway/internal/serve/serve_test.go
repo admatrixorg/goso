@@ -79,6 +79,11 @@ func TestNewRequiresToken(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("empty token /api/agents %d body %s", rr.Code, rr.Body.String())
 	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/providers", nil))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("empty token /v1/providers %d body %s", rr.Code, rr.Body.String())
+	}
 
 	t.Setenv("GOSO_ADMIN_TOKEN", "secret-016")
 	h, status = New(st, "test")
@@ -125,10 +130,11 @@ func TestProvidersListsConfigured(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
 	}
+	apiBody := rr.Body.String()
 	var body struct {
 		Providers []string `json:"providers"`
 	}
-	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
@@ -137,6 +143,12 @@ func TestProvidersListsConfigured(t *testing.T) {
 	}
 	if !got["echo"] || !got["groq"] || got["openai"] || got["anthropic"] {
 		t.Fatalf("providers %+v", body.Providers)
+	}
+
+	v1 := httptest.NewRecorder()
+	h.ServeHTTP(v1, httptest.NewRequest(http.MethodGet, "/v1/providers", nil))
+	if v1.Code != rr.Code || v1.Body.String() != apiBody {
+		t.Fatalf("GET /v1/providers %d %s vs /api/providers %d %s", v1.Code, v1.Body.String(), rr.Code, apiBody)
 	}
 }
 
