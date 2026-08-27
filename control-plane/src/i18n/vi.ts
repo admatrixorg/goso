@@ -196,6 +196,7 @@ export const vi = {
   "settings.theme.desc": "Dark mode là token flip, không phải design thứ hai.",
   "settings.theme.toggleDark": "Chuyển tối",
   "settings.theme.toggleLight": "Chuyển sáng",
+  "settings.contextDir.note": "Bootstrap context: GOSO_CONTEXT_DIR trống = không inject. Khi set, SOUL.md, IDENTITY.md, AGENTS.md (USER.md tùy chọn) vào system text có nhãn. Không đổi display_name / agent_key.",
   "settings.developingHint": "Màn hình này trả {status:\"developing\"} từ API — chưa có form persist.",
   "settings.col.name": "TÊN",
   "settings.col.email": "EMAIL",

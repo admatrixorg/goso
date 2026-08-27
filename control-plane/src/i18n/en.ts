@@ -198,6 +198,7 @@ export const en: Record<MsgKey, string> = {
   "settings.theme.desc": "Dark mode is a token flip, not a second design.",
   "settings.theme.toggleDark": "Switch to dark",
   "settings.theme.toggleLight": "Switch to light",
+  "settings.contextDir.note": "Bootstrap context: empty GOSO_CONTEXT_DIR = no inject. When set, SOUL.md, IDENTITY.md, AGENTS.md (optional USER.md) are labeled system text. Does not change display_name or agent_key.",
   "settings.developingHint": "This screen returns {status:\"developing\"} from the API — no persist form yet.",
   "settings.col.name": "NAME",
   "settings.col.email": "EMAIL",

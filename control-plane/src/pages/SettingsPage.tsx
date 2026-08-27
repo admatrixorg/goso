@@ -415,6 +415,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 {dark ? t("settings.theme.toggleLight") : t("settings.theme.toggleDark")}
               </Button>
             </Card>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.contextDir.note")}</p>
           </>
         )}
       </div>
