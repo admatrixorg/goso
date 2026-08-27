@@ -84,6 +84,58 @@ func TestSQLiteStore_PersistReopen(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_RestartSafeIDs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ids.db")
+	s1, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	a, err := s1.CreateAgent(Agent{AgentKey: "k1", DisplayName: "K1"})
+	if err != nil || a.ID == "" {
+		t.Fatalf("CreateAgent: %v %+v", err, a)
+	}
+	sess, err := s1.CreateSession(Session{AgentID: a.ID, Label: "s1"})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	m1, err := s1.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "first"})
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	_ = s1.Close()
+
+	sqliteSeq = 0
+	s2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s2.Close()
+
+	a2, err := s2.CreateAgent(Agent{AgentKey: "k2", DisplayName: "K2"})
+	if err != nil {
+		t.Fatalf("second CreateAgent: %v", err)
+	}
+	sess2, err := s2.CreateSession(Session{AgentID: a.ID, Label: "s2"})
+	if err != nil {
+		t.Fatalf("second CreateSession: %v", err)
+	}
+	m2, err := s2.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "second"})
+	if err != nil {
+		t.Fatalf("second AddMessage: %v", err)
+	}
+	if a2.ID == a.ID || sess2.ID == sess.ID || m2.ID == m1.ID {
+		t.Fatalf("collided ids a=%s/%s sess=%s/%s msg=%s/%s", a.ID, a2.ID, sess.ID, sess2.ID, m1.ID, m2.ID)
+	}
+	if len(s2.ListAgents()) != 2 {
+		t.Fatalf("agents %d", len(s2.ListAgents()))
+	}
+	msgs, err := s2.ListMessages(sess.ID)
+	if err != nil || len(msgs) != 2 {
+		t.Fatalf("messages %v %v", err, msgs)
+	}
+}
+
 func TestSQLiteStore_ConnectorLink(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "conn.db")

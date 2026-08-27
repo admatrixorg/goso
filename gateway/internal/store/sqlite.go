@@ -3,12 +3,15 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -718,8 +721,12 @@ func scanConnector(sc scanner) (*ConnectorRecord, error) {
 var sqliteSeq int64
 
 func newID() string {
-	sqliteSeq++
-	return time.Now().UTC().Format("20060102") + "-" + itoa(sqliteSeq)
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		n := atomic.AddInt64(&sqliteSeq, 1)
+		return time.Now().UTC().Format("20060102") + "-" + itoa(n) + "-" + itoa(time.Now().UnixNano())
+	}
+	return time.Now().UTC().Format("20060102") + "-" + hex.EncodeToString(b[:])
 }
 
 // --- Memory ---
