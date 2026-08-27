@@ -1,5 +1,5 @@
 // Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
-// GOSO Gateway — commands: version, doctor, gateway (HTTP+WS+Session+LLM+4 channels+auth/ratelimit).
+// GOSO Gateway — commands: version, doctor, gateway (HTTP+WS+Session+LLM+7 channels+auth/ratelimit).
 
 package main
 
@@ -73,6 +73,11 @@ Environment:
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)
+  GOSO_DISCORD_BOT_TOKEN   Discord bot token (optional)
+  GOSO_SLACK_BOT_TOKEN     Slack bot token (optional)
+  GOSO_FEISHU_APP_SECRET   Feishu/Lark app secret (optional)
+  GOSO_WHATSAPP_ACCESS_TOKEN WhatsApp Cloud API token (optional; native vs Business = DI-01)
+  GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all)
   GOSO_ENV                 Environment (default development)
   GOSO_DB_PATH             SQLite path (default :memory:)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)

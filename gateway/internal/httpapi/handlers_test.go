@@ -18,7 +18,7 @@ import (
 func newTestServer() (*store.Store, http.Handler) {
 	st := store.New()
 	mux := Router(st, "0.1.0").(*http.ServeMux)
-	RegisterWS(mux)
+	RegisterWS(mux, st, llm.Echo{})
 	return st, mux
 }
 

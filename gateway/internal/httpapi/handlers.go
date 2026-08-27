@@ -13,11 +13,13 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/webhook"
 )
 
 // Options wires SPEC 014 deps into the HTTP mux. All fields except Store are optional.
@@ -33,6 +35,11 @@ type Options struct {
 	TG       http.HandlerFunc
 	ZP       http.HandlerFunc
 	ZO       http.HandlerFunc
+	Discord  http.HandlerFunc
+	Slack    http.HandlerFunc
+	Feishu   http.HandlerFunc
+	WhatsApp http.HandlerFunc
+	Webhooks *webhook.Registry
 	// ProviderNames is GET /api/providers (configured names only, never secrets).
 	ProviderNames []string
 }
@@ -53,6 +60,9 @@ func (o *Options) defaults() {
 	if o.Meter == nil {
 		o.Meter = billing.New()
 	}
+	if o.Webhooks == nil {
+		o.Webhooks = webhook.New()
+	}
 }
 
 // Router builds the HTTP mux.
@@ -64,7 +74,8 @@ func Router(st store.StoreIface, version string) http.Handler {
 func NewRouter(opt Options) http.Handler {
 	opt.defaults()
 	mux := routerBase(opt.Store, opt.Version)
-	registerChannels(mux, opt.TG, opt.ZP, opt.ZO)
+	registerChannels(mux, opt)
+	registerWebhookRoutes(mux, opt)
 	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
 		names := opt.ProviderNames
 		if len(names) == 0 {
@@ -456,18 +467,26 @@ func RouterWithBilling(st store.StoreIface, version string, provider llm.Provide
 	})
 }
 
-func registerChannels(mux *http.ServeMux, tg, zp, zo http.HandlerFunc) {
-	if zp != nil {
-		mux.HandleFunc("POST /api/channels/zalo-personal/webhook", zp)
+func registerChannels(mux *http.ServeMux, opt Options) {
+	type route struct {
+		path string
+		h    http.HandlerFunc
 	}
-	if zo != nil {
-		mux.HandleFunc("POST /api/channels/zalo-oa/webhook", zo)
-	}
-	if tg != nil {
-		mux.HandleFunc("POST /api/channels/telegram/webhook", tg)
+	for _, r := range []route{
+		{"POST /api/channels/telegram/webhook", opt.TG},
+		{"POST /api/channels/zalo-personal/webhook", opt.ZP},
+		{"POST /api/channels/zalo-oa/webhook", opt.ZO},
+		{"POST /api/channels/discord/webhook", opt.Discord},
+		{"POST /api/channels/slack/webhook", opt.Slack},
+		{"POST /api/channels/feishu/webhook", opt.Feishu},
+		{"POST /api/channels/whatsapp/webhook", opt.WhatsApp},
+	} {
+		if r.h != nil {
+			mux.HandleFunc(r.path, r.h)
+		}
 	}
 	mux.HandleFunc("GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"channels": []string{"telegram", "zalo-personal", "zalo-oa"}})
+		writeJSON(w, http.StatusOK, map[string]any{"channels": channel.Catalog()})
 	})
 }
 

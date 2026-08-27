@@ -3,6 +3,7 @@
 package serve
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/webhook"
 )
 
 func TestNewHealthzAndAgent(t *testing.T) {
@@ -130,5 +132,61 @@ func TestProvidersListsConfigured(t *testing.T) {
 	}
 	if !got["echo"] || !got["groq"] || got["openai"] || got["anthropic"] {
 		t.Fatalf("providers %+v", body.Providers)
+	}
+}
+
+func TestWebhookLLMBypassesAdmin(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "admin-040")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	h, _ := New(store.New(), "test")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks", nil)
+	req.Header.Set("Authorization", "Bearer admin-040")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create webhook %d %s", rr.Code, rr.Body.String())
+	}
+	var created webhook.Created
+	if err := json.NewDecoder(rr.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewReader([]byte(`{"input":"ping","mode":"sync"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/webhooks/llm", body)
+	req.Header.Set("Authorization", "Bearer "+created.Token)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("llm webhook %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestChannelsListsSeven(t *testing.T) {
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("GOSO_DISCORD_BOT_TOKEN", "")
+	t.Setenv("GOSO_SLACK_BOT_TOKEN", "")
+	t.Setenv("GOSO_FEISHU_APP_SECRET", "")
+	t.Setenv("GOSO_WHATSAPP_ACCESS_TOKEN", "")
+	h, _ := New(store.New(), "test")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/channels", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Channels []struct {
+			Name string `json:"name"`
+		} `json:"channels"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Channels) != 7 {
+		t.Fatalf("channels %+v", body.Channels)
 	}
 }

@@ -81,6 +81,10 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	tg := &channel.Telegram{Store: st, LLM: provider, Meter: meter}
 	zp := &channel.ZaloPersonal{Store: st, LLM: provider, Meter: meter}
 	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
+	dc := &channel.Discord{Store: st, LLM: provider, Meter: meter}
+	sl := &channel.Slack{Store: st, LLM: provider, Meter: meter}
+	fs := &channel.Feishu{Store: st, LLM: provider, Meter: meter}
+	wa := &channel.WhatsApp{Store: st, LLM: provider, Meter: meter}
 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)
@@ -91,9 +95,10 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 		Store: st, Version: version, Provider: provider,
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
+		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
 		ProviderNames: llm.NewRegistry().List(),
 	}).(*http.ServeMux)
-	httpapi.RegisterWS(mux)
+	httpapi.RegisterWS(mux, st, provider)
 	obs.Register(mux)
 	return mux
 }
@@ -125,7 +130,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	}
 	if adminToken != "" || !devMode {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
-		handler = auth.RequireToken(adminToken, []string{"/healthz"})(handler)
+		handler = auth.RequireToken(adminToken, []string{"/healthz", "/api/webhooks/llm"})(handler)
 	}
 	handler = obs.Middleware(handler)
 

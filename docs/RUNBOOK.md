@@ -80,6 +80,7 @@ Tất cả secret đi qua env, không commit. Đổi giá trị rồi **restart 
 | `GOSO_TELEGRAM_BOT_TOKEN` | Telegram `sendMessage` | `@BotFather` /revoke rồi token mới, cập nhật webhook nếu có. |
 | `GOSO_ZALO_OA_ACCESS_TOKEN` | Zalo OA | Làm mới access token OA, restart. |
 | `GOSO_ZALO_PERSONAL_TOKEN` | Zalo Personal | Làm mới token, restart. |
+| `GOSO_DISCORD_BOT_TOKEN` / `GOSO_SLACK_BOT_TOKEN` / `GOSO_FEISHU_APP_SECRET` / `GOSO_WHATSAPP_ACCESS_TOKEN` | Channel adapters (SPEC 040) | Placeholders only in git. Live tokens = DI-01..07. Empty = `configured: false` on `GET /api/channels`. |
 
 Không log token (auth middleware chỉ trả `{"error":"unauthorized"}`). Không dán key vào issue/chat.
 
