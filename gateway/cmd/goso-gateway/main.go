@@ -86,7 +86,7 @@ Environment:
   GOSO_ENV                 Environment (default development)
   GOSO_DB_PATH             SQLite path (default :memory:)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
-  GOSO_LITE                1 = cap 5 agents / 1 team (SPEC 038)
+  GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
   GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)

@@ -568,7 +568,10 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 		}
 	}
 	aliasAPI(mux, "GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"channels": channel.Catalog()})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"channels": channel.Catalog(),
+			"lite":     store.LiteEnabled(),
+		})
 	})
 }
 

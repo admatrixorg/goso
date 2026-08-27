@@ -356,6 +356,7 @@ export const vi = {
   "channels.empty": "Không có kênh.",
   "channels.col.name": "TÊN",
   "channels.col.configured": "CONFIGURED",
+  "channels.liteOff": "Lite: channels off",
 
   "webhooks.title": "Webhook",
   "webhooks.desc": "Registry inbound. GET /api/webhooks liệt kê id và token prefix. Secret hiện một lần khi POST rồi redact.",

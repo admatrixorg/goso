@@ -203,3 +203,51 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 		}
 	}
 }
+
+func TestChannelsAPI_LiteFlag(t *testing.T) {
+	t.Setenv("GOSO_LITE", "")
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/channels", nil))
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	var off struct {
+		Lite     bool `json:"lite"`
+		Channels []struct {
+			Name       string `json:"name"`
+			Configured bool   `json:"configured"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &off); err != nil {
+		t.Fatal(err)
+	}
+	if off.Lite {
+		t.Fatalf("lite unset should be false: %s", w.Body.String())
+	}
+	if len(off.Channels) != 7 {
+		t.Fatalf("want 7 channels, got %d", len(off.Channels))
+	}
+
+	t.Setenv("GOSO_LITE", "1")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/channels", nil))
+	if w.Code != 200 {
+		t.Fatalf("lite status %d %s", w.Code, w.Body.String())
+	}
+	var on struct {
+		Lite     bool `json:"lite"`
+		Channels []struct {
+			Name string `json:"name"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &on); err != nil {
+		t.Fatal(err)
+	}
+	if !on.Lite {
+		t.Fatalf("GOSO_LITE=1 want lite true: %s", w.Body.String())
+	}
+	if len(on.Channels) != 7 {
+		t.Fatalf("lite still lists adapters, got %d", len(on.Channels))
+	}
+}

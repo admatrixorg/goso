@@ -358,6 +358,7 @@ export const en: Record<MsgKey, string> = {
   "channels.empty": "No channels.",
   "channels.col.name": "NAME",
   "channels.col.configured": "CONFIGURED",
+  "channels.liteOff": "Lite: channels off",
 
   "webhooks.title": "Webhooks",
   "webhooks.desc": "Inbound registry. GET /api/webhooks lists id and token prefix. Secret is shown once on POST then redacted.",
