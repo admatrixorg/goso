@@ -98,5 +98,6 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_GATEWAY_URL | — | URL gateway cho `goso-mcp` (bắt buộc khi chạy MCP) |
 | GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |
 | GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |
+| GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042). Empty = no export. Do **not** put Grafana Cloud keys here (DI-18). |
 
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).

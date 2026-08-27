@@ -3,8 +3,13 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -12,6 +17,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -102,6 +108,195 @@ func TestTools_InvokeStoresRoleToolAndTrace(t *testing.T) {
 	}
 	if !foundWrap {
 		t.Fatalf("expected untrusted wrap in LLM tool message: %#v", scripted.Recorded[1])
+	}
+}
+
+func TestChat_NestedSpans(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	reg := connector.NewRegistry()
+	_ = reg.Register(connector.NewFake("zalocrm", []connector.Tool{crmTool("contact_search", false)}))
+	scripted := &llm.Scripted{Replies: []llm.Reply{
+		{ToolCalls: []llm.ToolCall{{ID: "tc1", Name: "zalocrm__contact_search", Arguments: map[string]any{"query": "A"}}}},
+		{Text: "found A"},
+	}}
+	fake := &observe.FakeExporter{}
+	obs := observe.NewWithWriter(io.Discard)
+	obs.SetExporter(fake)
+	rt := New(st, reg, approval.New(0), eventstore.New(64), scripted)
+	rt.Observer = obs
+	out, err := rt.Chat(context.Background(), sess.ID, "search A")
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	agentSpan, llmN, toolN := 0, 0, 0
+	var parent string
+	for _, sp := range out.Spans {
+		if sp.CacheReadTokens != 0 && sp.Kind != observe.KindLLM {
+			t.Fatalf("non-llm cache_read_tokens %d kind %s", sp.CacheReadTokens, sp.Kind)
+		}
+		switch sp.Kind {
+		case observe.KindAgent:
+			agentSpan++
+			if sp.ParentID != "" {
+				t.Fatalf("agent parent %q", sp.ParentID)
+			}
+			parent = sp.SpanID
+		case observe.KindLLM:
+			llmN++
+			if sp.ParentID != parent {
+				t.Fatalf("llm parent %q want %q", sp.ParentID, parent)
+			}
+		case observe.KindTool:
+			toolN++
+			if sp.ParentID != parent {
+				t.Fatalf("tool parent %q want %q", sp.ParentID, parent)
+			}
+		}
+	}
+	if agentSpan != 1 || llmN < 1 || toolN < 1 {
+		t.Fatalf("nested spans agent=%d llm=%d tool=%d %+v", agentSpan, llmN, toolN, out.Spans)
+	}
+	if len(fake.All()) != len(out.Spans) {
+		t.Fatalf("fake exporter %d want %d", len(fake.All()), len(out.Spans))
+	}
+
+	mux := http.NewServeMux()
+	obs.Register(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/traces", nil))
+	if w.Code != 200 {
+		t.Fatalf("traces %d", w.Code)
+	}
+	var body struct {
+		Spans []observe.SpanTree `json:"spans"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Spans) != 1 || len(body.Spans[0].Spans) < 3 {
+		t.Fatalf("GET /api/traces spans %+v", body.Spans)
+	}
+}
+
+type boomProvider struct{}
+
+func (boomProvider) Name() string { return "boom" }
+func (boomProvider) Chat(context.Context, []llm.Message) (string, error) {
+	return "", errors.New("upstream failed")
+}
+
+func TestChat_ErrorStillRecordsSpans(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	obs := observe.NewWithWriter(io.Discard)
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), boomProvider{})
+	rt.Observer = obs
+	_, err := rt.Chat(context.Background(), sess.ID, "hi")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if obs.SpanTrees().Len() != 1 {
+		t.Fatalf("error path should persist span tree, len=%d", obs.SpanTrees().Len())
+	}
+	tree := obs.SpanTrees().Recent(1)[0]
+	if len(tree.Spans) < 2 {
+		t.Fatalf("want agent+llm on error, got %+v", tree.Spans)
+	}
+}
+
+func TestChat_WrappedAnthropicCacheReadOnLLMSpan(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "ok"}},
+			"usage": map[string]int{
+				"input_tokens":            9,
+				"output_tokens":           3,
+				"cache_read_input_tokens": 4,
+			},
+		})
+	}))
+	defer srv.Close()
+	obs := observe.NewWithWriter(io.Discard)
+	p := obs.Wrap(&llm.Anthropic{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client()})
+	if _, ok := p.(llm.ToolChat); ok {
+		t.Fatal("wrapped anthropic must not be ToolChat")
+	}
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), p)
+	rt.Observer = obs
+	out, err := rt.Chat(context.Background(), sess.ID, "hi")
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	found := false
+	for _, sp := range out.Spans {
+		if sp.Kind == observe.KindLLM {
+			found = true
+			if sp.CacheReadTokens != 4 {
+				t.Fatalf("llm cache_read_tokens %d spans %+v", sp.CacheReadTokens, out.Spans)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing llm span %+v", out.Spans)
+	}
+}
+
+func TestChat_NestedRunIsolatesCollector(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	outer := observe.NewCollector()
+	ctx := observe.WithCollector(context.Background(), outer)
+	_, live := observe.StartSpan(ctx, observe.KindAgent, "outer")
+	live.End(nil)
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
+	out, err := rt.Chat(ctx, sess.ID, "hi")
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if len(outer.Snapshot()) != 1 || outer.Snapshot()[0].Name != "outer" {
+		t.Fatalf("parent collector polluted %+v", outer.Snapshot())
+	}
+	if len(out.Spans) < 2 {
+		t.Fatalf("child spans %+v", out.Spans)
+	}
+	if out.Spans[0].TraceID == outer.Snapshot()[0].TraceID {
+		t.Fatal("nested chat reused parent trace_id")
+	}
+}
+
+func TestChat_EchoSpansCacheReadDefaultZero(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
+	out, err := rt.Chat(context.Background(), sess.ID, "hi")
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if len(out.Spans) < 2 {
+		t.Fatalf("spans %+v", out.Spans)
+	}
+	kinds := map[string]int{}
+	for _, sp := range out.Spans {
+		kinds[sp.Kind]++
+		if sp.CacheReadTokens != 0 {
+			t.Fatalf("cache_read_tokens %d", sp.CacheReadTokens)
+		}
+	}
+	if kinds[observe.KindAgent] != 1 || kinds[observe.KindLLM] < 1 {
+		t.Fatalf("kinds %v", kinds)
+	}
+	raw, _ := json.Marshal(out.Spans)
+	if !bytes.Contains(raw, []byte(`"cache_read_tokens":0`)) {
+		t.Fatalf("json %s", raw)
 	}
 }
 

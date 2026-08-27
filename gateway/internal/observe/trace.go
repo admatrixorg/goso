@@ -15,13 +15,14 @@ import (
 
 // Trace is one LLM call (no prompts, no keys, no response body).
 type Trace struct {
-	Time      time.Time `json:"ts"`
-	Provider  string    `json:"provider"`
-	Model     string    `json:"model,omitempty"`
-	LatencyMS int64     `json:"latency_ms"`
-	Error     string    `json:"error,omitempty"`
-	RequestID string    `json:"request_id,omitempty"`
-	Tokens    *int      `json:"tokens,omitempty"`
+	Time            time.Time `json:"ts"`
+	Provider        string    `json:"provider"`
+	Model           string    `json:"model,omitempty"`
+	LatencyMS       int64     `json:"latency_ms"`
+	Error           string    `json:"error,omitempty"`
+	RequestID       string    `json:"request_id,omitempty"`
+	Tokens          *int      `json:"tokens,omitempty"`
+	CacheReadTokens int       `json:"cache_read_tokens"`
 }
 
 // Buffer is a fixed-size in-memory ring of LLM traces (N=200).
@@ -125,11 +126,17 @@ func (o *Observer) Record(t Trace) {
 }
 
 // Wrap returns a provider that records a trace on every Chat call.
+// ToolChat is preserved only when the inner provider implements it, so
+// Anthropic stays on the ChatUsage path and cache_read_tokens reach llm spans.
 func (o *Observer) Wrap(p llm.Provider) llm.Provider {
 	if p == nil {
 		p = llm.Echo{}
 	}
-	return &tracedProvider{inner: p, obs: o}
+	tp := &tracedProvider{inner: p, obs: o}
+	if _, ok := p.(llm.ToolChat); ok {
+		return &tracedToolProvider{tracedProvider: tp}
+	}
+	return tp
 }
 
 type tracedProvider struct {
@@ -137,34 +144,48 @@ type tracedProvider struct {
 	obs   *Observer
 }
 
+type tracedToolProvider struct {
+	*tracedProvider
+}
+
 func (t *tracedProvider) Name() string { return t.inner.Name() }
 
-func (t *tracedProvider) Chat(ctx context.Context, messages []llm.Message) (string, error) {
+func (t *tracedProvider) ChatUsage(ctx context.Context, messages []llm.Message) (string, llm.Usage, error) {
 	start := time.Now()
-	reply, err := t.inner.Chat(ctx, messages)
-	t.record(ctx, start, err)
+	reply, usage, err := llm.ChatUsage(ctx, t.inner, messages)
+	t.record(ctx, start, err, usage.CacheReadTokens)
+	return reply, usage, err
+}
+
+func (t *tracedProvider) Chat(ctx context.Context, messages []llm.Message) (string, error) {
+	reply, _, err := t.ChatUsage(ctx, messages)
 	return reply, err
 }
 
-func (t *tracedProvider) ChatTools(ctx context.Context, messages []llm.Message, tools []llm.ToolSpec) (llm.Reply, error) {
+func (t *tracedToolProvider) ChatTools(ctx context.Context, messages []llm.Message, tools []llm.ToolSpec) (llm.Reply, error) {
 	start := time.Now()
-	if inner, ok := t.inner.(llm.ToolChat); ok {
-		reply, err := inner.ChatTools(ctx, messages, tools)
-		t.record(ctx, start, err)
-		return reply, err
+	inner, ok := t.inner.(llm.ToolChat)
+	if !ok {
+		text, usage, err := llm.ChatUsage(ctx, t.inner, messages)
+		t.record(ctx, start, err, usage.CacheReadTokens)
+		return llm.Reply{Text: text, Usage: usage}, err
 	}
-	text, err := t.inner.Chat(ctx, messages)
-	t.record(ctx, start, err)
-	return llm.Reply{Text: text}, err
+	reply, err := inner.ChatTools(ctx, messages, tools)
+	t.record(ctx, start, err, reply.Usage.CacheReadTokens)
+	return reply, err
 }
 
-func (t *tracedProvider) record(ctx context.Context, start time.Time, err error) {
+func (t *tracedProvider) record(ctx context.Context, start time.Time, err error, cacheRead int) {
+	if cacheRead < 0 {
+		cacheRead = 0
+	}
 	tr := Trace{
-		Time:      time.Now().UTC(),
-		Provider:  t.inner.Name(),
-		Model:     modelOf(t.inner),
-		LatencyMS: time.Since(start).Milliseconds(),
-		RequestID: RequestIDFromContext(ctx),
+		Time:            time.Now().UTC(),
+		Provider:        t.inner.Name(),
+		Model:           modelOf(t.inner),
+		LatencyMS:       time.Since(start).Milliseconds(),
+		RequestID:       RequestIDFromContext(ctx),
+		CacheReadTokens: cacheRead,
 	}
 	if err != nil {
 		tr.Error = err.Error()
@@ -204,6 +225,13 @@ func (o *Observer) HandleTraces(w http.ResponseWriter, r *http.Request) {
 	if traces == nil {
 		traces = []Trace{}
 	}
+	trees := []SpanTree{}
+	if o.spanTrees != nil {
+		trees = o.spanTrees.Recent(limit)
+		if trees == nil {
+			trees = []SpanTree{}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"traces": traces})
+	_ = json.NewEncoder(w).Encode(map[string]any{"traces": traces, "spans": trees})
 }

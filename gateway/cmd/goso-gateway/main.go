@@ -89,6 +89,7 @@ Environment:
   GOSO_SSRF                1 = block literal localhost/private IPs on connector HTTP
   GOSO_WORKSPACE           Optional write jail; tools/vault cannot write outside
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
+  GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.
 
 `, name, version)
 }

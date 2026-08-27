@@ -12,6 +12,7 @@ import (
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
+	CacheReadTokens  int // prompt-cache reads; default 0
 	Estimated        bool
 }
 
@@ -24,6 +25,7 @@ func EstimateUsage(messages []Message, completion string) Usage {
 	return Usage{
 		PromptTokens:     prompt,
 		CompletionTokens: billing.EstimateTokens(completion),
+		CacheReadTokens:  0,
 		Estimated:        true,
 	}
 }

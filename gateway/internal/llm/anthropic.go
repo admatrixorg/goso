@@ -118,8 +118,10 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 			Text string `json:"text"`
 		} `json:"content"`
 		Usage struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
+			InputTokens          int `json:"input_tokens"`
+			OutputTokens         int `json:"output_tokens"`
+			CacheReadInputTokens int `json:"cache_read_input_tokens"`
+			CacheReadTokens      int `json:"cache_read_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
@@ -129,5 +131,10 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 		return "", Usage{}, fmt.Errorf("anthropic: empty content")
 	}
 	content := out.Content[0].Text
-	return content, fallbackUsage(messages, content, out.Usage.InputTokens, out.Usage.OutputTokens), nil
+	u := fallbackUsage(messages, content, out.Usage.InputTokens, out.Usage.OutputTokens)
+	u.CacheReadTokens = out.Usage.CacheReadInputTokens
+	if u.CacheReadTokens == 0 {
+		u.CacheReadTokens = out.Usage.CacheReadTokens
+	}
+	return content, u, nil
 }

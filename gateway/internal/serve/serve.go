@@ -92,6 +92,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	gate := approval.New(0)
 	ev := eventstore.New(1024)
 	rt := agent.New(st, connReg, gate, ev, provider)
+	rt.Observer = obs
 	mux := httpapi.NewRouter(httpapi.Options{
 		Store: st, Version: version, Provider: provider,
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,

@@ -27,6 +27,7 @@ type ToolCall struct {
 type Reply struct {
 	Text      string     `json:"text,omitempty"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Usage     Usage      `json:"usage,omitempty"`
 }
 
 // ToolChat is an optional provider surface. Pipeline uses it when present.

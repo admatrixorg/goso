@@ -51,7 +51,8 @@ func (o *OpenAI) ChatUsage(ctx context.Context, messages []Message) (string, Usa
 }
 
 func (o *OpenAI) ChatTools(ctx context.Context, messages []Message, tools []ToolSpec) (Reply, error) {
-	reply, _, err := o.complete(ctx, messages, tools, false)
+	reply, u, err := o.complete(ctx, messages, tools, false)
+	reply.Usage = u
 	return reply, err
 }
 

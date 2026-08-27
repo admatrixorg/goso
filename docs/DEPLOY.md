@@ -88,6 +88,7 @@ Xem `.env.example` và `docs/SETUP.md`. Trong Docker:
 | `GOSO_ADMIN_TOKEN` | rỗng | Rỗng = dev mode |
 | `GATEWAY_URL` | `http://gateway:8080` | Control-plane proxy (nội bộ Docker network) |
 | `BACKUP_INTERVAL_SECONDS` | `3600` | Chỉ overlay prod |
+| `GOSO_OTEL_ENDPOINT` | (unset) | Optional OTLP HTTP JSON URL. Unset = noop. No Grafana Cloud keys (DI-18). |
 
 ## Không nằm trong SPEC này
 
