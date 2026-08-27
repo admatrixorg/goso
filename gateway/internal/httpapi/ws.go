@@ -3,34 +3,97 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+// WS JSON frames: {op, payload}. ping→pong, chat {session_id, message}→reply text.
+// If GOSO_WS_ORIGINS is empty, origin checks stay allow-all (previous behaviour).
+// If set (comma-separated), only listed Origin values are accepted.
+
+type wsFrame struct {
+	Op      string          `json:"op"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
-// RegisterWS registers the WebSocket echo endpoint on the given mux.
-func RegisterWS(mux *http.ServeMux) {
+type wsChatIn struct {
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
+}
+
+func wsUpgrader() websocket.Upgrader {
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			raw := strings.TrimSpace(os.Getenv("GOSO_WS_ORIGINS"))
+			if raw == "" {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			for _, a := range strings.Split(raw, ",") {
+				if strings.TrimSpace(a) == origin {
+					return true
+				}
+			}
+			return false
+		},
+	}
+}
+
+// RegisterWS registers GET /ws JSON RPC (not echo-only).
+func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) {
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
-		// session_id is optional for echo; validate if required later.
-		conn, err := upgrader.Upgrade(w, r, nil)
+		up := wsUpgrader()
+		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
 			return
 		}
 		defer conn.Close()
+		if provider == nil {
+			provider = llm.Echo{}
+		}
 		for {
-			mt, msg, err := conn.ReadMessage()
+			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				return
 			}
-			// Echo with prefix.
-			reply := "echo: " + string(msg)
-			if err := conn.WriteMessage(mt, []byte(reply)); err != nil {
-				return
+			var frame wsFrame
+			if err := json.Unmarshal(msg, &frame); err != nil {
+				_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"invalid json"}`)})
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(frame.Op)) {
+			case "ping":
+				if err := conn.WriteJSON(wsFrame{Op: "pong", Payload: frame.Payload}); err != nil {
+					return
+				}
+			case "chat":
+				var in wsChatIn
+				if len(frame.Payload) > 0 {
+					_ = json.Unmarshal(frame.Payload, &in)
+				}
+				in.Message = strings.TrimSpace(in.Message)
+				if in.Message == "" {
+					_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"message is required"}`)})
+					continue
+				}
+				reply, sessID := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message)
+				out, _ := json.Marshal(map[string]any{"session_id": sessID, "reply": reply})
+				if err := conn.WriteJSON(wsFrame{Op: "chat", Payload: out}); err != nil {
+					return
+				}
+			default:
+				if err := conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"unknown op"}`)}); err != nil {
+					return
+				}
 			}
 		}
 	})
 }
+
+func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
