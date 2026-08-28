@@ -82,6 +82,11 @@ func loadConnectors(st store.StoreIface, connReg *connector.Registry) {
 
 // Mux builds the gateway ServeMux (API + channels + WS + observe + connectors + billing).
 func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observe.Observer, meter *billing.Store) *http.ServeMux {
+	mux, _ := muxWithPairing(st, version, provider, obs, meter, nil)
+	return mux
+}
+
+func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, obs *observe.Observer, meter *billing.Store, pairing *auth.Pairing) (*http.ServeMux, *auth.Pairing) {
 	if provider == nil {
 		provider = llm.Echo{}
 	}
@@ -90,6 +95,9 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	}
 	if meter == nil {
 		meter = billing.New()
+	}
+	if pairing == nil {
+		pairing = auth.NewPairing()
 	}
 	tg := &channel.Telegram{Store: st, LLM: provider, Meter: meter}
 	zp := &channel.ZaloPersonal{Store: st, LLM: provider, Meter: meter}
@@ -110,7 +118,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
-		LLM: llm.NewRegistry(),
+		LLM: llm.NewRegistry(), Pairing: pairing,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.Register(mux)
@@ -120,7 +128,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 			go team.Loop(context.Background(), st)
 		}
 	}
-	return mux
+	return mux, pairing
 }
 
 // New wires store + LLM + channels + observe + connectors + billing + auth/ratelimit.
@@ -136,10 +144,11 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 		log.Printf("billing: %v — using memory meter", err)
 		meter = billing.New()
 	}
-	mux := Mux(st, version, provider, obs, meter)
+	pairing := auth.NewPairing()
+	mux, pairing := muxWithPairing(st, version, provider, obs, meter, pairing)
 
-	adminToken := os.Getenv("GOSO_ADMIN_TOKEN")
-	viewToken := os.Getenv("GOSO_VIEW_TOKEN")
+	adminToken := strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN"))
+	viewToken := strings.TrimSpace(os.Getenv("GOSO_VIEW_TOKEN"))
 	rateLimit := 60
 	if v := os.Getenv("GOSO_RATE_LIMIT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -154,7 +163,13 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	}
 	if adminToken != "" || viewToken != "" || !devMode {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
-		handler = auth.RequireTokens(adminToken, viewToken, []string{"/healthz", "/api/webhooks/llm"})(handler)
+		// Pairing exchange is an exact POST path inside Require (code is the secret).
+		handler = auth.Require(auth.Config{
+			Admin:   adminToken,
+			View:    viewToken,
+			Pairing: pairing,
+			Bypass:  []string{"/healthz", "/api/webhooks/llm"},
+		})(handler)
 	}
 	handler = obs.Middleware(handler)
 

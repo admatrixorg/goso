@@ -12,6 +12,14 @@ import (
 
 var viewPrefixes = []string{"/healthz", "/api/agents", "/api/sessions", "/v1/agents", "/v1/sessions"}
 
+// Config is admin/view Bearer enforcement plus optional pairing grants.
+type Config struct {
+	Admin   string
+	View    string
+	Bypass  []string
+	Pairing *Pairing
+}
+
 // RequireToken returns middleware that enforces Bearer token auth.
 // An empty expected token rejects every non-bypass path with 401 (SPEC 016).
 // Explicit passthrough is GOSO_DEV_MODE=1 in serve.New — do not pass "" here for that.
@@ -23,20 +31,33 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
 // (GET /healthz /api/agents /api/sessions and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
+	return Require(Config{Admin: admin, View: view, Bypass: bypass})
+}
+
+// Require is RequireTokens plus optional minted pairing grants (same GET-only matrix).
+func Require(cfg Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, p := range bypass {
+			if pairingExchangePath(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			for _, p := range cfg.Bypass {
 				if strings.HasPrefix(r.URL.Path, p) {
 					next.ServeHTTP(w, r)
 					return
 				}
 			}
 			got := extractToken(r)
-			if admin != "" && security.Equal(got, admin) {
+			if cfg.Admin != "" && security.Equal(got, cfg.Admin) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if view != "" && security.Equal(got, view) {
+			viewOK := cfg.View != "" && security.Equal(got, cfg.View)
+			if !viewOK && cfg.Pairing != nil && cfg.Pairing.Accepts(got) {
+				viewOK = true
+			}
+			if viewOK {
 				if r.Method == http.MethodGet && viewPathAllowed(r.URL.Path) {
 					next.ServeHTTP(w, r)
 					return
@@ -50,6 +71,18 @@ func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		})
+	}
+}
+
+func pairingExchangePath(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/api/pairing/exchange", "/v1/pairing/exchange":
+		return true
+	default:
+		return false
 	}
 }
 

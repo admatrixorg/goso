@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func okHandler() http.Handler {
@@ -153,6 +154,121 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 	h.ServeHTTP(w, admin)
 	if w.Code != 200 {
 		t.Fatalf("admin POST 200, got %d", w.Code)
+	}
+}
+
+func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
+	mw := RequireTokens("admin-077", "view-077", []string{"/healthz"})
+	h := mw(okHandler())
+	paths := []string{
+		"/api/system/backup",
+		"/api/kg/entities",
+		"/api/kg/relations",
+		"/api/skills",
+		"/api/agents/abc/evolution/tick",
+		"/v1/system/backup",
+		"/v1/kg/entities",
+		"/v1/skills",
+		"/api/pairing",
+	}
+	for _, path := range paths {
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Authorization", "Bearer view-077")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != 403 {
+			t.Fatalf("view POST %s got %d want 403", path, w.Code)
+		}
+	}
+	req := httptest.NewRequest("POST", "/api/system/backup", nil)
+	req.Header.Set("Authorization", "Bearer admin-077")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("admin POST backup 200, got %d", w.Code)
+	}
+}
+
+func TestRequire_PairingExchangeExactPath(t *testing.T) {
+	h := Require(Config{Admin: "admin-077", Bypass: []string{"/healthz"}})(okHandler())
+
+	ex := httptest.NewRequest("POST", "/api/pairing/exchange", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, ex)
+	if w.Code != 200 {
+		t.Fatalf("exact POST exchange 200, got %d", w.Code)
+	}
+
+	extra := httptest.NewRequest("POST", "/api/pairing/exchange/extra", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, extra)
+	if w.Code != 401 {
+		t.Fatalf("suffix exchange 401, got %d", w.Code)
+	}
+
+	get := httptest.NewRequest("GET", "/api/pairing/exchange", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 401 {
+		t.Fatalf("GET exchange 401, got %d", w.Code)
+	}
+
+	create := httptest.NewRequest("POST", "/api/pairing", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, create)
+	if w.Code != 401 {
+		t.Fatalf("anon POST pairing 401, got %d", w.Code)
+	}
+}
+
+func TestRequire_EnvViewAfterCodeExpiry(t *testing.T) {
+	p := NewPairing()
+	base := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	p.now = func() time.Time { return base }
+	issued, err := p.Issue("view-077")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exchange(issued.Code); err != nil {
+		t.Fatal(err)
+	}
+	p.now = func() time.Time { return base.Add(PairingTTL + time.Second) }
+	h := Require(Config{Admin: "admin-077", View: "view-077", Pairing: p, Bypass: []string{"/healthz"}})(okHandler())
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer view-077")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("env view after code TTL 200, got %d", w.Code)
+	}
+}
+
+func TestRequire_MintedGrantGETOnly(t *testing.T) {
+	p := NewPairing()
+	issued, err := p.Issue("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, err := p.Exchange(issued.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Require(Config{Admin: "admin-077", Pairing: p, Bypass: []string{"/healthz"}})(okHandler())
+
+	get := httptest.NewRequest("GET", "/api/agents", nil)
+	get.Header.Set("Authorization", "Bearer "+ex.Token)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 200 {
+		t.Fatalf("grant GET agents 200, got %d", w.Code)
+	}
+
+	post := httptest.NewRequest("POST", "/api/system/backup", nil)
+	post.Header.Set("Authorization", "Bearer "+ex.Token)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, post)
+	if w.Code != 403 {
+		t.Fatalf("grant POST backup 403, got %d", w.Code)
 	}
 }
 

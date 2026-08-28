@@ -47,7 +47,7 @@ Parked (unchanged): DI-01…DI-21 except DI-20 (router9 construct is in 044; pro
 | N2 | CÓ | **CÓ** | unchanged SQLite; `gateway/internal/store/sqlite.go` |
 | N3 | THIẾU | **PARTIAL** | 051 context files, not per-user workspaces |
 | N4 | THIẾU | **PARTIAL** | 041 AES-256-GCM `secrets` table; env keys stay env |
-| N5 | THIẾU | **PARTIAL** | 041 `GOSO_VIEW_TOKEN` GET-only; not full RBAC matrix |
+| N5 | THIẾU | **CÓ** | 041 `GOSO_VIEW_TOKEN` GET-only; 077 pairing + explicit POST-deny matrix (backup/kg/skills/evolution). No OAuth (DI-19). |
 | N6 | PARTIAL | **PARTIAL** | CRM org isolation; not agent tenancy |
 | N7 | PARTIAL | **PARTIAL** | CRM users/roles; unchanged |
 | N8 | PARTIAL | **PARTIAL** | one SQLite file; no tenant_id |
@@ -78,7 +78,7 @@ Parked (unchanged): DI-01…DI-21 except DI-20 (router9 construct is in 044; pro
 | C6 | THIẾU | **PARTIAL** | 040 Feishu adapter; live = DI-04 |
 | C7 | THIẾU | **PARTIAL** | 040 WhatsApp Cloud-API shape; native vs Business = DI-01 |
 | C8 | PARTIAL | **CÓ** | 040 WS JSON `ping`/`chat`; `gateway/internal/httpapi/ws.go` |
-| C9 | THIẾU | **PARTIAL** | origin allowlist shipped; pairing codes still later |
+| C9 | THIẾU | **CÓ** | 040 origin allowlist; 077 one-time pairing codes → view grant. No QR vendor / browser-device pairing. |
 | C10 | PARTIAL | **CÓ** | 052 `GET /v1/channels` |
 | S1 | PARTIAL | **CÓ** | 041 constant-time Bearer, 1MiB, WS 512KiB; `docs/qa/041-security.md` |
 | S2 | THIẾU | **PARTIAL** | 041 four injection patterns (not six) |
