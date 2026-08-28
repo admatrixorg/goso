@@ -25,6 +25,7 @@ import { TracesPage } from "./pages/TracesPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
+import { GatewayStatus } from "./ui/GatewayStatus";
 import { isDemoMode } from "./demo/mode";
 import { demoOverviewItems, demoTop, demoWorkExtra } from "./demo/nav";
 import { useI18n, type Locale } from "./i18n";
@@ -228,33 +229,7 @@ export default function App() {
         </div>
         <div className="z-topbar-spacer" />
         <div className="z-chrome-actions">
-          <div
-            className="z-gateway"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              border: "1px solid var(--border)",
-              borderRadius: 999,
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: 500,
-              color: "var(--text-2)",
-            }}
-          >
-            <span
-              data-motion="pulse"
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: "var(--green)",
-                flex: "none",
-                animation: "zPulse 1.8s linear infinite",
-              }}
-            />
-            {t("chrome.gateway")}
-          </div>
+          <GatewayStatus />
           <div
             data-ig="search"
             className="z-header-search"

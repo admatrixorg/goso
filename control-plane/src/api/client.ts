@@ -26,6 +26,51 @@ export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T>
   return (await res.json()) as T;
 }
 
+const HEALTH_TIMEOUT_MS = 5000;
+
+/** GET /healthz without throwing — used by chrome. status 0 = network/timeout. */
+export async function probeHealthz(signal?: AbortSignal): Promise<{ status: number; ok: boolean }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), HEALTH_TIMEOUT_MS);
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timer);
+      return { status: 0, ok: false };
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+  try {
+    const res = await fetch(`${base()}/healthz`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { ...authHeader() },
+      signal: ctrl.signal,
+    });
+    let ok = false;
+    if (res.status === 200) {
+      try {
+        const body = (await res.json()) as { ok?: unknown };
+        ok = body.ok === true;
+      } catch {
+        ok = false;
+      }
+    } else {
+      try {
+        await res.text();
+      } catch {
+        /* ignore */
+      }
+    }
+    return { status: res.status, ok };
+  } catch {
+    return { status: 0, ok: false };
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export type ChatReply = { reply: string; session_id: string; trace?: unknown[] };
 export type ChatBody = { session_id: string; message: string };
 
