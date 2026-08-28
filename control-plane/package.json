@@ -9,6 +9,7 @@
     "build:demo": "tsc --noEmit && VITE_DEMO_MODE=true vite build",
     "build:prod": "tsc --noEmit && VITE_DEMO_MODE=false vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/api/health.test.ts",
     "verify": "tsc --noEmit && vite build",
     "preview": "vite preview --port 3000"
   },
