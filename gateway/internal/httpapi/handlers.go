@@ -5,6 +5,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -668,6 +669,40 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 			"lite":     store.LiteEnabled(),
 		})
 	})
+	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel())
+}
+
+func handlePatchChannel() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		if !channel.Known(name) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		var body map[string]any
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&body); err != nil && err != io.EOF {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		for k := range body {
+			lk := strings.ToLower(strings.TrimSpace(k))
+			if channelSecretKey(lk) {
+				writeErr(w, http.StatusBadRequest, "channel tokens are env-only")
+				return
+			}
+		}
+		writeErr(w, http.StatusBadRequest, "channel tokens are env-only")
+	}
+}
+
+func channelSecretKey(k string) bool {
+	if k == "token" || k == "bot_token" || k == "app_token" || k == "user_token" || k == "access_token" ||
+		k == "api_key" || k == "secret" || k == "app_secret" || k == "hmac" || k == "hmac_key" ||
+		k == "password" || k == "credential" || k == "credential_ref" {
+		return true
+	}
+	return strings.Contains(k, "token") || strings.Contains(k, "secret") || strings.Contains(k, "password")
 }
 
 // aliasAPI registers h at pattern and, when pattern is METHOD /api/..., the same h at METHOD /v1/...

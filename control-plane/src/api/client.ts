@@ -222,7 +222,13 @@ export type GatewayEvent = {
   summary: string;
 };
 export type Approval = { approval_id: string; status: string; connector: string; tool: string };
-export type Channel = { name: string; configured: boolean; env?: string };
+export type Channel = {
+  name: string;
+  configured: boolean;
+  missing?: boolean;
+  env?: string;
+  env_names?: string[];
+};
 
 export type TenantInfo = { tenant: string; multi_tenant: boolean };
 

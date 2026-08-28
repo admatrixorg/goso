@@ -5,12 +5,15 @@ package channel
 import "os"
 
 // Info is one row of GET /api/channels. Names are always listed; configured
-// is true only when the matching env token is non-empty. Env is the variable
-// NAME only (never the secret value).
+// is true only when every required env token is non-empty. Env / EnvNames are
+// variable NAMES only (never secret values). Missing is true when any required
+// env is empty.
 type Info struct {
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Env        string `json:"env"`
+	Name       string   `json:"name"`
+	Configured bool     `json:"configured"`
+	Missing    bool     `json:"missing"`
+	Env        string   `json:"env"`
+	EnvNames   []string `json:"env_names"`
 }
 
 // Names is the fixed 7-channel catalog (C0).
@@ -24,22 +27,54 @@ var Names = []string{
 	"whatsapp",
 }
 
-var tokenEnv = map[string]string{
-	"telegram":      "GOSO_TELEGRAM_BOT_TOKEN",
-	"zalo-personal": "GOSO_ZALO_PERSONAL_TOKEN",
-	"zalo-oa":       "GOSO_ZALO_OA_ACCESS_TOKEN",
-	"discord":       "GOSO_DISCORD_BOT_TOKEN",
-	"slack":         "GOSO_SLACK_BOT_TOKEN",
-	"feishu":        "GOSO_FEISHU_APP_SECRET",
-	"whatsapp":      "GOSO_WHATSAPP_ACCESS_TOKEN",
+// requiredEnv is the public required-env help list per adapter. Adapters read
+// these names; live values stay in the process environment (DI-01..07 parked).
+var requiredEnv = map[string][]string{
+	"telegram":      {"GOSO_TELEGRAM_BOT_TOKEN"},
+	"zalo-personal": {"GOSO_ZALO_PERSONAL_TOKEN"},
+	"zalo-oa":       {"GOSO_ZALO_OA_ACCESS_TOKEN"},
+	"discord":       {"GOSO_DISCORD_BOT_TOKEN"},
+	"slack":         {"GOSO_SLACK_BOT_TOKEN"},
+	"feishu":        {"GOSO_FEISHU_APP_SECRET"},
+	"whatsapp":      {"GOSO_WHATSAPP_ACCESS_TOKEN"},
 }
 
-// Catalog returns all 7 channel names with configured flags and env var names.
+// Known reports whether name is one of the seven catalog adapters.
+func Known(name string) bool {
+	for _, n := range Names {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Catalog returns all 7 channel names with configured/missing flags and env var names.
 func Catalog() []Info {
 	out := make([]Info, 0, len(Names))
 	for _, n := range Names {
-		env := tokenEnv[n]
-		out = append(out, Info{Name: n, Configured: os.Getenv(env) != "", Env: env})
+		names := append([]string(nil), requiredEnv[n]...)
+		if names == nil {
+			names = []string{}
+		}
+		configured := len(names) > 0
+		for _, env := range names {
+			if os.Getenv(env) == "" {
+				configured = false
+				break
+			}
+		}
+		env := ""
+		if len(names) > 0 {
+			env = names[0]
+		}
+		out = append(out, Info{
+			Name:       n,
+			Configured: configured,
+			Missing:    !configured,
+			Env:        env,
+			EnvNames:   names,
+		})
 	}
 	return out
 }

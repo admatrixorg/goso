@@ -4,9 +4,12 @@ package httpapi
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +17,8 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestWebhookAPI_BearerAndHMAC(t *testing.T) {
@@ -180,9 +185,11 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 	}
 	var body struct {
 		Channels []struct {
-			Name       string `json:"name"`
-			Configured bool   `json:"configured"`
-			Env        string `json:"env"`
+			Name       string   `json:"name"`
+			Configured bool     `json:"configured"`
+			Missing    bool     `json:"missing"`
+			Env        string   `json:"env"`
+			EnvNames   []string `json:"env_names"`
 		} `json:"channels"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -206,8 +213,14 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 		if c.Configured {
 			t.Fatalf("%s configured", c.Name)
 		}
+		if !c.Missing {
+			t.Fatalf("%s missing=false with empty env", c.Name)
+		}
 		if c.Env != wantEnv[c.Name] {
 			t.Fatalf("%s env %q want %q", c.Name, c.Env, wantEnv[c.Name])
+		}
+		if len(c.EnvNames) != 1 || c.EnvNames[0] != wantEnv[c.Name] {
+			t.Fatalf("%s env_names %v want [%s]", c.Name, c.EnvNames, wantEnv[c.Name])
 		}
 	}
 	for _, n := range []string{"telegram", "zalo-personal", "zalo-oa", "discord", "slack", "feishu", "whatsapp"} {
@@ -236,11 +249,14 @@ func TestChannelsAPI_JSONOmitsTokenValue(t *testing.T) {
 	if strings.Contains(raw, leak) {
 		t.Fatalf("GET body leaked token value: %s", raw)
 	}
+	assertNoTokenLikeValues(t, raw)
 	var body struct {
 		Channels []struct {
-			Name       string `json:"name"`
-			Configured bool   `json:"configured"`
-			Env        string `json:"env"`
+			Name       string   `json:"name"`
+			Configured bool     `json:"configured"`
+			Missing    bool     `json:"missing"`
+			Env        string   `json:"env"`
+			EnvNames   []string `json:"env_names"`
 		} `json:"channels"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -249,19 +265,118 @@ func TestChannelsAPI_JSONOmitsTokenValue(t *testing.T) {
 	var tg struct {
 		Name       string
 		Configured bool
+		Missing    bool
 		Env        string
+		EnvNames   []string
 	}
 	for _, c := range body.Channels {
 		if c.Name == "telegram" {
-			tg.Name, tg.Configured, tg.Env = c.Name, c.Configured, c.Env
+			tg.Name, tg.Configured, tg.Missing, tg.Env, tg.EnvNames = c.Name, c.Configured, c.Missing, c.Env, c.EnvNames
 		}
 	}
 	if !tg.Configured {
 		t.Fatal("telegram should be configured when env set")
 	}
+	if tg.Missing {
+		t.Fatal("telegram missing=true when env set")
+	}
 	if tg.Env != "GOSO_TELEGRAM_BOT_TOKEN" {
 		t.Fatalf("telegram env %q", tg.Env)
 	}
+	if len(tg.EnvNames) != 1 || tg.EnvNames[0] != "GOSO_TELEGRAM_BOT_TOKEN" {
+		t.Fatalf("telegram env_names %v", tg.EnvNames)
+	}
+}
+
+var tokenLikeValue = regexp.MustCompile(`(?i)(xox[bap]-|sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]+|Bearer [A-Za-z0-9._-]{12,})`)
+
+func assertNoTokenLikeValues(t *testing.T, raw string) {
+	t.Helper()
+	if tokenLikeValue.MatchString(raw) {
+		t.Fatalf("GET body has token-like value: %s", raw)
+	}
+	for _, k := range []string{`"token":`, `"bot_token":`, `"access_token":`, `"api_key":`, `"app_secret":`, `"hmac_key":`} {
+		if strings.Contains(raw, k) {
+			t.Fatalf("GET body has secret field %s: %s", k, raw)
+		}
+	}
+}
+
+func TestChannelsAPI_PatchDoesNotWriteSecrets(t *testing.T) {
+	const leak = "patch-must-not-store-this-token"
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("GOSO_MASTER_KEY", strings.Repeat("ab", 32))
+	path := filepath.Join(t.TempDir(), "goso.db")
+	st, err := store.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	h := NewRouter(Options{Store: st, Version: "test"})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PATCH", "/api/channels/telegram", bytes.NewBufferString(`{"token":"`+leak+`","bot_token":"`+leak+`","secret":"`+leak+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
+		t.Fatalf("PATCH must not succeed with secrets: %d %s", w.Code, w.Body.String())
+	}
+	if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PATCH secrets status %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), leak) {
+		t.Fatalf("PATCH response echoed token: %s", w.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("PATCH", "/api/channels/telegram", bytes.NewBufferString(`{"enabled":true}`))
+	req2.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w2, req2)
+	if w2.Code == http.StatusOK {
+		t.Fatalf("PATCH enabled must not persist (not in catalog): %s", w2.Body.String())
+	}
+
+	w3 := httptest.NewRecorder()
+	h.ServeHTTP(w3, httptest.NewRequest("PATCH", "/api/channels/sms", bytes.NewBufferString(`{"token":"`+leak+`"}`)))
+	if w3.Code != http.StatusNotFound {
+		t.Fatalf("unknown channel PATCH %d %s", w3.Code, w3.Body.String())
+	}
+
+	for _, name := range []string{"telegram", "channel:telegram:token", "GOSO_TELEGRAM_BOT_TOKEN", "channels.telegram.bot_token"} {
+		if _, err := st.GetSecret(name); err != store.ErrNotFound {
+			t.Fatalf("secret %q written: %v", name, err)
+		}
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM secrets`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("secrets rows after PATCH: %d", n)
+	}
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%channel%'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var tbl string
+		_ = rows.Scan(&tbl)
+		t.Fatalf("unexpected channel table %s", tbl)
+	}
+
+	gw := httptest.NewRecorder()
+	h.ServeHTTP(gw, httptest.NewRequest("GET", "/api/channels", nil))
+	if strings.Contains(gw.Body.String(), leak) {
+		t.Fatalf("GET leaked PATCH token: %s", gw.Body.String())
+	}
+	assertNoTokenLikeValues(t, gw.Body.String())
 }
 
 func TestChannelsAPI_LiteFlag(t *testing.T) {
