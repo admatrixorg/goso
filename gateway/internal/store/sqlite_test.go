@@ -58,6 +58,37 @@ func TestSQLiteStore_CRUD(t *testing.T) {
 	_ = os.Getenv // keep import
 }
 
+func TestSQLiteStore_AgentLLMProviderPersist(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "llmprov.db")
+	s1, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s1.CreateAgent(Agent{AgentKey: "lp", DisplayName: "LP", LLMProvider: "p-a", Model: "m-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s1.Close()
+	s2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	got, err := s2.GetAgent(a.ID)
+	if err != nil || got.LLMProvider != "p-a" || got.Model != "m-a" {
+		t.Fatalf("persist %#v %v", got, err)
+	}
+	_, err = s2.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, Model: got.Model, LLMProvider: "p-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s2.GetAgent(a.ID)
+	if got.LLMProvider != "p-b" {
+		t.Fatalf("update %#v", got)
+	}
+}
+
 func TestSQLiteStore_PersistReopen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "persist.db")

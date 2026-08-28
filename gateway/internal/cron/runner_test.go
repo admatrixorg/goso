@@ -40,7 +40,7 @@ func TestTick_DueIntervalFiresOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n atomic.Int32
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(time.Hour).Truncate(time.Minute)
 	fire := func(context.Context, string, string) error {
 		n.Add(1)
 		return nil
@@ -73,7 +73,7 @@ func TestTick_FireErrorDoesNotMark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(time.Hour).Truncate(time.Minute)
 	var n atomic.Int32
 	fail := func(context.Context, string, string) error {
 		n.Add(1)

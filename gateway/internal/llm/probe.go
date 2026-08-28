@@ -51,7 +51,7 @@ func Build(name, typ, baseURL, model, apiKey string) (Provider, error) {
 	if !ValidType(typ) {
 		return nil, fmt.Errorf("unknown type %q", typ)
 	}
-	client := &http.Client{Timeout: probeTimeout}
+	client := guardedClient(nil, probeTimeout)
 	switch typ {
 	case TypeEcho:
 		return Echo{}, nil
@@ -114,10 +114,12 @@ func probeModels(ctx context.Context, p Provider) TestResult {
 	if base == "" {
 		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: "no base_url"}
 	}
-	if client == nil {
-		client = &http.Client{Timeout: probeTimeout}
+	endpoint := modelsURL(base)
+	if err := checkEndpoint(endpoint); err != nil {
+		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: err.Error()}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL(base), nil)
+	client = guardedClient(client, probeTimeout)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: err.Error()}
 	}

@@ -76,7 +76,7 @@ func NewRegistry() *Registry {
 			AllowEmptyKey: spec.AllowEmptyKey,
 		}
 		if spec.Timeout > 0 {
-			o.Client = &http.Client{Timeout: spec.Timeout}
+			o.Client = guardedClient(&http.Client{Timeout: spec.Timeout}, spec.Timeout)
 		}
 		put(spec.Name, o)
 	}

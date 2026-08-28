@@ -28,6 +28,9 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
+// fatalf is log.Fatalf; tests replace it so production refuse does not os.Exit.
+var fatalf = log.Fatalf
+
 // Status describes the assembled gateway handler (no secrets).
 type Status struct {
 	Provider  string
@@ -118,6 +121,9 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 
 // New wires store + LLM + channels + observe + connectors + billing + auth/ratelimit.
 func New(st store.StoreIface, version string) (http.Handler, Status) {
+	if err := security.CheckProduction(); err != nil {
+		fatalf("%v", err)
+	}
 	provider := DefaultProvider()
 	obs := observe.New()
 	provider = obs.Wrap(provider)

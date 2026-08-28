@@ -133,12 +133,25 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	return mux
 }
 
+func rejectUnknownProvider(w http.ResponseWriter, st store.StoreIface, name, model string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	if _, err := llm.Resolve(st, name, model, nil); err != nil {
+		writeErr(w, http.StatusBadRequest, "provider not found")
+		return true
+	}
+	return false
+}
+
 func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			AgentKey          string `json:"agent_key"`
 			DisplayName       string `json:"display_name"`
 			Model             string `json:"model"`
+			LLMProvider       string `json:"llm_provider"`
 			Instructions      string `json:"instructions"`
 			OrchestrationMode string `json:"orchestration_mode"`
 		}
@@ -156,10 +169,15 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		body.LLMProvider = strings.TrimSpace(body.LLMProvider)
+		if rejectUnknownProvider(w, st, body.LLMProvider, body.Model) {
+			return
+		}
 		a, err := st.CreateAgent(store.Agent{
 			AgentKey:          body.AgentKey,
 			DisplayName:       body.DisplayName,
 			Model:             body.Model,
+			LLMProvider:       body.LLMProvider,
 			Instructions:      body.Instructions,
 			OrchestrationMode: mode,
 		})
@@ -212,6 +230,7 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 		var body struct {
 			OrchestrationMode *string `json:"orchestration_mode"`
 			Model             *string `json:"model"`
+			LLMProvider       *string `json:"llm_provider"`
 			Instructions      *string `json:"instructions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -223,6 +242,7 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 			Instructions:      cur.Instructions,
 			OrchestrationMode: cur.OrchestrationMode,
 			Model:             cur.Model,
+			LLMProvider:       cur.LLMProvider,
 		}
 		if body.OrchestrationMode != nil {
 			mode, err := parseOrchMode(*body.OrchestrationMode)
@@ -238,6 +258,12 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 		}
 		if body.Model != nil {
 			upd.Model = *body.Model
+		}
+		if body.LLMProvider != nil {
+			upd.LLMProvider = strings.TrimSpace(*body.LLMProvider)
+			if rejectUnknownProvider(w, st, upd.LLMProvider, upd.Model) {
+				return
+			}
 		}
 		if body.Instructions != nil {
 			upd.Instructions = *body.Instructions

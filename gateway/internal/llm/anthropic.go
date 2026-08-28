@@ -92,11 +92,12 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 		payload["messages"] = in
 	}
 	body, _ := json.Marshal(payload)
-	client := a.Client
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+	endpoint := strings.TrimRight(base, "/") + "/v1/messages"
+	if err := checkEndpoint(endpoint); err != nil {
+		return "", Usage{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/messages", bytes.NewReader(body))
+	client := guardedClient(a.Client, 30*time.Second)
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", Usage{}, err
 	}

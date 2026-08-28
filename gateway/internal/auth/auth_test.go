@@ -156,6 +156,24 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 	}
 }
 
+func TestRequireToken_ProductionIgnoresQuery(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	mw := RequireToken("secret", []string{"/healthz"})
+	h := mw(okHandler())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents?token=secret", nil))
+	if w.Code != 401 {
+		t.Fatalf("production query token ignored, got %d", w.Code)
+	}
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("production bearer 200, got %d", w.Code)
+	}
+}
+
 func TestRequireToken_EmptyRefuses(t *testing.T) {
 	mw := RequireToken("", []string{"/healthz"})
 	h := mw(okHandler())

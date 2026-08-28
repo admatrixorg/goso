@@ -134,6 +134,7 @@ export type Agent = {
   agent_key: string;
   display_name: string;
   model?: string;
+  llm_provider?: string;
   instructions?: string;
   orchestration_mode?: string;
   created_at: string;
@@ -171,11 +172,14 @@ export const api = {
     agent_key: string;
     display_name: string;
     model?: string;
+    llm_provider?: string;
     instructions?: string;
     orchestration_mode?: string;
   }) => jsonFetch<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
-  updateAgent: (id: string, body: { orchestration_mode?: string; model?: string; instructions?: string }) =>
-    jsonFetch<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  updateAgent: (
+    id: string,
+    body: { orchestration_mode?: string; model?: string; llm_provider?: string; instructions?: string },
+  ) => jsonFetch<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   listSessions: () => jsonFetch<{ sessions: Session[] }>("/api/sessions"),
   createSession: (body: { agent_id: string; label?: string }) =>
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),

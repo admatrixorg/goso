@@ -328,7 +328,17 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 	if hooks == nil {
 		hooks = pipeline.NewDispatcher()
 	}
-	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, rt.LLM, hooks)
+	provider := rt.LLM
+	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
+		if a, e := rt.Store.GetAgent(sess.AgentID); e == nil && a != nil {
+			p, rerr := llm.Resolve(rt.Store, a.LLMProvider, a.Model, rt.LLM)
+			if rerr != nil {
+				return nil, rerr
+			}
+			provider = p
+		}
+	}
+	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, provider, hooks)
 	if rt.Memory != nil {
 		runner.Memory = rt.Memory
 	}

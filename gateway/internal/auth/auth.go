@@ -75,6 +75,9 @@ func extractToken(r *http.Request) string {
 			return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 		}
 	}
+	if security.Production() {
+		return ""
+	}
 	if q := r.URL.Query().Get("token"); q != "" {
 		return q
 	}

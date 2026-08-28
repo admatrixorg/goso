@@ -18,6 +18,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/serve"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -82,16 +83,16 @@ Environment:
   GOSO_SLACK_BOT_TOKEN     Slack bot token (optional)
   GOSO_FEISHU_APP_SECRET   Feishu/Lark app secret (optional)
   GOSO_WHATSAPP_ACCESS_TOKEN WhatsApp Cloud API token (optional; native vs Business = DI-01)
-  GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all)
-  GOSO_ENV                 Environment (default development)
+  GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all; required when GOSO_ENV=production)
+  GOSO_ENV                 Environment (default development; production = injection default block, no query token, WS origins required)
   GOSO_DB_PATH             SQLite path (default :memory:)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
   GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
-  GOSO_INJECTION           log (default) or block prompt-injection matches on /api/chat
-  GOSO_SSRF                1 = block literal localhost/private IPs on connector HTTP
+  GOSO_INJECTION           log or block prompt-injection matches on /api/chat (production default block)
+  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector and LLM HTTP
   GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = read_file/write_file fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
   GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.
@@ -146,6 +147,9 @@ func runGateway(args []string) {
 	}
 	if closeDB != nil {
 		defer closeDB()
+	}
+	if err := security.CheckProduction(); err != nil {
+		log.Fatalf("%v", err)
 	}
 	if dbPath == "" || dbPath == ":memory:" {
 		fmt.Println("store: memory")
