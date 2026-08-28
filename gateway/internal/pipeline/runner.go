@@ -249,13 +249,17 @@ func (r *Runner) attachPrompt(st *State) {
 	if ins := strings.TrimSpace(st.Instructions); ins != "" && st.Mode != ModeNone {
 		sys = strings.TrimSpace(sys + "\n" + ins)
 	}
-	if boot := strings.TrimSpace(BootstrapText()); boot != "" && st.Mode != ModeNone {
-		sys = strings.TrimSpace(sys + "\n" + boot)
+	var prefix []llm.Message
+	if sys != "" {
+		prefix = append(prefix, llm.Message{Role: "system", Content: sys})
 	}
-	if sys == "" {
+	if boot := strings.TrimSpace(BootstrapText()); boot != "" && st.Mode != ModeNone {
+		prefix = append(prefix, llm.Message{Role: "system", Content: boot})
+	}
+	if len(prefix) == 0 {
 		return
 	}
-	st.Messages = append([]llm.Message{{Role: "system", Content: sys}}, st.Messages...)
+	st.Messages = append(prefix, st.Messages...)
 }
 
 func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err error) {

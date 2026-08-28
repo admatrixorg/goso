@@ -4,6 +4,7 @@ package llm
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -114,6 +115,81 @@ func TestOpenAI_GroqStillAppendsV1(t *testing.T) {
 }
 
 func TestAnthropic_CacheControlFull(t *testing.T) {
+	t.Setenv("GOSO_PROMPT_CACHE", "")
+	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "")
+	var rawBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		b, _ := json.Marshal(body)
+		rawBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "ok"}},
+		})
+	}))
+	defer srv.Close()
+
+	p := &Anthropic{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client(), CacheMode: "full"}
+	msgs := []Message{
+		{Role: "system", Content: "identity"},
+		{Role: "system", Content: "SOUL.md:\nsoul"},
+		{Role: "assistant", Content: "prev"},
+		{Role: "user", Content: "hi"},
+	}
+	if _, err := p.Chat(t.Context(), msgs); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rawBody, "cache_control") {
+		t.Fatal("expected cache_control in JSON when mode=full")
+	}
+	if !strings.Contains(rawBody, `"text":"identity"`) || !strings.Contains(rawBody, "SOUL.md") {
+		t.Fatalf("stable prefix blocks missing: %s", rawBody)
+	}
+	if strings.Count(rawBody, `"cache_control"`) < 3 {
+		t.Fatalf("want cache_control on system+bootstrap+last non-user, got %s", rawBody)
+	}
+	if strings.Contains(rawBody, `"role":"user","content":[{`) {
+		t.Fatalf("user turn must not be cached: %s", rawBody)
+	}
+
+	rawBody = ""
+	p.CacheMode = "full"
+	sumMsgs := []Message{
+		{Role: "system", Content: "identity"},
+		{Role: "system", Content: "SOUL.md:\nsoul"},
+		{Role: "system", Content: "Previous summary: old turn"},
+		{Role: "user", Content: "hi"},
+	}
+	if _, err := p.Chat(t.Context(), sumMsgs); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(rawBody, `"cache_control"`) != 2 {
+		t.Fatalf("summary must not be a cache breakpoint, got %s", rawBody)
+	}
+
+	rawBody = ""
+	p.CacheMode = "none"
+	if _, err := p.Chat(t.Context(), msgs); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rawBody, "cache_control") {
+		t.Fatal("none CacheMode must omit cache_control")
+	}
+
+	rawBody = ""
+	p.CacheMode = "bogus"
+	if _, err := p.Chat(t.Context(), []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rawBody, "cache_control") {
+		t.Fatal("bogus CacheMode must not include cache_control")
+	}
+}
+
+func TestAnthropic_PromptCacheEnvFull(t *testing.T) {
+	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "")
+	t.Setenv("GOSO_PROMPT_CACHE", "full")
 	var sawCache bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
@@ -126,21 +202,33 @@ func TestAnthropic_CacheControlFull(t *testing.T) {
 		})
 	}))
 	defer srv.Close()
-
-	p := &Anthropic{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client(), CacheMode: "full"}
+	p := &Anthropic{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client()}
 	if _, err := p.Chat(t.Context(), []Message{{Role: "system", Content: "sys"}, {Role: "user", Content: "hi"}}); err != nil {
 		t.Fatal(err)
 	}
 	if !sawCache {
-		t.Fatal("expected cache_control in JSON when mode=full")
+		t.Fatal("GOSO_PROMPT_CACHE=full must include cache_control")
 	}
+}
 
-	sawCache = false
-	p.CacheMode = "bogus"
-	if _, err := p.Chat(t.Context(), []Message{{Role: "user", Content: "hi"}}); err != nil {
+func TestOpenAI_NoFakeCacheControl(t *testing.T) {
+	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "full")
+	t.Setenv("GOSO_PROMPT_CACHE", "full")
+	var rawBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		rawBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
+		})
+	}))
+	defer srv.Close()
+	p := &OpenAI{APIKey: "k", BaseURL: srv.URL, Client: srv.Client()}
+	if _, err := p.Chat(t.Context(), []Message{{Role: "system", Content: "sys"}, {Role: "user", Content: "hi"}}); err != nil {
 		t.Fatal(err)
 	}
-	if sawCache {
-		t.Fatal("bogus CacheMode must not include cache_control")
+	if strings.Contains(rawBody, "cache_control") {
+		t.Fatalf("openai must not fake cache_control: %s", rawBody)
 	}
 }

@@ -460,6 +460,10 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 					writeErr(w, http.StatusBadRequest, "provider not found")
 					return
 				}
+				if strings.Contains(err.Error(), "unknown prompt_mode") {
+					writeErr(w, http.StatusBadRequest, err.Error())
+					return
+				}
 				sw.errEvent(err.Error())
 				return
 			}
@@ -475,6 +479,10 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if err != nil {
 			if errors.Is(err, llm.ErrProviderNotFound) {
 				writeErr(w, http.StatusBadRequest, "provider not found")
+				return
+			}
+			if strings.Contains(err.Error(), "unknown prompt_mode") {
+				writeErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
 			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)

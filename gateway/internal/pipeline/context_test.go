@@ -231,10 +231,11 @@ func firstSystem(s *llm.Scripted) string {
 	if s == nil || len(s.Recorded) == 0 {
 		return ""
 	}
+	var parts []string
 	for _, m := range s.Recorded[0] {
-		if m.Role == "system" {
-			return m.Content
+		if m.Role == "system" && m.Content != "" {
+			parts = append(parts, m.Content)
 		}
 	}
-	return ""
+	return strings.Join(parts, "\n")
 }

@@ -82,6 +82,17 @@ func TestStore_SessionAndMessage(t *testing.T) {
 	if _, err := s.AddMessage(Message{SessionID: "nope", Content: "x"}); err == nil {
 		t.Fatal("expected session not found")
 	}
+	upd, err := s.UpdateSession(Session{ID: sess.ID, PromptMode: "minimal"})
+	if err != nil || upd.PromptMode != "minimal" {
+		t.Fatalf("UpdateSession: %v %+v", err, upd)
+	}
+	got, err := s.GetSession(sess.ID)
+	if err != nil || got.PromptMode != "minimal" {
+		t.Fatalf("GetSession prompt_mode: %v %+v", err, got)
+	}
+	if _, err := s.UpdateSession(Session{ID: "nope", PromptMode: "full"}); err != ErrNotFound {
+		t.Fatalf("UpdateSession missing: %v", err)
+	}
 }
 
 func TestStore_MemoryAndSearch(t *testing.T) {

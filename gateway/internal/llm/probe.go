@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -56,7 +57,11 @@ func Build(name, typ, baseURL, model, apiKey string) (Provider, error) {
 	case TypeEcho:
 		return Echo{}, nil
 	case TypeAnthropic:
-		return &Anthropic{APIKey: apiKey, Model: model, BaseURL: baseURL, Client: client}, nil
+		cache := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_CACHE_MODE"))
+		if cache == "" {
+			cache = strings.TrimSpace(os.Getenv("GOSO_PROMPT_CACHE"))
+		}
+		return &Anthropic{APIKey: apiKey, Model: model, BaseURL: baseURL, Client: client, CacheMode: cache}, nil
 	case TypeRouter9:
 		return &OpenAI{
 			APIKey: apiKey, Model: model, BaseURL: baseURL, Label: name,

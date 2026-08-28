@@ -25,6 +25,27 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
+func TestResolvePromptMode(t *testing.T) {
+	m, err := ResolvePromptMode("task", "minimal")
+	if err != nil || m != ModeTask {
+		t.Fatalf("request wins %v %v", m, err)
+	}
+	m, err = ResolvePromptMode("", "none")
+	if err != nil || m != ModeNone {
+		t.Fatalf("session %v %v", m, err)
+	}
+	m, err = ResolvePromptMode("", "")
+	if err != nil || m != ModeFull {
+		t.Fatalf("default %v %v", m, err)
+	}
+	if _, err := ResolvePromptMode("weird", "full"); err == nil {
+		t.Fatal("unknown request")
+	}
+	if _, err := ResolvePromptMode("", "weird"); err == nil {
+		t.Fatal("unknown session")
+	}
+}
+
 func TestSystemPrompt_Modes(t *testing.T) {
 	if SystemPrompt(ModeNone, "A") != "" {
 		t.Fatalf("none should be empty")

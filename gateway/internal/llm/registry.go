@@ -47,7 +47,11 @@ func NewRegistry() *Registry {
 		infos[name] = Describe(name, p, envType(name), SourceEnv)
 	}
 	if key := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_API_KEY")); key != "" {
-		put("anthropic", &Anthropic{APIKey: key, Model: os.Getenv("GOSO_ANTHROPIC_MODEL"), CacheMode: os.Getenv("GOSO_ANTHROPIC_CACHE_MODE")})
+		cache := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_CACHE_MODE"))
+		if cache == "" {
+			cache = strings.TrimSpace(os.Getenv("GOSO_PROMPT_CACHE"))
+		}
+		put("anthropic", &Anthropic{APIKey: key, Model: os.Getenv("GOSO_ANTHROPIC_MODEL"), CacheMode: cache})
 	}
 	if key := strings.TrimSpace(os.Getenv("GOSO_OPENAI_API_KEY")); key != "" {
 		put("openai", &OpenAI{APIKey: key, Model: os.Getenv("GOSO_OPENAI_MODEL")})

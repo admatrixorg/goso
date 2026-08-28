@@ -163,6 +163,7 @@ func clearProviderEnv(t *testing.T) {
 	t.Setenv("GOSO_ANTHROPIC_API_KEY", "")
 	t.Setenv("GOSO_ANTHROPIC_MODEL", "")
 	t.Setenv("GOSO_ANTHROPIC_CACHE_MODE", "")
+	t.Setenv("GOSO_PROMPT_CACHE", "")
 	t.Setenv("GOSO_OPENAI_API_KEY", "")
 	t.Setenv("GOSO_OPENAI_MODEL", "")
 	t.Setenv("GOSO_LLM_PROVIDER", "")

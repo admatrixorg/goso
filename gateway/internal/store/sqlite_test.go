@@ -115,6 +115,44 @@ func TestSQLiteStore_PersistReopen(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_PromptModeRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prompt-mode.db")
+	s1, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	a, err := s1.CreateAgent(Agent{AgentKey: "pm", DisplayName: "PM"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s1.CreateSession(Session{AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.PromptMode != "" {
+		t.Fatalf("default prompt_mode %q", sess.PromptMode)
+	}
+	got, err := s1.UpdateSession(Session{ID: sess.ID, PromptMode: "task"})
+	if err != nil || got.PromptMode != "task" {
+		t.Fatalf("update %v %+v", err, got)
+	}
+	_ = s1.Close()
+
+	s2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s2.Close()
+	again, err := s2.GetSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.PromptMode != "task" {
+		t.Fatalf("persisted prompt_mode %q", again.PromptMode)
+	}
+}
+
 func TestSQLiteStore_RestartSafeIDs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ids.db")

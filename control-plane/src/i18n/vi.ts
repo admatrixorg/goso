@@ -129,6 +129,8 @@ export const vi = {
   "sessions.placeholder.label": "Nhãn (tuỳ chọn)",
   "sessions.needAgent": "Cần chọn agent.",
   "sessions.noAgents": "Chưa có agent. Tạo trên tab Agent.",
+  "sessions.col.mode": "CHẾ ĐỘ",
+  "sessions.promptMode": "Chế độ prompt",
 
   "chat.title": "Chat",
   "chat.desc": "Chọn một phiên bên trái để đọc tin và gửi. Agent chạy trên gateway, không gửi Zalo từ đây.",
@@ -139,6 +141,11 @@ export const vi = {
   "chat.placeholder": "Nhắn cho agent…",
   "chat.send": "Gửi cho Agent",
   "chat.agent": "Agent",
+  "chat.promptMode": "Chế độ prompt",
+  "promptMode.full": "Đầy đủ",
+  "promptMode.task": "Tác vụ",
+  "promptMode.minimal": "Tối thiểu",
+  "promptMode.none": "Không",
 
   "connectors.title": "Kết nối",
   "connectors.desc": "Connector HTTP/MCP tới hệ thống ngoài (goso-crm). Gateway không chứa code ZaloCRM — chỉ gọi API.",

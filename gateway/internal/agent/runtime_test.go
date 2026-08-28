@@ -546,6 +546,57 @@ func TestChat_PromptModes(t *testing.T) {
 	}
 }
 
+func TestChat_UsesStoredPromptMode(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "Agent One"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID, PromptMode: "task"})
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "ok"}}}
+	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), scripted)
+	if _, err := rt.Chat(context.Background(), sess.ID, "hi"); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if len(scripted.Recorded) == 0 {
+		t.Fatal("empty recorded")
+	}
+	sys := ""
+	for _, m := range scripted.Recorded[0] {
+		if m.Role == "system" {
+			sys += m.Content
+		}
+	}
+	if strings.Contains(sys, "You are Agent One") {
+		t.Fatalf("stored task mode used full identity: %q", sys)
+	}
+	if sys == "" || !strings.Contains(sys, "Answer the user") {
+		t.Fatalf("task system missing: %q", sys)
+	}
+
+	noneSess, _ := st.CreateSession(store.Session{AgentID: a.ID, PromptMode: "none"})
+	none := &llm.Scripted{Replies: []llm.Reply{{Text: "ok"}}}
+	rt.LLM = none
+	if _, err := rt.Chat(context.Background(), noneSess.ID, "hi"); err != nil {
+		t.Fatalf("none stored: %v", err)
+	}
+	for _, m := range none.Recorded[0] {
+		if m.Role == "system" && m.Content != "" {
+			t.Fatalf("stored none sent system: %#v", none.Recorded[0])
+		}
+	}
+
+	if _, err := rt.ChatWithMode(context.Background(), noneSess.ID, "hi", "full"); err != nil {
+		t.Fatalf("request override: %v", err)
+	}
+	sys = ""
+	for _, m := range none.Recorded[len(none.Recorded)-1] {
+		if m.Role == "system" {
+			sys += m.Content
+		}
+	}
+	if !strings.Contains(sys, "You are Agent One") {
+		t.Fatalf("request full should override stored none: %q", sys)
+	}
+}
+
 func TestChat_MaxIterations(t *testing.T) {
 	st := store.New()
 	a, _ := st.CreateAgent(store.Agent{AgentKey: "k1", DisplayName: "A"})

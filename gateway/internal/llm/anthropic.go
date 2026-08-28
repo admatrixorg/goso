@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -62,24 +63,18 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 		model = "claude-sonnet-4-20250514"
 	}
 	// Convert messages: Anthropic requires alternating user/assistant, no system in array.
-	// Simplify: map all to user/assistant, system -> user.
-	type inMsg struct {
-		Role    string `json:"role"`
-		Content any    `json:"content"`
-	}
-	var in []inMsg
-	var system string
+	var in []anthropicInMsg
 	for _, m := range messages {
 		switch m.Role {
 		case "system":
-			system += m.Content + "\n"
+			continue
 		case "assistant":
-			in = append(in, inMsg{Role: "assistant", Content: m.Content})
+			in = append(in, anthropicInMsg{Role: "assistant", Content: m.Content})
 		default:
-			in = append(in, inMsg{Role: "user", Content: m.Content})
+			in = append(in, anthropicInMsg{Role: "user", Content: m.Content})
 		}
 	}
-	fullCache := strings.EqualFold(strings.TrimSpace(a.CacheMode), "full")
+	fullCache := anthropicCacheFull(a.CacheMode)
 	payload := map[string]any{
 		"model":      model,
 		"max_tokens": 1024,
@@ -88,23 +83,16 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 	if stream {
 		payload["stream"] = true
 	}
-	if system != "" {
-		if fullCache {
-			payload["system"] = []map[string]any{{
-				"type": "text", "text": system,
-				"cache_control": map[string]string{"type": "ephemeral"},
-			}}
-		} else {
-			payload["system"] = system
+	systemBlocks := anthropicSystemBlocks(messages, fullCache)
+	if len(systemBlocks) == 1 && !fullCache {
+		if text, ok := systemBlocks[0]["text"].(string); ok {
+			payload["system"] = text
 		}
+	} else if len(systemBlocks) > 0 {
+		payload["system"] = systemBlocks
 	}
-	if fullCache && len(in) > 0 {
-		last := in[len(in)-1]
-		text, _ := last.Content.(string)
-		in[len(in)-1] = inMsg{Role: last.Role, Content: []map[string]any{{
-			"type": "text", "text": text,
-			"cache_control": map[string]string{"type": "ephemeral"},
-		}}}
+	if fullCache {
+		cacheLastNonUser(in)
 		payload["messages"] = in
 	}
 	body, _ := json.Marshal(payload)
@@ -164,4 +152,63 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 		u.CacheReadTokens = out.Usage.CacheReadTokens
 	}
 	return content, u, nil
+}
+
+type anthropicInMsg struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"`
+}
+
+func anthropicCacheFull(mode string) bool {
+	if strings.EqualFold(strings.TrimSpace(mode), "full") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_CACHE_MODE")), "full") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("GOSO_PROMPT_CACHE")), "full")
+}
+
+func ephemeralCacheControl() map[string]string {
+	return map[string]string{"type": "ephemeral"}
+}
+
+// anthropicSystemBlocks emits one text block per incoming system message.
+// CacheMode=full (or GOSO_PROMPT_CACHE=full) attaches cache_control to each.
+func anthropicSystemBlocks(messages []Message, fullCache bool) []map[string]any {
+	var blocks []map[string]any
+	for _, m := range messages {
+		if m.Role != "system" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		block := map[string]any{"type": "text", "text": m.Content}
+		if fullCache && cacheableSystem(m.Content) {
+			block["cache_control"] = ephemeralCacheControl()
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks
+}
+
+// cacheLastNonUser attaches cache_control to the last assistant (non-user)
+// block in the Anthropic messages array. User turns stay uncached.
+// cacheableSystem is the stable prefix (identity/instructions and bootstrap
+// files). Rolling "Previous summary:" is not a cache breakpoint.
+func cacheableSystem(text string) bool {
+	return !strings.HasPrefix(strings.TrimSpace(text), "Previous summary:")
+}
+
+func cacheLastNonUser(in []anthropicInMsg) {
+	for i := len(in) - 1; i >= 0; i-- {
+		if strings.EqualFold(in[i].Role, "user") {
+			continue
+		}
+		text, _ := in[i].Content.(string)
+		in[i].Content = []map[string]any{{
+			"type":          "text",
+			"text":          text,
+			"cache_control": ephemeralCacheControl(),
+		}}
+		return
+	}
 }

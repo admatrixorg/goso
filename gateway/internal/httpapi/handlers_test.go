@@ -10,7 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -505,6 +509,102 @@ func TestChat_PromptModeTaskOK(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("want 200, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPatchSession_PromptMode(t *testing.T) {
+	_, h := newTestServer()
+	_, sessID := setupChat(t, h)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PATCH", "/api/sessions/"+sessID, bytes.NewBufferString(`{"prompt_mode":"minimal"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("patch %d %s", w.Code, w.Body.String())
+	}
+	var sess map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &sess); err != nil {
+		t.Fatal(err)
+	}
+	if sess["prompt_mode"] != "minimal" {
+		t.Fatalf("prompt_mode %v", sess["prompt_mode"])
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/sessions", nil))
+	if w.Code != 200 {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"prompt_mode":"minimal"`) {
+		t.Fatalf("list missing stored mode: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/"+sessID, bytes.NewBufferString(`{"prompt_mode":"weird"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("unknown want 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/missing", bytes.NewBufferString(`{"prompt_mode":"full"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("missing want 404, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChat_UsesStoredPromptMode(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "pm1", DisplayName: "Agent One"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "ok"}}}
+	rt := agent.New(st, connector.NewRegistry(), approval.New(0), eventstore.New(32), scripted)
+	h := NewRouter(Options{Store: st, Version: "0.1.0", Provider: scripted, Runtime: rt})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PATCH", "/api/sessions/"+sess.ID, bytes.NewBufferString(`{"prompt_mode":"none"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("patch %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sess.ID+`","message":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("chat %d %s", w.Code, w.Body.String())
+	}
+	if len(scripted.Recorded) == 0 {
+		t.Fatal("empty recorded")
+	}
+	for _, m := range scripted.Recorded[0] {
+		if m.Role == "system" && m.Content != "" {
+			t.Fatalf("stored none sent system: %#v", scripted.Recorded[0])
+		}
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sess.ID+`","message":"hi","prompt_mode":"full"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("override %d %s", w.Code, w.Body.String())
+	}
+	last := scripted.Recorded[len(scripted.Recorded)-1]
+	sys := ""
+	for _, m := range last {
+		if m.Role == "system" {
+			sys += m.Content
+		}
+	}
+	if !strings.Contains(sys, "You are Agent One") {
+		t.Fatalf("request full should override stored none: %q", sys)
 	}
 }
 

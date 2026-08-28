@@ -84,7 +84,7 @@ export async function probeHealthz(signal?: AbortSignal): Promise<{ status: numb
 }
 
 export type ChatReply = { reply: string; session_id: string; trace?: unknown[] };
-export type ChatBody = { session_id: string; message: string };
+export type ChatBody = { session_id: string; message: string; prompt_mode?: string };
 
 function isEventStream(ct: string | null): boolean {
   return (ct || "").toLowerCase().includes("text/event-stream");
@@ -187,6 +187,8 @@ export async function chatStream(body: ChatBody, onDelta: (delta: string) => voi
 
 export const ORCHESTRATION_MODES = ["auto", "explicit", "manual"] as const;
 export type OrchestrationMode = (typeof ORCHESTRATION_MODES)[number];
+export const PROMPT_MODES = ["full", "task", "minimal", "none"] as const;
+export type PromptMode = (typeof PROMPT_MODES)[number];
 export type Agent = {
   id: string;
   agent_key: string;
@@ -197,7 +199,7 @@ export type Agent = {
   orchestration_mode?: string;
   created_at: string;
 };
-export type Session = { id: string; agent_id: string; label?: string; created_at: string };
+export type Session = { id: string; agent_id: string; label?: string; prompt_mode?: string; created_at: string };
 export type Message = { id: string; session_id: string; role: string; content: string; created_at: string };
 export type Connector = {
   name: string;
@@ -244,6 +246,8 @@ export const api = {
   listSessions: () => jsonFetch<{ sessions: Session[] }>("/api/sessions"),
   createSession: (body: { agent_id: string; label?: string }) =>
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+  updateSession: (id: string, body: { prompt_mode: string }) =>
+    jsonFetch<Session>(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
   chat: (body: ChatBody) => jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
   chatStream,

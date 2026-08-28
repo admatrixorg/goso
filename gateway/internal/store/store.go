@@ -139,11 +139,12 @@ func PublicGuardrails(g EvolutionGuardrails) EvolutionGuardrails {
 
 // Session represents a conversation session.
 type Session struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	AgentID   string    `json:"agent_id"`
-	Label     string    `json:"label,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	AgentID    string    `json:"agent_id"`
+	Label      string    `json:"label,omitempty"`
+	PromptMode string    `json:"prompt_mode"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Cron job persistence (SPEC 054). Cap is store-side; empty list is a no-op for the runner.
@@ -355,6 +356,7 @@ type StoreIface interface {
 	CreateSession(Session) (*Session, error)
 	ListSessions() []*Session
 	GetSession(string) (*Session, error)
+	UpdateSession(Session) (*Session, error)
 	AddMessage(Message) (*Message, error)
 	ListMessages(string) ([]*Message, error)
 	CreateConnector(ConnectorRecord) (*ConnectorRecord, error)
@@ -710,6 +712,21 @@ func (s *Store) GetSession(id string) (*Session, error) {
 		return nil, ErrNotFound
 	}
 	cp := *v
+	return &cp, nil
+}
+
+func (s *Store) UpdateSession(sess Session) (*Session, error) {
+	if strings.TrimSpace(sess.ID) == "" {
+		return nil, errors.New("id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.sessions[sess.ID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	cur.PromptMode = sess.PromptMode
+	cp := *cur
 	return &cp, nil
 }
 
