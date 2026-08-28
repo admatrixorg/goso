@@ -389,6 +389,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	}
 	mode := team.ResolveMode(a.rt.Store, agentID)
 	out = append(out, team.ToolSpecs(mode)...)
+	out = append(out, pipeline.MemoryToolSpecs()...)
 	if a.rt.Store != nil && agentID != "" {
 		names := make([]string, 0, len(out))
 		for _, t := range out {
@@ -400,6 +401,31 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 }
 
 func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCall) (pipeline.CallOutcome, error) {
+	if pipeline.IsMemoryTool(call.Name) {
+		tid := store.DefaultTenant
+		if a.rt.Store != nil && agentID != "" {
+			if ag, err := a.rt.Store.GetAgent(agentID); err == nil && ag != nil {
+				tid = store.NormalizeTenant(ag.TenantID)
+			}
+		}
+		body, err := pipeline.DispatchMemoryTool(a.rt.Store, tid, call)
+		failed := err != nil
+		if a.rt.Store != nil {
+			a.rt.Store.RecordToolUse(agentID, call.Name, failed)
+		}
+		out := pipeline.CallOutcome{Content: body}
+		out.Trace.Tool = call.Name
+		if failed {
+			out.Trace.Status = "error"
+			out.Trace.Error = err.Error()
+			if out.Content == "" {
+				out.Content = err.Error()
+			}
+			return out, err
+		}
+		out.Trace.Status = "ok"
+		return out, nil
+	}
 	if pipeline.IsOrchestrationTool(call.Name) {
 		svc := &team.Service{Store: a.rt.Store, Chat: a.rt.chatText}
 		body, err := svc.Dispatch(ctx, agentID, call)

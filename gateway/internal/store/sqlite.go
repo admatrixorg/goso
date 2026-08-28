@@ -22,6 +22,7 @@ type SQLiteStore struct {
 	db       *sql.DB
 	fts      bool
 	vaultFTS bool
+	kgFTS    bool
 }
 
 var _ StoreIface = (*SQLiteStore)(nil)
@@ -237,6 +238,30 @@ func (s *SQLiteStore) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_webhook_jobs_claim ON webhook_jobs(status, next_attempt_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_webhook_jobs_idem ON webhook_jobs(webhook_id, idempotency_key)`,
+		`CREATE TABLE IF NOT EXISTS kg_entities (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL DEFAULT 'default',
+			name TEXT NOT NULL,
+			kind TEXT,
+			body TEXT,
+			valid_from TEXT NOT NULL,
+			valid_until TEXT,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS kg_relations (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL DEFAULT 'default',
+			from_id TEXT NOT NULL,
+			to_id TEXT NOT NULL,
+			rel TEXT NOT NULL,
+			body TEXT,
+			valid_from TEXT NOT NULL,
+			valid_until TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_kg_relations_to ON kg_relations(to_id)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -269,6 +294,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_providers_tenant ON llm_providers(tenant_id)`)
 	s.initFTS()
 	s.initVaultFTS()
+	s.initKGFTS()
 	return nil
 }
 

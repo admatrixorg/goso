@@ -204,6 +204,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 
 	r.memory(ctx, st)
 	r.summarize(ctx, st)
+	extractKG(r.Store, st.SessionID, st.Reply)
 	r.Hooks.Fire(ctx, Event{Name: Stop, SessionID: st.SessionID, AgentID: st.AgentID})
 	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces}
 	return res, nil

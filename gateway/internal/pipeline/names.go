@@ -46,6 +46,27 @@ func IsOrchestrationTool(name string) bool {
 	}
 }
 
+const (
+	ToolMemorySearch = "memory_search"
+	ToolMemoryExpand = "memory_expand"
+)
+
+// IsMemoryTool reports memory_search / memory_expand (no connector).
+func IsMemoryTool(name string) bool {
+	n := strings.TrimSpace(name)
+	if i := strings.Index(n, "__"); i > 0 {
+		n = n[i+2:]
+	} else if i := strings.Index(n, "."); i > 0 {
+		n = n[i+1:]
+	}
+	switch n {
+	case ToolMemorySearch, ToolMemoryExpand:
+		return true
+	default:
+		return false
+	}
+}
+
 // ResolveCall maps a ToolCall to connector + tool names for Runtime.CallTool.
 func ResolveCall(call llm.ToolCall) (connector, tool string) {
 	if c, t, ok := SplitAdvertised(call.Name); ok {
