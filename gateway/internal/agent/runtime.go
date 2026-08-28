@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/approval"
@@ -305,12 +306,12 @@ func (rt *Runtime) fail(traceID, connectorName, tool string, start time.Time, er
 	return &CallResult{Trace: tr}, err
 }
 
-// Chat runs the 8-stage pipeline with the default prompt mode (full).
+// Chat runs the 8-stage pipeline. Empty request mode uses the session, else full.
 func (rt *Runtime) Chat(ctx context.Context, sessionID, message string) (*ChatResult, error) {
 	return rt.ChatWithMode(ctx, sessionID, message, "")
 }
 
-// ChatWithMode runs the pipeline with an explicit prompt_mode (empty = full).
+// ChatWithMode runs the pipeline with an explicit prompt_mode (empty = session, else full).
 func (rt *Runtime) ChatWithMode(ctx context.Context, sessionID, message, promptMode string) (*ChatResult, error) {
 	return rt.ChatOpts(ctx, sessionID, message, promptMode, false)
 }
@@ -325,16 +326,19 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 	if rt.Store == nil {
 		return nil, errors.New("store required")
 	}
-	mode, err := pipeline.ParseMode(promptMode)
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(promptMode) != "" {
+		if _, err := pipeline.ParseMode(promptMode); err != nil {
+			return nil, err
+		}
 	}
 	hooks := rt.Hooks
 	if hooks == nil {
 		hooks = pipeline.NewDispatcher()
 	}
 	provider := rt.LLM
+	sessionMode := ""
 	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
+		sessionMode = sess.PromptMode
 		if a, e := rt.Store.GetAgent(sess.AgentID); e == nil && a != nil {
 			p, rerr := llm.Resolve(rt.Store, a.LLMProvider, a.Model, rt.LLM)
 			if rerr != nil {
@@ -342,6 +346,10 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 			}
 			provider = p
 		}
+	}
+	mode, err := pipeline.ResolvePromptMode(promptMode, sessionMode)
+	if err != nil {
+		return nil, err
 	}
 	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, provider, hooks)
 	if rt.Memory != nil {

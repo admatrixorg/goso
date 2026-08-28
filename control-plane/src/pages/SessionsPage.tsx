@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { api, type Agent, type Session } from "../api/client";
-import { useI18n } from "../i18n";
+import { api, PROMPT_MODES, type Agent, type Session } from "../api/client";
+import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -10,6 +10,18 @@ import { StatusLine, formatPublicError } from "../ui/StatusLine";
 export type SessionsPageHandle = {
   focusCreate: () => void;
 };
+
+function promptModeKey(mode: string): MsgKey {
+  if (mode === "task") return "promptMode.task";
+  if (mode === "minimal") return "promptMode.minimal";
+  if (mode === "none") return "promptMode.none";
+  return "promptMode.full";
+}
+
+function normalizePromptMode(mode?: string): string {
+  const v = (mode || "").trim().toLowerCase();
+  return PROMPT_MODES.includes(v as (typeof PROMPT_MODES)[number]) ? v : "full";
+}
 
 export const SessionsPage = forwardRef<
   SessionsPageHandle,
@@ -74,6 +86,17 @@ export const SessionsPage = forwardRef<
       setErr(formatPublicError(e));
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function persistMode(id: string, next: string) {
+    const mode = normalizePromptMode(next);
+    try {
+      const updated = await api.updateSession(id, { prompt_mode: mode });
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, prompt_mode: updated.prompt_mode || mode } : s)));
+      setErr("");
+    } catch (e) {
+      setErr(formatPublicError(e));
     }
   }
 
@@ -191,6 +214,7 @@ export const SessionsPage = forwardRef<
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2.4 }}>{t("sessions.col.session")}</span>
           <span style={{ flex: 2 }}>{t("sessions.col.agent")}</span>
+          <span style={{ flex: 1.6 }}>{t("sessions.col.mode")}</span>
           <span style={{ flex: 1.2, textAlign: "right" }}></span>
         </div>
         {sessions.map((s) => (
@@ -208,6 +232,21 @@ export const SessionsPage = forwardRef<
           >
             <span style={{ flex: 2.4, fontWeight: 600 }}>{s.label || s.id}</span>
             <span style={{ flex: 2, color: "var(--text-2)" }}>{s.agent_id}</span>
+            <span style={{ flex: 1.6 }} onClick={(e) => e.stopPropagation()}>
+              <select
+                className="z-field"
+                aria-label={t("sessions.promptMode")}
+                value={normalizePromptMode(s.prompt_mode)}
+                onChange={(e) => void persistMode(s.id, e.target.value)}
+                style={{ width: "100%" }}
+              >
+                {PROMPT_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {t(promptModeKey(m))}
+                  </option>
+                ))}
+              </select>
+            </span>
             <span style={{ flex: 1.2, textAlign: "right", color: "var(--accent)", fontWeight: 600, fontSize: 12 }}>{t("sessions.openChat")}</span>
           </div>
         ))}

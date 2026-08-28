@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Message } from "../api/client";
-import { useI18n } from "../i18n";
+import { api, PROMPT_MODES, type Message } from "../api/client";
+import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon } from "../ui/Icon";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
+
+function promptModeKey(mode: string): MsgKey {
+  if (mode === "task") return "promptMode.task";
+  if (mode === "minimal") return "promptMode.minimal";
+  if (mode === "none") return "promptMode.none";
+  return "promptMode.full";
+}
+
+function normalizePromptMode(mode?: string): string {
+  const v = (mode || "").trim().toLowerCase();
+  return PROMPT_MODES.includes(v as (typeof PROMPT_MODES)[number]) ? v : "full";
+}
 
 let localSeq = 0;
 function localId(prefix: string): string {
@@ -29,6 +41,8 @@ export function ChatPage({
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(() => Boolean(sessionId));
   const [sending, setSending] = useState(false);
+  const [promptMode, setPromptMode] = useState("full");
+  const [savingMode, setSavingMode] = useState(false);
   const genRef = useRef(0);
   const sessionRef = useRef(sessionId);
   sessionRef.current = sessionId;
@@ -39,15 +53,40 @@ export function ChatPage({
 
   async function load(forSession: string, gen: number) {
     try {
-      const j = await api.listMessages(forSession);
+      const [msgRes, sessRes] = await Promise.allSettled([api.listMessages(forSession), api.listSessions()]);
       if (!stillCurrent(forSession, gen)) return;
-      setMsgs(j.messages ?? []);
+      if (msgRes.status === "rejected") {
+        setErr(formatPublicError(msgRes.reason));
+        return;
+      }
+      setMsgs(msgRes.value.messages ?? []);
+      if (sessRes.status === "fulfilled") {
+        const sess = (sessRes.value.sessions ?? []).find((s) => s.id === forSession);
+        setPromptMode(normalizePromptMode(sess?.prompt_mode));
+      }
       setErr("");
     } catch (e) {
       if (!stillCurrent(forSession, gen)) return;
       setErr(formatPublicError(e));
     } finally {
       if (stillCurrent(forSession, gen)) setLoading(false);
+    }
+  }
+
+  async function persistMode(next: string) {
+    if (!sessionId || savingMode) return;
+    const prev = promptMode;
+    const mode = normalizePromptMode(next);
+    setPromptMode(mode);
+    setSavingMode(true);
+    try {
+      await api.updateSession(sessionId, { prompt_mode: mode });
+      setErr("");
+    } catch (e) {
+      setPromptMode(prev);
+      setErr(formatPublicError(e));
+    } finally {
+      setSavingMode(false);
     }
   }
   useEffect(() => {
@@ -69,7 +108,7 @@ export function ChatPage({
 
   async function send() {
     const text = input.trim();
-    if (!text || sending || !sessionId) return;
+    if (!text || sending || savingMode || !sessionId) return;
     const forSession = sessionId;
     const gen = genRef.current;
     const userMsg: Message = {
@@ -91,7 +130,7 @@ export function ChatPage({
     setInput("");
     setErr("");
     try {
-      await api.chatStream({ session_id: forSession, message: text }, (delta) => {
+      await api.chatStream({ session_id: forSession, message: text, prompt_mode: promptMode }, (delta) => {
         if (!stillCurrent(forSession, gen)) return;
         setMsgs((m) => m.map((x) => (x.id === asst.id ? { ...x, content: x.content + delta } : x)));
       });
@@ -143,9 +182,28 @@ export function ChatPage({
           title={named}
           description={t("chat.descSession", { id: sessionId })}
           actions={
-            <Button icon="refresh" iconGesture onClick={() => void load(sessionId, genRef.current)}>
-              {t("common.refresh")}
-            </Button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                {t("chat.promptMode")}
+                <select
+                  className="z-field"
+                  aria-label={t("chat.promptMode")}
+                  value={promptMode}
+                  disabled={savingMode || sending}
+                  onChange={(e) => void persistMode(e.target.value)}
+                  style={{ minWidth: 120 }}
+                >
+                  {PROMPT_MODES.map((m) => (
+                    <option key={m} value={m}>
+                      {t(promptModeKey(m))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button icon="refresh" iconGesture onClick={() => void load(sessionId, genRef.current)}>
+                {t("common.refresh")}
+              </Button>
+            </div>
           }
         />
       </div>
@@ -218,13 +276,13 @@ export function ChatPage({
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             void send();
           }}
-          disabled={sending}
+          disabled={sending || savingMode}
           placeholder={t("chat.placeholder")}
         />
         <button
           type="button"
           onClick={() => void send()}
-          disabled={sending}
+          disabled={sending || savingMode}
           aria-label={t("chat.send")}
           style={{
             width: 32,

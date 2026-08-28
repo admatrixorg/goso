@@ -77,6 +77,7 @@ func (s *SQLiteStore) migrate() error {
 			label TEXT,
 			created_at TEXT NOT NULL,
 			tenant_id TEXT NOT NULL DEFAULT 'default',
+			prompt_mode TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY(agent_id) REFERENCES agents(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
@@ -277,6 +278,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN llm_provider TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE memories ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE vault_docs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE teams ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
@@ -510,8 +512,8 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 	}
 	sess.ID = newID()
 	sess.CreatedAt = time.Now().UTC()
-	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id) VALUES(?,?,?,?,?)`,
-		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID)
+	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode) VALUES(?,?,?,?,?,?)`,
+		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode)
 	if err != nil {
 		return nil, err
 	}
@@ -520,22 +522,18 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 }
 
 func (s *SQLiteStore) ListSessions() []*Session {
-	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 	var out []*Session
 	for rows.Next() {
-		var sess Session
-		var ts, tenant string
-		if err := rows.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant); err != nil {
+		sess, err := scanSessionRow(rows)
+		if err != nil {
 			continue
 		}
-		sess.TenantID = NormalizeTenant(tenant)
-		sess.CreatedAt = parseTime(ts)
-		cp := sess
-		out = append(out, &cp)
+		out = append(out, sess)
 	}
 	if out == nil {
 		out = []*Session{}
@@ -544,15 +542,40 @@ func (s *SQLiteStore) ListSessions() []*Session {
 }
 
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
-	var sess Session
-	var ts string
-	var tenant string
-	err := s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id FROM sessions WHERE id=?`, id).
-		Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant)
+	sess, err := scanSessionRow(s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode FROM sessions WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+	return sess, nil
+}
+
+func (s *SQLiteStore) UpdateSession(sess Session) (*Session, error) {
+	if strings.TrimSpace(sess.ID) == "" {
+		return nil, errors.New("id is required")
+	}
+	cur, err := s.GetSession(sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	cur.PromptMode = sess.PromptMode
+	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=? WHERE id=?`, cur.PromptMode, cur.ID)
+	if err != nil {
+		return nil, err
+	}
+	return cur, nil
+}
+
+type sessionScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanSessionRow(row sessionScanner) (*Session, error) {
+	var sess Session
+	var ts, tenant string
+	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode); err != nil {
 		return nil, err
 	}
 	sess.TenantID = NormalizeTenant(tenant)

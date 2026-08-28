@@ -113,6 +113,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
 	aliasAPI(mux, "GET /api/sessions", handleListSessions(st))
+	mux.HandleFunc("PATCH /api/sessions/{id}", handlePatchSession(st))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", handleAddMessage(st))
 	mux.HandleFunc("GET /api/sessions/{id}/messages", handleListMessages(st))
 
@@ -327,6 +328,45 @@ func handleListSessions(st store.StoreIface) http.HandlerFunc {
 			list = []*store.Session{}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"sessions": list})
+	}
+}
+
+func handlePatchSession(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		cur, err := sessionVisible(st, id, requestTenant(r))
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
+		var body struct {
+			PromptMode *string `json:"prompt_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if body.PromptMode == nil {
+			writeErr(w, http.StatusBadRequest, "prompt_mode is required")
+			return
+		}
+		mode, err := pipeline.ParseMode(*body.PromptMode)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		upd := *cur
+		upd.PromptMode = string(mode)
+		sess, err := st.UpdateSession(upd)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "session not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, sess)
 	}
 }
 

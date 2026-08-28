@@ -131,6 +131,8 @@ export const en: Record<MsgKey, string> = {
   "sessions.placeholder.label": "Optional label",
   "sessions.needAgent": "Choose an agent.",
   "sessions.noAgents": "No agents yet. Create one on the Agents tab.",
+  "sessions.col.mode": "MODE",
+  "sessions.promptMode": "Prompt mode",
 
   "chat.title": "Chat",
   "chat.desc": "Pick a session on the left to read and send. The agent runs on the gateway; this screen does not send Zalo.",
@@ -141,6 +143,11 @@ export const en: Record<MsgKey, string> = {
   "chat.placeholder": "Message the agent…",
   "chat.send": "Send to Agent",
   "chat.agent": "Agent",
+  "chat.promptMode": "Prompt mode",
+  "promptMode.full": "Full",
+  "promptMode.task": "Task",
+  "promptMode.minimal": "Minimal",
+  "promptMode.none": "None",
 
   "connectors.title": "Connectors",
   "connectors.desc": "HTTP/MCP connectors to external systems (goso-crm). The gateway does not embed ZaloCRM — it only calls APIs.",

@@ -31,6 +31,15 @@ func ParseMode(s string) (Mode, error) {
 	}
 }
 
+// ResolvePromptMode uses the request value when set, else the stored session
+// value, else full. Unknown request or session values return an error.
+func ResolvePromptMode(request, session string) (Mode, error) {
+	if strings.TrimSpace(request) != "" {
+		return ParseMode(request)
+	}
+	return ParseMode(session)
+}
+
 // SystemPrompt builds the system text for a mode. None returns empty.
 // Bootstrap markdown (GOSO_CONTEXT_DIR) is attached in the prompt stage, not here.
 func SystemPrompt(mode Mode, displayName string) string {
