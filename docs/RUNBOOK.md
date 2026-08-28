@@ -48,29 +48,34 @@ Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
 ## 2. Backup SQLite
 
-Khi `GOSO_DB_PATH` trỏ file (vd `data/goso.db`):
+Supported path: consistent snapshot via `VACUUM INTO` (SQLite backup API). Copying the live db file (`cp`) is **not** the supported path.
+
+`GOSO_BACKUP_DIR` defaults to `./var/backups`. Admin `POST /api/system/backup` creates a timestamped file and runs `PRAGMA integrity_check` on the snapshot (`{file, bytes, integrity:"ok"}`). `GET /api/system/backup` lists files with an integrity badge. In-memory (`GOSO_DB_PATH` empty or `:memory:`) cannot be snapshotted.
 
 ```bash
-# Snapshot (gateway có thể đang chạy; copy file là đủ vì chưa bật WAL)
-ts=$(date +%Y%m%d-%H%M%S)
-mkdir -p backups
-cp -p "$GOSO_DB_PATH" "backups/goso-${ts}.db"
-# nếu có sidecar:
-cp -p "${GOSO_DB_PATH}-wal" "backups/goso-${ts}.db-wal" 2>/dev/null || true
-cp -p "${GOSO_DB_PATH}-shm" "backups/goso-${ts}.db-shm" 2>/dev/null || true
+export GOSO_DB_PATH=data/goso.db
+export GOSO_BACKUP_DIR=./var/backups
+curl -sS -X POST -H "Authorization: Bearer $GOSO_ADMIN_TOKEN" \
+  http://127.0.0.1:8080/api/system/backup
+# {"file":"goso-20260828T120000Z.db","bytes":…,"integrity":"ok"}
 ```
 
-Restore:
+Restore **drill** (temp db; live file is not overwritten):
 
 ```bash
-# dừng gateway trước
-cp -p backups/goso-<ts>.db "$GOSO_DB_PATH"
+./bin/goso-gateway restore --file goso-20260828T120000Z.db
+# or: POST /api/system/restore {"file":"goso-….db"}
+```
+
+Production apply (stop the gateway first):
+
+```bash
+# dừng gateway
+./bin/goso-gateway restore --file goso-20260828T120000Z.db --apply --dest "$GOSO_DB_PATH"
 # khởi động lại gateway với cùng GOSO_DB_PATH
 ```
 
-In-memory (`GOSO_DB_PATH` rỗng hoặc `:memory:`) — không có backup; dữ liệu mất khi process thoát.
-
-Khuyến nghị: cron copy `data/goso.db` mỗi giờ, giữ 7 ngày.
+Prod compose sidecar calls gateway `POST /api/system/backup` (same `VACUUM INTO` + integrity_check) into volume `backup`, retain `BACKUP_RETAIN` (default 14, hourly `BACKUP_INTERVAL_SECONDS=3600`).
 
 ## 3. Xoay token / API key
 
@@ -125,7 +130,7 @@ Nếu `GOSO_ADMIN_TOKEN` rỗng và không có `GOSO_DEV_MODE=1`: `/api/*` trả
 
 - `GOSO_DB_PATH` chưa set → in-memory.
 - File không ghi được (quyền, disk đầy) — `df -h`, `ls -l data/`.
-- Restore từ `backups/`.
+- Restore drill: `goso-gateway restore --file <snapshot>` (temp). Live apply: stop gateway, then `--apply`.
 
 ### Telegram/Zalo webhook 200 nhưng không nhắn ra channel
 
@@ -140,7 +145,20 @@ Nếu `GOSO_ADMIN_TOKEN` rỗng và không có `GOSO_DEV_MODE=1`: `/api/*` trả
 - semgrep — xem rule id, sửa source
 - e2e — đọc log script; cần `curl` + `python3`; cổng local tự chọn (`--port 0`)
 
-## 5. Kiểm tra nhanh sau sự cố
+## 5. RPO / RTO, TLS, cảnh báo
+
+Không có SLA vendor. Con số dưới đây là vận hành GOSO SQLite, không phải cam kết hợp đồng.
+
+| | Ý nghĩa |
+|---|---------|
+| **RPO** | Worst case mất dữ liệu từ lần snapshot toàn vẹn gần nhất. Prod sidecar mặc định mỗi `BACKUP_INTERVAL_SECONDS` (3600s) — tối đa ~1 giờ nếu interval giữ nguyên. Snapshot thủ công (`POST /api/system/backup`) rút RPO xuống lần bấm gần nhất. |
+| **RTO** | Dừng gateway, `goso-gateway restore --file … --apply`, khởi động lại. Thường vài phút trên host local; không đo fake. |
+
+TLS: compose không terminate TLS. Khi public, đặt reverse proxy (Caddy/nginx) trước `:8080` / `:3000`. Không bật Grafana. **DI-10** (OTEL collector / Jaeger vendor) và **DI-18** (Grafana SaaS) vẫn parked — `GOSO_OTEL_ENDPOINT` rỗng = noop; không nhét API key Grafana Cloud.
+
+Cảnh báo: compose `healthcheck` + `GET /healthz`. Không có pager / alert vendor trong SPEC 070.
+
+## 6. Kiểm tra nhanh sau sự cố
 
 ```bash
 curl -sS http://127.0.0.1:8080/healthz

@@ -10,6 +10,8 @@
 services:
   gateway:
     restart: unless-stopped
+    volumes:
+      - backup:/backup
     environment:
       GOSO_ENV: production
       GOSO_ADMIN_TOKEN: ${GOSO_ADMIN_TOKEN:-}
@@ -23,6 +25,7 @@ services:
       GOSO_INJECTION: ${GOSO_INJECTION:-}
       GOSO_WS_ORIGINS: ${GOSO_WS_ORIGINS:-}
       GOSO_DEV_MODE: ${GOSO_DEV_MODE:-}
+      GOSO_BACKUP_DIR: /backup
     logging:
       driver: json-file
       options:
@@ -45,18 +48,21 @@ services:
       - backup:/backup
     environment:
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+      BACKUP_RETAIN: ${BACKUP_RETAIN:-14}
+      GOSO_ADMIN_TOKEN: ${GOSO_ADMIN_TOKEN:-}
     command:
       - /bin/sh
       - -c
       - |
-        echo "GOSO sqlite backup every $$BACKUP_INTERVAL_SECONDS s"
+        echo "GOSO backup via gateway VACUUM INTO every $$BACKUP_INTERVAL_SECONDS s retain $$BACKUP_RETAIN"
         while true; do
-          if [ -f /data/goso.db ]; then
-            ts=$$(date -u +%Y%m%dT%H%M%SZ)
-            cp /data/goso.db "/backup/goso-$$ts.db"
-            ls -1t /backup/goso-*.db 2>/dev/null | tail -n +15 | while read f; do rm -f "$$f"; done
-            echo "backup $$ts"
-          fi
+          wget -qO- --header="Authorization: Bearer $$GOSO_ADMIN_TOKEN" --post-data='{}' http://gateway:8080/api/system/backup || echo "backup fail"
+          retain=$${BACKUP_RETAIN:-14}
+          case "$$retain" in
+            ''|*[!0-9]*) retain=14 ;;
+          esac
+          if [ "$$retain" -lt 1 ]; then retain=1; fi
+          ls -1t /backup/goso-*.db 2>/dev/null | tail -n +$$((retain+1)) | while read f; do rm -f "$$f"; done
           sleep $$BACKUP_INTERVAL_SECONDS
         done
     depends_on:
