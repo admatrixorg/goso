@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Agent, type Connector, type Session } from "../api/client";
 import { cronApi, type CronJob } from "../api/cron";
 import { skillsApi, type SkillInfo } from "../api/skills";
@@ -27,6 +27,10 @@ export function FunctionsPage() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsErr, setSkillsErr] = useState("");
+  const [skillQuery, setSkillQuery] = useState("");
+  const [skillName, setSkillName] = useState("");
+  const [skillBody, setSkillBody] = useState("");
+  const skillReq = useRef(0);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
@@ -74,17 +78,53 @@ export function FunctionsPage() {
     }
   }
 
-  async function loadSkills() {
+  async function loadSkills(q = skillQuery) {
+    const req = ++skillReq.current;
     setSkillsLoading(true);
     try {
-      const j = await skillsApi.list();
+      const trimmed = q.trim();
+      const j = trimmed ? await skillsApi.search(trimmed) : await skillsApi.list();
+      if (req !== skillReq.current) return;
       setSkills(j.skills ?? []);
       setSkillsErr("");
     } catch (e) {
+      if (req !== skillReq.current) return;
       setSkills([]);
       setSkillsErr(formatPublicError(e));
     } finally {
-      setSkillsLoading(false);
+      if (req === skillReq.current) setSkillsLoading(false);
+    }
+  }
+
+  async function createSkill() {
+    const name = skillName.trim();
+    if (!/^[a-z0-9_-]{1,64}$/.test(name)) {
+      setSkillsErr(t("functions.skills.needName"));
+      return;
+    }
+    if (!skillBody.trim()) {
+      setSkillsErr(t("functions.skills.needBody"));
+      return;
+    }
+    try {
+      await skillsApi.create({ name, body: skillBody });
+      setSkillName("");
+      setSkillBody("");
+      setSkillsErr("");
+      await loadSkills();
+    } catch (e) {
+      setSkillsErr(formatPublicError(e));
+    }
+  }
+
+  async function deleteSkill(name: string) {
+    if (!window.confirm(t("functions.skills.confirmDelete"))) return;
+    try {
+      await skillsApi.remove(name);
+      setSkillsErr("");
+      await loadSkills();
+    } catch (e) {
+      setSkillsErr(formatPublicError(e));
     }
   }
 
@@ -331,6 +371,44 @@ export function FunctionsPage() {
       <Card>
         <CardHeader icon="doc" title={t("functions.skills")} meta={t("functions.skills.meta", { n: skills.length })} />
         {skillsErr ? <StatusLine kind="error">{skillsErr}</StatusLine> : null}
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+            {t("functions.skills.search")}
+            <input
+              className="z-field"
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+              value={skillQuery}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSkillQuery(v);
+                void loadSkills(v);
+              }}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
+              {t("functions.skills.name")}
+              <input
+                className="z-field"
+                style={{ display: "block", width: "100%", marginTop: 4 }}
+                value={skillName}
+                onChange={(e) => setSkillName(e.target.value)}
+              />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "2 1 240px" }}>
+              {t("functions.skills.body")}
+              <textarea
+                className="z-field"
+                style={{ display: "block", width: "100%", marginTop: 4, minHeight: 64, fontFamily: "var(--font-mono, monospace)" }}
+                value={skillBody}
+                onChange={(e) => setSkillBody(e.target.value)}
+              />
+            </label>
+            <Button variant="primary" onClick={() => void createSkill()}>
+              {t("functions.skills.create")}
+            </Button>
+          </div>
+        </div>
         <TableScroll>
         <div
           style={{
@@ -343,16 +421,22 @@ export function FunctionsPage() {
             color: "var(--text-3)",
           }}
         >
-          <span style={{ flex: 1.4 }}>{t("functions.skills.col.name")}</span>
-          <span style={{ flex: 2 }}>{t("functions.skills.col.path")}</span>
+          <span style={{ flex: 1.2 }}>{t("functions.skills.col.name")}</span>
+          <span style={{ flex: 1.6 }}>{skillQuery.trim() ? t("functions.skills.col.snippet") : t("functions.skills.col.path")}</span>
+          <span style={{ flex: 0.6 }} />
         </div>
         {skills.map((s) => (
           <div
             key={s.name}
-            style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}
+            style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8 }}
           >
-            <span style={{ flex: 1.4, fontWeight: 600 }}>{s.name}</span>
-            <span style={{ flex: 2, color: "var(--text-2)" }}>{s.path}</span>
+            <span style={{ flex: 1.2, fontWeight: 600 }}>{s.name}</span>
+            <span style={{ flex: 1.6, color: "var(--text-2)" }}>{skillQuery.trim() ? s.snippet ?? "" : s.path ?? ""}</span>
+            <span style={{ flex: 0.6, textAlign: "right" }}>
+              <Button variant="ghost" onClick={() => void deleteSkill(s.name)}>
+                {t("common.delete")}
+              </Button>
+            </span>
           </div>
         ))}
         {skillsLoading ? <StatusLine kind="loading" /> : null}

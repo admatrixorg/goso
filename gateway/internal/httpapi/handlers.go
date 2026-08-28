@@ -133,6 +133,8 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
 
 	aliasAPI(mux, "GET /api/skills", handleListSkills())
+	aliasAPI(mux, "POST /api/skills", handleCreateSkill())
+	aliasAPI(mux, "DELETE /api/skills/{name}", handleDeleteSkill())
 
 	registerTeamRoutes(mux, st)
 

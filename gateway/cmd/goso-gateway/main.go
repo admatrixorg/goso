@@ -81,7 +81,7 @@ Environment:
   GOSO_LLM_PROVIDER        Force Preferred() name when that provider exists
   GOSO_WEB_SEARCH          ddg or 1 = DuckDuckGo Instant Answer for builtin web_search (empty = not_configured)
   GOSO_MEDIA / GOSO_MEDIA_* 1 = media stubs may run only with an injected test double (never a paid API)
-  GOSO_SKILLS_DIR          One-level SKILL.md folders for builtin use_skill; empty = fail-closed
+  GOSO_SKILLS_DIR          One-level SKILL.md folders for use_skill / skill_search / POST-DELETE /api/skills; empty = fail-closed
   GOSO_CONTEXT_DIR         Direct children SOUL.md IDENTITY.md AGENTS.md (optional USER.md); empty = no inject
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)

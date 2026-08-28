@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
@@ -16,7 +17,7 @@ import (
 
 func TestCatalog_Tools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 12 {
+	if len(got) != 13 {
 		t.Fatalf("len %d", len(got))
 	}
 	byName := map[string]Spec{}
@@ -25,7 +26,7 @@ func TestCatalog_Tools(t *testing.T) {
 	}
 	want := []string{
 		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
-		ToolUseSkill, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
+		ToolUseSkill, ToolSkillSearch, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
 	}
 	for _, n := range want {
 		if !IsName(n) {
@@ -35,8 +36,8 @@ func TestCatalog_Tools(t *testing.T) {
 			t.Fatalf("missing %s", n)
 		}
 	}
-	if byName[ToolWebSearch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolReadFile].RequiresApproval {
-		t.Fatal("web_search/use_skill/read_file must not require approval")
+	if byName[ToolWebSearch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolSkillSearch].RequiresApproval || byName[ToolReadFile].RequiresApproval {
+		t.Fatal("web_search/use_skill/skill_search/read_file must not require approval")
 	}
 	if byName[ToolListFiles].RequiresApproval || byName[ToolSendFile].RequiresApproval {
 		t.Fatal("list_files/send_file must not require approval")
@@ -69,7 +70,7 @@ func TestInvoke_UnconfiguredNoNetwork(t *testing.T) {
 	t.Setenv("GOSO_MEDIA", "")
 	for _, name := range []string{
 		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
-		ToolUseSkill, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
+		ToolUseSkill, ToolSkillSearch, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
 	} {
 		res, err := Invoke(context.Background(), name, map[string]any{"q": "goso"}, false)
 		if err != nil {
@@ -303,6 +304,44 @@ func TestInvoke_UseSkillEmptyEnv(t *testing.T) {
 	res, err := Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "demo"}, true)
 	if err != nil || res == nil || res.Status != "not_configured" {
 		t.Fatalf("%v %+v", err, res)
+	}
+	res, err = Invoke(context.Background(), ToolSkillSearch, map[string]any{"query": "demo"}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("skill_search %v %+v", err, res)
+	}
+}
+
+func TestInvoke_SkillSearchTempDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "invoices"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "invoices", "SKILL.md"), []byte("---\ndescription: vendor invoices\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "weather"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "weather", "SKILL.md"), []byte("---\ndescription: rain forecast\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	res, err := Invoke(context.Background(), ToolSkillSearch, map[string]any{"query": "invoices"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	raw, _ := json.Marshal(res.Content)
+	if !strings.Contains(string(raw), `"name":"invoices"`) {
+		t.Fatalf("hits %s", raw)
+	}
+	res, err = Invoke(context.Background(), ToolSkillSearch, map[string]any{"query": "  "}, false)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("empty q %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "query is required" {
+		t.Fatalf("empty q content %+v", m)
 	}
 }
 
