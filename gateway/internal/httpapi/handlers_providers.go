@@ -26,8 +26,23 @@ func registerProviderRoutes(mux *http.ServeMux, opt Options) {
 
 func handleListProviders(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"providers": mergeProviderInfos(opt)})
+		writeJSON(w, http.StatusOK, map[string]any{"providers": mergeProviderInfosTenant(opt, requestTenant(r))})
 	}
+}
+
+func mergeProviderInfosTenant(opt Options, tid string) []llm.ProviderInfo {
+	all := mergeProviderInfos(opt)
+	out := make([]llm.ProviderInfo, 0, len(all))
+	for _, inf := range all {
+		if inf.Source == llm.SourceSQLite && opt.Store != nil {
+			row, err := opt.Store.GetLLMProvider(inf.Name)
+			if err != nil || row == nil || !store.SameTenant(row.TenantID, tid) {
+				continue
+			}
+		}
+		out = append(out, inf)
+	}
+	return out
 }
 
 func mergeProviderInfos(opt Options) []llm.ProviderInfo {
@@ -130,7 +145,7 @@ func handleCreateProvider(opt Options) http.HandlerFunc {
 			}
 		}
 		row, err := opt.Store.CreateLLMProvider(store.LLMProvider{
-			Name: body.Name, Type: body.Type, BaseURL: body.BaseURL, Model: body.Model,
+			Name: body.Name, TenantID: requestTenant(r), Type: body.Type, BaseURL: body.BaseURL, Model: body.Model,
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrExists) {
@@ -172,6 +187,9 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 				return
 			}
 			writeErr(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		if hideWrongTenant(w, cur.TenantID, requestTenant(r)) {
 			return
 		}
 		if reg.Has(name) {
@@ -270,7 +288,7 @@ func handleTestProvider(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, `kind must be "models" or "chat"`)
 			return
 		}
-		p, ok := resolveProvider(opt, name)
+		p, ok := resolveProvider(opt, name, requestTenant(r))
 		if !ok {
 			writeErr(w, http.StatusNotFound, "provider not found")
 			return
@@ -281,7 +299,7 @@ func handleTestProvider(opt Options) http.HandlerFunc {
 	}
 }
 
-func resolveProvider(opt Options, name string) (llm.Provider, bool) {
+func resolveProvider(opt Options, name, tid string) (llm.Provider, bool) {
 	reg := opt.LLM
 	if reg == nil {
 		reg = llm.NewRegistry()
@@ -293,7 +311,7 @@ func resolveProvider(opt Options, name string) (llm.Provider, bool) {
 		return nil, false
 	}
 	row, err := opt.Store.GetLLMProvider(name)
-	if err != nil || row == nil {
+	if err != nil || row == nil || !store.SameTenant(row.TenantID, tid) {
 		return nil, false
 	}
 	key := ""

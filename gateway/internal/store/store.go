@@ -14,6 +14,7 @@ import (
 // Agent represents an AI agent.
 type Agent struct {
 	ID                string    `json:"id"`
+	TenantID          string    `json:"tenant_id"`
 	AgentKey          string    `json:"agent_key"`
 	DisplayName       string    `json:"display_name"`
 	Model             string    `json:"model,omitempty"`
@@ -32,6 +33,7 @@ const (
 // Team is a lead + members group with a shared board and mailbox.
 type Team struct {
 	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
 	Name        string    `json:"name"`
 	LeadAgentID string    `json:"lead_agent_id,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -80,6 +82,7 @@ type AgentMetrics struct {
 // Session represents a conversation session.
 type Session struct {
 	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
 	AgentID   string    `json:"agent_id"`
 	Label     string    `json:"label,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -116,6 +119,7 @@ const (
 // Memory is an L1 episodic (or caller-supplied) note.
 type Memory struct {
 	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
 	SessionID string    `json:"session_id"`
 	Kind      string    `json:"kind"`
 	Body      string    `json:"body"`
@@ -133,12 +137,13 @@ type SearchHit struct {
 // VaultDoc is a knowledge-vault registry row. Disk is source of truth after sync;
 // Body is an optional cache.
 type VaultDoc struct {
-	ID     string    `json:"id"`
-	Title  string    `json:"title"`
-	Path   string    `json:"path"`
-	SHA256 string    `json:"sha256"`
-	Mtime  time.Time `json:"mtime"`
-	Body   string    `json:"body,omitempty"`
+	ID       string    `json:"id"`
+	TenantID string    `json:"tenant_id"`
+	Title    string    `json:"title"`
+	Path     string    `json:"path"`
+	SHA256   string    `json:"sha256"`
+	Mtime    time.Time `json:"mtime"`
+	Body     string    `json:"body,omitempty"`
 }
 
 // VaultLink is one [[wikilink]] edge. ToID is empty until the target resolves.
@@ -180,16 +185,18 @@ type SecretRow struct {
 
 // LLMProvider is a persisted LLM connection (no api_key).
 type LLMProvider struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	BaseURL string `json:"base_url"`
-	Model   string `json:"model"`
+	Name     string `json:"name"`
+	TenantID string `json:"tenant_id"`
+	Type     string `json:"type"`
+	BaseURL  string `json:"base_url"`
+	Model    string `json:"model"`
 }
 
 // Webhook is a persisted inbound webhook row. HMACEnc is ciphertext (or empty
 // when GOSO_MASTER_KEY is unset — hashed-only / in-process HMAC).
 type Webhook struct {
 	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
 	Name        string    `json:"name,omitempty"`
 	Kind        string    `json:"kind,omitempty"`
 	AgentID     string    `json:"agent_id,omitempty"`
@@ -353,6 +360,9 @@ type Store struct {
 var _ StoreIface = (*Store)(nil)
 
 func Open(path string) (StoreIface, func() error, error) {
+	if err := RefusePostgres(path); err != nil {
+		return nil, nil, err
+	}
 	if path == "" || path == ":memory:" {
 		s := New()
 		return s, func() error { return nil }, nil
@@ -461,10 +471,19 @@ func (s *Store) CreateAgent(a Agent) (*Agent, error) {
 	if a.AgentKey == "" {
 		return nil, errors.New("agent_key is required")
 	}
+	a.TenantID = NormalizeTenant(a.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if LiteEnabled() && len(s.agents) >= LiteMaxAgents {
-		return nil, ErrLiteCap
+	if LiteEnabled() {
+		n := 0
+		for _, v := range s.agents {
+			if SameTenant(v.TenantID, a.TenantID) {
+				n++
+			}
+		}
+		if n >= LiteMaxAgents {
+			return nil, ErrLiteCap
+		}
 	}
 	for _, v := range s.agents {
 		if v.AgentKey == a.AgentKey {
@@ -529,9 +548,14 @@ func (s *Store) CreateSession(sess Session) (*Session, error) {
 	if sess.AgentID == "" {
 		return nil, errors.New("agent_id is required")
 	}
+	sess.TenantID = NormalizeTenant(sess.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.agents[sess.AgentID]; !ok {
+	ag, ok := s.agents[sess.AgentID]
+	if !ok {
+		return nil, errors.New("agent not found")
+	}
+	if !SameTenant(ag.TenantID, sess.TenantID) {
 		return nil, errors.New("agent not found")
 	}
 	sess.ID = s.nextID()
@@ -747,9 +771,14 @@ func (s *Store) PutMemory(m Memory) (*Memory, error) {
 	if m.Kind == "" {
 		m.Kind = KindEpisodic
 	}
+	m.TenantID = NormalizeTenant(m.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[m.SessionID]; !ok {
+	sess, ok := s.sessions[m.SessionID]
+	if !ok {
+		return nil, errors.New("session not found")
+	}
+	if !SameTenant(sess.TenantID, m.TenantID) {
 		return nil, errors.New("session not found")
 	}
 	m.ID = s.nextID()
@@ -786,7 +815,8 @@ func (s *Store) SaveSummary(sessionID, body string) (*Memory, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[sessionID]; !ok {
+	sess, ok := s.sessions[sessionID]
+	if !ok {
 		return nil, errors.New("session not found")
 	}
 	list := s.memories[sessionID]
@@ -800,6 +830,7 @@ func (s *Store) SaveSummary(sessionID, body string) (*Memory, error) {
 	}
 	m := Memory{
 		ID:        s.nextID(),
+		TenantID:  NormalizeTenant(sess.TenantID),
 		SessionID: sessionID,
 		Kind:      KindEpisodic,
 		Body:      body,

@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { api, TENANT_STORAGE_KEY, type TenantInfo } from "../api/client";
 import { backupApi, type BackupFile } from "../api/backup";
 import { crmOrgId } from "../api/crm";
+import { isDemoMode } from "../demo/mode";
 import {
   settingsApi,
   type SettingsAccount,
@@ -45,6 +47,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [tplName, setTplName] = useState("");
   const [tplBody, setTplBody] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [gwTenant, setGwTenant] = useState<TenantInfo>({ tenant: "default", multi_tenant: false });
+  const [tenantInput, setTenantInput] = useState("default");
 
   const menu: { group: string; items: { id: PageId; label: string; ic: IconName }[] }[] = [
     {
@@ -93,6 +97,18 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         const a = await settingsApi.getAccount(id);
         setAccount(a);
         setDisplayName(a.displayName ?? "");
+        try {
+          const info = await api.tenant();
+          setGwTenant(info);
+          try {
+            const stored = localStorage.getItem(TENANT_STORAGE_KEY);
+            setTenantInput((stored && stored.trim()) || info.tenant || "default");
+          } catch {
+            setTenantInput(info.tenant || "default");
+          }
+        } catch {
+          setGwTenant({ tenant: "default", multi_tenant: false });
+        }
       } else if (page === "billing") {
         const d = await settingsApi.billing(id);
         setDeveloping(d.status || "developing");
@@ -191,6 +207,44 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 {account.displayName ? ` · ${account.displayName}` : ""}
               </div>
             ) : null}
+            <Card style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{t("settings.tenant")}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.tenant.desc")}</div>
+              <div style={{ fontSize: 13 }}>
+                {t("settings.tenant.current")}: <strong>{isDemoMode() || !gwTenant.multi_tenant ? "default" : gwTenant.tenant}</strong>
+              </div>
+              {gwTenant.multi_tenant && !isDemoMode() ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    className="z-field"
+                    aria-label={t("settings.tenant.header")}
+                    value={tenantInput}
+                    onChange={(e) => setTenantInput(e.target.value)}
+                    style={{ minWidth: 180, flex: 1 }}
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      const v = tenantInput.trim() || "default";
+                      try {
+                        localStorage.setItem(TENANT_STORAGE_KEY, v);
+                      } catch {
+                        /* ignore */
+                      }
+                      setTenantInput(v);
+                      void load();
+                    }}
+                  >
+                    {t("common.save")}
+                  </Button>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("settings.tenant.multi")}</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                  {isDemoMode() ? t("settings.tenant.readonly") : t("settings.tenant.single")}
+                </div>
+              )}
+            </Card>
             <Card>
               <CardHeader icon="lock" title={t("settings.account")} />
               <div style={{ padding: 16, fontSize: 13, color: "var(--text-2)", lineHeight: 1.6 }}>{t("settings.secretHint")}</div>

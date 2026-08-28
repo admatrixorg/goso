@@ -15,9 +15,10 @@ func (s *SQLiteStore) CreateTeam(t Team) (*Team, error) {
 	if t.Name == "" {
 		return nil, errors.New("name is required")
 	}
+	t.TenantID = NormalizeTenant(t.TenantID)
 	if LiteEnabled() {
 		var n int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM teams`).Scan(&n); err != nil {
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE tenant_id=?`, t.TenantID).Scan(&n); err != nil {
 			return nil, err
 		}
 		if n >= LiteMaxTeams {
@@ -35,8 +36,8 @@ func (s *SQLiteStore) CreateTeam(t Team) (*Team, error) {
 	}
 	t.ID = newID()
 	t.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO teams(id, name, lead_agent_id, created_at) VALUES(?,?,?,?)`,
-		t.ID, t.Name, t.LeadAgentID, formatTime(t.CreatedAt))
+	_, err := s.db.Exec(`INSERT INTO teams(id, name, lead_agent_id, created_at, tenant_id) VALUES(?,?,?,?,?)`,
+		t.ID, t.Name, t.LeadAgentID, formatTime(t.CreatedAt), t.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +50,7 @@ func (s *SQLiteStore) CreateTeam(t Team) (*Team, error) {
 }
 
 func (s *SQLiteStore) ListTeams() []*Team {
-	rows, err := s.db.Query(`SELECT id, name, lead_agent_id, created_at FROM teams ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, name, lead_agent_id, created_at, tenant_id FROM teams ORDER BY created_at`)
 	if err != nil {
 		return []*Team{}
 	}
@@ -69,7 +70,7 @@ func (s *SQLiteStore) ListTeams() []*Team {
 }
 
 func (s *SQLiteStore) GetTeam(id string) (*Team, error) {
-	row := s.db.QueryRow(`SELECT id, name, lead_agent_id, created_at FROM teams WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, name, lead_agent_id, created_at, tenant_id FROM teams WHERE id=?`, id)
 	t, err := scanTeam(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -83,11 +84,12 @@ func (s *SQLiteStore) GetTeam(id string) (*Team, error) {
 func scanTeam(sc scanner) (*Team, error) {
 	var t Team
 	var ts string
-	var lead sql.NullString
-	if err := sc.Scan(&t.ID, &t.Name, &lead, &ts); err != nil {
+	var lead, tenant sql.NullString
+	if err := sc.Scan(&t.ID, &t.Name, &lead, &ts, &tenant); err != nil {
 		return nil, err
 	}
 	t.LeadAgentID = lead.String
+	t.TenantID = NormalizeTenant(tenant.String)
 	t.CreatedAt = parseTime(ts)
 	return &t, nil
 }

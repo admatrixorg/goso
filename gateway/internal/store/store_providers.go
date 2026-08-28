@@ -27,6 +27,7 @@ func (s *Store) CreateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 	if p.Type == "" {
 		return nil, errors.New("type is required")
 	}
+	p.TenantID = NormalizeTenant(p.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.llmProviders[p.Name]; ok {

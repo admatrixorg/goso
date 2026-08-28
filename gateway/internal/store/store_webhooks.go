@@ -36,6 +36,7 @@ func (s *Store) CreateWebhook(w Webhook) (*Webhook, error) {
 	if w.TokenHash == "" {
 		return nil, errors.New("token_hash is required")
 	}
+	w.TenantID = NormalizeTenant(w.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if w.ID == "" {

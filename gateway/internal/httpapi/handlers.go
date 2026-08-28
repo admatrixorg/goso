@@ -102,6 +102,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version})
 	})
+	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
 	// Agents
 	mux.HandleFunc("POST /api/agents", handleCreateAgent(st))
@@ -175,6 +176,7 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		a, err := st.CreateAgent(store.Agent{
+			TenantID:          requestTenant(r),
 			AgentKey:          body.AgentKey,
 			DisplayName:       body.DisplayName,
 			Model:             body.Model,
@@ -200,7 +202,7 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 
 func handleListAgents(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list := st.ListAgents()
+		list := agentsInTenant(st.ListAgents(), requestTenant(r))
 		if list == nil {
 			list = []*store.Agent{}
 		}
@@ -211,7 +213,7 @@ func handleListAgents(st store.StoreIface) http.HandlerFunc {
 func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		a, err := st.GetAgent(id)
+		a, err := agentVisible(st, id, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
@@ -223,7 +225,7 @@ func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
-		cur, err := st.GetAgent(id)
+		cur, err := agentVisible(st, id, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
@@ -297,7 +299,12 @@ func handleCreateSession(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "agent_id is required")
 			return
 		}
-		sess, err := st.CreateSession(store.Session{AgentID: body.AgentID, Label: body.Label})
+		tid := requestTenant(r)
+		if _, err := agentVisible(st, body.AgentID, tid); err != nil {
+			writeErr(w, http.StatusBadRequest, "agent not found")
+			return
+		}
+		sess, err := st.CreateSession(store.Session{TenantID: tid, AgentID: body.AgentID, Label: body.Label})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -308,7 +315,7 @@ func handleCreateSession(st store.StoreIface) http.HandlerFunc {
 
 func handleListSessions(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list := st.ListSessions()
+		list := sessionsInTenant(st.ListSessions(), requestTenant(r))
 		if list == nil {
 			list = []*store.Session{}
 		}
@@ -319,6 +326,10 @@ func handleListSessions(st store.StoreIface) http.HandlerFunc {
 func handleAddMessage(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sid := r.PathValue("id")
+		if _, err := sessionVisible(st, sid, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusBadRequest, "session not found")
+			return
+		}
 		var body struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -346,6 +357,10 @@ func handleAddMessage(st store.StoreIface) http.HandlerFunc {
 func handleListMessages(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sid := r.PathValue("id")
+		if _, err := sessionVisible(st, sid, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
 		msgs, err := st.ListMessages(sid)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
@@ -430,7 +445,7 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 		if rejectInjectedChat(w, body.Message) {
 			return
 		}
-		sess, err := st.GetSession(body.SessionID)
+		sess, err := sessionVisible(st, body.SessionID, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
@@ -466,7 +481,7 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 		if rejectInjectedChat(w, body.Message) {
 			return
 		}
-		sess, err := st.GetSession(body.SessionID)
+		sess, err := sessionVisible(st, body.SessionID, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
