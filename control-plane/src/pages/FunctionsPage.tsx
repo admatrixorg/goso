@@ -28,6 +28,7 @@ export function FunctionsPage() {
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsErr, setSkillsErr] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [cronLoading, setCronLoading] = useState(true);
   const [cronErr, setCronErr] = useState("");
@@ -89,17 +90,21 @@ export function FunctionsPage() {
 
   async function loadCron() {
     setCronLoading(true);
-    try {
-      const [jobs, sess] = await Promise.all([cronApi.list(), api.listSessions()]);
-      setCronJobs(jobs.jobs ?? []);
-      setSessions(sess.sessions ?? []);
-      setCronErr("");
-    } catch (e) {
+    const [jobsRes, sessRes] = await Promise.allSettled([cronApi.list(), api.listSessions()]);
+    if (jobsRes.status === "fulfilled") {
+      setCronJobs(jobsRes.value.jobs ?? []);
+    } else {
       setCronJobs([]);
-      setCronErr(formatPublicError(e));
-    } finally {
-      setCronLoading(false);
     }
+    if (sessRes.status === "fulfilled") {
+      setSessions(sessRes.value.sessions ?? []);
+      setSessionsLoaded(true);
+    } else {
+      setSessionsLoaded(false);
+    }
+    const fail = jobsRes.status === "rejected" ? jobsRes.reason : sessRes.status === "rejected" ? sessRes.reason : null;
+    setCronErr(fail ? formatPublicError(fail) : "");
+    setCronLoading(false);
   }
 
   useEffect(() => {
@@ -134,7 +139,11 @@ export function FunctionsPage() {
   }
 
   async function saveConnector() {
-    if (!connName) return;
+    setErr("");
+    if (!connName.trim()) {
+      setErr(t("functions.needConnector"));
+      return;
+    }
     try {
       const body: { endpoint?: string; token?: string } = { endpoint };
       if (token.trim()) body.token = token.trim();
@@ -147,9 +156,25 @@ export function FunctionsPage() {
   }
 
   async function createCron() {
-    if (!cronSpec.trim() || !cronSession || !cronMessage.trim()) return;
+    setCronErr("");
+    if (!cronSpec.trim()) {
+      setCronErr(t("functions.cron.needSpec"));
+      return;
+    }
+    if (sessionsLoaded && sessions.length === 0) {
+      setCronErr(t("functions.cron.noSessions"));
+      return;
+    }
+    if (!cronSession.trim()) {
+      setCronErr(t("functions.cron.needSession"));
+      return;
+    }
+    if (!cronMessage.trim()) {
+      setCronErr(t("functions.cron.needMessage"));
+      return;
+    }
     try {
-      await cronApi.create({ spec: cronSpec.trim(), session_id: cronSession, message: cronMessage.trim() });
+      await cronApi.create({ spec: cronSpec.trim(), session_id: cronSession.trim(), message: cronMessage.trim() });
       setCronMessage("");
       setCronErr("");
       await loadCron();
@@ -159,6 +184,7 @@ export function FunctionsPage() {
   }
 
   async function deleteCron(id: string) {
+    if (!window.confirm(t("functions.cron.confirmDelete"))) return;
     try {
       await cronApi.remove(id);
       setCronErr("");
@@ -286,13 +312,13 @@ export function FunctionsPage() {
                 />
               </label>
               <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("functions.tokenHint")}</p>
-              <div>
-                <Button variant="primary" onClick={() => void saveConnector()}>
-                  {t("functions.saveConnector")}
-                </Button>
-              </div>
             </>
           ) : null}
+          <div>
+            <Button variant="primary" onClick={() => void saveConnector()}>
+              {t("functions.saveConnector")}
+            </Button>
+          </div>
           {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
         </div>
       </Card>
@@ -331,6 +357,7 @@ export function FunctionsPage() {
         <CardHeader icon="timer" title={t("functions.cron")} meta={t("functions.cron.meta", { n: cronJobs.length })} />
         {cronErr ? <StatusLine kind="error">{cronErr}</StatusLine> : null}
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          {!cronLoading && sessionsLoaded && sessions.length === 0 ? <EmptyState>{t("functions.cron.noSessions")}</EmptyState> : null}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
               {t("functions.cron.spec")}
@@ -382,6 +409,7 @@ export function FunctionsPage() {
           <span style={{ flex: 1.2 }}>{t("functions.cron.col.session")}</span>
           <span style={{ flex: 1.6 }}>{t("functions.cron.col.message")}</span>
           <span style={{ flex: 1 }}>{t("functions.cron.col.last")}</span>
+          <span style={{ flex: 0.7 }}>{t("functions.cron.col.enabled")}</span>
           <span style={{ flex: 0.6 }} />
         </div>
         {cronJobs.map((job) => (
@@ -393,6 +421,13 @@ export function FunctionsPage() {
             <span style={{ flex: 1.2, color: "var(--text-2)" }}>{job.session_id}</span>
             <span style={{ flex: 1.6, color: "var(--text-2)" }}>{job.message}</span>
             <span style={{ flex: 1, color: "var(--text-3)" }}>{job.last_run || "—"}</span>
+            <span style={{ flex: 0.7 }}>
+              {typeof job.enabled === "boolean" ? (
+                <Badge tone={job.enabled ? "positive" : "neutral"}>{job.enabled ? t("common.enabled") : t("common.disabled")}</Badge>
+              ) : (
+                "—"
+              )}
+            </span>
             <span style={{ flex: 0.6, textAlign: "right" }}>
               <Button variant="ghost" onClick={() => void deleteCron(job.id)}>
                 {t("common.delete")}
