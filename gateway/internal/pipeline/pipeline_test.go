@@ -74,14 +74,29 @@ func TestIsOrchestrationTool(t *testing.T) {
 	if IsOrchestrationTool("memory_search") || IsOrchestrationTool("memory_expand") {
 		t.Fatal("memory tools are not orchestration")
 	}
+	if IsOrchestrationTool("sessions_list") || IsOrchestrationTool("sessions_history") {
+		t.Fatal("session tools are not orchestration")
+	}
 }
 
 func TestIsMemoryTool(t *testing.T) {
 	if !IsMemoryTool("memory_search") || !IsMemoryTool("memory_expand") {
 		t.Fatal("expected memory tool names")
 	}
-	if IsMemoryTool("delegate") || IsMemoryTool("zalocrm__contact_search") {
+	if IsMemoryTool("delegate") || IsMemoryTool("zalocrm__contact_search") || IsMemoryTool("sessions_list") {
 		t.Fatal("non-memory names")
+	}
+}
+
+func TestIsSessionTool(t *testing.T) {
+	if !IsSessionTool("sessions_list") || !IsSessionTool("sessions_history") {
+		t.Fatal("expected session tool names")
+	}
+	if !IsSessionTool("builtin__sessions_list") {
+		t.Fatal("advertised session tool")
+	}
+	if IsSessionTool("delegate") || IsSessionTool("memory_search") || IsSessionTool("zalocrm__contact_search") {
+		t.Fatal("non-session names")
 	}
 }
 

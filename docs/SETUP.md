@@ -94,6 +94,8 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_MULTI_TENANT | (off) | `1` honors `X-Goso-Tenant` (admin token required for non-default). Unset/demo = always `default`. |
 | GOSO_KG_EXTRACT | (off) | `1` may insert an L2 entity from assistant lines `Name:` / `Entity:` after chat. Default off so demo chat is unchanged. Tests use `POST /api/kg/entities`. |
 | GOSO_EVOLUTION_AUTO | (off) | `1` starts an in-process 1-minute ticker that calls `POST`-equivalent tick per agent. Each agent still needs `auto_adapt=true` (default false). Default off so demo is unchanged. Name/key never auto-change. |
+| GOSO_HEARTBEAT | (off) | `1` starts an in-process ticker that stamps `last_heartbeat` (RFC3339 UTC) on `GET /api/stats`. Default **off**. Application-level stamp, not WebSocket ping. Does not run HEARTBEAT.md or channel delivery. |
+| GOSO_HEARTBEAT_INTERVAL_SEC | 60 | Seconds between stamps when `GOSO_HEARTBEAT=1`. Values below **30** clamp to 30s. |
 | GOSO_BACKUP_DIR | `./var/backups` | Directory for `VACUUM INTO` snapshots (SPEC 070). Empty `GOSO_DB_PATH` cannot be snapshotted. |
 | GOSO_VAULT_DIR | `data/vault` | Thư mục markdown/text knowledge vault (`*.md` `*.txt`). Optional `TEAM.md` is prepended to the team system note (SPEC 038). |
 | GOSO_LITE | (off) | `1` caps **5 agents** and **1 team** (SPEC 038). Control-plane Channels page shows one-line “Lite: channels off” (SPEC 055); `GET /api/channels` still lists adapters with `"lite": true`. 6th `POST /api/agents` and 2nd team → 400. |

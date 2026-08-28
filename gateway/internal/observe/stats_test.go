@@ -39,6 +39,49 @@ func TestHandleStatsAndMetrics(t *testing.T) {
 	if s.StartedAt == "" {
 		t.Fatal("missing started_at")
 	}
+	var raw map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["last_heartbeat"]; ok {
+		t.Fatalf("default stats must omit last_heartbeat %#v", raw)
+	}
+
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/system/heartbeat", strings.NewReader("{}")))
+	if w.Code != 200 {
+		t.Fatalf("heartbeat %d %s", w.Code, w.Body.String())
+	}
+	var hb map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &hb); err != nil {
+		t.Fatal(err)
+	}
+	stamp, _ := hb["last_heartbeat"].(string)
+	if hb["ok"] != true || stamp == "" {
+		t.Fatalf("heartbeat body %#v", hb)
+	}
+	if _, err := time.Parse(time.RFC3339, stamp); err != nil {
+		t.Fatalf("rfc3339 %q %v", stamp, err)
+	}
+
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/stats", nil))
+	if w.Code != 200 {
+		t.Fatalf("stats after heartbeat %d", w.Code)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.LastHeartbeat != stamp {
+		t.Fatalf("stats last_heartbeat %q want %q", s.LastHeartbeat, stamp)
+	}
+
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "/v1/system/heartbeat", nil))
+	if w.Code != 200 {
+		t.Fatalf("v1 heartbeat %d %s", w.Code, w.Body.String())
+	}
+
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/metrics", nil))
 	if w.Code != 200 {

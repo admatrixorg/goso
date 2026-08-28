@@ -28,6 +28,7 @@ export const en: Record<MsgKey, string> = {
   "chrome.gateway.degraded": "degraded",
   "chrome.gateway.offline": "offline",
   "chrome.gateway.unauthorized": "unauthorized",
+  "chrome.gateway.heartbeat": "last heartbeat {at}",
   "chrome.dark": "Dark",
   "chrome.light": "Light",
   "chrome.nav": "Navigation",

@@ -51,16 +51,31 @@ const (
 	ToolMemoryExpand = "memory_expand"
 )
 
-// IsMemoryTool reports memory_search / memory_expand (no connector).
-func IsMemoryTool(name string) bool {
+func advertisedBase(name string) string {
 	n := strings.TrimSpace(name)
 	if i := strings.Index(n, "__"); i > 0 {
-		n = n[i+2:]
-	} else if i := strings.Index(n, "."); i > 0 {
-		n = n[i+1:]
+		return n[i+2:]
 	}
-	switch n {
+	if i := strings.Index(n, "."); i > 0 {
+		return n[i+1:]
+	}
+	return n
+}
+
+// IsMemoryTool reports memory_search / memory_expand (no connector).
+func IsMemoryTool(name string) bool {
+	switch advertisedBase(name) {
 	case ToolMemorySearch, ToolMemoryExpand:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsSessionTool reports sessions_list / sessions_history (no connector).
+func IsSessionTool(name string) bool {
+	switch advertisedBase(name) {
+	case ToolSessionsList, ToolSessionsHistory:
 		return true
 	default:
 		return false

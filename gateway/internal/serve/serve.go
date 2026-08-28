@@ -19,6 +19,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
+	"github.com/mqglobal/goso/gateway/internal/heartbeat"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
@@ -124,6 +125,9 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	obs.Register(mux)
 	if !testing.Testing() {
 		go cron.Loop(context.Background(), st, httpapi.FireSessionChat(rt, st, provider, meter))
+		if heartbeat.Enabled() {
+			go heartbeat.Loop(context.Background(), obs)
+		}
 		if team.AutoEnabled() {
 			go team.Loop(context.Background(), st)
 		}

@@ -10,11 +10,13 @@ import (
 )
 
 // Stats is a JSON snapshot of process counters (SPEC 008 AC-03).
+// LastHeartbeat is omitted until POST /api/system/heartbeat or the optional ticker fires.
 type Stats struct {
 	UptimeSeconds int64  `json:"uptime_seconds"`
 	StartedAt     string `json:"started_at"`
 	RequestCount  int64  `json:"request_count"`
 	LLMCallCount  int64  `json:"llm_call_count"`
+	LastHeartbeat string `json:"last_heartbeat,omitempty"`
 }
 
 // Snapshot returns current uptime and counters.
@@ -33,6 +35,7 @@ func (o *Observer) Snapshot() Stats {
 		StartedAt:     started.Format(time.RFC3339),
 		RequestCount:  o.reqs.Load(),
 		LLMCallCount:  o.llms.Load(),
+		LastHeartbeat: o.LastHeartbeat(),
 	}
 }
 
@@ -40,6 +43,19 @@ func (o *Observer) Snapshot() Stats {
 func (o *Observer) HandleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(o.Snapshot())
+}
+
+// HandleHeartbeat serves POST /api/system/heartbeat. Request body is ignored (idempotent no-op).
+func (o *Observer) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if o == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "observer required"})
+		return
+	}
+	o.RecordHeartbeat(time.Now().UTC())
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "last_heartbeat": o.LastHeartbeat()})
 }
 
 // HandleMetrics serves GET /metrics as Prometheus text exposition (minimal).

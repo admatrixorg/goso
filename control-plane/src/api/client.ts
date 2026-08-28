@@ -83,6 +83,44 @@ export async function probeHealthz(signal?: AbortSignal): Promise<{ status: numb
   }
 }
 
+/** GET /api/stats without throwing — used by chrome for optional last_heartbeat. */
+export async function probeStats(signal?: AbortSignal): Promise<{ lastHeartbeat: string }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), HEALTH_TIMEOUT_MS);
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timer);
+      return { lastHeartbeat: "" };
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+  try {
+    const res = await fetch(`${base()}/api/stats`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { ...authHeader(), ...tenantHeader() },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      try {
+        await res.text();
+      } catch {
+        /* ignore */
+      }
+      return { lastHeartbeat: "" };
+    }
+    const body = (await res.json()) as { last_heartbeat?: unknown };
+    const raw = typeof body.last_heartbeat === "string" ? body.last_heartbeat.trim() : "";
+    return { lastHeartbeat: raw };
+  } catch {
+    return { lastHeartbeat: "" };
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export type ChatReply = { reply: string; session_id: string; trace?: unknown[] };
 export type ChatBody = { session_id: string; message: string; prompt_mode?: string };
 

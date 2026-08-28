@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { probeHealthz } from "../api/client";
+import { probeHealthz, probeStats } from "../api/client";
 import { healthKind, type HealthKind } from "../api/health";
 import { useI18n, type MsgKey } from "../i18n";
 
@@ -23,6 +23,7 @@ function kindColor(kind: HealthKind | null): string {
 export function GatewayStatus() {
   const { t } = useI18n();
   const [kind, setKind] = useState<HealthKind | null>(null);
+  const [lastHeartbeat, setLastHeartbeat] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -31,10 +32,11 @@ export function GatewayStatus() {
     const ac = new AbortController();
 
     const run = async () => {
-      const { status, ok } = await probeHealthz(ac.signal);
+      const [{ status, ok }, stats] = await Promise.all([probeHealthz(ac.signal), probeStats(ac.signal)]);
       if (cancelled) return;
       const next = healthKind(status, ok);
       setKind(next);
+      setLastHeartbeat(stats.lastHeartbeat);
       const wait = next === "connected" ? MAX_MS : backoff;
       backoff = next === "connected" ? MIN_MS : Math.min(MAX_MS, backoff * 2);
       timer = setTimeout(run, wait);
@@ -48,12 +50,16 @@ export function GatewayStatus() {
   }, []);
 
   const pulse = kind === "connected";
-  const label = kind ? `${t("chrome.gateway")} · ${t(KIND_KEY[kind])}` : t("chrome.gateway");
+  let label = kind ? `${t("chrome.gateway")} · ${t(KIND_KEY[kind])}` : t("chrome.gateway");
+  if (lastHeartbeat) {
+    label = `${label} · ${t("chrome.gateway.heartbeat", { at: lastHeartbeat })}`;
+  }
 
   return (
     <div
       className="z-gateway"
       data-health={kind ?? "checking"}
+      data-last-heartbeat={lastHeartbeat || undefined}
       aria-live="polite"
       style={{
         display: "flex",
