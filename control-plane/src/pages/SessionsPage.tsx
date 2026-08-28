@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { api, type Agent, type Session } from "../api/client";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -187,6 +187,7 @@ export const SessionsPage = forwardRef<
       </Card>
       <Card>
         <CardHeader icon="msg" title={t("sessions.open")} meta={t("sessions.meta", { n: sessions.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2.4 }}>{t("sessions.col.session")}</span>
           <span style={{ flex: 2 }}>{t("sessions.col.agent")}</span>
@@ -211,6 +212,7 @@ export const SessionsPage = forwardRef<
           </div>
         ))}
         {loading ? <StatusLine kind="loading" /> : sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
     </div>
   );

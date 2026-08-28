@@ -3,7 +3,7 @@ import { api, type GatewayEvent } from "../api/client";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -62,6 +62,7 @@ export function EventsPage() {
       </div>
       <Card>
         <CardHeader icon="pulse" title={t("events.list")} meta={t("events.meta", { n: events.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.4 }}>{t("events.col.ts")}</span>
           <span style={{ flex: 1.1 }}>{t("events.col.kind")}</span>
@@ -81,6 +82,7 @@ export function EventsPage() {
           </div>
         ))}
         {loading ? <StatusLine kind="loading" /> : events.length === 0 ? <EmptyState>{t("events.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
     </div>
   );

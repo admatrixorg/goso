@@ -46,5 +46,5 @@
   --bar-h: 5px;             /* meter inside a table row */
   --bar-h-lg: 7px;          /* meter in a list */
   --heat-cell: 26px;
-  --view-min-width: 1280px; /* the console does not reflow below this */
+  --view-min-width: 0; /* shell reflows; sidebar collapses below 900px */
 }

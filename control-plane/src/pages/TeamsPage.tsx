@@ -228,7 +228,7 @@ export function TeamsPage() {
           ))}
         </select>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" }}>
+      <div className="z-team-split">
         <Card>
           <CardHeader icon="layers" title={t("teams.list")} meta={t("teams.meta", { n: teams.length })} />
           {teams.map((tm) => {

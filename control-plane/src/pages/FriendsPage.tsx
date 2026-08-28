@@ -7,8 +7,8 @@ import { friends } from "../demo/mock";
 export function FriendsPage() {
   const { d } = useDemoT();
   return (
-    <div style={{ display: "flex", height: "100%", background: "var(--card)" }}>
-      <div style={{ width: 230, flex: "none", borderRight: "1px solid var(--border)", padding: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+    <div className="z-split-stack" style={{ height: "100%", background: "var(--card)" }}>
+      <div className="z-split-rail" style={{ width: 230, borderRight: "1px solid var(--border)", padding: 12, display: "flex", flexDirection: "column", gap: 9 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, fontWeight: 700, letterSpacing: ".5px", color: "var(--text-2)" }}>
           {d("friends.nicks")} <DemoBadge />
         </div>

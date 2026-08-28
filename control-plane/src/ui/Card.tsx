@@ -8,11 +8,20 @@ export function Card({ children, style, ...rest }: { children?: ReactNode } & HT
         background: "var(--card)",
         border: "var(--border-card)",
         borderRadius: "var(--radius-card)",
+        minWidth: 0,
         ...style,
       }}
       {...rest}
     >
       {children}
+    </div>
+  );
+}
+
+export function TableScroll({ children }: { children?: ReactNode }) {
+  return (
+    <div className="z-scroll-x">
+      <div className="z-row-table">{children}</div>
     </div>
   );
 }

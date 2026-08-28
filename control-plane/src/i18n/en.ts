@@ -26,6 +26,7 @@ export const en: Record<MsgKey, string> = {
   "chrome.gateway": "Gateway",
   "chrome.dark": "Dark",
   "chrome.light": "Light",
+  "chrome.nav": "Navigation",
   "palette.title": "Jump to",
   "palette.empty": "No matching tabs.",
   "palette.hint": "Enter to open · Esc to close",
