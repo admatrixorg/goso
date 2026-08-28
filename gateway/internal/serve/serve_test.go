@@ -229,6 +229,29 @@ func TestViewToken_GETOnly(t *testing.T) {
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("view POST chat %d %s", rr.Code, rr.Body.String())
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/system/backup", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view GET backup %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/system/backup", strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST backup %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/system/backup", strings.NewReader("{}"))
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("no token POST backup %d %s", rr.Code, rr.Body.String())
+	}
 }
 
 func TestMaxBytesReader_API(t *testing.T) {

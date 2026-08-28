@@ -36,14 +36,14 @@ Tag semver `vMAJOR.MINOR.PATCH`. GitHub Release: dán phần CHANGELOG của ver
 
 - [ ] CI trên tag/main vẫn xanh.
 - [ ] Smoke: `make build && ./bin/goso-gateway version`.
-- [ ] Runbook: backup SQLite trước khi deploy lên môi trường có dữ liệu.
+- [ ] Runbook: `POST /api/system/backup` (VACUUM INTO) trước khi deploy lên môi trường có dữ liệu.
 - [ ] Xoay token nếu bản release lộ env mẫu (không được).
 - [ ] Thông báo nội bộ: version, breaking change (nếu có), file `docs/RUNBOOK.md`.
 
 ## 4. Rollback
 
 - Checkout tag trước: `git checkout vX.Y.Z`.
-- Restore SQLite từ `backups/` nếu schema đổi (hiện migration chỉ `CREATE IF NOT EXISTS` — rollback binary thường đủ).
+- Restore SQLite từ `GOSO_BACKUP_DIR` (`VACUUM INTO` snapshots) nếu schema đổi (hiện migration chỉ `CREATE IF NOT EXISTS` — rollback binary thường đủ). Stop gateway, then `goso-gateway restore --file … --apply`.
 - Giữ `GOSO_ADMIN_TOKEN` / DB path như môi trường đang chạy.
 
 ## 5. Không làm ở bước release này

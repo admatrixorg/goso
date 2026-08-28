@@ -92,6 +92,7 @@ func NewRouter(opt Options) http.Handler {
 	mux.HandleFunc("GET /api/quota", handleQuota(opt.Meter))
 	registerConnectorRoutes(mux, opt)
 	registerCronRoutes(mux, opt)
+	registerBackupRoutes(mux)
 	return mux
 }
 

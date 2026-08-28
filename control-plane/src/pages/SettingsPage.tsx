@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { backupApi, type BackupFile } from "../api/backup";
 import { crmOrgId } from "../api/crm";
 import {
   settingsApi,
@@ -10,12 +11,13 @@ import {
   type SettingsUser,
 } from "../api/settings";
 import { useI18n } from "../i18n";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
 
-type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "theme";
+type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "backup" | "theme";
 
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t } = useI18n();
@@ -29,6 +31,9 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [templates, setTemplates] = useState<SettingsTemplate[]>([]);
   const [account, setAccount] = useState<SettingsAccount | null>(null);
   const [developing, setDeveloping] = useState("");
+  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [backupNote, setBackupNote] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -65,6 +70,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       group: t("settings.group.system"),
       items: [
         { id: "billing", label: t("settings.billing"), ic: "flag" },
+        { id: "backup", label: t("settings.backup"), ic: "download" },
         { id: "theme", label: t("settings.theme"), ic: "sun" },
       ],
     },
@@ -90,6 +96,9 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       } else if (page === "billing") {
         const d = await settingsApi.billing(id);
         setDeveloping(d.status || "developing");
+      } else if (page === "backup") {
+        const list = await backupApi.list();
+        setBackups(list.files || []);
       }
     } catch (e) {
       setErr(String(e));
@@ -149,7 +158,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         ))}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 26px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {page !== "theme" ? (
+        {page !== "theme" && page !== "backup" ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("common.org")}</span>
             <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
@@ -411,6 +420,81 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-2)", fontFamily: "var(--font-mono, ui-monospace)" }}>status: {developing}</div>
               ) : null}
             </Card>
+          </>
+        )}
+
+        {page === "backup" && (
+          <>
+            <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.backup")}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.backup.desc")}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Button
+                variant="primary"
+                icon="plus"
+                disabled={backupBusy}
+                onClick={() =>
+                  void run(async () => {
+                    if (backupBusy) return;
+                    setBackupBusy(true);
+                    setBackupNote("");
+                    try {
+                      const snap = await backupApi.create();
+                      setBackupNote(t("settings.backup.created", { file: snap.file }));
+                    } finally {
+                      setBackupBusy(false);
+                    }
+                  })
+                }
+              >
+                {t("settings.backup.create")}
+              </Button>
+              <Button icon="refresh" iconGesture onClick={() => void load()}>
+                {t("common.refresh")}
+              </Button>
+            </div>
+            {backupNote ? <p style={{ color: "var(--text-2)", fontSize: 12.5, margin: 0 }}>{backupNote}</p> : null}
+            <Card>
+              <CardHeader icon="download" title={t("settings.backup")} meta={String(backups.length)} />
+              <TableScroll>
+                <Row head>
+                  <span style={{ flex: 2 }}>{t("settings.col.file")}</span>
+                  <span style={{ flex: 0.8 }}>{t("settings.col.bytes")}</span>
+                  <span style={{ flex: 1.2 }}>{t("settings.col.mtime")}</span>
+                  <span style={{ flex: 0.8 }}>{t("settings.col.integrity")}</span>
+                  <span style={{ width: 140 }} />
+                </Row>
+                {backups.map((b) => (
+                  <Row key={b.file}>
+                    <span style={{ flex: 2, fontWeight: 600, fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12 }}>{b.file}</span>
+                    <span style={{ flex: 0.8, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{b.bytes}</span>
+                    <span style={{ flex: 1.2, color: "var(--text-3)", fontSize: 12 }}>{b.mtime || "—"}</span>
+                    <span style={{ flex: 0.8 }}>
+                      <Badge tone={b.integrity === "ok" ? "positive" : "critical"}>
+                        {b.integrity === "ok" ? t("settings.backup.ok") : t("settings.backup.fail")}
+                      </Badge>
+                    </span>
+                    <span style={{ width: 140, textAlign: "right" }}>
+                      <Button
+                        variant="quiet"
+                        style={{ padding: "4px 8px" }}
+                        onClick={() =>
+                          void run(async () => {
+                            if (!window.confirm(t("settings.backup.confirmRestore"))) return;
+                            setBackupNote("");
+                            const r = await backupApi.restore(b.file);
+                            setBackupNote(t("settings.backup.restored", { file: r.file || b.file }));
+                          })
+                        }
+                      >
+                        {t("settings.backup.restore")}
+                      </Button>
+                    </span>
+                  </Row>
+                ))}
+                {backups.length === 0 ? <EmptyState>{t("settings.backup.empty")}</EmptyState> : null}
+              </TableScroll>
+            </Card>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.backup.applyHint")}</p>
           </>
         )}
 

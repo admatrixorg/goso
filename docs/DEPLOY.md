@@ -45,7 +45,7 @@ Overlay `compose.prod.yml` thêm:
 - `restart: unless-stopped` cho gateway + control-plane
 - `GOSO_ENV=production`
 - log rotation (`json-file`, 10m × 5)
-- sidecar `backup`: copy SQLite mỗi `BACKUP_INTERVAL_SECONDS` (mặc định 3600s) vào volume `backup`, giữ 14 bản
+- sidecar `backup`: gọi gateway `POST /api/system/backup` (`VACUUM INTO` + `PRAGMA integrity_check`) mỗi `BACKUP_INTERVAL_SECONDS` (mặc định 3600s) vào volume `backup`, giữ `BACKUP_RETAIN` bản (mặc định 14, tối thiểu 1). Không `cp` file đang chạy.
 
 Token rỗng = 401 trên `/api/*` trừ khi `GOSO_DEV_MODE=1`. Production phải set `GOSO_ADMIN_TOKEN`.
 

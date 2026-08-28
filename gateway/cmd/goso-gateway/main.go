@@ -13,9 +13,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/backup"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -40,6 +43,8 @@ func main() {
 		printDoctor()
 	case "gateway", "serve":
 		runGateway(os.Args[2:])
+	case "restore":
+		runRestore(os.Args[2:])
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -59,6 +64,7 @@ Commands:
   version    Print version (JSON)
   doctor     Run health checks (JSON)
   gateway    Start HTTP gateway (SPEC 006)
+  restore    Restore a VACUUM INTO snapshot to a temp db (optional --apply)
   help       Show this help
 
 gateway flags:
@@ -86,6 +92,7 @@ Environment:
   GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all; required when GOSO_ENV=production)
   GOSO_ENV                 Environment (default development; production = injection default block, no query token, WS origins required)
   GOSO_DB_PATH             SQLite path (default :memory:)
+  GOSO_BACKUP_DIR          Snapshot dir for VACUUM INTO (default ./var/backups)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
@@ -102,6 +109,45 @@ Environment:
 
 func printVersion() {
 	out, _ := json.Marshal(map[string]string{"name": name, "version": version})
+	fmt.Println(string(out))
+}
+
+func runRestore(args []string) {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	file := fs.String("file", "", "snapshot basename under GOSO_BACKUP_DIR")
+	apply := fs.Bool("apply", false, "replace dest (stop gateway first)")
+	dest := fs.String("dest", "", "dest db path (default GOSO_DB_PATH)")
+	_ = fs.Parse(args)
+	if strings.TrimSpace(*file) == "" {
+		log.Fatal("--file is required")
+	}
+	if *apply {
+		d := strings.TrimSpace(*dest)
+		if d == "" {
+			d = os.Getenv("GOSO_DB_PATH")
+		}
+		if err := backup.Apply(*file, d); err != nil {
+			log.Fatalf("restore --apply: %v", err)
+		}
+		out, _ := json.Marshal(map[string]any{"file": filepath.Base(*file), "integrity": "ok", "applied": true})
+		fmt.Println(string(out))
+		return
+	}
+	tmp, cleanup, err := backup.RestoreToTemp(*file)
+	if err != nil {
+		log.Fatalf("restore: %v", err)
+	}
+	defer cleanup()
+	st, err := os.Stat(tmp)
+	if err != nil {
+		log.Fatalf("restore temp: %v", err)
+	}
+	out, _ := json.Marshal(map[string]any{
+		"file":      filepath.Base(*file),
+		"bytes":     st.Size(),
+		"integrity": "ok",
+		"applied":   false,
+	})
 	fmt.Println(string(out))
 }
 
