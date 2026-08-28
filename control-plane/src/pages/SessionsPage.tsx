@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api, type Agent, type Session } from "../api/client";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
@@ -7,7 +7,14 @@ import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
-export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void; compact?: boolean }) {
+export type SessionsPageHandle = {
+  focusCreate: () => void;
+};
+
+export const SessionsPage = forwardRef<
+  SessionsPageHandle,
+  { onPick: (id: string, label?: string) => void; compact?: boolean; selectedId?: string }
+>(function SessionsPage({ onPick, compact, selectedId }, ref) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -16,6 +23,15 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
   const [creating, setCreating] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [label, setLabel] = useState("");
+  const createBoxRef = useRef<HTMLDivElement>(null);
+  const agentSelectRef = useRef<HTMLSelectElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focusCreate() {
+      createBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      agentSelectRef.current?.focus();
+    },
+  }));
 
   async function load() {
     setLoading(true);
@@ -53,7 +69,7 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
       const created = await api.createSession(trimmedLabel ? { agent_id: picked, label: trimmedLabel } : { agent_id: picked });
       setLabel("");
       setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
-      onPick(created.id);
+      onPick(created.id, created.label || created.id);
     } catch (e) {
       setErr(formatPublicError(e));
     } finally {
@@ -65,13 +81,14 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
 
   function createFields() {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
+      <div ref={createBoxRef} style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
         {noAgents ? (
           <EmptyState style={{ padding: compact ? "10px 4px" : undefined }}>{t("sessions.noAgents")}</EmptyState>
         ) : null}
         <label style={{ fontSize: 12, color: "var(--text-2)" }}>
           {t("sessions.col.agent")}
           <select
+            ref={agentSelectRef}
             className="z-field"
             aria-label={t("sessions.col.agent")}
             style={{ display: "block", width: "100%", marginTop: 4 }}
@@ -118,27 +135,31 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
         <div style={{ padding: "0 4px 4px" }}>{createFields()}</div>
         {err ? <StatusLine kind="error">{err}</StatusLine> : null}
         {loading || creating ? <StatusLine kind="loading" /> : null}
-        {sessions.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onPick(s.id)}
-            style={{
-              display: "block",
-              textAlign: "left",
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 11,
-              padding: "10px 12px",
-              transition: "background var(--dur-hover) var(--ease-standard)",
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {s.label || s.id}
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
-          </button>
-        ))}
+        {sessions.map((s) => {
+          const selected = Boolean(selectedId) && selectedId === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={selected ? "true" : undefined}
+              onClick={() => onPick(s.id, s.label || s.id)}
+              style={{
+                display: "block",
+                textAlign: "left",
+                background: selected ? "var(--accent-soft)" : "var(--card)",
+                border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
+                borderRadius: 11,
+                padding: "10px 12px",
+                transition: "background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)",
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.label || s.id}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
+            </button>
+          );
+        })}
         {!loading && sessions.length === 0 ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.empty")}</EmptyState> : null}
       </div>
     );
@@ -182,7 +203,7 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
               borderBottom: "1px solid var(--border-soft)",
               cursor: "pointer",
             }}
-            onClick={() => onPick(s.id)}
+            onClick={() => onPick(s.id, s.label || s.id)}
           >
             <span style={{ flex: 2.4, fontWeight: 600 }}>{s.label || s.id}</span>
             <span style={{ flex: 2, color: "var(--text-2)" }}>{s.agent_id}</span>
@@ -193,4 +214,4 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
       </Card>
     </div>
   );
-}
+});

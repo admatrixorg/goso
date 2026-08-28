@@ -125,6 +125,7 @@ export const en: Record<MsgKey, string> = {
   "chat.desc": "Pick a session on the left to read and send. The agent runs on the gateway; this screen does not send Zalo.",
   "chat.descSession": "Session {id} — user/assistant/tool messages from the gateway.",
   "chat.emptySession": "No session selected.",
+  "chat.newSession": "New session",
   "chat.empty": "No messages yet.",
   "chat.placeholder": "Message the agent…",
   "chat.send": "Send to Agent",
