@@ -113,6 +113,13 @@ export const en: Record<MsgKey, string> = {
   "sessions.empty": "No sessions yet.",
   "sessions.openChat": "Open Chat",
   "sessions.agent": "agent {id}",
+  "sessions.add": "New session",
+  "sessions.create": "Create session",
+  "sessions.pickAgent": "Choose an agent…",
+  "sessions.label": "Label",
+  "sessions.placeholder.label": "Optional label",
+  "sessions.needAgent": "Choose an agent.",
+  "sessions.noAgents": "No agents yet. Create one on the Agents tab.",
 
   "chat.title": "Chat",
   "chat.desc": "Pick a session on the left to read and send. The agent runs on the gateway; this screen does not send Zalo.",

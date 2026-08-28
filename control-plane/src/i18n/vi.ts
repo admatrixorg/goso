@@ -111,6 +111,13 @@ export const vi = {
   "sessions.empty": "Chưa có phiên.",
   "sessions.openChat": "Vào Chat",
   "sessions.agent": "agent {id}",
+  "sessions.add": "Phiên mới",
+  "sessions.create": "Tạo phiên",
+  "sessions.pickAgent": "Chọn agent…",
+  "sessions.label": "Nhãn",
+  "sessions.placeholder.label": "Nhãn (tuỳ chọn)",
+  "sessions.needAgent": "Cần chọn agent.",
+  "sessions.noAgents": "Chưa có agent. Tạo trên tab Agent.",
 
   "chat.title": "Chat",
   "chat.desc": "Chọn một phiên bên trái để đọc tin và gửi. Agent chạy trên gateway, không gửi Zalo từ đây.",
