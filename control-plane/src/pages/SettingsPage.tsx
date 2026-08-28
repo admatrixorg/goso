@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, TENANT_STORAGE_KEY, type TenantInfo } from "../api/client";
 import { backupApi, type BackupFile } from "../api/backup";
+import { pairingApi, type PairingIssued } from "../api/pairing";
 import { crmOrgId } from "../api/crm";
 import { isDemoMode } from "../demo/mode";
 import {
@@ -19,7 +20,7 @@ import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
 
-type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "backup" | "theme";
+type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "backup" | "pairing" | "theme";
 
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t } = useI18n();
@@ -36,6 +37,10 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [backupNote, setBackupNote] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
+  const [pairing, setPairing] = useState<PairingIssued | null>(null);
+  const [pairingCopied, setPairingCopied] = useState(false);
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const pairingInFlight = useRef(false);
 
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -75,6 +80,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       items: [
         { id: "billing", label: t("settings.billing"), ic: "flag" },
         { id: "backup", label: t("settings.backup"), ic: "download" },
+        { id: "pairing", label: t("settings.pairing"), ic: "device" },
         { id: "theme", label: t("settings.theme"), ic: "sun" },
       ],
     },
@@ -122,9 +128,16 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   }
 
   useEffect(() => {
-    if (page === "theme") return;
+    if (page === "theme" || page === "pairing") return;
     void load();
   }, [page, org]);
+
+  useEffect(() => {
+    if (page !== "pairing") {
+      setPairing(null);
+      setPairingCopied(false);
+    }
+  }, [page]);
 
   async function run(fn: () => Promise<unknown>) {
     try {
@@ -549,6 +562,67 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               </TableScroll>
             </Card>
             <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.backup.applyHint")}</p>
+          </>
+        )}
+
+        {page === "pairing" && (
+          <>
+            <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.pairing")}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.pairing.desc")}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Button
+                variant="primary"
+                icon="plus"
+                disabled={pairingBusy || isDemoMode()}
+                onClick={() => {
+                  if (pairingInFlight.current || pairingBusy || isDemoMode()) return;
+                  pairingInFlight.current = true;
+                  setPairingBusy(true);
+                  setPairingCopied(false);
+                  setErr("");
+                  void pairingApi
+                    .create()
+                    .then((issued) => setPairing(issued))
+                    .catch((e) => setErr(String(e)))
+                    .finally(() => {
+                      pairingInFlight.current = false;
+                      setPairingBusy(false);
+                    });
+                }}
+              >
+                {t("settings.pairing.generate")}
+              </Button>
+            </div>
+            {isDemoMode() ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.pairing.demo")}</p>
+            ) : null}
+            <Card>
+              <CardHeader icon="lock" title={t("settings.pairing")} />
+              {pairing ? (
+                <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10, fontSize: 12.5 }}>
+                  <p style={{ margin: 0, color: "var(--text-3)" }}>{t("settings.pairing.once")}</p>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <code style={{ flex: 1, fontSize: 18, letterSpacing: "0.12em", fontWeight: 700 }}>{pairing.code}</code>
+                    <Button
+                      onClick={() => {
+                        void navigator.clipboard.writeText(pairing.code).then(
+                          () => setPairingCopied(true),
+                          (e) => setErr(String(e)),
+                        );
+                      }}
+                      style={{ padding: "4px 10px" }}
+                    >
+                      {t("common.copy")}
+                    </Button>
+                  </div>
+                  {pairingCopied ? <p style={{ margin: 0, color: "var(--green)" }}>{t("settings.pairing.copied")}</p> : null}
+                  <div style={{ color: "var(--text-3)" }}>{t("settings.pairing.expires", { at: pairing.expires_at })}</div>
+                </div>
+              ) : (
+                <EmptyState>{t("settings.pairing.empty")}</EmptyState>
+              )}
+            </Card>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.pairing.hint")}</p>
           </>
         )}
 

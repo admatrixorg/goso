@@ -13,6 +13,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
@@ -44,6 +45,8 @@ type Options struct {
 	Webhooks *webhook.Registry
 	// LLM is the env registry used for GET/test overlay (sqlite rows merge; env wins).
 	LLM *llm.Registry
+	// Pairing issues one-time view-token codes. Nil → NewPairing.
+	Pairing *auth.Pairing
 }
 
 func (o *Options) defaults() {
@@ -93,6 +96,7 @@ func NewRouter(opt Options) http.Handler {
 	registerConnectorRoutes(mux, opt)
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux)
+	registerPairingRoutes(mux, opt.Pairing)
 	return mux
 }
 

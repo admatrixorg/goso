@@ -252,6 +252,74 @@ func TestViewToken_GETOnly(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("no token POST backup %d %s", rr.Code, rr.Body.String())
 	}
+
+	for _, path := range []string{"/api/kg/entities", "/api/skills", "/api/agents/x/evolution/tick"} {
+		req = httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer view-041")
+		req.Header.Set("Content-Type", "application/json")
+		rr = httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("view POST %s %d %s", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+func TestPairing_ExchangeViewGrant(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "admin-077")
+	t.Setenv("GOSO_VIEW_TOKEN", "view-077")
+	t.Setenv("GOSO_E2E_SCRIPTED", "")
+	h, _ := New(store.New(), "test")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/pairing", nil)
+	req.Header.Set("Authorization", "Bearer admin-077")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create pairing %d %s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	ex := httptest.NewRequest(http.MethodPost, "/api/pairing/exchange", strings.NewReader(`{"code":"`+created.Code+`"}`))
+	ex.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, ex)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exchange %d %s", rr.Code, rr.Body.String())
+	}
+	var grant struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&grant); err != nil {
+		t.Fatal(err)
+	}
+	if grant.Token != "view-077" {
+		t.Fatalf("token %q", grant.Token)
+	}
+
+	get := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	get.Header.Set("Authorization", "Bearer "+grant.Token)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, get)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET %d", rr.Code)
+	}
+
+	post := httptest.NewRequest(http.MethodPost, "/api/system/backup", strings.NewReader("{}"))
+	post.Header.Set("Authorization", "Bearer "+grant.Token)
+	post.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, post)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST backup after exchange %d", rr.Code)
+	}
 }
 
 func TestMaxBytesReader_API(t *testing.T) {

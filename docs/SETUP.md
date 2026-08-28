@@ -83,7 +83,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_HOST | 127.0.0.1 | Bind host (Docker: `0.0.0.0`) |
 | GOSO_LOG_LEVEL | info | Mức log |
 | GOSO_ADMIN_TOKEN | (rỗng → 401) | Bearer `/api/*` và `/ws`. Passthrough chỉ khi `GOSO_DEV_MODE=1`. |
-| GOSO_VIEW_TOKEN | (rỗng) | Optional GET-only Bearer for `/healthz` `/api/agents` `/api/sessions`. POST `/api/chat` → 403. |
+| GOSO_VIEW_TOKEN | (rỗng) | Optional GET-only Bearer for `/healthz` `/api/agents` `/api/sessions`. POST `/api/chat` → 403. Admin `POST /api/pairing` issues a 10-minute one-time code that `POST /api/pairing/exchange` swaps once for this token (or a minted `gv_` grant if unset). |
 | GOSO_INJECTION | log | `log` (default) or `block`. Scan user chat for documented injection patterns; block → 400 on `/api/chat`. |
 | GOSO_SSRF | off | `1` blocks literal localhost/private IPs on connector HTTP. Default off so local fake e2e works. |
 | GOSO_WORKSPACE | (rỗng) | Write jail. Tools/vault cannot write outside this directory. Empty = builtin filesystem tools (`read_file` `write_file` `list_files` `edit` `send_file`) fail-closed (`not_configured`, no FS access). Cap read/edit 1MiB. `send_file` returns metadata only. |
