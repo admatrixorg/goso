@@ -63,7 +63,7 @@ func (o *Options) defaults() {
 		o.Meter = billing.New()
 	}
 	if o.Webhooks == nil {
-		o.Webhooks = webhook.New()
+		o.Webhooks = webhook.NewWithStore(o.Store)
 	}
 }
 
