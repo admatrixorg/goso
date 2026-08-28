@@ -50,6 +50,18 @@ func TestIsOrchestrationTool(t *testing.T) {
 	if IsOrchestrationTool("zalocrm__contact_search") {
 		t.Fatal("connector tool is not orchestration")
 	}
+	if IsOrchestrationTool("memory_search") || IsOrchestrationTool("memory_expand") {
+		t.Fatal("memory tools are not orchestration")
+	}
+}
+
+func TestIsMemoryTool(t *testing.T) {
+	if !IsMemoryTool("memory_search") || !IsMemoryTool("memory_expand") {
+		t.Fatal("expected memory tool names")
+	}
+	if IsMemoryTool("delegate") || IsMemoryTool("zalocrm__contact_search") {
+		t.Fatal("non-memory names")
+	}
 }
 
 func TestAdvertiseAndResolve(t *testing.T) {

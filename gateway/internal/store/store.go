@@ -134,6 +134,60 @@ type SearchHit struct {
 	Snippet   string `json:"snippet"`
 }
 
+// Progressive memory tiers (L1 episodic / L2 knowledge graph).
+const (
+	TierL1 = "l1"
+	TierL2 = "l2"
+)
+
+// KGEntity is one L2 knowledge-graph node with temporal validity.
+type KGEntity struct {
+	ID         string     `json:"id"`
+	TenantID   string     `json:"tenant_id"`
+	Name       string     `json:"name"`
+	Kind       string     `json:"kind"`
+	Body       string     `json:"body,omitempty"`
+	ValidFrom  time.Time  `json:"valid_from"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// KGRelation is one L2 edge between entities.
+type KGRelation struct {
+	ID         string     `json:"id"`
+	TenantID   string     `json:"tenant_id"`
+	FromID     string     `json:"from_id"`
+	ToID       string     `json:"to_id"`
+	Rel        string     `json:"rel"`
+	Body       string     `json:"body,omitempty"`
+	ValidFrom  time.Time  `json:"valid_from"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+// KGSearchHit is one progressive L1+L2 search row.
+type KGSearchHit struct {
+	ID        string `json:"id"`
+	TenantID  string `json:"-"`
+	SessionID string `json:"session_id,omitempty"`
+	Kind      string `json:"kind,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Snippet   string `json:"snippet"`
+	Tier      string `json:"tier"`
+}
+
+// KGRelationExpand is a relation plus linked entity names.
+type KGRelationExpand struct {
+	KGRelation
+	FromName string `json:"from_name,omitempty"`
+	ToName   string `json:"to_name,omitempty"`
+}
+
+// KGExpand is deep retrieve: entity + relations + linked names.
+type KGExpand struct {
+	Entity    *KGEntity          `json:"entity"`
+	Relations []KGRelationExpand `json:"relations"`
+}
+
 // VaultDoc is a knowledge-vault registry row. Disk is source of truth after sync;
 // Body is an optional cache.
 type VaultDoc struct {
@@ -260,6 +314,12 @@ type StoreIface interface {
 	SaveSummary(sessionID, body string) (*Memory, error)
 	LatestSummary(sessionID string) (*Memory, error)
 	SearchMemory(q string) ([]SearchHit, error)
+	PutKGEntity(KGEntity) (*KGEntity, error)
+	GetKGEntity(string) (*KGEntity, error)
+	PutKGRelation(KGRelation) (*KGRelation, error)
+	ListKGRelations(entityID string) ([]*KGRelation, error)
+	ExpandKG(id string) (*KGExpand, error)
+	SearchProgressive(q, tenant string) ([]KGSearchHit, error)
 	PutVaultDoc(VaultDoc) (*VaultDoc, error)
 	GetVaultDoc(string) (*VaultDoc, error)
 	ListVaultDocs() []*VaultDoc
@@ -354,6 +414,8 @@ type Store struct {
 	llmProviders map[string]*LLMProvider
 	webhooks     map[string]*Webhook
 	webhookJobs  map[string]*WebhookJob
+	kgEntities   map[string]*KGEntity
+	kgRelations  map[string]*KGRelation
 	seq          int64
 }
 
@@ -397,6 +459,8 @@ func New() *Store {
 		llmProviders: make(map[string]*LLMProvider),
 		webhooks:     make(map[string]*Webhook),
 		webhookJobs:  make(map[string]*WebhookJob),
+		kgEntities:   make(map[string]*KGEntity),
+		kgRelations:  make(map[string]*KGRelation),
 	}
 }
 

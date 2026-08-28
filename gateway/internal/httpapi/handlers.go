@@ -120,6 +120,11 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	aliasAPI(mux, "GET /api/memory", handleListMemory(st))
 	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
 
+	aliasAPI(mux, "GET /api/kg/search", handleSearchKG(st))
+	aliasAPI(mux, "GET /api/kg/entities/{id}", handleExpandKG(st))
+	aliasAPI(mux, "POST /api/kg/entities", handleCreateKGEntity(st))
+	aliasAPI(mux, "POST /api/kg/relations", handleCreateKGRelation(st))
+
 	mux.HandleFunc("GET /api/vault/search", handleSearchVault(st))
 	mux.HandleFunc("POST /api/vault/sync", handleSyncVault(st))
 	mux.HandleFunc("GET /api/vault/docs/{id}/links", handleVaultDocLinks(st))
