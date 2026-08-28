@@ -123,6 +123,7 @@ export const vi = {
   "chat.desc": "Chọn một phiên bên trái để đọc tin và gửi. Agent chạy trên gateway, không gửi Zalo từ đây.",
   "chat.descSession": "Phiên {id} — tin user/assistant/tool từ gateway.",
   "chat.emptySession": "Chưa chọn phiên.",
+  "chat.newSession": "Phiên mới",
   "chat.empty": "Chưa có tin nhắn.",
   "chat.placeholder": "Nhắn cho agent…",
   "chat.send": "Gửi cho Agent",

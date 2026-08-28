@@ -13,8 +13,17 @@ function localId(prefix: string): string {
   return `${prefix}-${Date.now()}-${localSeq}`;
 }
 
-export function ChatPage({ sessionId }: { sessionId: string }) {
+export function ChatPage({
+  sessionId,
+  sessionLabel,
+  onNew,
+}: {
+  sessionId: string;
+  sessionLabel?: string;
+  onNew?: () => void;
+}) {
   const { t } = useI18n();
+  const named = sessionLabel?.trim() || sessionId;
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [err, setErr] = useState("");
@@ -115,6 +124,13 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       <div style={{ padding: "14px 22px 40px" }}>
         <SectionHeader icon="msg" title={t("chat.title")} description={t("chat.desc")} />
         <EmptyState>{t("chat.emptySession")}</EmptyState>
+        {onNew ? (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+            <Button variant="primary" icon="plus" onClick={onNew}>
+              {t("chat.newSession")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -124,7 +140,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       <div style={{ padding: "14px 22px 0" }}>
         <SectionHeader
           icon="msg"
-          title={t("chat.title")}
+          title={named}
           description={t("chat.descSession", { id: sessionId })}
           actions={
             <Button icon="refresh" iconGesture onClick={() => void load(sessionId, genRef.current)}>

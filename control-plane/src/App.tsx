@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentsPage } from "./pages/AgentsPage";
-import { SessionsPage } from "./pages/SessionsPage";
+import { SessionsPage, type SessionsPageHandle } from "./pages/SessionsPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ConnectorsPage } from "./pages/Connectors";
 import { FunctionsPage } from "./pages/FunctionsPage";
@@ -111,6 +111,8 @@ function useTheme() {
 export default function App() {
   const { t, locale, setLocale } = useI18n();
   const [sessionId, setSessionId] = useState("");
+  const [sessionLabel, setSessionLabel] = useState("");
+  const sessionsRef = useRef<SessionsPageHandle>(null);
   const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
@@ -430,8 +432,9 @@ export default function App() {
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
             <SessionsPage
-              onPick={(id) => {
+              onPick={(id, label) => {
                 setSessionId(id);
+                setSessionLabel(label?.trim() || id);
                 setTab("chat");
               }}
             />
@@ -440,14 +443,21 @@ export default function App() {
             <div style={{ display: "flex", flex: 1, minHeight: 0, height: "100%" }}>
               <div style={{ width: 280, flex: "none", borderRight: "1px solid var(--border)", overflowY: "auto" }}>
                 <SessionsPage
+                  ref={sessionsRef}
                   compact
-                  onPick={(id) => {
+                  selectedId={sessionId}
+                  onPick={(id, label) => {
                     setSessionId(id);
+                    setSessionLabel(label?.trim() || id);
                   }}
                 />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <ChatPage sessionId={sessionId} />
+                <ChatPage
+                  sessionId={sessionId}
+                  sessionLabel={sessionLabel}
+                  onNew={() => sessionsRef.current?.focusCreate()}
+                />
               </div>
             </div>
           )}
