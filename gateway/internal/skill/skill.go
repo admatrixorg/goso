@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -17,11 +18,16 @@ const MaxBody = 64 * 1024
 
 const skillFile = "SKILL.md"
 
+// NamePattern is the jailed skill folder name: lowercase, digits, _ and -.
+var NamePattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
+
 // Sentinel errors for the loader and HTTP/tool surfaces.
 var (
 	ErrNotConfigured = errors.New("not_configured")
 	ErrNotFound      = errors.New("not_found")
 	ErrPathEscape    = errors.New("path escape")
+	ErrInvalidName   = errors.New("invalid name")
+	ErrTooLarge      = errors.New("too large")
 )
 
 // Info is a listed skill (name = folder). Body is never included.
@@ -156,6 +162,96 @@ func Load(name string) (*Doc, error) {
 	return &Doc{Name: name, Path: rel, Body: string(body)}, nil
 }
 
+// Create writes <name>/SKILL.md under GOSO_SKILLS_DIR. Never executes scripts.
+func Create(name, body string) (*Doc, error) {
+	root, err := resolveRoot()
+	if err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	if err := validName(name); err != nil {
+		return nil, err
+	}
+	if len(body) > MaxBody {
+		return nil, ErrTooLarge
+	}
+	dir := filepath.Join(root, name)
+	p := filepath.Join(dir, skillFile)
+	if err := confineFile(root, dir); err != nil {
+		return nil, err
+	}
+	if err := confineFile(root, p); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	if st, err := os.Lstat(dir); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err != nil || confineFile(root, resolved) != nil {
+			return nil, ErrPathEscape
+		}
+	}
+	if st, err := os.Lstat(p); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return nil, ErrPathEscape
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		return nil, err
+	}
+	invalidateIndex()
+	rel := filepath.ToSlash(filepath.Join(name, skillFile))
+	return &Doc{Name: name, Path: rel, Body: body}, nil
+}
+
+// Delete removes the one-level skill folder. Never executes scripts.
+func Delete(name string) error {
+	root, err := resolveRoot()
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if err := validName(name); err != nil {
+		return err
+	}
+	dir := filepath.Join(root, name)
+	p := filepath.Join(dir, skillFile)
+	if err := confineFile(root, dir); err != nil {
+		return err
+	}
+	if err := confineFile(root, p); err != nil {
+		return err
+	}
+	st, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return ErrPathEscape
+		}
+		if err := confineFile(root, resolved); err != nil {
+			return ErrPathEscape
+		}
+	} else if !st.IsDir() {
+		return ErrNotFound
+	}
+	if _, err := os.Lstat(p); err != nil {
+		if os.IsNotExist(err) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	invalidateIndex()
+	return nil
+}
+
 func resolveRoot() (string, error) {
 	raw := Dir()
 	if raw == "" {
@@ -190,6 +286,9 @@ func validName(name string) error {
 	}
 	if strings.ContainsAny(name, `/\`) {
 		return ErrPathEscape
+	}
+	if !NamePattern.MatchString(name) {
+		return ErrInvalidName
 	}
 	return nil
 }

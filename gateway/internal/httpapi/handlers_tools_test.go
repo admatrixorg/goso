@@ -54,7 +54,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	var sawSearch, sawSandbox, sawSkill, sawRead, sawWrite bool
+	var sawSearch, sawSandbox, sawSkill, sawSkillSearch, sawRead, sawWrite bool
 	var sawList, sawEdit, sawSend, sawImage, sawTTS bool
 	for _, tl := range listed.Tools {
 		if tl.Name == "web_search" {
@@ -73,6 +73,12 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 			sawSkill = true
 			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
 				t.Fatalf("use_skill %+v", tl)
+			}
+		}
+		if tl.Name == "skill_search" {
+			sawSkillSearch = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
+				t.Fatalf("skill_search %+v", tl)
 			}
 		}
 		if tl.Name == "read_file" {
@@ -118,7 +124,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 			}
 		}
 	}
-	if !sawSearch || !sawSandbox || !sawSkill || !sawRead || !sawWrite || !sawList || !sawEdit || !sawSend || !sawImage || !sawTTS {
+	if !sawSearch || !sawSandbox || !sawSkill || !sawSkillSearch || !sawRead || !sawWrite || !sawList || !sawEdit || !sawSend || !sawImage || !sawTTS {
 		t.Fatalf("builtins missing %s", w.Body.String())
 	}
 

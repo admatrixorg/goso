@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestList_EmptyEnvFailClosed(t *testing.T) {
@@ -26,6 +27,16 @@ func TestList_EmptyEnvFailClosed(t *testing.T) {
 	doc, err := Load("demo")
 	if !errors.Is(err, ErrNotConfigured) || doc != nil {
 		t.Fatalf("load %v %v", doc, err)
+	}
+	hits, err := Search("invoice")
+	if !errors.Is(err, ErrNotConfigured) || hits != nil {
+		t.Fatalf("search %v %v", hits, err)
+	}
+	if _, err := Create("demo", "body"); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("create %v", err)
+	}
+	if err := Delete("demo"); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("delete %v", err)
 	}
 }
 
@@ -187,6 +198,183 @@ func TestLoad_Missing(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 	if _, err := Load("nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing %v", err)
+	}
+}
+
+func writeSkill(t *testing.T, root, name, body string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearch_RanksRelevantFirst(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "invoices", "---\nname: invoices\ndescription: match vendor invoices and billing totals\n---\n# Invoices\n\nPay bills.\n")
+	writeSkill(t, root, "weather", "---\nname: weather\ndescription: rain forecast and temperature\n---\n# Weather\n\nUmbrella.\n")
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	invalidateIndex()
+
+	hits, err := Search("invoices billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 || hits[0].Name != "invoices" {
+		t.Fatalf("want invoices first %+v", hits)
+	}
+	if hits[0].Snippet == "" {
+		t.Fatal("snippet")
+	}
+	unrel, err := Search("xylophoneuniquezzz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unrel) != 0 {
+		t.Fatalf("unrelated %+v", unrel)
+	}
+}
+
+func TestSearch_RebuildOnNewerMtime(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "alpha", "# Alpha\n\nhello world\n")
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	invalidateIndex()
+	hits, err := Search("hello")
+	if err != nil || len(hits) != 1 || hits[0].Name != "alpha" {
+		t.Fatalf("first %v %+v", err, hits)
+	}
+	writeSkill(t, root, "alpha", "# Alpha\n\nxylophoneunique token\n")
+	p := filepath.Join(root, "alpha", "SKILL.md")
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, st.ModTime().Add(2*time.Second), st.ModTime().Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	hits, err = Search("xylophoneunique")
+	if err != nil || len(hits) != 1 || hits[0].Name != "alpha" {
+		t.Fatalf("inplace rebuild %v %+v", err, hits)
+	}
+	hits, err = Search("hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("old token after overwrite %+v", hits)
+	}
+}
+
+func TestSearch_MaxFiveAndDropOneChar(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 6; i++ {
+		name := "skill" + string(rune('a'+i))
+		writeSkill(t, root, name, "# "+name+"\n\nsharedtoken body\n")
+	}
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	invalidateIndex()
+	hits, err := Search("sharedtoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != SearchLimit {
+		t.Fatalf("cap %d %+v", len(hits), hits)
+	}
+	one, err := Search("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 0 {
+		t.Fatalf("1-char query %+v", one)
+	}
+}
+
+func TestCreateDelete_TempDir(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	doc, err := Create("ledger", "---\ndescription: ledger entries\n---\n# Ledger\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Name != "ledger" || doc.Path != "ledger/SKILL.md" {
+		t.Fatalf("doc %+v", doc)
+	}
+	hits, err := Search("ledger")
+	if err != nil || len(hits) == 0 || hits[0].Name != "ledger" {
+		t.Fatalf("search after create %v %+v", err, hits)
+	}
+	if err := Delete("ledger"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load("ledger"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("load after delete %v", err)
+	}
+	hits, err = Search("ledger")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("search after delete %+v", hits)
+	}
+}
+
+func TestCreate_RejectsJailAndSize(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	for _, name := range []string{"../x", "Bad", "has space", strings.Repeat("a", 65), ""} {
+		if _, err := Create(name, "body"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrInvalidName) {
+			t.Fatalf("%q err %v", name, err)
+		}
+	}
+	if _, err := Create("ok", strings.Repeat("a", MaxBody+1)); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("size %v", err)
+	}
+}
+
+func TestCreate_SymlinkFileRejected(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.md")
+	if err := os.WriteFile(secret, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "escape")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	if _, err := Create("escape", "pwn"); !errors.Is(err, ErrPathEscape) {
+		t.Fatalf("symlink write %v", err)
+	}
+	got, err := os.ReadFile(secret)
+	if err != nil || string(got) != "outside" {
+		t.Fatalf("must not write through symlink %v %s", err, got)
+	}
+}
+
+func TestDelete_PathJail(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "ok", "in")
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	if err := Delete("../ok"); !errors.Is(err, ErrPathEscape) {
+		t.Fatalf("dotdot %v", err)
+	}
+	if err := Delete("missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing %v", err)
 	}
 }

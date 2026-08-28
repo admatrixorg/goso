@@ -22,14 +22,15 @@ import (
 const ConnectorName = "builtin"
 
 const (
-	ToolWebSearch = "web_search"
-	ToolSandbox   = "sandbox"
-	ToolBrowser   = "browser"
-	ToolMedia     = "media"
-	ToolImageGen  = "image_gen"
-	ToolTTS       = "tts"
-	ToolUseSkill  = "use_skill"
-	maxSearchHits = 8
+	ToolWebSearch   = "web_search"
+	ToolSandbox     = "sandbox"
+	ToolBrowser     = "browser"
+	ToolMedia       = "media"
+	ToolImageGen    = "image_gen"
+	ToolTTS         = "tts"
+	ToolUseSkill    = "use_skill"
+	ToolSkillSearch = "skill_search"
+	maxSearchHits   = 8
 )
 
 // InstantAnswerBase is the DuckDuckGo Instant Answer endpoint.
@@ -96,6 +97,12 @@ var catalog = []Spec{
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
 	},
 	{
+		Name:             ToolSkillSearch,
+		Description:      "BM25 search over local SKILL.md name, description, and body. Returns at most 5 ranked hits. Empty query fail-closed. Never executes skill scripts.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"q":{"type":"string"}},"required":["query"]}`),
+	},
+	{
 		Name:             ToolReadFile,
 		Description:      "Read a file inside GOSO_WORKSPACE. Fail-closed unless GOSO_WORKSPACE is set. Cap 1MiB. No exec.",
 		RequiresApproval: false,
@@ -153,7 +160,7 @@ func Configured(name string) bool {
 		return workspaceConfigured()
 	case ToolWebSearch:
 		return WebSearchNetworkAllowed() && strings.TrimSpace(InstantAnswerBase) != ""
-	case ToolUseSkill:
+	case ToolUseSkill, ToolSkillSearch:
 		return skill.Configured()
 	case ToolMedia, ToolImageGen, ToolTTS:
 		return MediaEnvAllowed() && MediaInvoke != nil
@@ -239,6 +246,8 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return webSearch(ctx, args)
 	case ToolUseSkill:
 		return useSkill(args)
+	case ToolSkillSearch:
+		return skillSearch(args)
 	case ToolReadFile:
 		return readFile(args)
 	case ToolWriteFile:
@@ -322,6 +331,64 @@ func useSkill(args map[string]any) (*connector.InvokeResult, error) {
 			"body": doc.Body,
 		},
 	}, nil
+}
+
+func skillSearch(args map[string]any) (*connector.InvokeResult, error) {
+	if !skill.Configured() {
+		return notConfigured(ToolSkillSearch), nil
+	}
+	q := skillSearchQuery(args)
+	if q == "" {
+		return &connector.InvokeResult{
+			Tool:      ToolSkillSearch,
+			Connector: ConnectorName,
+			Status:    "error",
+			Content:   map[string]any{"error": "query is required"},
+		}, nil
+	}
+	hits, err := skill.Search(q)
+	if err != nil {
+		if errors.Is(err, skill.ErrNotConfigured) {
+			return notConfigured(ToolSkillSearch), nil
+		}
+		if errors.Is(err, skill.ErrPathEscape) {
+			return &connector.InvokeResult{
+				Tool:      ToolSkillSearch,
+				Connector: ConnectorName,
+				Status:    "error",
+				Content:   map[string]any{"error": "path escape"},
+			}, nil
+		}
+		return &connector.InvokeResult{
+			Tool:      ToolSkillSearch,
+			Connector: ConnectorName,
+			Status:    "error",
+			Content:   map[string]any{"error": "read failed"},
+		}, nil
+	}
+	if hits == nil {
+		hits = []skill.Hit{}
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolSkillSearch,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content:   map[string]any{"skills": hits},
+	}, nil
+}
+
+func skillSearchQuery(args map[string]any) string {
+	if args == nil {
+		return ""
+	}
+	for _, k := range []string{"query", "q"} {
+		if v, ok := args[k]; ok {
+			if s, ok := v.(string); ok {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
 }
 
 func queryArg(args map[string]any) string {
