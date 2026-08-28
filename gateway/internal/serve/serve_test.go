@@ -62,6 +62,28 @@ func TestNewHealthzAndAgent(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("stats status %d body %s", rr.Code, rr.Body.String())
 	}
+	var stats map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &stats); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := stats["last_heartbeat"]; ok {
+		t.Fatalf("default off must omit last_heartbeat %#v", stats)
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/system/heartbeat", strings.NewReader("{}")))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("heartbeat %d %s", rr.Code, rr.Body.String())
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/stats", nil))
+	if err := json.Unmarshal(rr.Body.Bytes(), &stats); err != nil {
+		t.Fatal(err)
+	}
+	stamp, _ := stats["last_heartbeat"].(string)
+	if stamp == "" {
+		t.Fatalf("expected last_heartbeat after POST %#v", stats)
+	}
 }
 
 func TestNewRequiresToken(t *testing.T) {

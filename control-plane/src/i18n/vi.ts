@@ -26,6 +26,7 @@ export const vi = {
   "chrome.gateway.degraded": "suy giảm",
   "chrome.gateway.offline": "mất kết nối",
   "chrome.gateway.unauthorized": "không được phép",
+  "chrome.gateway.heartbeat": "heartbeat {at}",
   "chrome.dark": "Tối",
   "chrome.light": "Sáng",
   "chrome.nav": "Điều hướng",

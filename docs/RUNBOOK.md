@@ -36,6 +36,11 @@ Probe:
 ```bash
 curl -sS http://127.0.0.1:8080/healthz
 # {"ok":true,"version":"0.1.0"}
+
+# Optional application heartbeat (default off). Not a WebSocket ping.
+# curl -sS -H "Authorization: Bearer $GOSO_ADMIN_TOKEN" -X POST http://127.0.0.1:8080/api/system/heartbeat
+# curl -sS -H "Authorization: Bearer $GOSO_ADMIN_TOKEN" http://127.0.0.1:8080/api/stats
+# last_heartbeat is omitted until POST or GOSO_HEARTBEAT=1 ticker (60s, min 30s).
 ```
 
 `/healthz` không cần Bearer token. Mọi `/api/*` và `/ws` cần `Authorization: Bearer $GOSO_ADMIN_TOKEN`, trừ khi `GOSO_DEV_MODE=1`. Optional `GOSO_VIEW_TOKEN` may GET `/healthz` `/api/agents` `/api/sessions` (and a single id segment) but not POST chat or `.../messages`. Token rỗng + không dev-mode → 401.

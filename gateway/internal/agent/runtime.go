@@ -386,7 +386,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	if err != nil {
 		return nil, err
 	}
-	out := make([]llm.ToolSpec, 0, len(tools)+3)
+	out := make([]llm.ToolSpec, 0, len(tools)+7)
 	for _, bt := range tools {
 		out = append(out, llm.ToolSpec{
 			Name:        pipeline.AdvertiseName(bt.Connector, bt.Tool.Name),
@@ -398,6 +398,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	mode := team.ResolveMode(a.rt.Store, agentID)
 	out = append(out, team.ToolSpecs(mode)...)
 	out = append(out, pipeline.MemoryToolSpecs()...)
+	out = append(out, pipeline.SessionToolSpecs()...)
 	if a.rt.Store != nil && agentID != "" {
 		names := make([]string, 0, len(out))
 		for _, t := range out {
@@ -409,14 +410,20 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 }
 
 func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCall) (pipeline.CallOutcome, error) {
-	if pipeline.IsMemoryTool(call.Name) {
+	if pipeline.IsMemoryTool(call.Name) || pipeline.IsSessionTool(call.Name) {
 		tid := store.DefaultTenant
 		if a.rt.Store != nil && agentID != "" {
 			if ag, err := a.rt.Store.GetAgent(agentID); err == nil && ag != nil {
 				tid = store.NormalizeTenant(ag.TenantID)
 			}
 		}
-		body, err := pipeline.DispatchMemoryTool(a.rt.Store, tid, call)
+		var body string
+		var err error
+		if pipeline.IsMemoryTool(call.Name) {
+			body, err = pipeline.DispatchMemoryTool(a.rt.Store, tid, call)
+		} else {
+			body, err = pipeline.DispatchSessionTool(a.rt.Store, tid, call)
+		}
 		failed := err != nil
 		if a.rt.Store != nil {
 			a.rt.Store.RecordToolUse(agentID, call.Name, failed)

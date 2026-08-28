@@ -162,11 +162,13 @@ func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
 	h := mw(okHandler())
 	paths := []string{
 		"/api/system/backup",
+		"/api/system/heartbeat",
 		"/api/kg/entities",
 		"/api/kg/relations",
 		"/api/skills",
 		"/api/agents/abc/evolution/tick",
 		"/v1/system/backup",
+		"/v1/system/heartbeat",
 		"/v1/kg/entities",
 		"/v1/skills",
 		"/api/pairing",

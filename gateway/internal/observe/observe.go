@@ -36,6 +36,7 @@ type Observer struct {
 	exporter  Exporter
 	reqs      atomic.Int64
 	llms      atomic.Int64
+	lastHB    atomic.Value // string RFC3339 UTC; empty until first stamp
 }
 
 // New returns an Observer that logs JSON to stdout and keeps 200 LLM traces.
@@ -112,6 +113,26 @@ func (o *Observer) doExport(spans []Span) {
 	}
 }
 
+// RecordHeartbeat stamps last_heartbeat as RFC3339 UTC (application-level, not WS ping).
+func (o *Observer) RecordHeartbeat(at time.Time) {
+	if o == nil {
+		return
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	o.lastHB.Store(at.UTC().Format(time.RFC3339))
+}
+
+// LastHeartbeat returns the RFC3339 UTC stamp, or "" if never fired.
+func (o *Observer) LastHeartbeat() string {
+	if o == nil {
+		return ""
+	}
+	v, _ := o.lastHB.Load().(string)
+	return v
+}
+
 // Register mounts GET /api/traces (and /v1/traces), GET /api/stats, and GET /metrics.
 func (o *Observer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/traces", o.HandleTraces)
@@ -119,6 +140,8 @@ func (o *Observer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", o.HandleStats)
 	mux.HandleFunc("GET /api/metrics", o.HandleStats) // SPEC 018 alias
 	mux.HandleFunc("GET /metrics", o.HandleMetrics)
+	mux.HandleFunc("POST /api/system/heartbeat", o.HandleHeartbeat)
+	mux.HandleFunc("POST /v1/system/heartbeat", o.HandleHeartbeat)
 }
 
 // RequestIDFromContext returns the request id stored by Middleware, or "".
