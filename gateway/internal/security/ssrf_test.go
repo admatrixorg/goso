@@ -11,11 +11,24 @@ import (
 
 func TestCheckURL_DefaultOff(t *testing.T) {
 	t.Setenv("GOSO_SSRF", "")
+	t.Setenv("GOSO_ENV", "demo")
 	if err := CheckURL("http://127.0.0.1:9/tools/x"); err != nil {
 		t.Fatalf("default off: %v", err)
 	}
 	if err := CheckURL("http://127.0.0.1:20127/v1"); err != nil {
 		t.Fatalf("demo router9: %v", err)
+	}
+}
+
+func TestCheckURL_ProductionDefaultOn(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	t.Setenv("GOSO_SSRF", "")
+	if err := CheckURL("http://127.0.0.1:20127/v1"); err == nil {
+		t.Fatal("production should DNS/IP-block loopback when GOSO_SSRF unset")
+	}
+	t.Setenv("GOSO_SSRF", "0")
+	if err := CheckURL("http://127.0.0.1:20127/v1"); err != nil {
+		t.Fatalf("explicit off: %v", err)
 	}
 }
 
@@ -77,6 +90,7 @@ func TestGuardClient_Redirect(t *testing.T) {
 		t.Fatal("expected redirect block")
 	}
 	t.Setenv("GOSO_SSRF", "")
+	t.Setenv("GOSO_ENV", "demo")
 	c2 := &http.Client{}
 	GuardClient(c2)
 	if err := c2.CheckRedirect(req, nil); err != nil {

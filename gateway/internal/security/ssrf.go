@@ -16,10 +16,17 @@ var lookupIP = net.LookupIP
 
 var metadataIPv4 = net.IPv4(169, 254, 169, 254)
 
-// SSRFEnabled is GOSO_SSRF=1 (default off so local fake e2e still works).
+// SSRFEnabled is GOSO_SSRF=1, or production when GOSO_SSRF is unset.
+// Explicit 0/false/off keeps demo loopback (router9) working even if GOSO_ENV is production.
 func SSRFEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_SSRF")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	if v == "0" || v == "false" || v == "off" || v == "no" {
+		return false
+	}
+	if v == "1" || v == "true" || v == "yes" || v == "on" {
+		return true
+	}
+	return Production()
 }
 
 // CheckURL blocks localhost, private, link-local, unspecified, multicast,
