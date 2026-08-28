@@ -182,6 +182,7 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 		Channels []struct {
 			Name       string `json:"name"`
 			Configured bool   `json:"configured"`
+			Env        string `json:"env"`
 		} `json:"channels"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -190,17 +191,76 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 	if len(body.Channels) != 7 {
 		t.Fatalf("want 7 got %d %s", len(body.Channels), w.Body.String())
 	}
+	wantEnv := map[string]string{
+		"telegram":      "GOSO_TELEGRAM_BOT_TOKEN",
+		"zalo-personal": "GOSO_ZALO_PERSONAL_TOKEN",
+		"zalo-oa":       "GOSO_ZALO_OA_ACCESS_TOKEN",
+		"discord":       "GOSO_DISCORD_BOT_TOKEN",
+		"slack":         "GOSO_SLACK_BOT_TOKEN",
+		"feishu":        "GOSO_FEISHU_APP_SECRET",
+		"whatsapp":      "GOSO_WHATSAPP_ACCESS_TOKEN",
+	}
 	names := map[string]bool{}
 	for _, c := range body.Channels {
 		names[c.Name] = true
 		if c.Configured {
 			t.Fatalf("%s configured", c.Name)
 		}
+		if c.Env != wantEnv[c.Name] {
+			t.Fatalf("%s env %q want %q", c.Name, c.Env, wantEnv[c.Name])
+		}
 	}
 	for _, n := range []string{"telegram", "zalo-personal", "zalo-oa", "discord", "slack", "feishu", "whatsapp"} {
 		if !names[n] {
 			t.Fatalf("missing %s", n)
 		}
+	}
+}
+
+func TestChannelsAPI_JSONOmitsTokenValue(t *testing.T) {
+	const leak = "must-not-appear-in-get-body"
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", leak)
+	t.Setenv("GOSO_ZALO_PERSONAL_TOKEN", "")
+	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "")
+	t.Setenv("GOSO_DISCORD_BOT_TOKEN", "")
+	t.Setenv("GOSO_SLACK_BOT_TOKEN", "")
+	t.Setenv("GOSO_FEISHU_APP_SECRET", "")
+	t.Setenv("GOSO_WHATSAPP_ACCESS_TOKEN", "")
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/channels", nil))
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	raw := w.Body.String()
+	if strings.Contains(raw, leak) {
+		t.Fatalf("GET body leaked token value: %s", raw)
+	}
+	var body struct {
+		Channels []struct {
+			Name       string `json:"name"`
+			Configured bool   `json:"configured"`
+			Env        string `json:"env"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	var tg struct {
+		Name       string
+		Configured bool
+		Env        string
+	}
+	for _, c := range body.Channels {
+		if c.Name == "telegram" {
+			tg.Name, tg.Configured, tg.Env = c.Name, c.Configured, c.Env
+		}
+	}
+	if !tg.Configured {
+		t.Fatal("telegram should be configured when env set")
+	}
+	if tg.Env != "GOSO_TELEGRAM_BOT_TOKEN" {
+		t.Fatalf("telegram env %q", tg.Env)
 	}
 }
 
@@ -239,6 +299,7 @@ func TestChannelsAPI_LiteFlag(t *testing.T) {
 		Lite     bool `json:"lite"`
 		Channels []struct {
 			Name string `json:"name"`
+			Env  string `json:"env"`
 		} `json:"channels"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &on); err != nil {
@@ -249,5 +310,17 @@ func TestChannelsAPI_LiteFlag(t *testing.T) {
 	}
 	if len(on.Channels) != 7 {
 		t.Fatalf("lite still lists adapters, got %d", len(on.Channels))
+	}
+	var hasTG bool
+	for _, c := range on.Channels {
+		if c.Name == "telegram" {
+			hasTG = true
+			if c.Env != "GOSO_TELEGRAM_BOT_TOKEN" {
+				t.Fatalf("lite telegram env %q", c.Env)
+			}
+		}
+	}
+	if !hasTG {
+		t.Fatal("lite missing telegram")
 	}
 }

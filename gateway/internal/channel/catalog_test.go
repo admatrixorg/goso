@@ -2,7 +2,11 @@
 
 package channel
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
@@ -24,7 +28,20 @@ func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 		if got[i].Configured {
 			t.Fatalf("%s configured with empty env", n)
 		}
+		if got[i].Env != wantEnv[n] {
+			t.Fatalf("%s env %q want %q", n, got[i].Env, wantEnv[n])
+		}
 	}
+}
+
+var wantEnv = map[string]string{
+	"telegram":      "GOSO_TELEGRAM_BOT_TOKEN",
+	"zalo-personal": "GOSO_ZALO_PERSONAL_TOKEN",
+	"zalo-oa":       "GOSO_ZALO_OA_ACCESS_TOKEN",
+	"discord":       "GOSO_DISCORD_BOT_TOKEN",
+	"slack":         "GOSO_SLACK_BOT_TOKEN",
+	"feishu":        "GOSO_FEISHU_APP_SECRET",
+	"whatsapp":      "GOSO_WHATSAPP_ACCESS_TOKEN",
 }
 
 func TestCatalog_ConfiguredWhenEnvSet(t *testing.T) {
@@ -47,6 +64,16 @@ func TestCatalog_ConfiguredWhenEnvSet(t *testing.T) {
 	}
 	if !discord.Configured {
 		t.Fatal("discord should be configured when env set")
+	}
+	if discord.Env != "GOSO_DISCORD_BOT_TOKEN" {
+		t.Fatalf("discord env %q", discord.Env)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "test-placeholder") {
+		t.Fatalf("catalog JSON leaked token value: %s", raw)
 	}
 }
 

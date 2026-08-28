@@ -5,10 +5,12 @@ package channel
 import "os"
 
 // Info is one row of GET /api/channels. Names are always listed; configured
-// is true only when the matching env token is non-empty (never the secret).
+// is true only when the matching env token is non-empty. Env is the variable
+// NAME only (never the secret value).
 type Info struct {
 	Name       string `json:"name"`
 	Configured bool   `json:"configured"`
+	Env        string `json:"env"`
 }
 
 // Names is the fixed 7-channel catalog (C0).
@@ -32,11 +34,12 @@ var tokenEnv = map[string]string{
 	"whatsapp":      "GOSO_WHATSAPP_ACCESS_TOKEN",
 }
 
-// Catalog returns all 7 channel names with configured flags from env.
+// Catalog returns all 7 channel names with configured flags and env var names.
 func Catalog() []Info {
 	out := make([]Info, 0, len(Names))
 	for _, n := range Names {
-		out = append(out, Info{Name: n, Configured: os.Getenv(tokenEnv[n]) != ""})
+		env := tokenEnv[n]
+		out = append(out, Info{Name: n, Configured: os.Getenv(env) != "", Env: env})
 	}
 	return out
 }

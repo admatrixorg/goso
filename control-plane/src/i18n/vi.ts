@@ -408,6 +408,9 @@ export const vi = {
   "channels.empty": "Không có kênh.",
   "channels.col.name": "TÊN",
   "channels.col.configured": "CONFIGURED",
+  "channels.col.env": "BIẾN ENV",
+  "channels.envOnly": "Kênh chỉ cấu hình bằng biến môi trường. Hiện tên biến; không hiện token.",
+  "channels.copied": "Đã chép",
   "channels.liteOff": "Lite: channels off",
 
   "webhooks.title": "Webhook",
