@@ -2,6 +2,8 @@ import { interpolate, useI18n, type Locale } from "../i18n";
 
 const vi = {
   "home.prompt": "Hôm nay anh muốn ZAgent làm gì?",
+  "home.liveGateway":
+    "Tab Agent, Chat và Providers thật nói với gateway — dữ liệu trang này là mock DEMO, không ghi CRM.",
   "home.greet.morning": "Chào buổi sáng",
   "home.greet.noon": "Chào buổi trưa",
   "home.greet.afternoon": "Chào buổi chiều",
@@ -53,6 +55,8 @@ const vi = {
 
 const en: Record<keyof typeof vi, string> = {
   "home.prompt": "What should ZAgent do today?",
+  "home.liveGateway":
+    "Live Agent, Chat, and Providers tabs talk to the gateway — this page is DEMO mock and does not persist to CRM.",
   "home.greet.morning": "Good morning",
   "home.greet.noon": "Good afternoon",
   "home.greet.afternoon": "Good afternoon",
