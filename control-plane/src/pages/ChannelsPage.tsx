@@ -3,7 +3,7 @@ import { channelsApi, type ChannelRow } from "../api/channels";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -55,6 +55,7 @@ export function ChannelsPage() {
       ) : (
         <Card>
           <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: rows.length })} />
+          <TableScroll>
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
             <span style={{ flex: 2 }}>{t("channels.col.name")}</span>
             <span style={{ flex: 1 }}>{t("channels.col.configured")}</span>
@@ -68,6 +69,7 @@ export function ChannelsPage() {
             </div>
           ))}
           {rows.length === 0 ? <EmptyState>{t("channels.empty")}</EmptyState> : null}
+          </TableScroll>
         </Card>
       )}
     </div>

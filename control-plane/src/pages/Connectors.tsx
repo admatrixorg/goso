@@ -3,7 +3,7 @@ import { api, type Agent, type Connector } from "../api/client";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -99,11 +99,12 @@ export function ConnectorsPage() {
           placeholder="endpoint"
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
-          style={{ minWidth: 280, flex: 1 }}
+          style={{ minWidth: 0, flex: 1 }}
         />
       </Card>
       <Card>
         <CardHeader icon="device" title={t("connectors.list")} meta={t("connectors.meta", { n: connectors.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.2 }}>{t("connectors.col.name")}</span>
           <span style={{ flex: 1 }}>{t("connectors.col.transport")}</span>
@@ -125,6 +126,7 @@ export function ConnectorsPage() {
           </div>
         ))}
         {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("connectors.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="user-check" title={t("connectors.assign")} />

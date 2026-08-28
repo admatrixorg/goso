@@ -15,7 +15,7 @@ export function SectionHeader({
   actions?: ReactNode;
 } & HTMLAttributes<HTMLDivElement>) {
   return (
-    <div style={{ display: "flex", gap: "var(--space-9)", alignItems: "flex-start", ...style }} {...rest}>
+    <div style={{ display: "flex", gap: "var(--space-9)", alignItems: "flex-start", flexWrap: "wrap", minWidth: 0, ...style }} {...rest}>
       {icon ? (
         <div
           style={{
@@ -33,7 +33,7 @@ export function SectionHeader({
           <Icon name={icon} size={22} />
         </div>
       ) : null}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: "var(--fs-page-title)", fontWeight: 700, letterSpacing: "var(--ls-title)" }}>{title}</div>
         {description ? (
           <div style={{ fontSize: "var(--fs-meta)", color: "var(--text-3)", maxWidth: 640, textWrap: "pretty" as const }}>

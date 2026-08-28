@@ -11,7 +11,7 @@ import {
 } from "../api/marketing";
 import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
+import { Card, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 
 const TAB_LABEL: Record<(typeof MARKETING_TABS)[number]["id"], MsgKey> = {
@@ -89,8 +89,8 @@ export function MarketingPage() {
     : [];
 
   return (
-    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-      <div style={{ width: 210, flex: "none", background: "var(--card)", borderRight: "1px solid var(--border)", padding: "14px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+    <div className="z-split-stack">
+      <div className="z-split-rail" style={{ width: 210, background: "var(--card)", borderRight: "1px solid var(--border)", padding: "14px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 15, padding: "0 8px 10px" }}>{t("mkt.title")}</div>
         {MARKETING_TABS.map((m) => {
           const on = tab === m.id;
@@ -123,16 +123,16 @@ export function MarketingPage() {
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("common.org")}</span>
-          <input className="z-field" style={{ minWidth: 260 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
+          <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
           <Button icon="refresh" iconGesture onClick={() => void load()}>
             {t("common.refresh")}
           </Button>
         </div>
         {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
         {kpis.length ? (
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {kpis.map((k) => (
-              <Card key={k.key} style={{ flex: 1, padding: "11px 14px" }}>
+              <Card key={k.key} style={{ flex: "1 1 120px", minWidth: 0, padding: "11px 14px" }}>
                 <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{k.value}</div>
                 <div style={{ fontSize: 11, color: "var(--text-3)" }}>{t(KPI_LABEL[k.key])}</div>
               </Card>
@@ -175,6 +175,7 @@ export function MarketingPage() {
               </Button>
             </div>
             <Card>
+              <TableScroll>
               <Head>
                 <span style={{ flex: 2 }}>{t("mkt.col.name")}</span>
                 <span style={{ flex: 1 }}>{t("mkt.col.source")}</span>
@@ -188,6 +189,7 @@ export function MarketingPage() {
                 </Head>
               ))}
               {audiences.length === 0 ? <EmptyState>{t("mkt.emptyAudience")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         ) : (
@@ -233,6 +235,7 @@ export function MarketingPage() {
               </Button>
             </div>
             <Card>
+              <TableScroll>
               <Head>
                 <span style={{ flex: 2 }}>{t("mkt.col.name")}</span>
                 <span style={{ flex: 0.8 }}>{t("mkt.col.kind")}</span>
@@ -256,6 +259,7 @@ export function MarketingPage() {
                 </Head>
               ))}
               {filtered.length === 0 ? <EmptyState>{t("mkt.emptyCampaign")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         )}

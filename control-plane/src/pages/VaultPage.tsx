@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { vaultApi, type VaultDoc, type VaultLink, type VaultSearchHit, type VaultSyncResult } from "../api/vault";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -138,9 +138,10 @@ export function VaultPage() {
           {hits.length === 0 ? <EmptyState>{t("vault.emptyHits")}</EmptyState> : null}
         </Card>
       ) : null}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start" }}>
+      <div className="z-two-col">
         <Card>
           <CardHeader icon="doc" title={t("vault.list")} meta={t("vault.meta", { n: docs.length })} />
+          <TableScroll>
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
             <span style={{ flex: 2 }}>{t("vault.col.title")}</span>
             <span style={{ flex: 2 }}>{t("vault.col.path")}</span>
@@ -163,6 +164,7 @@ export function VaultPage() {
             </div>
           ))}
           {loading ? <StatusLine kind="loading" /> : docs.length === 0 ? <EmptyState>{t("vault.empty")}</EmptyState> : null}
+          </TableScroll>
         </Card>
         <Card>
           <CardHeader icon="hook" title={t("vault.links")} meta={selected?.title} />

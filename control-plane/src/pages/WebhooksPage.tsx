@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { webhooksApi, type WebhookCreated, type WebhookPublic } from "../api/webhooks";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -105,6 +105,7 @@ export function WebhooksPage() {
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noSecrets")}</p>
       <Card>
         <CardHeader icon="hook" title={t("webhooks.list")} meta={t("webhooks.meta", { n: rows.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2 }}>{t("webhooks.col.id")}</span>
           <span style={{ flex: 1 }}>{t("webhooks.col.prefix")}</span>
@@ -116,6 +117,7 @@ export function WebhooksPage() {
           </div>
         ))}
         {loading ? <StatusLine kind="loading" /> : rows.length === 0 ? <EmptyState>{t("webhooks.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="lock" title={t("webhooks.last")} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -127,6 +127,7 @@ export function AgentsPage() {
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
         <CardHeader icon="user" title={t("agents.list")} meta={t("agents.meta", { n: agents.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
           <span style={{ flex: 1.4 }}>{t("agents.col.key")}</span>
           <span style={{ flex: 2 }}>{t("agents.col.name")}</span>
@@ -168,6 +169,7 @@ export function AgentsPage() {
           );
         })}
         {loading ? <StatusLine kind="loading" /> : agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="user" title={editing ? t("agents.edit") : t("agents.add")} />

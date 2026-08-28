@@ -24,6 +24,7 @@ export const vi = {
   "chrome.gateway": "Gateway",
   "chrome.dark": "Tối",
   "chrome.light": "Sáng",
+  "chrome.nav": "Điều hướng",
   "palette.title": "Chuyển tới",
   "palette.empty": "Không có tab khớp.",
   "palette.hint": "Enter để mở · Esc để đóng",

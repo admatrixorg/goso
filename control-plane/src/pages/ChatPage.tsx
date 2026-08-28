@@ -190,16 +190,7 @@ export function ChatPage({
           : null}
         {!loading && msgs.length === 0 ? <EmptyState>{t("chat.empty")}</EmptyState> : null}
       </div>
-      <div
-        style={{
-          padding: "12px 22px 18px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--chrome)",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
+      <div className="z-chat-composer">
         <span
           style={{
             display: "flex",
@@ -215,11 +206,11 @@ export function ChatPage({
           }}
         >
           <Icon name="bolt" size={13} />
-          {t("chat.agent")}
+          <span className="z-wide-only">{t("chat.agent")}</span>
         </span>
         <input
           className="z-field"
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 0 }}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

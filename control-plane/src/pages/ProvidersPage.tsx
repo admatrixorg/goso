@@ -3,7 +3,7 @@ import { providersApi, type ProviderInfo, type ProviderTestResult } from "../api
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -131,6 +131,7 @@ export function ProvidersPage() {
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("providers.noSecrets")}</p>
       <Card>
         <CardHeader icon="bolt" title={t("providers.list")} meta={t("providers.meta", { n: rows.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
           <span style={{ flex: 1.2 }}>{t("providers.col.name")}</span>
           <span style={{ flex: 1 }}>{t("providers.col.type")}</span>
@@ -173,6 +174,7 @@ export function ProvidersPage() {
           );
         })}
         {loading ? <StatusLine kind="loading" /> : rows.length === 0 ? <EmptyState>{t("providers.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="bolt" title={editing ? t("providers.edit") : t("providers.add")} />

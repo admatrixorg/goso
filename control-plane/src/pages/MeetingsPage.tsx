@@ -1,7 +1,7 @@
 import { useDemoT } from "../demo/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { DemoBadge } from "../ui/DemoBadge";
 import { SectionHeader } from "../ui/SectionHeader";
 import { allMeetings } from "../demo/mock";
@@ -33,6 +33,7 @@ export function MeetingsPage() {
       </div>
       <Card>
         <CardHeader icon="list" title={d("meetings.list")} meta={`${allMeetings.length} · DEMO`} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2.6 }}>CUỘC HỌP</span>
           <span style={{ flex: 1.2 }}>THỜI GIAN</span>
@@ -70,6 +71,7 @@ export function MeetingsPage() {
             </span>
           </div>
         ))}
+        </TableScroll>
       </Card>
     </div>
   );

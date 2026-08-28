@@ -1,6 +1,6 @@
 import { useDemoT } from "../demo/i18n";
 import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
+import { Card, TableScroll } from "../ui/Card";
 import { DemoBadge } from "../ui/DemoBadge";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
@@ -37,7 +37,8 @@ export function CalendarPage() {
         <span style={{ background: "var(--btn-dark-bg)", color: "var(--btn-dark-fg)", borderRadius: 7, padding: "5px 16px", fontWeight: 600 }}>{d("cal.week")}</span>
         <span style={{ padding: "5px 16px", color: "var(--text-2)" }}>{d("cal.list")}</span>
       </div>
-      <Card style={{ overflow: "hidden" }}>
+      <Card>
+        <TableScroll>
         <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
           <div style={{ width: 52, flex: "none" }} />
           {weekDays.map((w, i) => (
@@ -59,6 +60,7 @@ export function CalendarPage() {
           </div>
         ))}
         <EmptyState>{d("cal.empty")}</EmptyState>
+        </TableScroll>
       </Card>
     </div>
   );

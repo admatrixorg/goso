@@ -3,7 +3,7 @@ import { api, type Session } from "../api/client";
 import { memoryApi, type MemoryHit, type MemoryNote } from "../api/memory";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -119,6 +119,7 @@ export function MemoryPage() {
       {hits ? (
         <Card>
           <CardHeader icon="search" title={t("memory.hits")} meta={String(hits.length)} />
+          <TableScroll>
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
             <span style={{ flex: 1 }}>{t("memory.col.kind")}</span>
             <span style={{ flex: 2 }}>{t("memory.col.session")}</span>
@@ -132,10 +133,12 @@ export function MemoryPage() {
             </div>
           ))}
           {hits.length === 0 ? <EmptyState>{t("memory.emptyHits")}</EmptyState> : null}
+          </TableScroll>
         </Card>
       ) : null}
       <Card>
         <CardHeader icon="inbox" title={t("memory.list")} meta={t("memory.meta", { n: notes.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1 }}>{t("memory.col.kind")}</span>
           <span style={{ flex: 4 }}>{t("memory.col.body")}</span>
@@ -147,6 +150,7 @@ export function MemoryPage() {
           </div>
         ))}
         {loading || notesLoading ? <StatusLine kind="loading" /> : notes.length === 0 ? <EmptyState>{t("memory.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
     </div>
   );

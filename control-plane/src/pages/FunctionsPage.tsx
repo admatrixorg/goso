@@ -6,7 +6,7 @@ import { toolsApi, type AgentTool } from "../api/tools";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -203,6 +203,7 @@ export function FunctionsPage() {
       <Card>
         <CardHeader icon="build" title={t("functions.tools")} meta={t("functions.meta", { n: tools.length })} />
         <p style={{ margin: 0, padding: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("functions.workspace.note")}</p>
+        <TableScroll>
         <div
           style={{
             display: "flex",
@@ -242,6 +243,7 @@ export function FunctionsPage() {
         {!loading && !toolsLoading && !agentId ? <EmptyState>{t("functions.emptyAgent")}</EmptyState> : null}
         {!loading && !toolsLoading && agentId && notFound ? <EmptyState>{t("functions.notFound")}</EmptyState> : null}
         {!loading && !toolsLoading && agentId && !notFound && tools.length === 0 ? <EmptyState>{t("functions.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="hook" title={t("functions.connectors")} />
@@ -297,6 +299,7 @@ export function FunctionsPage() {
       <Card>
         <CardHeader icon="doc" title={t("functions.skills")} meta={t("functions.skills.meta", { n: skills.length })} />
         {skillsErr ? <StatusLine kind="error">{skillsErr}</StatusLine> : null}
+        <TableScroll>
         <div
           style={{
             display: "flex",
@@ -322,6 +325,7 @@ export function FunctionsPage() {
         ))}
         {skillsLoading ? <StatusLine kind="loading" /> : null}
         {!skillsLoading && !skillsErr && skills.length === 0 ? <EmptyState>{t("functions.skills.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="timer" title={t("functions.cron")} meta={t("functions.cron.meta", { n: cronJobs.length })} />
@@ -362,6 +366,7 @@ export function FunctionsPage() {
             </Button>
           </div>
         </div>
+        <TableScroll>
         <div
           style={{
             display: "flex",
@@ -397,6 +402,7 @@ export function FunctionsPage() {
         ))}
         {cronLoading ? <StatusLine kind="loading" /> : null}
         {!cronLoading && !cronErr && cronJobs.length === 0 ? <EmptyState>{t("functions.cron.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
     </div>
   );

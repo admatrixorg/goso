@@ -3,7 +3,7 @@ import { tracesApi, type LlmTrace, type SpanTree, type TraceSpan } from "../api/
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
@@ -95,6 +95,7 @@ export function TracesPage() {
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
         <CardHeader icon="history" title={t("traces.list")} meta={t("traces.meta", { n: traces.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.6 }}>{t("traces.col.ts")}</span>
           <span style={{ flex: 1.1 }}>{t("traces.col.provider")}</span>
@@ -112,6 +113,7 @@ export function TracesPage() {
           </div>
         ))}
         {loading ? <StatusLine kind="loading" /> : traces.length === 0 ? <EmptyState>{t("traces.empty")}</EmptyState> : null}
+        </TableScroll>
       </Card>
       <Card>
         <CardHeader icon="layers" title={t("traces.spans")} meta={String(spans.length)} />

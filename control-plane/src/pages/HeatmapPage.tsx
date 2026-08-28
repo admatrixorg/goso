@@ -3,7 +3,7 @@ import { asCrmError, crmBase, crmHealth, crmOrgId, crmUpstream, fetchCrmHeatmap,
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 
@@ -113,6 +113,7 @@ export function HeatmapPage() {
           </div>
           <Card>
             <CardHeader icon="scatter" title={t("heat.title")} meta={t("heat.grain", { grain: report.grain ?? "day" })} />
+            <TableScroll>
             <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
               <span style={{ flex: 1.2 }}>{t("heat.col.date")}</span>
               <span style={{ flex: 0.8, textAlign: "right" }}>{t("heat.col.sent")}</span>
@@ -131,6 +132,7 @@ export function HeatmapPage() {
                 <span style={{ flex: 1, textAlign: "right" }}>{fmt(b.revenue, locale)}</span>
               </div>
             ))}
+            </TableScroll>
           </Card>
         </>
       )}

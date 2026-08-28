@@ -179,20 +179,9 @@ export default function App() {
   const paletteItems = visibleTabItems(side, t("nav.settings"));
 
   return (
-    <div style={{ height: "100vh", minWidth: 1280, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          background: "var(--chrome)",
-          borderBottom: "1px solid var(--border)",
-          padding: "7px 16px",
-          flex: "none",
-          zIndex: 50,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 16 }}>
+    <div className="z-shell">
+      <div className="z-topbar">
+        <div className="z-brand">
           <div
             style={{
               width: 26,
@@ -209,8 +198,9 @@ export default function App() {
           >
             Z
           </div>
-          <div style={{ fontWeight: 600, fontSize: 14, letterSpacing: "-.2px", color: "var(--text)" }}>ZAgent</div>
+          <div className="z-wide-only" style={{ fontWeight: 600, fontSize: 14, letterSpacing: "-.2px", color: "var(--text)" }}>ZAgent</div>
         </div>
+        <div className="z-top-tabs">
         {top.map((it) => {
           const on = tab === it.id;
           return (
@@ -235,9 +225,11 @@ export default function App() {
             </button>
           );
         })}
-        <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        </div>
+        <div className="z-topbar-spacer" />
+        <div className="z-chrome-actions">
           <div
+            className="z-gateway"
             style={{
               display: "flex",
               alignItems: "center",
@@ -265,6 +257,7 @@ export default function App() {
           </div>
           <div
             data-ig="search"
+            className="z-header-search"
             style={{
               background: "var(--surface-2)",
               borderRadius: 8,
@@ -274,7 +267,6 @@ export default function App() {
               display: "flex",
               gap: 8,
               alignItems: "center",
-              width: 170,
             }}
           >
             <Icon name="search" size={13} />
@@ -303,6 +295,7 @@ export default function App() {
           <button
             type="button"
             onClick={toggle}
+            aria-label={dark ? t("chrome.dark") : t("chrome.light")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -316,7 +309,7 @@ export default function App() {
               background: "var(--card)",
             }}
           >
-            ◐ {dark ? t("chrome.dark") : t("chrome.light")}
+            ◐ <span className="z-wide-only">{dark ? t("chrome.dark") : t("chrome.light")}</span>
           </button>
           <span data-ig="bell" style={{ position: "relative", color: "var(--text-2)", display: "flex", alignItems: "center" }}>
             <span data-ig-part="">
@@ -327,27 +320,17 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <div
-          style={{
-            width: 216,
-            flex: "none",
-            height: "100%",
-            background: "var(--chrome)",
-            borderRight: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            overflowY: "auto",
-            padding: "12px 8px 8px",
-          }}
-        >
+      <div className="z-body">
+        <nav className="z-sidebar" aria-label={t("chrome.nav")}>
           <button
             type="button"
             data-ig="search"
+            className="z-nav-search"
             onClick={openPalette}
             aria-haspopup="dialog"
             aria-expanded={paletteOpen}
             aria-label={t("chrome.quickSearch")}
+            title={t("chrome.quickSearch")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -363,8 +346,11 @@ export default function App() {
               textAlign: "left",
             }}
           >
-            <span style={{ flex: 1 }}>{t("chrome.quickSearch")}</span>
-            <span style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
+            <span className="z-narrow-only">
+              <Icon name="search" size={15} />
+            </span>
+            <span className="z-wide-only" style={{ flex: 1 }}>{t("chrome.quickSearch")}</span>
+            <span className="z-wide-only" style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
           </button>
           {side.map((g) => {
             const items = g.items;
@@ -372,6 +358,7 @@ export default function App() {
             return (
             <div key={g.group} style={{ marginTop: 14 }}>
               <div
+                className="z-nav-group"
                 style={{
                   fontSize: 10,
                   fontWeight: 700,
@@ -388,7 +375,11 @@ export default function App() {
                   <button
                     key={i.id}
                     type="button"
+                    className="z-nav-item"
                     onClick={() => go(i.id)}
+                    aria-current={on ? "page" : undefined}
+                    aria-label={i.label}
+                    title={i.label}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -407,7 +398,7 @@ export default function App() {
                     }}
                   >
                     <Icon name={i.ic} size={15} />
-                    <span style={{ flex: 1 }}>{i.label}</span>
+                    <span className="z-wide-only" style={{ flex: 1 }}>{i.label}</span>
                   </button>
                 );
               })}
@@ -419,7 +410,11 @@ export default function App() {
             <button
               type="button"
               data-ig="gear"
+              className="z-nav-item"
               onClick={() => go("settings")}
+              aria-current={tab === "settings" ? "page" : undefined}
+              aria-label={t("nav.settings")}
+              title={t("nav.settings")}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -439,9 +434,10 @@ export default function App() {
               <span data-ig-part="">
                 <Icon name="gear" size={15} />
               </span>
-              <span style={{ flex: 1 }}>{t("nav.settings")}</span>
+              <span className="z-wide-only" style={{ flex: 1 }}>{t("nav.settings")}</span>
             </button>
             <div
+              className="z-nav-foot"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -470,12 +466,12 @@ export default function App() {
               >
                 G
               </span>
-              <span style={{ flex: 1 }}>GOSO</span>
+              <span className="z-wide-only" style={{ flex: 1 }}>GOSO</span>
             </div>
           </div>
-        </div>
+        </nav>
 
-        <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", overflowY: "auto", overflowX: "hidden" }}>
+        <div className="z-main">
           {DEMO && tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
           {DEMO && tab === "meetings" && <MeetingsPage />}
           {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
@@ -492,8 +488,8 @@ export default function App() {
             />
           )}
           {tab === "chat" && (
-            <div style={{ display: "flex", flex: 1, minHeight: 0, height: "100%" }}>
-              <div style={{ width: 280, flex: "none", borderRight: "1px solid var(--border)", overflowY: "auto" }}>
+            <div className="z-chat-split">
+              <div className="z-chat-sessions">
                 <SessionsPage
                   ref={sessionsRef}
                   compact
@@ -504,7 +500,7 @@ export default function App() {
                   }}
                 />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="z-chat-transcript">
                 <ChatPage
                   sessionId={sessionId}
                   sessionLabel={sessionLabel}

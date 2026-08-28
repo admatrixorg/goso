@@ -13,7 +13,7 @@ import {
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { KpiCard } from "../ui/KpiCard";
 import { SectionHeader } from "../ui/SectionHeader";
@@ -104,13 +104,13 @@ export function CrmMetricsPage() {
           {crmBase() === "/crm-api" ? ` → ${crmUpstream()}` : ""}
           {" · "}X-Org-ID
         </span>
-        <input className="z-field" style={{ minWidth: 280 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
+        <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
       </div>
       {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
       {online === false ? (
         <EmptyState>{t("crm.offlineEmpty")}</EmptyState>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, minWidth: 0 }}>
           {kpis.map((k) => (
             <KpiCard key={k.label} {...k} />
           ))}
@@ -124,6 +124,7 @@ export function CrmMetricsPage() {
       ) : null}
       <Card>
         <CardHeader icon="eye" title={t("crm.advisor")} meta={t("crm.adviceMeta", { n: advice.length })} />
+        <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.2 }}>{t("crm.col.kind")}</span>
           <span style={{ flex: 3.4 }}>{t("crm.col.summary")}</span>
@@ -139,6 +140,7 @@ export function CrmMetricsPage() {
           </div>
         ))}
         {advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
+        </TableScroll>
       </Card>
     </div>
   );

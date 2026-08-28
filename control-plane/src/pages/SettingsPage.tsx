@@ -11,7 +11,7 @@ import {
 } from "../api/settings";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { Card, CardHeader } from "../ui/Card";
+import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
 
@@ -112,8 +112,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   }
 
   return (
-    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-      <div style={{ width: 250, flex: "none", background: "var(--card)", borderRight: "1px solid var(--border)", overflowY: "auto", padding: "14px 10px" }}>
+    <div className="z-split-stack">
+      <div className="z-split-rail" style={{ background: "var(--card)", borderRight: "1px solid var(--border)", overflowY: "auto", padding: "14px 10px" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 15, padding: "0 8px 10px" }}>{t("settings.title")}</div>
         {menu.map((g) => (
           <div key={g.group}>
@@ -152,7 +152,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         {page !== "theme" ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("common.org")}</span>
-            <input className="z-field" style={{ minWidth: 280 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
+            <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
             <Button icon="refresh" iconGesture onClick={() => void load()}>
               {t("common.refresh")}
             </Button>
@@ -215,6 +215,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             </div>
             <Card>
               <CardHeader icon="friends" title={t("settings.users")} meta={String(users.length)} />
+              <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
                 <span style={{ flex: 1.6 }}>{t("settings.col.email")}</span>
@@ -243,6 +244,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 </Row>
               ))}
               {users.length === 0 ? <EmptyState>{t("settings.users.empty")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         )}
@@ -278,6 +280,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             </div>
             <Card>
               <CardHeader icon="shield" title={t("settings.roles")} meta={String(roles.length)} />
+              <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
                 <span style={{ flex: 3 }}>{t("settings.col.flags")}</span>
@@ -289,6 +292,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 </Row>
               ))}
               {roles.length === 0 ? <EmptyState>{t("settings.roles.empty")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         )}
@@ -315,6 +319,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             </div>
             <Card>
               <CardHeader icon="tag" title={t("settings.nicks")} meta={String(nicks.length)} />
+              <TableScroll>
               {nicks.map((n) => (
                 <Row key={n.id}>
                   <span style={{ flex: 1, fontWeight: 600 }}>{n.displayName}</span>
@@ -322,6 +327,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 </Row>
               ))}
               {nicks.length === 0 ? <EmptyState>{t("settings.nicks.empty")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         )}
@@ -372,6 +378,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             </div>
             <Card>
               <CardHeader icon="doc" title={t("settings.templates")} meta={String(templates.length)} />
+              <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
                 <span style={{ flex: 3 }}>{t("settings.col.body")}</span>
@@ -389,6 +396,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 </Row>
               ))}
               {templates.length === 0 ? <EmptyState>{t("settings.templates.empty")}</EmptyState> : null}
+              </TableScroll>
             </Card>
           </>
         )}
