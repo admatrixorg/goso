@@ -5,7 +5,7 @@ export type CronJob = {
   spec: string;
   session_id: string;
   message: string;
-  enabled: boolean;
+  enabled?: boolean;
   last_run?: string;
 };
 
