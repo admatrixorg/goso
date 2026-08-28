@@ -14,6 +14,7 @@ export function ChannelsPage() {
   const [lite, setLite] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState("");
 
   async function load() {
     try {
@@ -21,6 +22,7 @@ export function ChannelsPage() {
       const list = (j.channels ?? []).map((c) => ({
         name: typeof c?.name === "string" ? c.name : "",
         configured: c?.configured === true,
+        env: typeof c?.env === "string" ? c.env : "",
       }));
       setRows(list.filter((c) => c.name));
       setLite(j.lite === true);
@@ -35,6 +37,17 @@ export function ChannelsPage() {
     void load();
   }, []);
 
+  async function copyEnv(env: string) {
+    if (!env) return;
+    try {
+      await navigator.clipboard.writeText(env);
+      setCopied(env);
+      setErr("");
+    } catch (e) {
+      setErr(formatPublicError(e));
+    }
+  }
+
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
@@ -48,6 +61,7 @@ export function ChannelsPage() {
         }
       />
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.envOnly")}</p>
       {loading ? (
         <StatusLine kind="loading" />
       ) : lite ? (
@@ -57,14 +71,23 @@ export function ChannelsPage() {
           <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: rows.length })} />
           <TableScroll>
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-            <span style={{ flex: 2 }}>{t("channels.col.name")}</span>
+            <span style={{ flex: 1.4 }}>{t("channels.col.name")}</span>
             <span style={{ flex: 1 }}>{t("channels.col.configured")}</span>
+            <span style={{ flex: 2.2 }}>{t("channels.col.env")}</span>
           </div>
           {rows.map((c) => (
-            <div key={c.name} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
-              <span style={{ flex: 2, fontWeight: 600 }}>{c.name}</span>
+            <div key={c.name} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8 }}>
+              <span style={{ flex: 1.4, fontWeight: 600 }}>{c.name}</span>
               <span style={{ flex: 1 }}>
                 <Badge tone={c.configured ? "positive" : "neutral"}>{c.configured ? t("common.yes") : t("common.no")}</Badge>
+              </span>
+              <span style={{ flex: 2.2, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <code style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{c.env}</code>
+                {c.env ? (
+                  <Button onClick={() => void copyEnv(c.env)} style={{ padding: "4px 10px" }}>
+                    {copied === c.env ? t("channels.copied") : t("common.copy")}
+                  </Button>
+                ) : null}
               </span>
             </div>
           ))}

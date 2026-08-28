@@ -161,7 +161,7 @@ export type GatewayEvent = {
   summary: string;
 };
 export type Approval = { approval_id: string; status: string; connector: string; tool: string };
-export type Channel = { name: string; configured: boolean };
+export type Channel = { name: string; configured: boolean; env?: string };
 
 export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),

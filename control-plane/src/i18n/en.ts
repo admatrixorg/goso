@@ -410,6 +410,9 @@ export const en: Record<MsgKey, string> = {
   "channels.empty": "No channels.",
   "channels.col.name": "NAME",
   "channels.col.configured": "CONFIGURED",
+  "channels.col.env": "ENV VAR",
+  "channels.envOnly": "Channels are env-only. Variable names are shown; tokens are never shown.",
+  "channels.copied": "Copied",
   "channels.liteOff": "Lite: channels off",
 
   "webhooks.title": "Webhooks",
