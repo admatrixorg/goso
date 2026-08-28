@@ -19,17 +19,30 @@ type Provider interface {
 }
 
 // Echo is a fallback provider that echoes the last user message.
-type Echo struct{}
+// StreamParts, when set, are emitted as ChatStream deltas (tests: 1–N chunks).
+type Echo struct {
+	StreamParts []string
+}
 
 func (Echo) Name() string      { return "echo" }
 func (Echo) ModelName() string { return "echo" }
 
-func (Echo) Chat(ctx context.Context, messages []Message) (string, error) {
-	s, _, err := Echo{}.ChatUsage(ctx, messages)
+func (e Echo) Chat(ctx context.Context, messages []Message) (string, error) {
+	s, _, err := e.ChatUsage(ctx, messages)
 	return s, err
 }
 
-func (Echo) ChatUsage(_ context.Context, messages []Message) (string, Usage, error) {
+func (e Echo) ChatUsage(ctx context.Context, messages []Message) (string, Usage, error) {
+	if err := ctx.Err(); err != nil {
+		return "", Usage{}, err
+	}
+	if len(e.StreamParts) > 0 {
+		var b string
+		for _, p := range e.StreamParts {
+			b += p
+		}
+		return b, EstimateUsage(messages, b), nil
+	}
 	reply := "echo: (no message)"
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" {
@@ -38,4 +51,24 @@ func (Echo) ChatUsage(_ context.Context, messages []Message) (string, Usage, err
 		}
 	}
 	return reply, EstimateUsage(messages, reply), nil
+}
+
+func (e Echo) ChatStream(ctx context.Context, messages []Message, onDelta StreamHandler) (string, error) {
+	s, _, err := e.ChatStreamUsage(ctx, messages, onDelta)
+	return s, err
+}
+
+func (e Echo) ChatStreamUsage(ctx context.Context, messages []Message, onDelta StreamHandler) (string, Usage, error) {
+	reply, usage, err := e.ChatUsage(ctx, messages)
+	if err != nil {
+		return "", Usage{}, err
+	}
+	if len(e.StreamParts) > 0 {
+		for _, p := range e.StreamParts {
+			emitDelta(onDelta, p)
+		}
+		return reply, usage, nil
+	}
+	emitDelta(onDelta, reply)
+	return reply, usage, nil
 }

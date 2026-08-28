@@ -16,15 +16,6 @@ func chatWantsStream(r *http.Request, body chatBody) bool {
 	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/event-stream")
 }
 
-func splitSSEDeltas(s string) []string {
-	runes := []rune(s)
-	if len(runes) < 2 {
-		return []string{s, ""}
-	}
-	mid := len(runes) / 2
-	return []string{string(runes[:mid]), string(runes[mid:])}
-}
-
 type sseWriter struct {
 	w       http.ResponseWriter
 	f       http.Flusher
@@ -65,23 +56,35 @@ func (s *sseWriter) event(name, payload string) {
 	}
 }
 
+func (s *sseWriter) delta(text string) {
+	if text == "" {
+		return
+	}
+	payload, err := json.Marshal(map[string]string{"delta": text})
+	if err != nil {
+		return
+	}
+	s.data(string(payload))
+}
+
+func (s *sseWriter) errEvent(msg string) {
+	payload, err := json.Marshal(map[string]string{"error": msg})
+	if err != nil {
+		s.event("error", `{"error":"stream error"}`)
+		return
+	}
+	s.event("error", string(payload))
+}
+
 func writeChatSSE(w http.ResponseWriter, reply string) {
 	sw := newSSEWriter(w)
-	for _, d := range splitSSEDeltas(reply) {
-		payload, _ := json.Marshal(map[string]string{"delta": d})
-		sw.data(string(payload))
-	}
+	sw.delta(reply)
 	sw.data("[DONE]")
 }
 
 func writeChatSSEError(w http.ResponseWriter, msg string) {
 	sw := newSSEWriter(w)
-	payload, err := json.Marshal(map[string]string{"error": msg})
-	if err != nil {
-		sw.event("error", `{"error":"stream error"}`)
-		return
-	}
-	sw.event("error", string(payload))
+	sw.errEvent(msg)
 }
 
 func respondChat(w http.ResponseWriter, r *http.Request, body chatBody, reply string, jsonOK any, err error, errStatus int) {

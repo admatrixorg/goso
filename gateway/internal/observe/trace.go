@@ -133,7 +133,12 @@ func (o *Observer) Wrap(p llm.Provider) llm.Provider {
 		p = llm.Echo{}
 	}
 	tp := &tracedProvider{inner: p, obs: o}
-	if _, ok := p.(llm.ToolChat); ok {
+	_, isTool := p.(llm.ToolChat)
+	_, isStreamTool := p.(llm.StreamToolChat)
+	if isTool && isStreamTool {
+		return &tracedStreamToolProvider{tracedToolProvider: &tracedToolProvider{tracedProvider: tp}}
+	}
+	if isTool {
 		return &tracedToolProvider{tracedProvider: tp}
 	}
 	return tp
@@ -162,6 +167,18 @@ func (t *tracedProvider) Chat(ctx context.Context, messages []llm.Message) (stri
 	return reply, err
 }
 
+func (t *tracedProvider) ChatStream(ctx context.Context, messages []llm.Message, onDelta llm.StreamHandler) (string, error) {
+	reply, _, err := t.ChatStreamUsage(ctx, messages, onDelta)
+	return reply, err
+}
+
+func (t *tracedProvider) ChatStreamUsage(ctx context.Context, messages []llm.Message, onDelta llm.StreamHandler) (string, llm.Usage, error) {
+	start := time.Now()
+	reply, usage, err := llm.ChatStream(ctx, t.inner, messages, onDelta)
+	t.record(ctx, start, err, usage.CacheReadTokens)
+	return reply, usage, err
+}
+
 func (t *tracedToolProvider) ChatTools(ctx context.Context, messages []llm.Message, tools []llm.ToolSpec) (llm.Reply, error) {
 	start := time.Now()
 	inner, ok := t.inner.(llm.ToolChat)
@@ -171,6 +188,23 @@ func (t *tracedToolProvider) ChatTools(ctx context.Context, messages []llm.Messa
 		return llm.Reply{Text: text, Usage: usage}, err
 	}
 	reply, err := inner.ChatTools(ctx, messages, tools)
+	t.record(ctx, start, err, reply.Usage.CacheReadTokens)
+	return reply, err
+}
+
+type tracedStreamToolProvider struct {
+	*tracedToolProvider
+}
+
+func (t *tracedStreamToolProvider) ChatStreamTools(ctx context.Context, messages []llm.Message, tools []llm.ToolSpec, onDelta llm.StreamHandler) (llm.Reply, error) {
+	start := time.Now()
+	inner, ok := t.inner.(llm.StreamToolChat)
+	if !ok {
+		text, usage, err := llm.ChatStream(ctx, t.inner, messages, onDelta)
+		t.record(ctx, start, err, usage.CacheReadTokens)
+		return llm.Reply{Text: text, Usage: usage}, err
+	}
+	reply, err := inner.ChatStreamTools(ctx, messages, tools, onDelta)
 	t.record(ctx, start, err, reply.Usage.CacheReadTokens)
 	return reply, err
 }

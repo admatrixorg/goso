@@ -438,6 +438,29 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
+		name := "echo"
+		if provider != nil {
+			name = provider.Name()
+		}
+		if chatWantsStream(r, body) {
+			sw := newSSEWriter(w)
+			out, err := rt.ChatOptsStream(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), sw.delta)
+			if err != nil {
+				if errors.Is(err, llm.ErrProviderNotFound) {
+					writeErr(w, http.StatusBadRequest, "provider not found")
+					return
+				}
+				sw.errEvent(err.Error())
+				return
+			}
+			reply := ""
+			if out != nil {
+				reply = out.Reply
+			}
+			recordUsage(meter, sess.AgentID, name, llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
+			sw.data("[DONE]")
+			return
+		}
 		out, err := rt.ChatOpts(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize))
 		if err != nil {
 			if errors.Is(err, llm.ErrProviderNotFound) {
@@ -446,10 +469,6 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			}
 			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)
 			return
-		}
-		name := "echo"
-		if provider != nil {
-			name = provider.Name()
 		}
 		reply := ""
 		if out != nil {

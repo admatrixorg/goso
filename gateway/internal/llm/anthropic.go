@@ -36,7 +36,20 @@ func (a *Anthropic) Chat(ctx context.Context, messages []Message) (string, error
 	return s, err
 }
 
+func (a *Anthropic) ChatStream(ctx context.Context, messages []Message, onDelta StreamHandler) (string, error) {
+	s, _, err := a.ChatStreamUsage(ctx, messages, onDelta)
+	return s, err
+}
+
+func (a *Anthropic) ChatStreamUsage(ctx context.Context, messages []Message, onDelta StreamHandler) (string, Usage, error) {
+	return a.call(ctx, messages, true, onDelta)
+}
+
 func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, Usage, error) {
+	return a.call(ctx, messages, false, nil)
+}
+
+func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, onDelta StreamHandler) (string, Usage, error) {
 	if a.APIKey == "" {
 		return "", Usage{}, fmt.Errorf("anthropic: missing API key")
 	}
@@ -71,6 +84,9 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 		"model":      model,
 		"max_tokens": 1024,
 		"messages":   in,
+	}
+	if stream {
+		payload["stream"] = true
 	}
 	if system != "" {
 		if fullCache {
@@ -109,10 +125,20 @@ func (a *Anthropic) ChatUsage(ctx context.Context, messages []Message) (string, 
 		return "", Usage{}, err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
 		return "", Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
 	}
+	if stream {
+		text, su, err := ReadAnthropicStreamDeltas(resp.Body, onDelta)
+		if err != nil {
+			return "", Usage{}, err
+		}
+		u := fallbackUsage(messages, text, su.PromptTokens, su.CompletionTokens)
+		u.CacheReadTokens = su.CacheReadTokens
+		return text, u, nil
+	}
+	b, _ := io.ReadAll(resp.Body)
 	var out struct {
 		Content []struct {
 			Type string `json:"type"`
