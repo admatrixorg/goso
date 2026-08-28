@@ -177,6 +177,14 @@ type SecretRow struct {
 	CT    []byte
 }
 
+// LLMProvider is a persisted LLM connection (no api_key).
+type LLMProvider struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
+}
+
 // StoreIface is satisfied by both Store (memory) and SQLiteStore.
 type StoreIface interface {
 	CreateAgent(Agent) (*Agent, error)
@@ -244,6 +252,10 @@ type StoreIface interface {
 	GetCronJob(string) (*CronJob, error)
 	DeleteCronJob(string) error
 	MarkCronRun(id string, at time.Time) error
+	CreateLLMProvider(LLMProvider) (*LLMProvider, error)
+	ListLLMProviders() []*LLMProvider
+	GetLLMProvider(string) (*LLMProvider, error)
+	UpdateLLMProvider(LLMProvider) (*LLMProvider, error)
 }
 
 var (
@@ -261,26 +273,27 @@ func LiteEnabled() bool {
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
-	mu          sync.RWMutex
-	agents      map[string]*Agent
-	sessions    map[string]*Session
-	messages    map[string][]*Message // session_id -> messages
-	memories    map[string][]*Memory  // session_id -> memories
-	connectors  map[string]*ConnectorRecord
-	agentConns  map[string]map[string]struct{} // agent_id -> connector names
-	vaultDocs   map[string]*VaultDoc
-	vaultLinks  map[string][]VaultLink // from_id -> outbound
-	teams       map[string]*Team
-	teamMembers map[string][]*TeamMember  // team_id
-	teamTasks   map[string]*TeamTask      // task id
-	teamMsgs    map[string][]*TeamMessage // team_id
-	agentLinks  map[string][]string       // from -> to ids
-	metrics     map[string]*AgentMetrics
-	evoApplied  map[string]map[string]bool // agent_id -> suggestion_id
-	secrets     map[string]SecretRow
-	toolFlags   map[string]bool
-	cronJobs    map[string]*CronJob
-	seq         int64
+	mu           sync.RWMutex
+	agents       map[string]*Agent
+	sessions     map[string]*Session
+	messages     map[string][]*Message // session_id -> messages
+	memories     map[string][]*Memory  // session_id -> memories
+	connectors   map[string]*ConnectorRecord
+	agentConns   map[string]map[string]struct{} // agent_id -> connector names
+	vaultDocs    map[string]*VaultDoc
+	vaultLinks   map[string][]VaultLink // from_id -> outbound
+	teams        map[string]*Team
+	teamMembers  map[string][]*TeamMember  // team_id
+	teamTasks    map[string]*TeamTask      // task id
+	teamMsgs     map[string][]*TeamMessage // team_id
+	agentLinks   map[string][]string       // from -> to ids
+	metrics      map[string]*AgentMetrics
+	evoApplied   map[string]map[string]bool // agent_id -> suggestion_id
+	secrets      map[string]SecretRow
+	toolFlags    map[string]bool
+	cronJobs     map[string]*CronJob
+	llmProviders map[string]*LLMProvider
+	seq          int64
 }
 
 var _ StoreIface = (*Store)(nil)
@@ -299,24 +312,25 @@ func Open(path string) (StoreIface, func() error, error) {
 
 func New() *Store {
 	return &Store{
-		agents:      make(map[string]*Agent),
-		sessions:    make(map[string]*Session),
-		messages:    make(map[string][]*Message),
-		memories:    make(map[string][]*Memory),
-		connectors:  make(map[string]*ConnectorRecord),
-		agentConns:  make(map[string]map[string]struct{}),
-		vaultDocs:   make(map[string]*VaultDoc),
-		vaultLinks:  make(map[string][]VaultLink),
-		teams:       make(map[string]*Team),
-		teamMembers: make(map[string][]*TeamMember),
-		teamTasks:   make(map[string]*TeamTask),
-		teamMsgs:    make(map[string][]*TeamMessage),
-		agentLinks:  make(map[string][]string),
-		metrics:     make(map[string]*AgentMetrics),
-		evoApplied:  make(map[string]map[string]bool),
-		secrets:     make(map[string]SecretRow),
-		toolFlags:   make(map[string]bool),
-		cronJobs:    make(map[string]*CronJob),
+		agents:       make(map[string]*Agent),
+		sessions:     make(map[string]*Session),
+		messages:     make(map[string][]*Message),
+		memories:     make(map[string][]*Memory),
+		connectors:   make(map[string]*ConnectorRecord),
+		agentConns:   make(map[string]map[string]struct{}),
+		vaultDocs:    make(map[string]*VaultDoc),
+		vaultLinks:   make(map[string][]VaultLink),
+		teams:        make(map[string]*Team),
+		teamMembers:  make(map[string][]*TeamMember),
+		teamTasks:    make(map[string]*TeamTask),
+		teamMsgs:     make(map[string][]*TeamMessage),
+		agentLinks:   make(map[string][]string),
+		metrics:      make(map[string]*AgentMetrics),
+		evoApplied:   make(map[string]map[string]bool),
+		secrets:      make(map[string]SecretRow),
+		toolFlags:    make(map[string]bool),
+		cronJobs:     make(map[string]*CronJob),
+		llmProviders: make(map[string]*LLMProvider),
 	}
 }
 

@@ -177,7 +177,7 @@ export const api = {
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
   chat: (body: ChatBody) => jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
   chatStream,
-  providers: () => jsonFetch<{ providers: string[] }>("/api/providers"),
+  providers: () => jsonFetch<{ providers: Array<string | { name: string }> }>("/api/providers"),
   channels: () => jsonFetch<{ channels: Channel[] }>("/api/channels"),
   listConnectors: () => jsonFetch<{ connectors: Connector[] }>("/api/connectors"),
   createConnector: (body: {

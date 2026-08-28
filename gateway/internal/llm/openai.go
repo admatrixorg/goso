@@ -134,6 +134,15 @@ func chatCompletionsURL(base string) string {
 	return base + "/v1/chat/completions"
 }
 
+// modelsURL joins BaseURL with the OpenAI-compat models path.
+func modelsURL(base string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/models"
+	}
+	return base + "/v1/models"
+}
+
 func openaiMessages(messages []Message) []map[string]any {
 	var in []map[string]any
 	for _, m := range messages {

@@ -189,6 +189,12 @@ func (s *SQLiteStore) migrate() error {
 			enabled INTEGER NOT NULL DEFAULT 1,
 			last_run TEXT
 		)`,
+		`CREATE TABLE IF NOT EXISTS llm_providers (
+			name TEXT PRIMARY KEY,
+			type TEXT NOT NULL,
+			base_url TEXT,
+			model TEXT
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {

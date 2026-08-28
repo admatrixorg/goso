@@ -42,8 +42,8 @@ type Options struct {
 	Feishu   http.HandlerFunc
 	WhatsApp http.HandlerFunc
 	Webhooks *webhook.Registry
-	// ProviderNames is GET /api/providers (configured names only, never secrets).
-	ProviderNames []string
+	// LLM is the env registry used for GET/test overlay (sqlite rows merge; env wins).
+	LLM *llm.Registry
 }
 
 func (o *Options) defaults() {
@@ -78,17 +78,7 @@ func NewRouter(opt Options) http.Handler {
 	mux := routerBase(opt.Store, opt.Version)
 	registerChannels(mux, opt)
 	registerWebhookRoutes(mux, opt)
-	aliasAPI(mux, "GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		names := opt.ProviderNames
-		if len(names) == 0 {
-			name := "echo"
-			if opt.Provider != nil {
-				name = opt.Provider.Name()
-			}
-			names = []string{name}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"providers": names})
-	})
+	registerProviderRoutes(mux, opt)
 	var chat http.HandlerFunc
 	if opt.Runtime != nil {
 		chat = handleChatRuntime(opt.Runtime, opt.Store, opt.Meter, opt.Provider)
