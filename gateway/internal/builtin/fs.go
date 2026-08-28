@@ -5,6 +5,7 @@ package builtin
 import (
 	"errors"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,8 +18,12 @@ import (
 const (
 	ToolReadFile  = "read_file"
 	ToolWriteFile = "write_file"
-	// MaxReadBytes is the read_file cap. Larger files are rejected, not truncated.
+	ToolListFiles = "list_files"
+	ToolEdit      = "edit"
+	ToolSendFile  = "send_file"
+	// MaxReadBytes is the read_file/edit cap. Larger files are rejected, not truncated.
 	MaxReadBytes = 1 << 20
+	maxListEnts  = 256
 )
 
 var (
@@ -26,7 +31,11 @@ var (
 	errPathEscape    = errors.New("path escape")
 	errPathRequired  = errors.New("path is required")
 	errNotFile       = errors.New("not a file")
+	errNotDir        = errors.New("not a directory")
 	errTooLarge      = errors.New("too large")
+	errOldRequired   = errors.New("old is required")
+	errOldNotFound   = errors.New("old not found")
+	errNewRequired   = errors.New("new is required")
 )
 
 func workspaceConfigured() bool {
@@ -102,16 +111,34 @@ func mapFSErr(name string, err error) *connector.InvokeResult {
 	if errors.Is(err, errNotFile) {
 		return toolErr(name, "error", "not a file")
 	}
+	if errors.Is(err, errNotDir) {
+		return toolErr(name, "error", "not a directory")
+	}
 	if errors.Is(err, errTooLarge) {
 		return toolErr(name, "error", "too large")
+	}
+	if errors.Is(err, errOldRequired) {
+		return toolErr(name, "error", "old is required")
+	}
+	if errors.Is(err, errOldNotFound) {
+		return toolErr(name, "error", "old not found")
+	}
+	if errors.Is(err, errNewRequired) {
+		return toolErr(name, "error", "new is required")
 	}
 	if os.IsNotExist(err) {
 		return toolErr(name, "not_found", "not_found")
 	}
-	if name == ToolWriteFile {
+	switch name {
+	case ToolWriteFile, ToolEdit:
 		return toolErr(name, "error", "write failed")
+	case ToolListFiles:
+		return toolErr(name, "error", "list failed")
+	case ToolSendFile:
+		return toolErr(name, "error", "stat failed")
+	default:
+		return toolErr(name, "error", "read failed")
 	}
-	return toolErr(name, "error", "read failed")
 }
 
 func workspaceAbs() (string, error) {
@@ -336,4 +363,202 @@ func writeRegular(path, content string) error {
 	}
 	_, err = f.Write([]byte(content))
 	return err
+}
+
+func stringArg(args map[string]any, keys ...string) (string, bool) {
+	if args == nil {
+		return "", false
+	}
+	for _, k := range keys {
+		v, ok := args[k]
+		if !ok {
+			continue
+		}
+		s, ok := v.(string)
+		if !ok {
+			return "", false
+		}
+		return s, true
+	}
+	return "", false
+}
+
+func listPathArg(args map[string]any) string {
+	p := pathArg(args)
+	if p == "" {
+		return "."
+	}
+	return p
+}
+
+func openDir(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if isLoop(err) {
+			return nil, nil, errPathEscape
+		}
+		return nil, nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !st.IsDir() {
+		f.Close()
+		return nil, nil, errNotDir
+	}
+	return f, st, nil
+}
+
+func fileMIME(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext == "" {
+		return "application/octet-stream"
+	}
+	if m := mime.TypeByExtension(ext); m != "" {
+		return m
+	}
+	return "application/octet-stream"
+}
+
+func listFiles(args map[string]any) (*connector.InvokeResult, error) {
+	if !workspaceConfigured() {
+		return notConfigured(ToolListFiles), nil
+	}
+	abs, rel, err := jailPath(listPathArg(args))
+	if err != nil {
+		return mapFSErr(ToolListFiles, err), nil
+	}
+	f, _, err := openDir(abs)
+	if err != nil {
+		return mapFSErr(ToolListFiles, err), nil
+	}
+	defer f.Close()
+	ents, err := f.ReadDir(maxListEnts + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return toolErr(ToolListFiles, "error", "list failed"), nil
+	}
+	truncated := false
+	if len(ents) > maxListEnts {
+		ents = ents[:maxListEnts]
+		truncated = true
+	}
+	out := make([]map[string]any, 0, len(ents))
+	for _, e := range ents {
+		kind := "file"
+		switch {
+		case e.Type()&os.ModeSymlink != 0:
+			kind = "symlink"
+		case e.IsDir():
+			kind = "dir"
+		case !e.Type().IsRegular() && e.Type() != 0:
+			kind = "other"
+		}
+		item := map[string]any{
+			"name": e.Name(),
+			"path": filepath.ToSlash(filepath.Join(rel, e.Name())),
+			"type": kind,
+		}
+		if kind == "file" {
+			if info, err := e.Info(); err == nil {
+				item["bytes"] = info.Size()
+			}
+		}
+		out = append(out, item)
+	}
+	content := map[string]any{
+		"path":    rel,
+		"entries": out,
+	}
+	if truncated {
+		content["truncated"] = true
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolListFiles,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content:   content,
+	}, nil
+}
+
+func editFile(args map[string]any) (*connector.InvokeResult, error) {
+	if !workspaceConfigured() {
+		return notConfigured(ToolEdit), nil
+	}
+	old, ok := stringArg(args, "old", "old_string")
+	if !ok {
+		return mapFSErr(ToolEdit, errOldRequired), nil
+	}
+	if old == "" {
+		return mapFSErr(ToolEdit, errOldRequired), nil
+	}
+	newVal, ok := stringArg(args, "new", "new_string")
+	if !ok {
+		return mapFSErr(ToolEdit, errNewRequired), nil
+	}
+	abs, rel, err := jailPath(pathArg(args))
+	if err != nil {
+		return mapFSErr(ToolEdit, err), nil
+	}
+	f, st, err := openRegular(abs, os.O_RDONLY)
+	if err != nil {
+		return mapFSErr(ToolEdit, err), nil
+	}
+	if st.Size() > MaxReadBytes {
+		f.Close()
+		return toolErr(ToolEdit, "error", "too large"), nil
+	}
+	body, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	f.Close()
+	if err != nil {
+		return toolErr(ToolEdit, "error", "read failed"), nil
+	}
+	if len(body) > MaxReadBytes {
+		return toolErr(ToolEdit, "error", "too large"), nil
+	}
+	src := string(body)
+	if !strings.Contains(src, old) {
+		return mapFSErr(ToolEdit, errOldNotFound), nil
+	}
+	next := strings.Replace(src, old, newVal, 1)
+	if err := writeRegular(abs, next); err != nil {
+		return mapFSErr(ToolEdit, err), nil
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolEdit,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content: map[string]any{
+			"path":      rel,
+			"replaced":  1,
+			"bytes":     len(next),
+			"old_bytes": len(src),
+		},
+	}, nil
+}
+
+func sendFile(args map[string]any) (*connector.InvokeResult, error) {
+	if !workspaceConfigured() {
+		return notConfigured(ToolSendFile), nil
+	}
+	abs, rel, err := jailPath(pathArg(args))
+	if err != nil {
+		return mapFSErr(ToolSendFile, err), nil
+	}
+	f, st, err := openRegular(abs, os.O_RDONLY)
+	if err != nil {
+		return mapFSErr(ToolSendFile, err), nil
+	}
+	_ = f.Close()
+	return &connector.InvokeResult{
+		Tool:      ToolSendFile,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content: map[string]any{
+			"path":  rel,
+			"bytes": st.Size(),
+			"mime":  fileMIME(rel),
+		},
+	}, nil
 }

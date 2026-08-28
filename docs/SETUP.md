@@ -86,7 +86,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_VIEW_TOKEN | (rỗng) | Optional GET-only Bearer for `/healthz` `/api/agents` `/api/sessions`. POST `/api/chat` → 403. |
 | GOSO_INJECTION | log | `log` (default) or `block`. Scan user chat for documented injection patterns; block → 400 on `/api/chat`. |
 | GOSO_SSRF | off | `1` blocks literal localhost/private IPs on connector HTTP. Default off so local fake e2e works. |
-| GOSO_WORKSPACE | (rỗng) | Write jail. Tools/vault cannot write outside this directory. Empty = builtin `read_file`/`write_file` fail-closed (`not_configured`, no FS access). Cap read 1MiB. |
+| GOSO_WORKSPACE | (rỗng) | Write jail. Tools/vault cannot write outside this directory. Empty = builtin filesystem tools (`read_file` `write_file` `list_files` `edit` `send_file`) fail-closed (`not_configured`, no FS access). Cap read/edit 1MiB. `send_file` returns metadata only. |
 | GOSO_MASTER_KEY | (rỗng) | 32-byte hex AES-256-GCM key for `secrets(name, nonce, ct)`. Empty → refuse persist; env provider keys still work. |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
@@ -101,7 +101,8 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_OPENROUTER_API_KEY, GOSO_GROQ_API_KEY, GOSO_DEEPSEEK_API_KEY, GOSO_GEMINI_API_KEY, GOSO_MISTRAL_API_KEY, GOSO_XAI_API_KEY, GOSO_MINIMAX_API_KEY, GOSO_DASHSCOPE_API_KEY | (empty) | Named OpenAI-compat providers (SPEC 039). Empty = absent. `GET /api/providers` lists configured names only. |
 | GOSO_ROUTER9_BASE_URL | (unset = absent) | SPEC 044/045. Set to `http://127.0.0.1:20127/v1` to construct named provider `router9`. Key optional (`GOSO_ROUTER9_API_KEY` may be empty). Model default `ocg/deepseek-v4-flash`. Override with `GOSO_ROUTER9_MODEL` (including `cx/*`). |
 | GOSO_LLM_PROVIDER | (unset) | Force Preferred() name (e.g. `router9`) when that provider is constructed. |
-| GOSO_WEB_SEARCH | (off) | `ddg` or `1` enables builtin `web_search` (DuckDuckGo Instant Answer). Empty = fail-closed `not_configured`. |
+| GOSO_WEB_SEARCH | (off) | `ddg` or `1` enables builtin `web_search` (DuckDuckGo Instant Answer → `{title,url,snippet}[]`). Empty env, empty query, or empty provider base = fail-closed `not_configured` (no network). |
+| GOSO_MEDIA / GOSO_MEDIA_* | (off) | `1` is required together with a process-injected test double before `media`/`image_gen`/`tts` run. Env alone stays `not_configured`. Never calls a paid media API. `sandbox`/`browser` ignore this and stay stubs (DI-12/13). |
 | GOSO_SKILLS_DIR | (empty) | One-level skill folders (`<dir>/<name>/SKILL.md`). Empty = fail-closed: builtin `use_skill` returns `not_configured` and `GET /api/skills` is `{skills:[]}`. No script exec. Cap 64KiB. |
 | GOSO_CONTEXT_DIR | (empty) | Bootstrap markdown dir (SPEC 051). Empty = no inject. When set: read only direct children `SOUL.md`, `IDENTITY.md`, `AGENTS.md` (optional `USER.md`), 32KiB each, labeled system text in the pipeline prompt stage. Does not change `display_name` / `agent_key`. Missing dir and `..` are no-ops. |
 | GOSO_TELEGRAM_BOT_TOKEN, GOSO_ZALO_OA_ACCESS_TOKEN, GOSO_ZALO_PERSONAL_TOKEN, GOSO_DISCORD_BOT_TOKEN, GOSO_SLACK_BOT_TOKEN, GOSO_FEISHU_APP_SECRET, GOSO_WHATSAPP_ACCESS_TOKEN | (empty) | Channel tokens (SPEC 040). Empty = still listed on `GET /api/channels` with `configured: false`. Live values = DI-01..07, not in git. WhatsApp adapter is Cloud API shaped (native vs Business = DI-01). |

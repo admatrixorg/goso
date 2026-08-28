@@ -48,22 +48,24 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 			Connector        string `json:"connector"`
 			RequiresApproval bool   `json:"requires_approval"`
 			Enabled          bool   `json:"enabled"`
+			Configured       bool   `json:"configured"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
 	var sawSearch, sawSandbox, sawSkill, sawRead, sawWrite bool
+	var sawList, sawEdit, sawSend, sawImage, sawTTS bool
 	for _, tl := range listed.Tools {
 		if tl.Name == "web_search" {
 			sawSearch = true
-			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
 				t.Fatalf("web_search %+v", tl)
 			}
 		}
 		if tl.Name == "sandbox" {
 			sawSandbox = true
-			if !tl.RequiresApproval || tl.Enabled {
+			if !tl.RequiresApproval || tl.Enabled || tl.Configured {
 				t.Fatalf("sandbox %+v", tl)
 			}
 		}
@@ -75,18 +77,48 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 		}
 		if tl.Name == "read_file" {
 			sawRead = true
-			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval {
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
 				t.Fatalf("read_file %+v", tl)
 			}
 		}
 		if tl.Name == "write_file" {
 			sawWrite = true
-			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval {
+			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval || tl.Configured {
 				t.Fatalf("write_file %+v", tl)
 			}
 		}
+		if tl.Name == "list_files" {
+			sawList = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
+				t.Fatalf("list_files %+v", tl)
+			}
+		}
+		if tl.Name == "edit" {
+			sawEdit = true
+			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval || tl.Configured {
+				t.Fatalf("edit %+v", tl)
+			}
+		}
+		if tl.Name == "send_file" {
+			sawSend = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
+				t.Fatalf("send_file %+v", tl)
+			}
+		}
+		if tl.Name == "image_gen" {
+			sawImage = true
+			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval || tl.Configured {
+				t.Fatalf("image_gen %+v", tl)
+			}
+		}
+		if tl.Name == "tts" {
+			sawTTS = true
+			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval || tl.Configured {
+				t.Fatalf("tts %+v", tl)
+			}
+		}
 	}
-	if !sawSearch || !sawSandbox || !sawSkill || !sawRead || !sawWrite {
+	if !sawSearch || !sawSandbox || !sawSkill || !sawRead || !sawWrite || !sawList || !sawEdit || !sawSend || !sawImage || !sawTTS {
 		t.Fatalf("builtins missing %s", w.Body.String())
 	}
 

@@ -241,9 +241,10 @@ export function FunctionsPage() {
             color: "var(--text-3)",
           }}
         >
-          <span style={{ flex: 1.6 }}>{t("functions.col.name")}</span>
-          <span style={{ flex: 1.2 }}>{t("functions.col.connector")}</span>
-          <span style={{ flex: 1 }}>{t("functions.col.approval")}</span>
+          <span style={{ flex: 1.5 }}>{t("functions.col.name")}</span>
+          <span style={{ flex: 1.1 }}>{t("functions.col.connector")}</span>
+          <span style={{ flex: 0.9 }}>{t("functions.col.approval")}</span>
+          <span style={{ flex: 0.9 }}>{t("functions.col.configured")}</span>
           <span style={{ flex: 0.8, textAlign: "right" }}>{t("functions.col.on")}</span>
         </div>
         {tools.map((tool) => (
@@ -251,11 +252,16 @@ export function FunctionsPage() {
             key={`${tool.connector}:${tool.name}`}
             style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}
           >
-            <span style={{ flex: 1.6, fontWeight: 600 }}>{tool.name}</span>
-            <span style={{ flex: 1.2, color: "var(--text-2)" }}>{tool.connector}</span>
-            <span style={{ flex: 1 }}>
+            <span style={{ flex: 1.5, fontWeight: 600 }}>{tool.name}</span>
+            <span style={{ flex: 1.1, color: "var(--text-2)" }}>{tool.connector}</span>
+            <span style={{ flex: 0.9 }}>
               <Badge tone={tool.requires_approval ? "warning" : "neutral"}>
                 {tool.requires_approval ? t("functions.approvalYes") : t("functions.approvalNo")}
+              </Badge>
+            </span>
+            <span style={{ flex: 0.9 }}>
+              <Badge tone={tool.configured ? "positive" : "neutral"}>
+                {tool.configured ? t("common.yes") : t("common.no")}
               </Badge>
             </span>
             <span style={{ flex: 0.8, textAlign: "right" }}>
