@@ -107,10 +107,18 @@ export function TeamsPage() {
   }, [selected]);
 
   async function createTeam() {
-    if (!name.trim() || !lead.trim()) return;
+    if (!name.trim()) {
+      setErr(t("teams.needName"));
+      return;
+    }
+    if (!lead.trim()) {
+      setErr(t("teams.needLead"));
+      return;
+    }
     try {
       const tm = await teamsApi.create({ name: name.trim(), lead_agent_id: lead.trim() });
       setName("");
+      setErr("");
       await loadTeams();
       setSelected(tm.id);
     } catch (e) {
@@ -119,10 +127,14 @@ export function TeamsPage() {
   }
 
   async function addMember() {
-    if (!selected || !memberId.trim()) return;
+    if (!selected || !memberId.trim()) {
+      setErr(t("teams.needMember"));
+      return;
+    }
     try {
       await teamsApi.addMember(selected, { agent_id: memberId.trim(), role: role.trim() || "member" });
       setMemberId("");
+      setErr("");
       await loadDetail(selected);
     } catch (e) {
       setErr(formatPublicError(e));
@@ -130,10 +142,14 @@ export function TeamsPage() {
   }
 
   async function addTask() {
-    if (!selected || !taskTitle.trim()) return;
+    if (!selected || !taskTitle.trim()) {
+      setErr(t("teams.needTask"));
+      return;
+    }
     try {
       await teamsApi.createTask(selected, { title: taskTitle.trim(), status: "todo" });
       setTaskTitle("");
+      setErr("");
       await loadDetail(selected);
     } catch (e) {
       setErr(formatPublicError(e));
@@ -152,10 +168,18 @@ export function TeamsPage() {
   }
 
   async function sendMsg() {
-    if (!selected || !fromAgent.trim() || !msgBody.trim()) return;
+    if (!selected || !fromAgent.trim()) {
+      setErr(t("teams.needFrom"));
+      return;
+    }
+    if (!msgBody.trim()) {
+      setErr(t("teams.needBody"));
+      return;
+    }
     try {
       await teamsApi.createMessage(selected, { from_agent_id: fromAgent.trim(), body: msgBody.trim() });
       setMsgBody("");
+      setErr("");
       await loadDetail(selected);
     } catch (e) {
       setErr(formatPublicError(e));
@@ -163,10 +187,18 @@ export function TeamsPage() {
   }
 
   async function addLink() {
-    if (!linkAgent.trim() || !toAgent.trim()) return;
+    if (!linkAgent.trim()) {
+      setErr(t("teams.needMember"));
+      return;
+    }
+    if (!toAgent.trim()) {
+      setErr(t("teams.needTo"));
+      return;
+    }
     try {
       await teamsApi.addLink(linkAgent.trim(), { to_agent_id: toAgent.trim(), bidirectional: bidir });
       setToAgent("");
+      setErr("");
       await loadDetail(selected, linkAgent.trim());
     } catch (e) {
       setErr(formatPublicError(e));
