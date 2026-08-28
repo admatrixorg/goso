@@ -21,6 +21,7 @@ export function HomePage({ onMeetings, onChat }: { onMeetings: () => void; onCha
               <DemoBadge />
             </div>
             <div style={{ fontSize: 13.5, color: "var(--text-3)", marginTop: 7 }}>{d("home.prompt")}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>{d("home.liveGateway")}</div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
