@@ -130,8 +130,8 @@ func TestWebhookAPI_ListPublicOnly(t *testing.T) {
 	if strings.Contains(raw, `"token":`) {
 		t.Fatalf("token field in list %s", raw)
 	}
-	if strings.Contains(raw, "hmac") {
-		t.Fatalf("hmac field in list %s", raw)
+	if strings.Contains(raw, `"hmac_key"`) {
+		t.Fatalf("hmac_key field in list %s", raw)
 	}
 
 	var listed struct {
@@ -159,8 +159,8 @@ func TestWebhookAPI_ListPublicOnly(t *testing.T) {
 	if _, ok := row["hmac_key"]; ok {
 		t.Fatal("hmac_key field present")
 	}
-	if len(row) != 2 {
-		t.Fatalf("unexpected fields %v", row)
+	if strings.Contains(raw, created.HMACKey) {
+		t.Fatalf("hmac key in list %s", raw)
 	}
 }
 

@@ -196,6 +196,37 @@ func (s *SQLiteStore) migrate() error {
 			base_url TEXT,
 			model TEXT
 		)`,
+		`CREATE TABLE IF NOT EXISTS webhooks (
+			id TEXT PRIMARY KEY,
+			name TEXT,
+			kind TEXT NOT NULL DEFAULT 'llm',
+			agent_id TEXT,
+			token_prefix TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			hmac_enc TEXT,
+			require_hmac INTEGER NOT NULL DEFAULT 0,
+			revoked INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_webhooks_token_hash ON webhooks(token_hash)`,
+		`CREATE TABLE IF NOT EXISTS webhook_jobs (
+			id TEXT PRIMARY KEY,
+			webhook_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			input TEXT,
+			reply TEXT,
+			error TEXT,
+			callback_url TEXT,
+			attempts INTEGER NOT NULL DEFAULT 0,
+			next_attempt_at TEXT,
+			idempotency_key TEXT,
+			body_hash TEXT,
+			lease_token TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_webhook_jobs_claim ON webhook_jobs(status, next_attempt_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_webhook_jobs_idem ON webhook_jobs(webhook_id, idempotency_key)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {

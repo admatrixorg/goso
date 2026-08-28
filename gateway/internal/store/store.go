@@ -186,6 +186,48 @@ type LLMProvider struct {
 	Model   string `json:"model"`
 }
 
+// Webhook is a persisted inbound webhook row. HMACEnc is ciphertext (or empty
+// when GOSO_MASTER_KEY is unset — hashed-only / in-process HMAC).
+type Webhook struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name,omitempty"`
+	Kind        string    `json:"kind,omitempty"`
+	AgentID     string    `json:"agent_id,omitempty"`
+	TokenPrefix string    `json:"token_prefix"`
+	TokenHash   string    `json:"-"`
+	HMACEnc     string    `json:"-"`
+	RequireHMAC bool      `json:"require_hmac"`
+	Revoked     bool      `json:"revoked"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Webhook job statuses.
+const (
+	WebhookQueued  = "queued"
+	WebhookRunning = "running"
+	WebhookDone    = "done"
+	WebhookFailed  = "failed"
+	WebhookDead    = "dead"
+)
+
+// WebhookJob is one inbound LLM call (sync cache or async + callback).
+type WebhookJob struct {
+	ID             string    `json:"id"`
+	WebhookID      string    `json:"webhook_id"`
+	Status         string    `json:"status"`
+	Input          string    `json:"input,omitempty"`
+	Reply          string    `json:"reply,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	CallbackURL    string    `json:"callback_url,omitempty"`
+	Attempts       int       `json:"attempts,omitempty"`
+	NextAttemptAt  time.Time `json:"next_attempt_at,omitempty"`
+	IdempotencyKey string    `json:"idempotency_key,omitempty"`
+	BodyHash       string    `json:"body_hash,omitempty"`
+	LeaseToken     string    `json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 // StoreIface is satisfied by both Store (memory) and SQLiteStore.
 type StoreIface interface {
 	CreateAgent(Agent) (*Agent, error)
@@ -257,6 +299,15 @@ type StoreIface interface {
 	ListLLMProviders() []*LLMProvider
 	GetLLMProvider(string) (*LLMProvider, error)
 	UpdateLLMProvider(LLMProvider) (*LLMProvider, error)
+	CreateWebhook(Webhook) (*Webhook, error)
+	ListWebhooks() []*Webhook
+	GetWebhook(string) (*Webhook, error)
+	UpdateWebhook(Webhook) (*Webhook, error)
+	CreateWebhookJob(WebhookJob) (*WebhookJob, error)
+	GetWebhookJob(string) (*WebhookJob, error)
+	GetWebhookJobByIdempotency(webhookID, key string) (*WebhookJob, error)
+	UpdateWebhookJob(WebhookJob) (*WebhookJob, error)
+	ClaimWebhookJob(now time.Time, lease string) (*WebhookJob, error)
 }
 
 var (
@@ -294,6 +345,8 @@ type Store struct {
 	toolFlags    map[string]bool
 	cronJobs     map[string]*CronJob
 	llmProviders map[string]*LLMProvider
+	webhooks     map[string]*Webhook
+	webhookJobs  map[string]*WebhookJob
 	seq          int64
 }
 
@@ -332,6 +385,8 @@ func New() *Store {
 		toolFlags:    make(map[string]bool),
 		cronJobs:     make(map[string]*CronJob),
 		llmProviders: make(map[string]*LLMProvider),
+		webhooks:     make(map[string]*Webhook),
+		webhookJobs:  make(map[string]*WebhookJob),
 	}
 }
 
