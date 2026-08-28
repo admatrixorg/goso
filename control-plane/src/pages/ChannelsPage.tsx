@@ -19,11 +19,19 @@ export function ChannelsPage() {
   async function load() {
     try {
       const j = await channelsApi.list();
-      const list = (j.channels ?? []).map((c) => ({
-        name: typeof c?.name === "string" ? c.name : "",
-        configured: c?.configured === true,
-        env: typeof c?.env === "string" ? c.env : "",
-      }));
+      const list = (j.channels ?? []).map((c) => {
+        const envNames = Array.isArray(c?.env_names)
+          ? c.env_names.filter((n): n is string => typeof n === "string" && n.length > 0)
+          : [];
+        const env = typeof c?.env === "string" ? c.env : "";
+        return {
+          name: typeof c?.name === "string" ? c.name : "",
+          configured: c?.configured === true,
+          missing: c?.missing === true || c?.configured !== true,
+          env,
+          env_names: envNames.length ? envNames : env ? [env] : [],
+        };
+      });
       setRows(list.filter((c) => c.name));
       setLite(j.lite === true);
       setErr("");
@@ -62,6 +70,7 @@ export function ChannelsPage() {
       />
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.envOnly")}</p>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.noSecrets")}</p>
       {loading ? (
         <StatusLine kind="loading" />
       ) : lite ? (
@@ -73,21 +82,24 @@ export function ChannelsPage() {
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
             <span style={{ flex: 1.4 }}>{t("channels.col.name")}</span>
             <span style={{ flex: 1 }}>{t("channels.col.configured")}</span>
-            <span style={{ flex: 2.2 }}>{t("channels.col.env")}</span>
+            <span style={{ flex: 2.6 }}>{t("channels.col.envNames")}</span>
           </div>
           {rows.map((c) => (
             <div key={c.name} style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8 }}>
               <span style={{ flex: 1.4, fontWeight: 600 }}>{c.name}</span>
-              <span style={{ flex: 1 }}>
+              <span style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Badge tone={c.configured ? "positive" : "neutral"}>{c.configured ? t("common.yes") : t("common.no")}</Badge>
+                {c.missing ? <Badge tone="warning">{t("channels.missing")}</Badge> : null}
               </span>
-              <span style={{ flex: 2.2, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <code style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{c.env}</code>
-                {c.env ? (
-                  <Button onClick={() => void copyEnv(c.env)} style={{ padding: "4px 10px" }}>
-                    {copied === c.env ? t("channels.copied") : t("common.copy")}
-                  </Button>
-                ) : null}
+              <span style={{ flex: 2.6, display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                {c.env_names.map((env) => (
+                  <span key={env} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <code style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{env}</code>
+                    <Button onClick={() => void copyEnv(env)} style={{ padding: "4px 10px" }}>
+                      {copied === env ? t("channels.copied") : t("common.copy")}
+                    </Button>
+                  </span>
+                ))}
               </span>
             </div>
           ))}

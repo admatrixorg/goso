@@ -28,8 +28,14 @@ func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 		if got[i].Configured {
 			t.Fatalf("%s configured with empty env", n)
 		}
+		if !got[i].Missing {
+			t.Fatalf("%s missing=false with empty env", n)
+		}
 		if got[i].Env != wantEnv[n] {
 			t.Fatalf("%s env %q want %q", n, got[i].Env, wantEnv[n])
+		}
+		if len(got[i].EnvNames) != 1 || got[i].EnvNames[0] != wantEnv[n] {
+			t.Fatalf("%s env_names %v want [%s]", n, got[i].EnvNames, wantEnv[n])
 		}
 	}
 }
@@ -65,8 +71,14 @@ func TestCatalog_ConfiguredWhenEnvSet(t *testing.T) {
 	if !discord.Configured {
 		t.Fatal("discord should be configured when env set")
 	}
+	if discord.Missing {
+		t.Fatal("discord missing=true when env set")
+	}
 	if discord.Env != "GOSO_DISCORD_BOT_TOKEN" {
 		t.Fatalf("discord env %q", discord.Env)
+	}
+	if len(discord.EnvNames) != 1 || discord.EnvNames[0] != "GOSO_DISCORD_BOT_TOKEN" {
+		t.Fatalf("discord env_names %v", discord.EnvNames)
 	}
 	raw, err := json.Marshal(got)
 	if err != nil {
@@ -74,6 +86,15 @@ func TestCatalog_ConfiguredWhenEnvSet(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "test-placeholder") {
 		t.Fatalf("catalog JSON leaked token value: %s", raw)
+	}
+}
+
+func TestKnown(t *testing.T) {
+	if !Known("telegram") || !Known("whatsapp") {
+		t.Fatal("catalog names should be known")
+	}
+	if Known("") || Known("sms") {
+		t.Fatal("unknown names")
 	}
 }
 
