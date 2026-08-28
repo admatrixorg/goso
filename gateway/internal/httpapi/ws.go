@@ -85,7 +85,7 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 					_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"message is required"}`)})
 					continue
 				}
-				reply, sessID, chatErr := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message, "")
+				reply, sessID, chatErr := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message, "", requestTenant(r))
 				if chatErr != nil {
 					msg := chatErr.Error()
 					if errors.Is(chatErr, llm.ErrProviderNotFound) {

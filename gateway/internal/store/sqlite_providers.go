@@ -19,9 +19,10 @@ func (s *SQLiteStore) CreateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 	if p.Type == "" {
 		return nil, errors.New("type is required")
 	}
+	p.TenantID = NormalizeTenant(p.TenantID)
 	_, err := s.db.Exec(
-		`INSERT INTO llm_providers(name, type, base_url, model) VALUES(?,?,?,?)`,
-		p.Name, p.Type, p.BaseURL, p.Model,
+		`INSERT INTO llm_providers(name, type, base_url, model, tenant_id) VALUES(?,?,?,?,?)`,
+		p.Name, p.Type, p.BaseURL, p.Model, p.TenantID,
 	)
 	if err != nil {
 		return nil, ErrExists
@@ -31,7 +32,7 @@ func (s *SQLiteStore) CreateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 }
 
 func (s *SQLiteStore) ListLLMProviders() []*LLMProvider {
-	rows, err := s.db.Query(`SELECT name, type, base_url, model FROM llm_providers ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, type, base_url, model, tenant_id FROM llm_providers ORDER BY name`)
 	if err != nil {
 		return []*LLMProvider{}
 	}
@@ -49,7 +50,7 @@ func (s *SQLiteStore) ListLLMProviders() []*LLMProvider {
 
 func (s *SQLiteStore) GetLLMProvider(name string) (*LLMProvider, error) {
 	name = strings.TrimSpace(name)
-	row := s.db.QueryRow(`SELECT name, type, base_url, model FROM llm_providers WHERE name=?`, name)
+	row := s.db.QueryRow(`SELECT name, type, base_url, model, tenant_id FROM llm_providers WHERE name=?`, name)
 	p, err := scanLLMProvider(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -90,8 +91,10 @@ func (s *SQLiteStore) UpdateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 
 func scanLLMProvider(sc scanner) (*LLMProvider, error) {
 	var p LLMProvider
-	if err := sc.Scan(&p.Name, &p.Type, &p.BaseURL, &p.Model); err != nil {
+	var tenant sql.NullString
+	if err := sc.Scan(&p.Name, &p.Type, &p.BaseURL, &p.Model, &tenant); err != nil {
 		return nil, err
 	}
+	p.TenantID = NormalizeTenant(tenant.String)
 	return cloneLLMProvider(&p), nil
 }

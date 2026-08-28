@@ -47,7 +47,15 @@ func handleCreateTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		t, err := st.CreateTeam(store.Team{Name: body.Name, LeadAgentID: strings.TrimSpace(body.LeadAgentID)})
+		tid := requestTenant(r)
+		lead := strings.TrimSpace(body.LeadAgentID)
+		if lead != "" {
+			if _, err := agentVisible(st, lead, tid); err != nil {
+				writeErr(w, http.StatusBadRequest, "lead agent not found")
+				return
+			}
+		}
+		t, err := st.CreateTeam(store.Team{TenantID: tid, Name: body.Name, LeadAgentID: lead})
 		if err != nil {
 			if errors.Is(err, store.ErrLiteCap) {
 				writeErr(w, http.StatusBadRequest, "lite cap: max 1 team")
@@ -62,7 +70,7 @@ func handleCreateTeam(st store.StoreIface) http.HandlerFunc {
 
 func handleListTeams(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list := st.ListTeams()
+		list := teamsInTenant(st.ListTeams(), requestTenant(r))
 		if list == nil {
 			list = []*store.Team{}
 		}
@@ -77,6 +85,9 @@ func handleGetTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "team not found")
 			return
 		}
+		if hideWrongTenant(w, t.TenantID, requestTenant(r)) {
+			return
+		}
 		members, _ := st.ListTeamMembers(t.ID)
 		if members == nil {
 			members = []*store.TeamMember{}
@@ -88,6 +99,10 @@ func handleGetTeam(st store.StoreIface) http.HandlerFunc {
 func handleUpdateTeam(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := teamVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		var body struct {
 			Name        string `json:"name"`
 			LeadAgentID string `json:"lead_agent_id"`
@@ -111,7 +126,12 @@ func handleUpdateTeam(st store.StoreIface) http.HandlerFunc {
 
 func handleDeleteTeam(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := st.DeleteTeam(strings.TrimSpace(r.PathValue("id"))); err != nil {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := teamVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
+		if err := st.DeleteTeam(id); err != nil {
 			writeErr(w, http.StatusNotFound, "team not found")
 			return
 		}
@@ -121,6 +141,10 @@ func handleDeleteTeam(st store.StoreIface) http.HandlerFunc {
 
 func handleListMembers(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := teamVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		list, err := st.ListTeamMembers(strings.TrimSpace(r.PathValue("id")))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "team not found")
@@ -133,12 +157,20 @@ func handleListMembers(st store.StoreIface) http.HandlerFunc {
 func handleAddMember(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
+		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		var body struct {
 			AgentID string `json:"agent_id"`
 			Role    string `json:"role"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if _, err := agentVisible(st, strings.TrimSpace(body.AgentID), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusBadRequest, "agent not found")
 			return
 		}
 		m, err := st.AddTeamMember(store.TeamMember{TeamID: teamID, AgentID: body.AgentID, Role: body.Role})
@@ -152,6 +184,10 @@ func handleAddMember(st store.StoreIface) http.HandlerFunc {
 
 func handleRemoveMember(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := teamVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "member not found")
+			return
+		}
 		err := st.RemoveTeamMember(strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(r.PathValue("agent_id")))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "member not found")
@@ -163,6 +199,10 @@ func handleRemoveMember(st store.StoreIface) http.HandlerFunc {
 
 func handleListTasks(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := teamVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		list, err := st.ListTeamTasks(strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(r.URL.Query().Get("status")))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "team not found")
@@ -175,6 +215,10 @@ func handleListTasks(st store.StoreIface) http.HandlerFunc {
 func handleCreateTask(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
+		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		var body struct {
 			Title           string `json:"title"`
 			Status          string `json:"status"`
@@ -183,6 +227,12 @@ func handleCreateTask(st store.StoreIface) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
+		}
+		if aid := strings.TrimSpace(body.AssigneeAgentID); aid != "" {
+			if _, err := agentVisible(st, aid, requestTenant(r)); err != nil {
+				writeErr(w, http.StatusBadRequest, "agent not found")
+				return
+			}
 		}
 		task, err := st.CreateTeamTask(store.TeamTask{
 			TeamID: teamID, Title: body.Title, Status: body.Status, AssigneeAgentID: body.AssigneeAgentID,
@@ -224,6 +274,10 @@ func handleUpdateTask(st store.StoreIface) http.HandlerFunc {
 
 func handleListMessagesTeam(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := teamVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		list, err := st.ListTeamMessages(strings.TrimSpace(r.PathValue("id")))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "team not found")
@@ -236,6 +290,10 @@ func handleListMessagesTeam(st store.StoreIface) http.HandlerFunc {
 func handleCreateMessageTeam(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
+		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "team not found")
+			return
+		}
 		var body struct {
 			FromAgentID string `json:"from_agent_id"`
 			Body        string `json:"body"`
@@ -257,6 +315,10 @@ func handleCreateMessageTeam(st store.StoreIface) http.HandlerFunc {
 
 func handleListLinks(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := agentVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		list, err := st.ListAgentLinks(strings.TrimSpace(r.PathValue("id")))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
@@ -269,6 +331,11 @@ func handleListLinks(st store.StoreIface) http.HandlerFunc {
 func handleAddLink(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		from := strings.TrimSpace(r.PathValue("id"))
+		tid := requestTenant(r)
+		if _, err := agentVisible(st, from, tid); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		var body struct {
 			ToAgentID     string `json:"to_agent_id"`
 			Bidirectional bool   `json:"bidirectional"`
@@ -277,7 +344,12 @@ func handleAddLink(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if err := st.AddAgentLink(from, strings.TrimSpace(body.ToAgentID)); err != nil {
+		to := strings.TrimSpace(body.ToAgentID)
+		if _, err := agentVisible(st, to, tid); err != nil {
+			writeErr(w, http.StatusBadRequest, "agent not found")
+			return
+		}
+		if err := st.AddAgentLink(from, to); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -292,7 +364,7 @@ func handleAddLink(st store.StoreIface) http.HandlerFunc {
 func handleEvolution(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
-		if _, err := st.GetAgent(id); err != nil {
+		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
@@ -304,6 +376,10 @@ func handleEvolution(st store.StoreIface) http.HandlerFunc {
 func handleEvolutionApply(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		sid := strings.TrimSpace(r.PathValue("sid"))
 		var raw map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&raw)

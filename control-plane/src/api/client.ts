@@ -7,9 +7,21 @@ function base(): string {
   return GATEWAY_URL.replace(/\/$/, "");
 }
 
+export const TENANT_STORAGE_KEY = "goso_tenant";
+
 function authHeader(): Record<string, string> {
   const t = (import.meta.env.VITE_GOSO_ADMIN_TOKEN as string) || localStorage.getItem("goso_token") || "";
   if (t) return { Authorization: `Bearer ${t}` };
+  return {};
+}
+
+function tenantHeader(): Record<string, string> {
+  try {
+    const t = (localStorage.getItem(TENANT_STORAGE_KEY) || "").trim();
+    if (t) return { "X-Goso-Tenant": t };
+  } catch {
+    /* private mode */
+  }
   return {};
 }
 
@@ -17,7 +29,7 @@ export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T>
   const url = `${base()}${path}`;
   const res = await fetch(url, {
     ...init,
-    headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers as Record<string, string> | undefined) },
+    headers: { "Content-Type": "application/json", ...authHeader(), ...tenantHeader(), ...(init?.headers as Record<string, string> | undefined) },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -44,7 +56,7 @@ export async function probeHealthz(signal?: AbortSignal): Promise<{ status: numb
     const res = await fetch(`${base()}/healthz`, {
       method: "GET",
       cache: "no-store",
-      headers: { ...authHeader() },
+      headers: { ...authHeader(), ...tenantHeader() },
       signal: ctrl.signal,
     });
     let ok = false;
@@ -155,6 +167,7 @@ export async function chatStream(body: ChatBody, onDelta: (delta: string) => voi
       "Content-Type": "application/json",
       Accept: "text/event-stream",
       ...authHeader(),
+      ...tenantHeader(),
     },
     body: JSON.stringify({ ...body, stream: true }),
   });
@@ -209,8 +222,11 @@ export type GatewayEvent = {
 export type Approval = { approval_id: string; status: string; connector: string; tool: string };
 export type Channel = { name: string; configured: boolean; env?: string };
 
+export type TenantInfo = { tenant: string; multi_tenant: boolean };
+
 export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),
+  tenant: () => jsonFetch<TenantInfo>("/api/tenant"),
   listAgents: () => jsonFetch<{ agents: Agent[] }>("/api/agents"),
   getAgent: (id: string) => jsonFetch<Agent>(`/api/agents/${id}`),
   createAgent: (body: {

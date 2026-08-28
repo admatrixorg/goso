@@ -88,6 +88,7 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		return nil, err
 	}
 	d.Path = path
+	d.TenantID = NormalizeTenant(d.TenantID)
 	if d.Mtime.IsZero() {
 		d.Mtime = time.Now().UTC()
 	} else {

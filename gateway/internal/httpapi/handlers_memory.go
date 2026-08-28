@@ -18,6 +18,10 @@ func handleListMemory(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "session_id is required")
 			return
 		}
+		if _, err := sessionVisible(st, sid, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
 		list, err := st.ListMemories(sid)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -30,6 +34,7 @@ func handleListMemory(st store.StoreIface) http.HandlerFunc {
 		if list == nil {
 			list = []*store.Memory{}
 		}
+		list = memoriesInTenant(list, requestTenant(r))
 		writeJSON(w, http.StatusOK, map[string]any{"memories": list})
 	}
 }
@@ -55,7 +60,13 @@ func handleCreateMemory(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "body is required")
 			return
 		}
+		tid := requestTenant(r)
+		if _, err := sessionVisible(st, body.SessionID, tid); err != nil {
+			writeErr(w, http.StatusBadRequest, "session not found")
+			return
+		}
 		m, err := st.PutMemory(store.Memory{
+			TenantID:  tid,
 			SessionID: body.SessionID,
 			Body:      body.Body,
 			Kind:      strings.TrimSpace(body.Kind),
@@ -80,6 +91,14 @@ func handleSearchMemory(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		tid := requestTenant(r)
+		out := make([]store.SearchHit, 0, len(hits))
+		for _, h := range hits {
+			if _, err := sessionVisible(st, h.SessionID, tid); err == nil {
+				out = append(out, h)
+			}
+		}
+		hits = out
 		if hits == nil {
 			hits = []store.SearchHit{}
 		}

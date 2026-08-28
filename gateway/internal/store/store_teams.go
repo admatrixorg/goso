@@ -33,8 +33,17 @@ func (s *Store) CreateTeam(t Team) (*Team, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if LiteEnabled() && len(s.teams) >= LiteMaxTeams {
-		return nil, ErrLiteCap
+	t.TenantID = NormalizeTenant(t.TenantID)
+	if LiteEnabled() {
+		n := 0
+		for _, v := range s.teams {
+			if SameTenant(v.TenantID, t.TenantID) {
+				n++
+			}
+		}
+		if n >= LiteMaxTeams {
+			return nil, ErrLiteCap
+		}
 	}
 	if t.LeadAgentID != "" {
 		if _, ok := s.agents[t.LeadAgentID]; !ok {

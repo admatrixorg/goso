@@ -18,7 +18,7 @@ func vaultSvc(st store.StoreIface) *vault.Service {
 
 func handleListVaultDocs(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list := vaultSvc(st).List()
+		list := vaultDocsInTenant(vaultSvc(st).List(), requestTenant(r))
 		if list == nil {
 			list = []*store.VaultDoc{}
 		}
@@ -42,6 +42,9 @@ func handleGetVaultDoc(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if hideWrongTenant(w, d.TenantID, requestTenant(r)) {
+			return
+		}
 		writeJSON(w, http.StatusOK, d)
 	}
 }
@@ -62,8 +65,12 @@ func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		svc := vaultSvc(st)
+		tid := requestTenant(r)
 		existed, _ := st.FindVaultDocByTitle(body.Title)
-		d, err := svc.Put(body.Title, body.Body)
+		if existed != nil && !store.SameTenant(existed.TenantID, tid) {
+			existed = nil
+		}
+		d, err := svc.PutTenant(body.Title, body.Body, tid)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -81,6 +88,18 @@ func handleVaultDocLinks(st store.StoreIface) http.HandlerFunc {
 		id := strings.TrimSpace(r.PathValue("id"))
 		if id == "" {
 			writeErr(w, http.StatusBadRequest, "id is required")
+			return
+		}
+		d, gerr := vaultSvc(st).Get(id)
+		if gerr != nil {
+			if errors.Is(gerr, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, gerr.Error())
+			return
+		}
+		if hideWrongTenant(w, d.TenantID, requestTenant(r)) {
 			return
 		}
 		outbound, inbound, err := vaultSvc(st).Links(id)
@@ -117,7 +136,15 @@ func handleSearchVault(st store.StoreIface) http.HandlerFunc {
 		if hits == nil {
 			hits = []store.VaultSearchHit{}
 		}
-		writeJSON(w, http.StatusOK, hits)
+		tid := requestTenant(r)
+		out := make([]store.VaultSearchHit, 0, len(hits))
+		for _, h := range hits {
+			d, err := st.GetVaultDoc(h.ID)
+			if err == nil && d != nil && store.SameTenant(d.TenantID, tid) {
+				out = append(out, h)
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
 	}
 }
 

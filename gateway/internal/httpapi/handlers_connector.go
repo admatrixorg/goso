@@ -172,7 +172,7 @@ func handlePatchConnector(opt Options) http.HandlerFunc {
 func handleListAgentTools(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		if _, err := opt.Store.GetAgent(id); err != nil {
+		if _, err := agentVisible(opt.Store, id, requestTenant(r)); err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
@@ -216,7 +216,7 @@ func handlePatchAgentTool(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		name := r.PathValue("name")
-		if _, err := opt.Store.GetAgent(id); err != nil {
+		if _, err := agentVisible(opt.Store, id, requestTenant(r)); err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
@@ -276,6 +276,10 @@ func handlePatchAgentTool(opt Options) http.HandlerFunc {
 func handleLinkAgentConnector(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.PathValue("id")
+		if _, err := agentVisible(opt.Store, agentID, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		var body struct {
 			Connector string `json:"connector"`
 			Name      string `json:"name"`
@@ -304,6 +308,10 @@ func handleLinkAgentConnector(opt Options) http.HandlerFunc {
 func handleListAgentConnectors(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.PathValue("id")
+		if _, err := agentVisible(opt.Store, agentID, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		names, err := opt.Store.ListAgentConnectors(agentID)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
@@ -430,7 +438,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectInjectedChat(w, body.Message) {
 			return
 		}
-		sess, err := st.GetSession(body.SessionID)
+		sess, err := sessionVisible(st, body.SessionID, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return

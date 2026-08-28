@@ -92,6 +92,8 @@ Environment:
   GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all; required when GOSO_ENV=production)
   GOSO_ENV                 Environment (default development; production = injection default block, no query token, WS origins required)
   GOSO_DB_PATH             SQLite path (default :memory:)
+  GOSO_DATABASE_URL        If postgres://…, gateway refuses to start (SQLite only; see docs/qa/071-pgvector-path.md)
+  GOSO_MULTI_TENANT        1 = honor X-Goso-Tenant (admin token for non-default). Unset/demo = always default
   GOSO_BACKUP_DIR          Snapshot dir for VACUUM INTO (default ./var/backups)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)

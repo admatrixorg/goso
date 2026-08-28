@@ -29,11 +29,12 @@ func (s *SQLiteStore) resolveVaultInner(inner string) string {
 func scanVaultDoc(sc scanner) (*VaultDoc, error) {
 	var d VaultDoc
 	var ts string
-	var body sql.NullString
-	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body); err != nil {
+	var body, tenant sql.NullString
+	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body, &tenant); err != nil {
 		return nil, err
 	}
 	d.Mtime = parseTime(ts)
+	d.TenantID = NormalizeTenant(tenant.String)
 	if body.Valid {
 		d.Body = body.String
 	}
@@ -50,6 +51,7 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		return nil, err
 	}
 	d.Path = path
+	d.TenantID = NormalizeTenant(d.TenantID)
 	if d.Mtime.IsZero() {
 		d.Mtime = time.Now().UTC()
 	} else {
@@ -58,15 +60,16 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 
 	var existing *VaultDoc
 	if d.ID != "" {
-		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body FROM vault_docs WHERE id=?`, d.ID)
+		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE id=?`, d.ID)
 		existing, _ = scanVaultDoc(row)
 	}
 	if existing == nil {
-		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body FROM vault_docs WHERE path=?`, d.Path)
+		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE path=?`, d.Path)
 		existing, _ = scanVaultDoc(row)
 	}
 	if existing != nil {
 		d.ID = existing.ID
+		d.TenantID = NormalizeTenant(existing.TenantID)
 		_, err = s.db.Exec(`UPDATE vault_docs SET title=?, path=?, sha256=?, mtime=?, body=? WHERE id=?`,
 			d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.ID)
 		if err != nil {
@@ -77,8 +80,9 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		return &cp, nil
 	}
 	d.ID = newID()
-	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body) VALUES(?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body)
+	d.TenantID = NormalizeTenant(d.TenantID)
+	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body, tenant_id) VALUES(?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +92,7 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 }
 
 func (s *SQLiteStore) GetVaultDoc(id string) (*VaultDoc, error) {
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body FROM vault_docs WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE id=?`, id)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -100,7 +104,7 @@ func (s *SQLiteStore) GetVaultDoc(id string) (*VaultDoc, error) {
 }
 
 func (s *SQLiteStore) ListVaultDocs() []*VaultDoc {
-	rows, err := s.db.Query(`SELECT id, title, path, sha256, mtime, body FROM vault_docs ORDER BY lower(title), path`)
+	rows, err := s.db.Query(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs ORDER BY lower(title), path`)
 	if err != nil {
 		return []*VaultDoc{}
 	}
@@ -124,7 +128,7 @@ func (s *SQLiteStore) FindVaultDocByPath(path string) (*VaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body FROM vault_docs WHERE path=?`, path)
+	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE path=?`, path)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -140,7 +144,7 @@ func (s *SQLiteStore) FindVaultDocByTitle(title string) (*VaultDoc, error) {
 	if title == "" {
 		return nil, errors.New("title is required")
 	}
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body FROM vault_docs WHERE lower(title)=lower(?) ORDER BY path LIMIT 1`, title)
+	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE lower(title)=lower(?) ORDER BY path LIMIT 1`, title)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

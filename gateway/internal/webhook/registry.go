@@ -52,6 +52,7 @@ type Created struct {
 // Public is the hashed-at-rest view (no secrets).
 type Public struct {
 	ID          string `json:"id"`
+	TenantID    string `json:"tenant_id,omitempty"`
 	Name        string `json:"name,omitempty"`
 	Kind        string `json:"kind,omitempty"`
 	AgentID     string `json:"agent_id,omitempty"`
@@ -65,6 +66,7 @@ type CreateOpts struct {
 	Name        string
 	Kind        string
 	AgentID     string
+	TenantID    string
 	RequireHMAC bool
 }
 
@@ -173,6 +175,7 @@ func (r *Registry) CreateOpts(opts CreateOpts) (*Created, error) {
 	r.mu.Unlock()
 	row := store.Webhook{
 		ID:          id,
+		TenantID:    store.NormalizeTenant(opts.TenantID),
 		Name:        strings.TrimSpace(opts.Name),
 		Kind:        kind,
 		AgentID:     strings.TrimSpace(opts.AgentID),
@@ -573,6 +576,7 @@ func publicOf(rec *store.Webhook) Public {
 	}
 	return Public{
 		ID:          rec.ID,
+		TenantID:    store.NormalizeTenant(rec.TenantID),
 		Name:        rec.Name,
 		Kind:        rec.Kind,
 		AgentID:     rec.AgentID,

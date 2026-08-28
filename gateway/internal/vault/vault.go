@@ -187,10 +187,16 @@ func (s *Service) refreshLinks(id, body string) error {
 
 // Put writes {slug}.md (or the existing path for that title) and upserts the registry.
 func (s *Service) Put(title, body string) (*store.VaultDoc, error) {
+	return s.PutTenant(title, body, store.DefaultTenant)
+}
+
+// PutTenant writes a vault doc stamped with tenant_id.
+func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, errors.New("title is required")
 	}
+	tenantID = store.NormalizeTenant(tenantID)
 	if err := security.Confine(s.Root); err != nil {
 		return nil, err
 	}
@@ -199,6 +205,9 @@ func (s *Service) Put(title, body string) (*store.VaultDoc, error) {
 	}
 	var rel string
 	existing, err := s.Store.FindVaultDocByTitle(title)
+	if err == nil && existing != nil && !store.SameTenant(existing.TenantID, tenantID) {
+		existing = nil
+	}
 	if err == nil && existing != nil && existing.Path != "" {
 		rel = existing.Path
 	} else {
@@ -219,14 +228,16 @@ func (s *Service) Put(title, body string) (*store.VaultDoc, error) {
 		return nil, err
 	}
 	doc := store.VaultDoc{
-		Title:  title,
-		Path:   filepath.ToSlash(rel),
-		SHA256: sha256Hex([]byte(body)),
-		Mtime:  fi.ModTime().UTC(),
-		Body:   body,
+		Title:    title,
+		Path:     filepath.ToSlash(rel),
+		SHA256:   sha256Hex([]byte(body)),
+		Mtime:    fi.ModTime().UTC(),
+		Body:     body,
+		TenantID: tenantID,
 	}
 	if existing != nil {
 		doc.ID = existing.ID
+		doc.TenantID = existing.TenantID
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {

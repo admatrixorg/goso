@@ -28,6 +28,9 @@ var _ StoreIface = (*SQLiteStore)(nil)
 
 // OpenSQLite opens (and migrates) a SQLite DB at path. Use ":memory:" for in-memory.
 func OpenSQLite(path string) (*SQLiteStore, error) {
+	if err := RefusePostgres(path); err != nil {
+		return nil, err
+	}
 	if path == "" {
 		path = ":memory:"
 	}
@@ -64,13 +67,15 @@ func (s *SQLiteStore) migrate() error {
 			display_name TEXT,
 			model TEXT,
 			llm_provider TEXT,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
 			label TEXT,
 			created_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL DEFAULT 'default',
 			FOREIGN KEY(agent_id) REFERENCES agents(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
@@ -109,6 +114,7 @@ func (s *SQLiteStore) migrate() error {
 			kind TEXT NOT NULL,
 			body TEXT NOT NULL,
 			created_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL DEFAULT 'default',
 			FOREIGN KEY(session_id) REFERENCES sessions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id, created_at)`,
@@ -118,7 +124,8 @@ func (s *SQLiteStore) migrate() error {
 			path TEXT NOT NULL UNIQUE,
 			sha256 TEXT NOT NULL,
 			mtime TEXT NOT NULL,
-			body TEXT
+			body TEXT,
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_vault_docs_title ON vault_docs(title)`,
 		`CREATE TABLE IF NOT EXISTS vault_links (
@@ -132,7 +139,8 @@ func (s *SQLiteStore) migrate() error {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			lead_agent_id TEXT,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE TABLE IF NOT EXISTS team_members (
 			team_id TEXT NOT NULL,
@@ -194,7 +202,8 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			base_url TEXT,
-			model TEXT
+			model TEXT,
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE TABLE IF NOT EXISTS webhooks (
 			id TEXT PRIMARY KEY,
@@ -206,7 +215,8 @@ func (s *SQLiteStore) migrate() error {
 			hmac_enc TEXT,
 			require_hmac INTEGER NOT NULL DEFAULT 0,
 			revoked INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_webhooks_token_hash ON webhooks(token_hash)`,
 		`CREATE TABLE IF NOT EXISTS webhook_jobs (
@@ -236,6 +246,27 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN instructions TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN orchestration_mode TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN llm_provider TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE memories ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE vault_docs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE teams ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE webhooks ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE vault_docs SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE teams SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE webhooks SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`UPDATE llm_providers SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agents_tenant ON agents(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_docs_tenant ON vault_docs(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_teams_tenant ON teams(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_providers_tenant ON llm_providers(tenant_id)`)
 	s.initFTS()
 	s.initVaultFTS()
 	return nil
@@ -335,9 +366,10 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 	if a.AgentKey == "" {
 		return nil, errors.New("agent_key is required")
 	}
+	a.TenantID = NormalizeTenant(a.TenantID)
 	if LiteEnabled() {
 		var n int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&n); err != nil {
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE tenant_id=?`, a.TenantID).Scan(&n); err != nil {
 			return nil, err
 		}
 		if n >= LiteMaxAgents {
@@ -346,12 +378,12 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 	}
 	a.ID = newID()
 	a.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at) VALUES(?,?,?,?,?,?,?,?)`,
-		a.ID, a.AgentKey, a.DisplayName, a.Model, a.LLMProvider, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt))
+	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+		a.ID, a.AgentKey, a.DisplayName, a.Model, a.LLMProvider, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt), a.TenantID)
 	if err != nil {
 		if LiteEnabled() {
 			var n int
-			if e := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&n); e == nil && n >= LiteMaxAgents {
+			if e := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE tenant_id=?`, a.TenantID).Scan(&n); e == nil && n >= LiteMaxAgents {
 				return nil, ErrLiteCap
 			}
 		}
@@ -364,19 +396,20 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 func scanAgent(sc scanner) (*Agent, error) {
 	var a Agent
 	var ts string
-	var instructions, mode, llmProvider sql.NullString
-	if err := sc.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &llmProvider, &instructions, &mode, &ts); err != nil {
+	var instructions, mode, llmProvider, tenant sql.NullString
+	if err := sc.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &llmProvider, &instructions, &mode, &ts, &tenant); err != nil {
 		return nil, err
 	}
 	a.LLMProvider = llmProvider.String
 	a.Instructions = instructions.String
 	a.OrchestrationMode = mode.String
+	a.TenantID = NormalizeTenant(tenant.String)
 	a.CreatedAt = parseTime(ts)
 	return &a, nil
 }
 
 func (s *SQLiteStore) ListAgents() []*Agent {
-	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at FROM agents ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id FROM agents ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -396,7 +429,7 @@ func (s *SQLiteStore) ListAgents() []*Agent {
 }
 
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
-	row := s.db.QueryRow(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at FROM agents WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id FROM agents WHERE id=?`, id)
 	a, err := scanAgent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -437,18 +470,18 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 	if sess.AgentID == "" {
 		return nil, errors.New("agent_id is required")
 	}
-	// check agent exists
-	var cnt int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE id=?`, sess.AgentID).Scan(&cnt); err != nil {
-		return nil, err
+	sess.TenantID = NormalizeTenant(sess.TenantID)
+	ag, err := s.GetAgent(sess.AgentID)
+	if err != nil {
+		return nil, errors.New("agent not found")
 	}
-	if cnt == 0 {
+	if !SameTenant(ag.TenantID, sess.TenantID) {
 		return nil, errors.New("agent not found")
 	}
 	sess.ID = newID()
 	sess.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at) VALUES(?,?,?,?)`,
-		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt))
+	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id) VALUES(?,?,?,?,?)`,
+		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +490,7 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 }
 
 func (s *SQLiteStore) ListSessions() []*Session {
-	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -465,10 +498,11 @@ func (s *SQLiteStore) ListSessions() []*Session {
 	var out []*Session
 	for rows.Next() {
 		var sess Session
-		var ts string
-		if err := rows.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts); err != nil {
+		var ts, tenant string
+		if err := rows.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant); err != nil {
 			continue
 		}
+		sess.TenantID = NormalizeTenant(tenant)
 		sess.CreatedAt = parseTime(ts)
 		cp := sess
 		out = append(out, &cp)
@@ -482,14 +516,16 @@ func (s *SQLiteStore) ListSessions() []*Session {
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var sess Session
 	var ts string
-	err := s.db.QueryRow(`SELECT id, agent_id, label, created_at FROM sessions WHERE id=?`, id).
-		Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts)
+	var tenant string
+	err := s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id FROM sessions WHERE id=?`, id).
+		Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sess.TenantID = NormalizeTenant(tenant)
 	sess.CreatedAt = parseTime(ts)
 	return &sess, nil
 }
@@ -790,17 +826,18 @@ func (s *SQLiteStore) PutMemory(m Memory) (*Memory, error) {
 	if m.Kind == "" {
 		m.Kind = KindEpisodic
 	}
-	var cnt int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, m.SessionID).Scan(&cnt); err != nil {
-		return nil, err
+	m.TenantID = NormalizeTenant(m.TenantID)
+	sess, err := s.GetSession(m.SessionID)
+	if err != nil {
+		return nil, errors.New("session not found")
 	}
-	if cnt == 0 {
+	if !SameTenant(sess.TenantID, m.TenantID) {
 		return nil, errors.New("session not found")
 	}
 	m.ID = newID()
 	m.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at) VALUES(?,?,?,?,?)`,
-		m.ID, m.SessionID, m.Kind, m.Body, formatTime(m.CreatedAt))
+	_, err = s.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id) VALUES(?,?,?,?,?,?)`,
+		m.ID, m.SessionID, m.Kind, m.Body, formatTime(m.CreatedAt), m.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -816,7 +853,7 @@ func (s *SQLiteStore) ListMemories(sessionID string) ([]*Memory, error) {
 	if cnt == 0 {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
+	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -842,14 +879,11 @@ func (s *SQLiteStore) SaveSummary(sessionID, body string) (*Memory, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, errors.New("body is required")
 	}
-	var cnt int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, sessionID).Scan(&cnt); err != nil {
-		return nil, err
-	}
-	if cnt == 0 {
+	sess, err := s.GetSession(sessionID)
+	if err != nil {
 		return nil, errors.New("session not found")
 	}
-	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
 	existing, err := scanMemory(row)
 	if err == nil && existing != nil {
 		existing.Body = body
@@ -863,7 +897,7 @@ func (s *SQLiteStore) SaveSummary(sessionID, body string) (*Memory, error) {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	return s.PutMemory(Memory{SessionID: sessionID, Kind: KindEpisodic, Body: body})
+	return s.PutMemory(Memory{SessionID: sessionID, Kind: KindEpisodic, Body: body, TenantID: sess.TenantID})
 }
 
 func (s *SQLiteStore) LatestSummary(sessionID string) (*Memory, error) {
@@ -874,7 +908,7 @@ func (s *SQLiteStore) LatestSummary(sessionID string) (*Memory, error) {
 	if cnt == 0 {
 		return nil, ErrNotFound
 	}
-	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
 	m, err := scanMemory(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -946,10 +980,11 @@ func (s *SQLiteStore) searchInstr(q string) ([]SearchHit, error) {
 
 func scanMemory(sc scanner) (*Memory, error) {
 	var m Memory
-	var ts string
-	if err := sc.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts); err != nil {
+	var ts, tenant string
+	if err := sc.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts, &tenant); err != nil {
 		return nil, err
 	}
+	m.TenantID = NormalizeTenant(tenant)
 	m.CreatedAt = parseTime(ts)
 	return &m, nil
 }
