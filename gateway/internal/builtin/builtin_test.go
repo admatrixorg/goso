@@ -10,18 +10,24 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mqglobal/goso/gateway/internal/connector"
 )
 
-func TestCatalog_SevenTools(t *testing.T) {
+func TestCatalog_Tools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 7 {
+	if len(got) != 12 {
 		t.Fatalf("len %d", len(got))
 	}
 	byName := map[string]Spec{}
 	for _, s := range got {
 		byName[s.Name] = s
 	}
-	for _, n := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill, ToolReadFile, ToolWriteFile} {
+	want := []string{
+		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
+		ToolUseSkill, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
+	}
+	for _, n := range want {
 		if !IsName(n) {
 			t.Fatalf("IsName %s", n)
 		}
@@ -32,11 +38,17 @@ func TestCatalog_SevenTools(t *testing.T) {
 	if byName[ToolWebSearch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolReadFile].RequiresApproval {
 		t.Fatal("web_search/use_skill/read_file must not require approval")
 	}
+	if byName[ToolListFiles].RequiresApproval || byName[ToolSendFile].RequiresApproval {
+		t.Fatal("list_files/send_file must not require approval")
+	}
 	if !byName[ToolSandbox].RequiresApproval || !byName[ToolBrowser].RequiresApproval || !byName[ToolMedia].RequiresApproval {
 		t.Fatal("sandbox/browser/media require approval")
 	}
-	if !byName[ToolWriteFile].RequiresApproval {
-		t.Fatal("write_file requires approval")
+	if !byName[ToolImageGen].RequiresApproval || !byName[ToolTTS].RequiresApproval {
+		t.Fatal("image_gen/tts require approval")
+	}
+	if !byName[ToolWriteFile].RequiresApproval || !byName[ToolEdit].RequiresApproval {
+		t.Fatal("write_file/edit require approval")
 	}
 }
 
@@ -54,7 +66,11 @@ func TestInvoke_UnconfiguredNoNetwork(t *testing.T) {
 
 	t.Setenv("GOSO_SKILLS_DIR", "")
 	t.Setenv("GOSO_WORKSPACE", "")
-	for _, name := range []string{ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolUseSkill, ToolReadFile, ToolWriteFile} {
+	t.Setenv("GOSO_MEDIA", "")
+	for _, name := range []string{
+		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
+		ToolUseSkill, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
+	} {
 		res, err := Invoke(context.Background(), name, map[string]any{"q": "goso"}, false)
 		if err != nil {
 			t.Fatalf("%s err %v", name, err)
@@ -122,8 +138,83 @@ func TestInvoke_WebSearchDDGHttptest(t *testing.T) {
 		t.Fatalf("status %s", res.Status)
 	}
 	m, _ := res.Content.(map[string]any)
-	if m["heading"] != "GOSO" || m["abstract"] != "gateway" {
-		t.Fatalf("content %+v", m)
+	hits, _ := m["results"].([]map[string]any)
+	if len(hits) == 0 {
+		t.Fatalf("results %+v", m)
+	}
+	if hits[0]["title"] != "GOSO" || hits[0]["snippet"] != "gateway" {
+		t.Fatalf("hit %+v", hits[0])
+	}
+}
+
+func TestInvoke_WebSearchEmptyQueryNoNetwork(t *testing.T) {
+	t.Setenv("GOSO_WEB_SEARCH", "ddg")
+	hit := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit++
+	}))
+	defer srv.Close()
+	prev, prevC := InstantAnswerBase, InstantAnswerClient
+	InstantAnswerBase = srv.URL
+	InstantAnswerClient = srv.Client()
+	defer func() {
+		InstantAnswerBase = prev
+		InstantAnswerClient = prevC
+	}()
+	res, err := Invoke(context.Background(), ToolWebSearch, map[string]any{"q": "  "}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if hit != 0 {
+		t.Fatal("empty query must not network")
+	}
+}
+
+func TestInvoke_WebSearchEmptyBaseNoNetwork(t *testing.T) {
+	t.Setenv("GOSO_WEB_SEARCH", "1")
+	hit := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit++
+	}))
+	defer srv.Close()
+	prev, prevC := InstantAnswerBase, InstantAnswerClient
+	InstantAnswerBase = ""
+	InstantAnswerClient = srv.Client()
+	defer func() {
+		InstantAnswerBase = prev
+		InstantAnswerClient = prevC
+	}()
+	res, err := Invoke(context.Background(), ToolWebSearch, map[string]any{"q": "goso"}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if hit != 0 {
+		t.Fatal("empty base must not network")
+	}
+}
+
+func TestInvoke_WebSearchEmptyJSON(t *testing.T) {
+	t.Setenv("GOSO_WEB_SEARCH", "ddg")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	prev, prevC := InstantAnswerBase, InstantAnswerClient
+	InstantAnswerBase = srv.URL
+	InstantAnswerClient = srv.Client()
+	defer func() {
+		InstantAnswerBase = prev
+		InstantAnswerClient = prevC
+	}()
+	res, err := Invoke(context.Background(), ToolWebSearch, map[string]any{"q": "goso"}, true)
+	if err != nil || res.Status != "ok" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["results"].([]map[string]any)
+	if len(hits) != 0 {
+		t.Fatalf("want empty list %+v", m)
 	}
 }
 
@@ -132,6 +223,47 @@ func TestInvoke_SandboxNeverSpawns(t *testing.T) {
 	res, err := Invoke(context.Background(), ToolSandbox, map[string]any{"cmd": "true"}, true)
 	if err != nil || res.Status != "not_configured" {
 		t.Fatalf("%v %+v", err, res)
+	}
+	res, err = Invoke(context.Background(), ToolBrowser, map[string]any{"url": "https://example.com"}, true)
+	if err != nil || res.Status != "not_configured" {
+		t.Fatalf("browser %v %+v", err, res)
+	}
+}
+
+func TestInvoke_MediaFailClosedUnlessDouble(t *testing.T) {
+	t.Cleanup(func() { MediaInvoke = nil })
+	MediaInvoke = nil
+	t.Setenv("GOSO_MEDIA", "1")
+	for _, name := range []string{ToolMedia, ToolImageGen, ToolTTS} {
+		res, err := Invoke(context.Background(), name, map[string]any{"prompt": "x"}, true)
+		if err != nil || res == nil || res.Status != "not_configured" {
+			t.Fatalf("%s env-only %v %+v", name, err, res)
+		}
+		m, _ := res.Content.(map[string]any)
+		if m["error"] != "not_configured" {
+			t.Fatalf("%s public error %+v", name, m)
+		}
+	}
+	t.Setenv("GOSO_MEDIA", "")
+	called := 0
+	MediaInvoke = func(ctx context.Context, name string, args map[string]any) (*connector.InvokeResult, error) {
+		called++
+		return &connector.InvokeResult{Tool: name, Connector: ConnectorName, Status: "ok", Content: map[string]any{"ok": true}}, nil
+	}
+	res, err := Invoke(context.Background(), ToolImageGen, map[string]any{"prompt": "x"}, true)
+	if err != nil || res.Status != "not_configured" {
+		t.Fatalf("double without env %v %+v", err, res)
+	}
+	if called != 0 {
+		t.Fatal("must not invoke double without env")
+	}
+	t.Setenv("GOSO_MEDIA_IMAGE", "1")
+	res, err = Invoke(context.Background(), ToolImageGen, map[string]any{"prompt": "x"}, true)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("double+env %v %+v", err, res)
+	}
+	if called != 1 {
+		t.Fatalf("double calls %d", called)
 	}
 }
 

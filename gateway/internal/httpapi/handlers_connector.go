@@ -191,6 +191,7 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 				"description":       bt.Tool.Description,
 				"requires_approval": bt.Tool.RequiresApproval,
 				"enabled":           enabled,
+				"configured":        toolConfigured(bt.Connector, bt.Tool.Name),
 			})
 			if bt.Connector == builtin.ConnectorName {
 				seenBuiltin[bt.Tool.Name] = true
@@ -206,6 +207,7 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 				"description":       spec.Description,
 				"requires_approval": spec.RequiresApproval,
 				"enabled":           opt.Store.GetToolFlag(spec.Name),
+				"configured":        builtin.Configured(spec.Name),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"tools": out})
@@ -546,6 +548,13 @@ func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string
 		"created_at":     rec.CreatedAt,
 		"token_set":      tokenSet,
 	}
+}
+
+func toolConfigured(connectorName, toolName string) bool {
+	if connectorName == builtin.ConnectorName {
+		return builtin.Configured(toolName)
+	}
+	return connectorName != ""
 }
 
 func toolEnabled(opt Options, bt agent.BoundTool) bool {

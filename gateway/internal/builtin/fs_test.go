@@ -210,3 +210,224 @@ func TestInvoke_FSMissingAndAbsInside(t *testing.T) {
 		t.Fatalf("abs content %+v", m)
 	}
 }
+
+func TestInvoke_ListFilesHappyAndJail(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "notes", "a.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolListFiles, map[string]any{"path": "notes"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("list %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	ents, _ := m["entries"].([]map[string]any)
+	if len(ents) != 1 || ents[0]["name"] != "a.md" || ents[0]["type"] != "file" {
+		t.Fatalf("entries %+v", m["entries"])
+	}
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{}, false)
+	if err != nil || res.Status != "ok" {
+		t.Fatalf("root %v %+v", err, res)
+	}
+	other := t.TempDir()
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{"path": filepath.Join(other, "x")}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("abs outside %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("abs outside msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{"path": ".."}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("dotdot %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("dotdot msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{"path": "notes/a.md"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("file as dir %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "not a directory" {
+		t.Fatalf("file as dir msg %+v", m)
+	}
+}
+
+func TestInvoke_ListFilesEmptyDir(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	res, err := Invoke(context.Background(), ToolListFiles, map[string]any{}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("empty root %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	ents, _ := m["entries"].([]map[string]any)
+	if len(ents) != 0 {
+		t.Fatalf("want empty entries %+v", m)
+	}
+	if err := os.Mkdir(filepath.Join(ws, "blank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{"path": "blank"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("empty subdir %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	ents, _ = m["entries"].([]map[string]any)
+	if len(ents) != 0 {
+		t.Fatalf("want empty subdir %+v", m)
+	}
+}
+
+func TestInvoke_ListEditSendSymlinkEscape(t *testing.T) {
+	ws := t.TempDir()
+	other := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	secret := filepath.Join(other, "secret.txt")
+	if err := os.WriteFile(secret, []byte("nope"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(ws, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(ws, "out")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSendFile, map[string]any{"path": "link.txt"}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("send symlink %v %+v", err, res)
+	}
+	res, err = Invoke(context.Background(), ToolEdit, map[string]any{"path": "link.txt", "old": "nope", "new": "x"}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("edit symlink %v %+v", err, res)
+	}
+	b, err := os.ReadFile(secret)
+	if err != nil || string(b) != "nope" {
+		t.Fatalf("symlink target mutated %q %v", b, err)
+	}
+	res, err = Invoke(context.Background(), ToolListFiles, map[string]any{"path": "out"}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("list dir symlink %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("list dir symlink msg %+v", m)
+	}
+}
+
+func TestInvoke_ListFilesEmptyEnvNoTouch(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	dir := t.TempDir()
+	res, err := Invoke(context.Background(), ToolListFiles, map[string]any{"path": dir}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+}
+
+func TestInvoke_EditOneReplaceAndJail(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.WriteFile(filepath.Join(ws, "t.md"), []byte("one two one"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolEdit, map[string]any{"path": "t.md", "old": "one", "new": "ONE"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("edit %v %+v", err, res)
+	}
+	b, err := os.ReadFile(filepath.Join(ws, "t.md"))
+	if err != nil || string(b) != "ONE two one" {
+		t.Fatalf("disk %q %v", b, err)
+	}
+	res, err = Invoke(context.Background(), ToolEdit, map[string]any{"path": "t.md", "old": "missing", "new": "x"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("missing old %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "old not found" {
+		t.Fatalf("missing old msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolEdit, map[string]any{"path": "../t.md", "old": "ONE", "new": "x"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("escape %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("escape msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolEdit, map[string]any{"path": "t.md", "old": "", "new": "x"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("empty old %v %+v", err, res)
+	}
+}
+
+func TestInvoke_EditEmptyEnvNoTouch(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "t.md")
+	if err := os.WriteFile(target, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolEdit, map[string]any{"path": target, "old": "keep", "new": "x"}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+	b, _ := os.ReadFile(target)
+	if string(b) != "keep" {
+		t.Fatalf("mutated %q", b)
+	}
+}
+
+func TestInvoke_SendFileMetadataOnlyAndJail(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	body := []byte("hello png")
+	if err := os.WriteFile(filepath.Join(ws, "pic.png"), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSendFile, map[string]any{"path": "pic.png"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("send %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["path"] != "pic.png" {
+		t.Fatalf("path %+v", m)
+	}
+	if m["bytes"] != int64(len(body)) {
+		t.Fatalf("bytes %+v", m)
+	}
+	mime, _ := m["mime"].(string)
+	if mime != "image/png" && mime != "application/octet-stream" {
+		t.Fatalf("mime %q", mime)
+	}
+	if _, ok := m["content"]; ok {
+		t.Fatal("must not return file content")
+	}
+	res, err = Invoke(context.Background(), ToolSendFile, map[string]any{"path": "../pic.png"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("escape %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("escape msg %+v", m)
+	}
+}
+
+func TestInvoke_SendFileEmptyEnvNoTouch(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSendFile, map[string]any{"path": target}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+}

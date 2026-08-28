@@ -6,6 +6,7 @@ export type AgentTool = {
   description?: string;
   requires_approval: boolean;
   enabled: boolean;
+  configured?: boolean;
 };
 
 export const toolsApi = {
