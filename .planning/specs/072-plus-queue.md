@@ -1,7 +1,7 @@
 # SPEC 072+ candidate queue (after 071)
 
 > Drafted 2026-08-28 from matrix `docs/qa/034-goclaw-parity-matrix.md`, appendix `docs/qa/034-goclaw-parity-update-054.md`, audit `docs/qa/audit-cto-2026-08-28.md`.
-> **Re-scan evidence on main after 071** before locking numbers. Only THIẾU/PARTIAL that are clean-room and not DI-credential/host.
+> 071 merged `1974e57`. **072 locked** as next (L2 KG FTS5). Re-scan remaining rows after each merge. Only THIẾU/PARTIAL that are clean-room and not DI-credential/host.
 
 Priority: user-visible function → security → ops.
 
