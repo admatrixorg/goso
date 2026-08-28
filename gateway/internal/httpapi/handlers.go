@@ -479,6 +479,18 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 		for _, m := range history {
 			msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
 		}
+		if chatWantsStream(r, body) {
+			sw := newSSEWriter(w)
+			reply, usage, err := llm.ChatStream(r.Context(), provider, msgs, sw.delta)
+			if err != nil {
+				sw.errEvent(err.Error())
+				return
+			}
+			_, _ = st.AddMessage(store.Message{SessionID: body.SessionID, Role: "assistant", Content: reply})
+			recordUsage(meter, sess.AgentID, provider.Name(), usage)
+			sw.data("[DONE]")
+			return
+		}
 		reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
 		if err != nil {
 			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)

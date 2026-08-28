@@ -45,7 +45,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message) (string, error) {
 }
 
 func (o *OpenAI) ChatUsage(ctx context.Context, messages []Message) (string, Usage, error) {
-	reply, u, err := o.complete(ctx, messages, nil, o != nil && o.Stream)
+	reply, u, err := o.complete(ctx, messages, nil, o != nil && o.Stream, nil)
 	if err != nil {
 		return "", Usage{}, err
 	}
@@ -53,12 +53,31 @@ func (o *OpenAI) ChatUsage(ctx context.Context, messages []Message) (string, Usa
 }
 
 func (o *OpenAI) ChatTools(ctx context.Context, messages []Message, tools []ToolSpec) (Reply, error) {
-	reply, u, err := o.complete(ctx, messages, tools, false)
+	reply, u, err := o.complete(ctx, messages, tools, false, nil)
 	reply.Usage = u
 	return reply, err
 }
 
-func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolSpec, stream bool) (Reply, Usage, error) {
+func (o *OpenAI) ChatStream(ctx context.Context, messages []Message, onDelta StreamHandler) (string, error) {
+	s, _, err := o.ChatStreamUsage(ctx, messages, onDelta)
+	return s, err
+}
+
+func (o *OpenAI) ChatStreamUsage(ctx context.Context, messages []Message, onDelta StreamHandler) (string, Usage, error) {
+	reply, u, err := o.complete(ctx, messages, nil, true, onDelta)
+	if err != nil {
+		return "", Usage{}, err
+	}
+	return reply.Text, u, nil
+}
+
+func (o *OpenAI) ChatStreamTools(ctx context.Context, messages []Message, tools []ToolSpec, onDelta StreamHandler) (Reply, error) {
+	reply, u, err := o.complete(ctx, messages, tools, true, onDelta)
+	reply.Usage = u
+	return reply, err
+}
+
+func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolSpec, stream bool, onDelta StreamHandler) (Reply, Usage, error) {
 	if o == nil {
 		return Reply{}, Usage{}, fmt.Errorf("openai: missing API key")
 	}
@@ -111,11 +130,11 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 		return Reply{}, Usage{}, fmt.Errorf("%s %d: %s", o.Name(), resp.StatusCode, string(b))
 	}
 	if stream {
-		text, u, err := ReadOpenAIStream(resp.Body)
+		reply, u, err := readOpenAIStreamOrJSON(resp, onDelta)
 		if err != nil {
 			return Reply{}, Usage{}, err
 		}
-		return Reply{Text: text}, fallbackUsage(messages, text, u.PromptTokens, u.CompletionTokens), nil
+		return reply, fallbackUsage(messages, reply.Text, u.PromptTokens, u.CompletionTokens), nil
 	}
 	b, _ := io.ReadAll(resp.Body)
 	reply, promptTok, completionTok, err := parseOpenAIChat(b)
@@ -123,6 +142,38 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 		return Reply{}, Usage{}, err
 	}
 	return reply, fallbackUsage(messages, reply.Text, promptTok, completionTok), nil
+}
+
+// readOpenAIStreamOrJSON parses a streamed 200. Native SSE is consumed as
+// bytes arrive. A JSON body (router9-compat that ignores stream=true) is one
+// honest chunk — never an empty success.
+func readOpenAIStreamOrJSON(resp *http.Response, onDelta StreamHandler) (Reply, Usage, error) {
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/json") && !strings.Contains(ct, "event-stream") {
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return Reply{}, Usage{}, err
+		}
+		reply, promptTok, completionTok, err := parseOpenAIChat(b)
+		if err != nil {
+			return Reply{}, Usage{}, err
+		}
+		emitDelta(onDelta, reply.Text)
+		return reply, Usage{PromptTokens: promptTok, CompletionTokens: completionTok}, nil
+	}
+	var buf bytes.Buffer
+	reply, u, err := ReadOpenAIStreamDeltas(io.TeeReader(resp.Body, &buf), onDelta)
+	if err != nil {
+		return Reply{}, Usage{}, err
+	}
+	if reply.Text == "" && len(reply.ToolCalls) == 0 {
+		jr, promptTok, completionTok, jerr := parseOpenAIChat(buf.Bytes())
+		if jerr == nil && (jr.Text != "" || len(jr.ToolCalls) > 0) {
+			emitDelta(onDelta, jr.Text)
+			return jr, Usage{PromptTokens: promptTok, CompletionTokens: completionTok}, nil
+		}
+	}
+	return reply, u, nil
 }
 
 // chatCompletionsURL joins BaseURL with the chat completions path.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,6 +17,34 @@ func TestEcho(t *testing.T) {
 	s, _ := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}})
 	if s != "echo: hi" {
 		t.Fatalf("echo %q", s)
+	}
+}
+
+func TestEcho_ChatStreamThreeParts(t *testing.T) {
+	p := Echo{StreamParts: []string{"a", "b", "c"}}
+	var got []string
+	s, err := p.ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, func(d string) {
+		got = append(got, d)
+	})
+	if err != nil || s != "abc" {
+		t.Fatalf("stream %v %q", err, s)
+	}
+	if len(got) != 3 || strings.Join(got, "") != "abc" {
+		t.Fatalf("deltas %v", got)
+	}
+}
+
+func TestChatStream_FallbackOneChunk(t *testing.T) {
+	p := &Scripted{Replies: []Reply{{Text: "whole reply"}}}
+	var got []string
+	s, _, err := ChatStream(context.Background(), p, []Message{{Role: "user", Content: "hi"}}, func(d string) {
+		got = append(got, d)
+	})
+	if err != nil || s != "whole reply" {
+		t.Fatalf("fallback %v %q", err, s)
+	}
+	if len(got) != 1 || got[0] != "whole reply" {
+		t.Fatalf("want one honest chunk, got %v", got)
 	}
 }
 

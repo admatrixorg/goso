@@ -82,6 +82,7 @@ type Runner struct {
 	Memory         StageFunc
 	Summarize      StageFunc
 	ForceSummarize bool
+	OnDelta        llm.StreamHandler
 }
 
 // NewRunner fills defaults (max 20, cap 50, empty hooks).
@@ -263,7 +264,9 @@ func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err err
 	}
 	_, span := observe.StartSpan(ctx, observe.KindLLM, name)
 	defer func() { span.End(err) }()
-	if tc, ok := r.LLM.(llm.ToolChat); ok {
+	if r.OnDelta != nil {
+		reply, err = r.thinkStream(ctx, st)
+	} else if tc, ok := r.LLM.(llm.ToolChat); ok {
 		reply, err = tc.ChatTools(ctx, st.Messages, st.Tools)
 	} else {
 		var text string
@@ -273,6 +276,21 @@ func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err err
 	}
 	span.SetCacheReadTokens(reply.Usage.CacheReadTokens)
 	return reply, err
+}
+
+func (r *Runner) thinkStream(ctx context.Context, st *State) (llm.Reply, error) {
+	if stc, ok := r.LLM.(llm.StreamToolChat); ok {
+		return stc.ChatStreamTools(ctx, st.Messages, st.Tools, r.OnDelta)
+	}
+	if tc, ok := r.LLM.(llm.ToolChat); ok && len(st.Tools) > 0 {
+		reply, err := tc.ChatTools(ctx, st.Messages, st.Tools)
+		if err == nil && len(reply.ToolCalls) == 0 && reply.Text != "" {
+			r.OnDelta(reply.Text)
+		}
+		return reply, err
+	}
+	text, usage, err := llm.ChatStream(ctx, r.LLM, st.Messages, r.OnDelta)
+	return llm.Reply{Text: text, Usage: usage}, err
 }
 
 func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.Reply) (pending bool, err error) {

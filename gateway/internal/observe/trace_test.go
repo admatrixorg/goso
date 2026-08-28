@@ -138,6 +138,29 @@ func TestWrap_PreservesToolChatOnlyWhenInnerHasIt(t *testing.T) {
 	}
 }
 
+func TestWrap_PreservesStreamSurfaces(t *testing.T) {
+	obs := NewWithWriter(&bytes.Buffer{})
+	if _, ok := obs.Wrap(llm.Echo{}).(llm.Streamer); !ok {
+		t.Fatal("echo wrap must keep Streamer")
+	}
+	if _, ok := obs.Wrap(llm.Echo{}).(llm.StreamToolChat); ok {
+		t.Fatal("echo wrap must not grow StreamToolChat")
+	}
+	oai := &llm.OpenAI{APIKey: "k"}
+	wrapped := obs.Wrap(oai)
+	if _, ok := wrapped.(llm.StreamToolChat); !ok {
+		t.Fatal("openai wrap must keep StreamToolChat")
+	}
+	echo := obs.Wrap(llm.Echo{StreamParts: []string{"x", "y"}})
+	var got []string
+	text, err := echo.(llm.Streamer).ChatStream(context.Background(), []llm.Message{{Role: "user", Content: "hi"}}, func(d string) {
+		got = append(got, d)
+	})
+	if err != nil || text != "xy" || len(got) != 2 {
+		t.Fatalf("wrapped echo stream %v %q %v", err, text, got)
+	}
+}
+
 func TestTracedProvider_ForwardsChatTools(t *testing.T) {
 	obs := New()
 	inner := &llm.Scripted{Replies: []llm.Reply{{Text: "via-tools"}}}

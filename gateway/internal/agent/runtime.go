@@ -317,6 +317,11 @@ func (rt *Runtime) ChatWithMode(ctx context.Context, sessionID, message, promptM
 
 // ChatOpts is ChatWithMode plus a summarize flag (summarize=1).
 func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode string, summarize bool) (*ChatResult, error) {
+	return rt.ChatOptsStream(ctx, sessionID, message, promptMode, summarize, nil)
+}
+
+// ChatOptsStream is ChatOpts with a per-delta callback (nil = non-stream).
+func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promptMode string, summarize bool, onDelta llm.StreamHandler) (*ChatResult, error) {
 	if rt.Store == nil {
 		return nil, errors.New("store required")
 	}
@@ -346,6 +351,7 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 		runner.Summarize = rt.Summarize
 	}
 	runner.ForceSummarize = summarize
+	runner.OnDelta = onDelta
 	out, err := runner.Run(ctx, sessionID, message, mode)
 	if out != nil && rt.Observer != nil {
 		rt.Observer.RecordSpans(out.Spans)
