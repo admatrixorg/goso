@@ -514,3 +514,33 @@ func (s *SQLiteStore) EvolutionApplied(agentID, suggestionID string) bool {
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM evolution_applies WHERE agent_id=? AND suggestion_id=?`, agentID, suggestionID).Scan(&n)
 	return n > 0
 }
+
+func (s *SQLiteStore) GetEvolutionGuardrails(agentID string) EvolutionGuardrails {
+	var payload string
+	err := s.db.QueryRow(`SELECT payload FROM evolution_guardrails WHERE agent_id=?`, agentID).Scan(&payload)
+	if err != nil || payload == "" {
+		return NormalizeGuardrails(EvolutionGuardrails{})
+	}
+	var g EvolutionGuardrails
+	if json.Unmarshal([]byte(payload), &g) != nil {
+		return NormalizeGuardrails(EvolutionGuardrails{})
+	}
+	return NormalizeGuardrails(g)
+}
+
+func (s *SQLiteStore) PutEvolutionGuardrails(agentID string, g EvolutionGuardrails) error {
+	if agentID == "" {
+		return errors.New("agent_id is required")
+	}
+	if _, err := s.GetAgent(agentID); err != nil {
+		return err
+	}
+	g = NormalizeGuardrails(g)
+	raw, err := json.Marshal(g)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO evolution_guardrails(agent_id, payload) VALUES(?,?)
+		ON CONFLICT(agent_id) DO UPDATE SET payload=excluded.payload`, agentID, string(raw))
+	return err
+}

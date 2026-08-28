@@ -377,6 +377,8 @@ export const en: Record<MsgKey, string> = {
   "teams.emptyLinks": "No links yet.",
   "teams.evolution": "Evolution",
   "teams.emptyEvolution": "No suggestions.",
+  "teams.autoAdapt": "Auto-adapt",
+  "teams.minRuns": "Minimum runs",
   "teams.col.name": "NAME",
   "teams.col.lead": "LEAD",
   "teams.col.id": "ID",

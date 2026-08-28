@@ -375,6 +375,8 @@ export const vi = {
   "teams.emptyLinks": "Chưa có link.",
   "teams.evolution": "Evolution",
   "teams.emptyEvolution": "Không có gợi ý.",
+  "teams.autoAdapt": "Tự thích nghi",
+  "teams.minRuns": "Số lần chạy tối thiểu",
   "teams.col.name": "TÊN",
   "teams.col.lead": "LEAD",
   "teams.col.id": "ID",

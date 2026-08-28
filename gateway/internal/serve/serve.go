@@ -26,6 +26,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/team"
 )
 
 // fatalf is log.Fatalf; tests replace it so production refuse does not os.Exit.
@@ -115,6 +116,9 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 	obs.Register(mux)
 	if !testing.Testing() {
 		go cron.Loop(context.Background(), st, httpapi.FireSessionChat(rt, st, provider, meter))
+		if team.AutoEnabled() {
+			go team.Loop(context.Background(), st)
+		}
 	}
 	return mux
 }

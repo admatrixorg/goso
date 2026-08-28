@@ -30,6 +30,14 @@ func postJSON(h http.Handler, path, body string) *httptest.ResponseRecorder {
 	return w
 }
 
+func patchJSON(h http.Handler, path, body string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PATCH", path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	return w
+}
+
 func TestTeamsAPI_CRUDKanbanMailbox(t *testing.T) {
 	t.Setenv("GOSO_LITE", "")
 	_, h := newTestServer()
@@ -177,10 +185,33 @@ func TestEvolutionAPI_Guardrail(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("get evo %d %s", w.Code, w.Body.String())
 	}
-	body := w.Body.String()
-	for _, tok := range []string{"display_name", "agent_key", "identity"} {
-		if strings.Contains(body, tok) {
-			t.Fatalf("suggestion names %s: %s", tok, body)
+	var listed struct {
+		Suggestions []team.Suggestion         `json:"suggestions"`
+		Guardrails  store.EvolutionGuardrails `json:"guardrails"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if listed.Guardrails.AutoAdapt {
+		t.Fatal("default auto_adapt must be false")
+	}
+	if listed.Guardrails.MinRuns != store.DefaultMinRuns {
+		t.Fatalf("min_runs %d", listed.Guardrails.MinRuns)
+	}
+	for _, tok := range []string{"display_name", "agent_key"} {
+		found := false
+		for _, k := range listed.Guardrails.Locked {
+			if k == tok {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("locked missing %s %#v", tok, listed.Guardrails.Locked)
+		}
+	}
+	for _, s := range listed.Suggestions {
+		if team.ForbiddenWrite(s.Text) || team.ForbiddenWrite(s.ID) || team.ForbiddenWrite(s.Rule) {
+			t.Fatalf("suggestion names protected field: %#v", s)
 		}
 	}
 
@@ -199,6 +230,97 @@ func TestEvolutionAPI_Guardrail(t *testing.T) {
 	}
 	if !strings.Contains(got.Instructions, team.PrefixHighError) {
 		t.Fatalf("prefix %q", got.Instructions)
+	}
+}
+
+func TestEvolutionAPI_TickAndRollback(t *testing.T) {
+	t.Setenv("GOSO_LITE", "")
+	t.Setenv("GOSO_EVOLUTION_AUTO", "")
+	st, h := newTestServer()
+	w := postJSON(h, "/api/agents", `{"agent_key":"tick","display_name":"Tick","instructions":"base"}`)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var a store.Agent
+	_ = json.Unmarshal(w.Body.Bytes(), &a)
+	for i := 0; i < 5; i++ {
+		st.RecordChatRun(a.ID)
+		st.RecordToolUse(a.ID, "x", true)
+	}
+	st.RecordAdvertisedTools(a.ID, []string{"idle_tool"})
+
+	w = postJSON(h, "/api/agents/"+a.ID+"/evolution/tick", `{}`)
+	if w.Code != 200 {
+		t.Fatalf("tick off %d %s", w.Code, w.Body.String())
+	}
+	var tick team.TickResult
+	_ = json.Unmarshal(w.Body.Bytes(), &tick)
+	if tick.Action != "noop" || tick.Reason != "auto_adapt_off" {
+		t.Fatalf("off %#v", tick)
+	}
+	if tick.Agent != nil && strings.Contains(tick.Agent.Instructions, team.PrefixHighError) {
+		t.Fatalf("demo/off changed instructions %#v", tick.Agent)
+	}
+
+	w = patchJSON(h, "/api/agents/"+a.ID+"/evolution", `{"auto_adapt":true,"min_runs":5,"locked":[]}`)
+	if w.Code != 200 {
+		t.Fatalf("patch %d %s", w.Code, w.Body.String())
+	}
+	var patched struct {
+		Guardrails store.EvolutionGuardrails `json:"guardrails"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &patched)
+	if !patched.Guardrails.AutoAdapt || patched.Guardrails.MinRuns != 5 {
+		t.Fatalf("patched %#v", patched.Guardrails)
+	}
+	for _, tok := range []string{"display_name", "agent_key"} {
+		found := false
+		for _, k := range patched.Guardrails.Locked {
+			if k == tok {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("cannot unlock %s %#v", tok, patched.Guardrails.Locked)
+		}
+	}
+
+	w = postJSON(h, "/api/agents/"+a.ID+"/evolution/tick", `{}`)
+	if w.Code != 200 {
+		t.Fatalf("tick on %d %s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &tick)
+	if tick.Action != "applied" {
+		t.Fatalf("apply %#v", tick)
+	}
+	if tick.Agent == nil || !strings.Contains(tick.Agent.Instructions, team.PrefixHighError) {
+		t.Fatalf("applied instructions %#v", tick.Agent)
+	}
+	if tick.Agent.DisplayName != "Tick" || tick.Agent.AgentKey != "tick" {
+		t.Fatalf("identity %#v", tick.Agent)
+	}
+
+	st.RecordToolUse(a.ID, "x", true)
+	st.RecordToolUse(a.ID, "x", true)
+	w = postJSON(h, "/api/agents/"+a.ID+"/evolution/tick", `{}`)
+	if w.Code != 200 {
+		t.Fatalf("tick rb %d %s", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &tick)
+	if tick.Action != "rolled_back" {
+		t.Fatalf("rollback %#v", tick)
+	}
+	if tick.Agent == nil || tick.Agent.Instructions != "base" {
+		t.Fatalf("restored %#v", tick.Agent)
+	}
+
+	w = postJSON(h, "/api/agents/"+a.ID+"/evolution/display_name/apply", `{}`)
+	if w.Code != 400 {
+		t.Fatalf("name apply %d %s", w.Code, w.Body.String())
+	}
+	w = postJSON(h, "/api/agents/"+a.ID+"/evolution/agent_key/apply", `{}`)
+	if w.Code != 400 {
+		t.Fatalf("key apply %d %s", w.Code, w.Body.String())
 	}
 }
 

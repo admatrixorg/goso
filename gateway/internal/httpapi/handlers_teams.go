@@ -34,6 +34,8 @@ func registerTeamRoutes(mux *http.ServeMux, st store.StoreIface) {
 	mux.HandleFunc("GET /api/agents/{id}/links", handleListLinks(st))
 	mux.HandleFunc("POST /api/agents/{id}/links", handleAddLink(st))
 	mux.HandleFunc("GET /api/agents/{id}/evolution", handleEvolution(st))
+	mux.HandleFunc("PATCH /api/agents/{id}/evolution", handleEvolutionGuardrails(st))
+	mux.HandleFunc("POST /api/agents/{id}/evolution/tick", handleEvolutionTick(st))
 	mux.HandleFunc("POST /api/agents/{id}/evolution/{sid}/apply", handleEvolutionApply(st))
 }
 
@@ -369,7 +371,72 @@ func handleEvolution(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		sugs := team.Suggestions(st, id)
-		writeJSON(w, http.StatusOK, map[string]any{"suggestions": sugs})
+		g := store.PublicGuardrails(st.GetEvolutionGuardrails(id))
+		writeJSON(w, http.StatusOK, map[string]any{"suggestions": sugs, "guardrails": g})
+	}
+}
+
+func handleEvolutionGuardrails(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		var body struct {
+			AutoAdapt *bool    `json:"auto_adapt"`
+			MinRuns   *int     `json:"min_runs"`
+			Locked    []string `json:"locked"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		cur := st.GetEvolutionGuardrails(id)
+		if body.AutoAdapt != nil {
+			cur.AutoAdapt = *body.AutoAdapt
+		}
+		if body.MinRuns != nil {
+			if *body.MinRuns <= 0 {
+				writeErr(w, http.StatusBadRequest, "min_runs must be > 0")
+				return
+			}
+			cur.MinRuns = *body.MinRuns
+		}
+		if body.Locked != nil {
+			cur.Locked = store.MergeLocked(body.Locked)
+		} else {
+			cur.Locked = store.MergeLocked(cur.Locked)
+		}
+		if err := st.PutEvolutionGuardrails(id, cur); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"guardrails": store.PublicGuardrails(st.GetEvolutionGuardrails(id))})
+	}
+}
+
+func handleEvolutionTick(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		res, err := team.Tick(st, id)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
 	}
 }
 
