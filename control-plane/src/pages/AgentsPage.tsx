@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
+import { providersApi, type ProviderInfo } from "../api/providers";
 import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
@@ -14,13 +15,14 @@ function modeLabelKey(mode: string): MsgKey {
   return "agents.mode.unset";
 }
 
-const emptyForm = { key: "", name: "", model: "", instructions: "", mode: "" };
+const emptyForm = { key: "", name: "", model: "", llm_provider: "", instructions: "", mode: "" };
 
 function formFromAgent(a: Agent) {
   return {
     key: a.agent_key,
     name: a.display_name,
     model: a.model || "",
+    llm_provider: a.llm_provider || "",
     instructions: a.instructions || "",
     mode: a.orchestration_mode || "",
   };
@@ -29,6 +31,7 @@ function formFromAgent(a: Agent) {
 export function AgentsPage() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,8 +43,9 @@ export function AgentsPage() {
   async function load() {
     setLoading(true);
     try {
-      const j = await api.listAgents();
+      const [j, p] = await Promise.all([api.listAgents(), providersApi.list()]);
       setAgents(j.agents ?? []);
+      setProviders(p.providers ?? []);
       setErr("");
     } catch (e) {
       setErr(formatPublicError(e));
@@ -79,6 +83,7 @@ export function AgentsPage() {
           agent_key: form.key.trim(),
           display_name: form.name.trim() || form.key.trim(),
           model: form.model.trim() || undefined,
+          llm_provider: form.llm_provider.trim() || undefined,
           instructions: form.instructions.trim() || undefined,
           orchestration_mode: form.mode || undefined,
         });
@@ -93,8 +98,9 @@ export function AgentsPage() {
       return;
     }
 
-    const body: { model?: string; instructions?: string; orchestration_mode?: string } = {
+    const body: { model?: string; llm_provider?: string; instructions?: string; orchestration_mode?: string } = {
       model: form.model.trim(),
+      llm_provider: form.llm_provider.trim(),
       instructions: form.instructions.trim(),
     };
     if (ORCHESTRATION_MODES.includes(form.mode as (typeof ORCHESTRATION_MODES)[number])) {
@@ -133,6 +139,7 @@ export function AgentsPage() {
           <span style={{ flex: 2 }}>{t("agents.col.name")}</span>
           <span style={{ flex: 2 }}>{t("agents.col.id")}</span>
           <span style={{ flex: 1.2 }}>{t("agents.col.model")}</span>
+          <span style={{ flex: 1.2 }}>{t("agents.col.provider")}</span>
           <span style={{ flex: 1.4 }}>{t("agents.col.mode")}</span>
         </div>
         {agents.map((a) => {
@@ -164,6 +171,7 @@ export function AgentsPage() {
               <span style={{ flex: 2 }}>{a.display_name}</span>
               <span style={{ flex: 2, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{a.id}</span>
               <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.model || "—"}</span>
+              <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.llm_provider || t("agents.provider.default")}</span>
               <span style={{ flex: 1.4 }}>{t(modeLabelKey(a.orchestration_mode || ""))}</span>
             </button>
           );
@@ -197,6 +205,27 @@ export function AgentsPage() {
               autoComplete="off"
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
+          </label>
+          <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+            {t("agents.provider")}
+            <select
+              className="z-field"
+              aria-label={t("agents.col.provider")}
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+              value={form.llm_provider}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, llm_provider: e.target.value }))}
+            >
+              <option value="">{t("agents.provider.default")}</option>
+              {form.llm_provider && !providers.some((p) => p.name === form.llm_provider) ? (
+                <option value={form.llm_provider}>{form.llm_provider}</option>
+              ) : null}
+              {providers.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={{ fontSize: 12, color: "var(--text-2)" }}>
             {t("agents.model")}

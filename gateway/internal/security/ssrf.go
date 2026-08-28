@@ -11,13 +11,20 @@ import (
 	"strings"
 )
 
+// lookupIP is net.LookupIP; tests replace it so hostname checks stay offline.
+var lookupIP = net.LookupIP
+
+var metadataIPv4 = net.IPv4(169, 254, 169, 254)
+
 // SSRFEnabled is GOSO_SSRF=1 (default off so local fake e2e still works).
 func SSRFEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_SSRF")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
-// CheckURL blocks literal localhost and private IPs when SSRF is enabled.
+// CheckURL blocks localhost, private, link-local, unspecified, multicast,
+// IPv6 unique-local, and the cloud metadata address when SSRF is enabled.
+// Hostnames are resolved; any blocked address or a failed lookup denies.
 func CheckURL(raw string) error {
 	if !SSRFEnabled() {
 		return nil
@@ -33,11 +40,32 @@ func CheckURL(raw string) error {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return fmt.Errorf("ssrf: localhost blocked")
 	}
-	ip := net.ParseIP(host)
+	if ip := net.ParseIP(host); ip != nil {
+		return denyIP(ip)
+	}
+	addrs, err := lookupIP(host)
+	if err != nil || len(addrs) == 0 {
+		return fmt.Errorf("ssrf: dns lookup failed")
+	}
+	for _, ip := range addrs {
+		if err := denyIP(ip); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func denyIP(ip net.IP) error {
 	if ip == nil {
-		return nil
+		return fmt.Errorf("ssrf: private address blocked")
 	}
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return fmt.Errorf("ssrf: private address blocked")
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4.Equal(metadataIPv4) {
+		return fmt.Errorf("ssrf: private address blocked")
+	}
+	if ip.To4() == nil && len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc {
 		return fmt.Errorf("ssrf: private address blocked")
 	}
 	return nil

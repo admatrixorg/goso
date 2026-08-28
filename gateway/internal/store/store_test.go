@@ -32,6 +32,22 @@ func TestStore_AgentCRUD(t *testing.T) {
 	}
 }
 
+func TestStore_AgentLLMProvider(t *testing.T) {
+	s := New()
+	a, err := s.CreateAgent(Agent{AgentKey: "p", DisplayName: "P", LLMProvider: "p-a", Model: "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetAgent(a.ID)
+	if err != nil || got.LLMProvider != "p-a" {
+		t.Fatalf("create llm_provider %#v %v", got, err)
+	}
+	upd, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, OrchestrationMode: got.OrchestrationMode, Model: got.Model, LLMProvider: ""})
+	if err != nil || upd.LLMProvider != "" {
+		t.Fatalf("clear llm_provider %#v %v", upd, err)
+	}
+}
+
 func TestStore_SessionAndMessage(t *testing.T) {
 	s := New()
 	a, _ := s.CreateAgent(Agent{AgentKey: "k1", DisplayName: "K1"})

@@ -17,6 +17,7 @@ type Agent struct {
 	AgentKey          string    `json:"agent_key"`
 	DisplayName       string    `json:"display_name"`
 	Model             string    `json:"model,omitempty"`
+	LLMProvider       string    `json:"llm_provider,omitempty"`
 	Instructions      string    `json:"instructions,omitempty"`
 	OrchestrationMode string    `json:"orchestration_mode,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
@@ -462,6 +463,7 @@ func (s *Store) UpdateAgent(a Agent) (*Agent, error) {
 	if strings.TrimSpace(a.Model) != "" {
 		cur.Model = a.Model
 	}
+	cur.LLMProvider = a.LLMProvider
 	cp := *cur
 	return &cp, nil
 }

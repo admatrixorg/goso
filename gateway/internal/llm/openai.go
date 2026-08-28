@@ -84,15 +84,16 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 	if err != nil {
 		return Reply{}, Usage{}, err
 	}
-	client := o.Client
-	if client == nil {
-		timeout := 30 * time.Second
-		if o.Label == "router9" {
-			timeout = 120 * time.Second
-		}
-		client = &http.Client{Timeout: timeout}
+	timeout := 30 * time.Second
+	if o.Label == "router9" {
+		timeout = 120 * time.Second
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", chatCompletionsURL(base), bytes.NewReader(body))
+	endpoint := chatCompletionsURL(base)
+	if err := checkEndpoint(endpoint); err != nil {
+		return Reply{}, Usage{}, err
+	}
+	client := guardedClient(o.Client, timeout)
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return Reply{}, Usage{}, err
 	}

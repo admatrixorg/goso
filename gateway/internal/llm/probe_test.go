@@ -67,3 +67,16 @@ func TestAPIKeySecretName(t *testing.T) {
 		t.Fatalf("%s", got)
 	}
 }
+
+func TestProbeAndChat_SSRFBlocksLoopback(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "1")
+	p := &OpenAI{APIKey: "k", BaseURL: "http://127.0.0.1:9/v1", Label: "local"}
+	got := Probe(context.Background(), p, "models")
+	if got.OK || got.Error == "" {
+		t.Fatalf("probe should fail SSRF, got %+v", got)
+	}
+	_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}})
+	if err == nil {
+		t.Fatal("chat should fail SSRF")
+	}
+}

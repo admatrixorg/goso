@@ -5,6 +5,7 @@ package serve
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,8 @@ import (
 )
 
 func TestNewHealthzAndAgent(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_WS_ORIGINS", "")
 	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	t.Setenv("GOSO_E2E_SCRIPTED", "")
@@ -62,6 +65,7 @@ func TestNewHealthzAndAgent(t *testing.T) {
 }
 
 func TestNewRequiresToken(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	st := store.New()
@@ -105,6 +109,7 @@ func TestNewRequiresToken(t *testing.T) {
 }
 
 func TestProvidersListsConfigured(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	t.Setenv("GOSO_E2E_SCRIPTED", "")
@@ -164,6 +169,7 @@ func TestProvidersListsConfigured(t *testing.T) {
 }
 
 func TestWebhookLLMBypassesAdmin(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "")
 	t.Setenv("GOSO_ADMIN_TOKEN", "admin-040")
 	t.Setenv("GOSO_E2E_SCRIPTED", "")
@@ -192,6 +198,7 @@ func TestWebhookLLMBypassesAdmin(t *testing.T) {
 }
 
 func TestViewToken_GETOnly(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "")
 	t.Setenv("GOSO_ADMIN_TOKEN", "admin-041")
 	t.Setenv("GOSO_VIEW_TOKEN", "view-041")
@@ -225,6 +232,7 @@ func TestViewToken_GETOnly(t *testing.T) {
 }
 
 func TestMaxBytesReader_API(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	t.Setenv("GOSO_E2E_SCRIPTED", "")
@@ -240,6 +248,7 @@ func TestMaxBytesReader_API(t *testing.T) {
 }
 
 func TestChannelsListsSeven(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_DEV_MODE", "1")
 	t.Setenv("GOSO_ADMIN_TOKEN", "")
 	t.Setenv("GOSO_E2E_SCRIPTED", "")
@@ -268,6 +277,7 @@ func TestChannelsListsSeven(t *testing.T) {
 }
 
 func TestLoadConnectors_AppliesStoredToken(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
 	key, err := secrets.RandomKeyHex()
 	if err != nil {
 		t.Fatal(err)
@@ -323,5 +333,49 @@ func TestLoadConnectors_AppliesStoredToken(t *testing.T) {
 	}
 	if sawAuth != "Bearer reload-token-value" {
 		t.Fatalf("auth after reload %q", sawAuth)
+	}
+}
+
+func TestNew_ProductionRequiresWSOrigins(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	t.Setenv("GOSO_WS_ORIGINS", "")
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	old := fatalf
+	called := false
+	fatalf = func(format string, args ...any) {
+		called = true
+		panic(fmt.Sprintf(format, args...))
+	}
+	t.Cleanup(func() { fatalf = old })
+	defer func() {
+		_ = recover()
+		if !called {
+			t.Fatal("expected production refuse")
+		}
+	}()
+	New(store.New(), "test")
+	t.Fatal("New returned")
+}
+
+func TestNew_DemoAllowsEmptyWSOrigins(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_WS_ORIGINS", "")
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	h, _ := New(store.New(), "test")
+	if h == nil {
+		t.Fatal("demo should boot")
+	}
+}
+
+func TestNew_ProductionWithOrigins(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	t.Setenv("GOSO_WS_ORIGINS", "https://app.example")
+	t.Setenv("GOSO_DEV_MODE", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "")
+	h, _ := New(store.New(), "test")
+	if h == nil {
+		t.Fatal("production with origins should boot")
 	}
 }

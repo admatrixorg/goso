@@ -5,6 +5,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -83,18 +84,26 @@ func handleWebhookLLM(reg *webhook.Registry, st store.StoreIface, provider llm.P
 		if mode == "async" {
 			job := reg.NewJob()
 			go func() {
-				reply, _ := runWebhookChat(context.Background(), st, provider, body.SessionID, body.Input)
+				reply, _, _ := runWebhookChat(context.Background(), st, provider, body.SessionID, body.Input)
 				reg.CompleteJob(job.ID, reply)
 			}()
 			writeJSON(w, http.StatusAccepted, map[string]any{"id": job.ID, "status": job.Status})
 			return
 		}
-		reply, sessID := runWebhookChat(r.Context(), st, provider, body.SessionID, body.Input)
+		reply, sessID, err := runWebhookChat(r.Context(), st, provider, body.SessionID, body.Input)
+		if err != nil {
+			if errors.Is(err, llm.ErrProviderNotFound) {
+				writeErr(w, http.StatusBadRequest, "provider not found")
+				return
+			}
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "session_id": sessID})
 	}
 }
 
-func runWebhookChat(ctx context.Context, st store.StoreIface, provider llm.Provider, sessionID, input string) (string, string) {
+func runWebhookChat(ctx context.Context, st store.StoreIface, provider llm.Provider, sessionID, input string) (string, string, error) {
 	if provider == nil {
 		provider = llm.Echo{}
 	}
@@ -114,6 +123,15 @@ func runWebhookChat(ctx context.Context, st store.StoreIface, provider llm.Provi
 			}
 		}
 		if sessID != "" {
+			if sess, err := st.GetSession(sessID); err == nil && sess != nil {
+				if a, err := st.GetAgent(sess.AgentID); err == nil && a != nil {
+					p, rerr := llm.Resolve(st, a.LLMProvider, a.Model, provider)
+					if rerr != nil {
+						return "", sessID, rerr
+					}
+					provider = p
+				}
+			}
 			_, _ = st.AddMessage(store.Message{SessionID: sessID, Role: "user", Content: input})
 		}
 	}
@@ -132,7 +150,7 @@ func runWebhookChat(ctx context.Context, st store.StoreIface, provider llm.Provi
 	if st != nil && sessID != "" {
 		_, _ = st.AddMessage(store.Message{SessionID: sessID, Role: "assistant", Content: reply})
 	}
-	return reply, sessID
+	return reply, sessID, nil
 }
 
 func ensureWebhookAgent(st store.StoreIface) *store.Agent {

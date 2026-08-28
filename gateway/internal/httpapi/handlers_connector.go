@@ -440,6 +440,10 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		}
 		out, err := rt.ChatOpts(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize))
 		if err != nil {
+			if errors.Is(err, llm.ErrProviderNotFound) {
+				writeErr(w, http.StatusBadRequest, "provider not found")
+				return
+			}
 			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)
 			return
 		}

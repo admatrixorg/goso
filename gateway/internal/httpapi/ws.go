@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -84,7 +85,18 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 					_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"message is required"}`)})
 					continue
 				}
-				reply, sessID := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message)
+				reply, sessID, chatErr := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message)
+				if chatErr != nil {
+					msg := chatErr.Error()
+					if errors.Is(chatErr, llm.ErrProviderNotFound) {
+						msg = "provider not found"
+					}
+					payload, _ := json.Marshal(map[string]string{"error": msg})
+					if err := conn.WriteJSON(wsFrame{Op: "error", Payload: payload}); err != nil {
+						return
+					}
+					continue
+				}
 				out, _ := json.Marshal(map[string]any{"session_id": sessID, "reply": reply})
 				if err := conn.WriteJSON(wsFrame{Op: "chat", Payload: out}); err != nil {
 					return

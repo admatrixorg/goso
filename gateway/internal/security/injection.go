@@ -22,10 +22,17 @@ const (
 	InjectionBlock = "block"
 )
 
-// InjectionMode is GOSO_INJECTION: log (default) or block.
+// InjectionMode is GOSO_INJECTION: log or block.
+// Production default is block when unset. Dev/demo default is log.
 func InjectionMode() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_INJECTION")))
 	if v == InjectionBlock {
+		return InjectionBlock
+	}
+	if v == InjectionLog {
+		return InjectionLog
+	}
+	if Production() {
 		return InjectionBlock
 	}
 	return InjectionLog
