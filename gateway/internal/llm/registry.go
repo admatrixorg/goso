@@ -9,9 +9,30 @@ import (
 	"strings"
 )
 
+// Provider types persisted / returned by GET /api/providers.
+const (
+	TypeOpenAICompat = "openai-compat"
+	TypeAnthropic    = "anthropic"
+	TypeEcho         = "echo"
+	TypeRouter9      = "router9"
+	SourceEnv        = "env"
+	SourceSQLite     = "sqlite"
+)
+
+// ProviderInfo is a public listing row. Never includes api_key.
+type ProviderInfo struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
+	KeySet  bool   `json:"key_set"`
+	Source  string `json:"source"`
+}
+
 // Registry holds available providers based on env.
 type Registry struct {
 	providers map[string]Provider
+	infos     map[string]ProviderInfo
 }
 
 // NewRegistry builds providers from environment.
@@ -20,11 +41,16 @@ type Registry struct {
 // except router9, which constructs when GOSO_ROUTER9_BASE_URL is non-empty.
 func NewRegistry() *Registry {
 	m := make(map[string]Provider)
+	infos := make(map[string]ProviderInfo)
+	put := func(name string, p Provider) {
+		m[name] = p
+		infos[name] = Describe(name, p, envType(name), SourceEnv)
+	}
 	if key := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_API_KEY")); key != "" {
-		m["anthropic"] = &Anthropic{APIKey: key, Model: os.Getenv("GOSO_ANTHROPIC_MODEL"), CacheMode: os.Getenv("GOSO_ANTHROPIC_CACHE_MODE")}
+		put("anthropic", &Anthropic{APIKey: key, Model: os.Getenv("GOSO_ANTHROPIC_MODEL"), CacheMode: os.Getenv("GOSO_ANTHROPIC_CACHE_MODE")})
 	}
 	if key := strings.TrimSpace(os.Getenv("GOSO_OPENAI_API_KEY")); key != "" {
-		m["openai"] = &OpenAI{APIKey: key, Model: os.Getenv("GOSO_OPENAI_MODEL")}
+		put("openai", &OpenAI{APIKey: key, Model: os.Getenv("GOSO_OPENAI_MODEL")})
 	}
 	for _, spec := range OpenAICompatProviders() {
 		key := strings.TrimSpace(os.Getenv(spec.EnvKey))
@@ -52,10 +78,51 @@ func NewRegistry() *Registry {
 		if spec.Timeout > 0 {
 			o.Client = &http.Client{Timeout: spec.Timeout}
 		}
-		m[spec.Name] = o
+		put(spec.Name, o)
 	}
-	m["echo"] = Echo{}
-	return &Registry{providers: m}
+	put("echo", Echo{})
+	return &Registry{providers: m, infos: infos}
+}
+
+func envType(name string) string {
+	switch name {
+	case "echo":
+		return TypeEcho
+	case "anthropic":
+		return TypeAnthropic
+	case "router9":
+		return TypeRouter9
+	default:
+		return TypeOpenAICompat
+	}
+}
+
+// Describe builds a public info row from a live provider (no secrets).
+func Describe(name string, p Provider, typ, source string) ProviderInfo {
+	info := ProviderInfo{Name: name, Type: typ, Source: source}
+	switch v := p.(type) {
+	case *OpenAI:
+		info.BaseURL = v.BaseURL
+		if info.BaseURL == "" {
+			info.BaseURL = "https://api.openai.com"
+		}
+		info.Model = v.ModelName()
+		info.KeySet = strings.TrimSpace(v.APIKey) != ""
+	case *Anthropic:
+		info.BaseURL = v.BaseURL
+		if info.BaseURL == "" {
+			info.BaseURL = "https://api.anthropic.com"
+		}
+		info.Model = v.ModelName()
+		info.KeySet = strings.TrimSpace(v.APIKey) != ""
+	case Echo:
+		info.Model = v.ModelName()
+	default:
+		if mn, ok := p.(interface{ ModelName() string }); ok {
+			info.Model = mn.ModelName()
+		}
+	}
+	return info
 }
 
 // Get returns a provider by name, or echo fallback.
@@ -81,6 +148,31 @@ func (r *Registry) List() []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// Has reports whether name is constructed (Get falls back to echo).
+func (r *Registry) Has(name string) bool {
+	if r == nil {
+		return name == "echo"
+	}
+	_, ok := r.providers[name]
+	return ok
+}
+
+// Infos returns public listing rows (no secrets), sorted by name.
+func (r *Registry) Infos() []ProviderInfo {
+	if r == nil {
+		return []ProviderInfo{Describe("echo", Echo{}, TypeEcho, SourceEnv)}
+	}
+	out := make([]ProviderInfo, 0, len(r.infos))
+	for _, inf := range r.infos {
+		out = append(out, inf)
+	}
+	if len(out) == 0 {
+		out = append(out, Describe("echo", Echo{}, TypeEcho, SourceEnv))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

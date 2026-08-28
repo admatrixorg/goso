@@ -132,17 +132,28 @@ func TestProvidersListsConfigured(t *testing.T) {
 	}
 	apiBody := rr.Body.String()
 	var body struct {
-		Providers []string `json:"providers"`
+		Providers []struct {
+			Name   string `json:"name"`
+			Type   string `json:"type"`
+			KeySet bool   `json:"key_set"`
+			Source string `json:"source"`
+		} `json:"providers"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
 	for _, n := range body.Providers {
-		got[n] = true
+		got[n.Name] = true
+		if n.Name == "groq" && (n.Type != "openai-compat" || !n.KeySet || n.Source != "env") {
+			t.Fatalf("groq %+v", n)
+		}
 	}
 	if !got["echo"] || !got["groq"] || got["openai"] || got["anthropic"] {
 		t.Fatalf("providers %+v", body.Providers)
+	}
+	if strings.Contains(apiBody, `"api_key"`) {
+		t.Fatal("leaked api_key")
 	}
 
 	v1 := httptest.NewRecorder()

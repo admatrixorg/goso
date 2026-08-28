@@ -106,7 +106,7 @@ func Mux(st store.StoreIface, version string, provider llm.Provider, obs *observ
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
-		ProviderNames: llm.NewRegistry().List(),
+		LLM: llm.NewRegistry(),
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.Register(mux)
