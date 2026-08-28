@@ -39,7 +39,7 @@ Do not bind or kill demo ports `:8082` `:8091` `:3000` `:18080` `:18088`.
 - Workspace jail on absolute tool paths (`TestCallTool_WorkspaceAbsolute`).
 - `/api` MaxBytesReader 1MiB (`TestMaxBytesReader_API`).
 - WS 512KiB (`TestWS_ReadLimit`). Origin allowlist unchanged (`TestWS_OriginAllowlist`).
-- Injection log vs block (`TestScanInjection_FourPatterns`, `TestInspectChat_LogAndBlock`, `TestChat_InjectionLogAllows`, `TestChat_InjectionBlock400`).
+- Injection log vs block (`TestScanInjection_SixPatterns`, `TestInspectChat_LogAndBlock`, `TestChat_InjectionLogAllows`, `TestChat_InjectionBlock400`). Six exact strings: `docs/qa/079-injection-patterns.md`.
 - Path `..` + workspace (`TestHasDotDotAndRejectPathArgs`, `TestConfine_Workspace`, `TestCallTool_RejectsDotDotPath`, `TestPut_WorkspaceAndDotDot`).
 - SSRF default off / `GOSO_SSRF=1` (`TestCheckURL_DefaultOff`, `TestCheckURL_SSRFOn`, `TestHTTPTransport_SSRFBlocksLocalhost`).
 - Untrusted wrap (`TestWrapUntrusted`, `TestTools_InvokeStoresRoleToolAndTrace`).

@@ -8,11 +8,14 @@ import (
 )
 
 // Documented injection substrings scanned in user chat text (case-insensitive).
+// Six goso-owned phrases: keep the original four; add role-override and delimiter-escape.
 var injectionPatterns = []string{
 	"ignore previous instructions",
 	"exfiltrate system prompt",
 	"drop table",
 	"dump credentials",
+	"you are now",
+	"end of system",
 }
 
 const (
