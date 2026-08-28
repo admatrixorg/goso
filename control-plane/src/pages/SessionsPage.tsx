@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Session } from "../api/client";
+import { api, type Agent, type Session } from "../api/client";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
@@ -10,23 +10,101 @@ import { StatusLine, formatPublicError } from "../ui/StatusLine";
 export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void; compact?: boolean }) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [agentId, setAgentId] = useState("");
+  const [label, setLabel] = useState("");
 
   async function load() {
-    try {
-      const j = await api.listSessions();
-      setSessions(j.sessions ?? []);
-      setErr("");
-    } catch (e) {
-      setErr(formatPublicError(e));
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    const [sessRes, agRes] = await Promise.allSettled([api.listSessions(), api.listAgents()]);
+    if (sessRes.status === "fulfilled") {
+      setSessions(sessRes.value.sessions ?? []);
     }
+    if (agRes.status === "fulfilled") {
+      setAgents(agRes.value.agents ?? []);
+    }
+    const fail = sessRes.status === "rejected" ? sessRes.reason : agRes.status === "rejected" ? agRes.reason : null;
+    setErr(fail ? formatPublicError(fail) : "");
+    setLoading(false);
   }
+
   useEffect(() => {
     void load();
   }, []);
+
+  async function create() {
+    if (creating || loading) return;
+    setErr("");
+    if (agents.length === 0) {
+      setErr(t("sessions.noAgents"));
+      return;
+    }
+    const picked = agentId.trim();
+    if (!picked) {
+      setErr(t("sessions.needAgent"));
+      return;
+    }
+    const trimmedLabel = label.trim();
+    setCreating(true);
+    try {
+      const created = await api.createSession(trimmedLabel ? { agent_id: picked, label: trimmedLabel } : { agent_id: picked });
+      setLabel("");
+      setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+      onPick(created.id);
+    } catch (e) {
+      setErr(formatPublicError(e));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const noAgents = !loading && !err && agents.length === 0;
+
+  function createFields() {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
+        {noAgents ? (
+          <EmptyState style={{ padding: compact ? "10px 4px" : undefined }}>{t("sessions.noAgents")}</EmptyState>
+        ) : null}
+        <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+          {t("sessions.col.agent")}
+          <select
+            className="z-field"
+            aria-label={t("sessions.col.agent")}
+            style={{ display: "block", width: "100%", marginTop: 4 }}
+            value={agentId}
+            disabled={creating || agents.length === 0}
+            onChange={(e) => setAgentId(e.target.value)}
+          >
+            <option value="">{t("sessions.pickAgent")}</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.display_name || a.agent_key}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+          {t("sessions.label")}
+          <input
+            className="z-field"
+            style={{ display: "block", width: "100%", marginTop: 4 }}
+            placeholder={t("sessions.placeholder.label")}
+            value={label}
+            disabled={creating}
+            autoComplete="off"
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </label>
+        <Button variant="primary" disabled={creating || loading || agents.length === 0} onClick={() => void create()}>
+          {t("sessions.create")}
+        </Button>
+      </div>
+    );
+  }
 
   if (compact) {
     return (
@@ -37,32 +115,31 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
             {t("common.refresh")}
           </Button>
         </div>
+        <div style={{ padding: "0 4px 4px" }}>{createFields()}</div>
         {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-        {loading ? <StatusLine kind="loading" /> : null}
-        {!loading
-          ? sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => onPick(s.id)}
-                style={{
-                  display: "block",
-                  textAlign: "left",
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 11,
-                  padding: "10px 12px",
-                  transition: "background var(--dur-hover) var(--ease-standard)",
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.label || s.id}
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
-              </button>
-            ))
-          : null}
-        {!loading && sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
+        {loading || creating ? <StatusLine kind="loading" /> : null}
+        {sessions.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onPick(s.id)}
+            style={{
+              display: "block",
+              textAlign: "left",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 11,
+              padding: "10px 12px",
+              transition: "background var(--dur-hover) var(--ease-standard)",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {s.label || s.id}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
+          </button>
+        ))}
+        {!loading && sessions.length === 0 ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.empty")}</EmptyState> : null}
       </div>
     );
   }
@@ -80,6 +157,13 @@ export function SessionsPage({ onPick, compact }: { onPick: (id: string) => void
         }
       />
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
+      <Card>
+        <CardHeader icon="plus" title={t("sessions.add")} />
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          {createFields()}
+          {creating ? <StatusLine kind="loading" /> : null}
+        </div>
+      </Card>
       <Card>
         <CardHeader icon="msg" title={t("sessions.open")} meta={t("sessions.meta", { n: sessions.length })} />
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
