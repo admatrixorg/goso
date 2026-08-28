@@ -13,6 +13,7 @@ import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
+import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 const TAB_LABEL: Record<(typeof MARKETING_TABS)[number]["id"], MsgKey> = {
   audience: "mkt.audience",
@@ -66,7 +67,7 @@ export function MarketingPage() {
       setAudiences(aud);
       setCampaigns(camp);
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
   }
 
@@ -80,8 +81,45 @@ export function MarketingPage() {
       await fn();
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(formatPublicError(e));
     }
+  }
+
+  async function createAudience() {
+    if (!audName.trim()) {
+      setErr(t("mkt.needName"));
+      return;
+    }
+    await run(async () => {
+      await marketingApi.createAudience(
+        { name: audName.trim(), source: audSource, size: Number.parseInt(audSize, 10) || 0 },
+        org,
+      );
+      setAudName("");
+      setAudSize("0");
+    });
+  }
+
+  async function createCampaign() {
+    if (!campName.trim() || !kind) {
+      setErr(t("mkt.needCampaign"));
+      return;
+    }
+    await run(async () => {
+      await marketingApi.createCampaign(
+        {
+          name: campName.trim(),
+          kind: kind as CampaignKind,
+          status: "draft",
+          channel: campChannel.trim(),
+          audienceId: campAudience || undefined,
+          items: [],
+        },
+        org,
+      );
+      setCampName("");
+      setCampChannel("");
+    });
   }
 
   const kpis: { key: keyof MarketingOverview; value: number }[] = overview
@@ -128,7 +166,7 @@ export function MarketingPage() {
             {t("common.refresh")}
           </Button>
         </div>
-        {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+        {err ? <StatusLine kind="error">{err}</StatusLine> : null}
         {kpis.length ? (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {kpis.map((k) => (
@@ -159,17 +197,7 @@ export function MarketingPage() {
               <Button
                 variant="primary"
                 icon="plus"
-                onClick={() =>
-                  void run(async () => {
-                    if (!audName.trim()) return;
-                    await marketingApi.createAudience(
-                      { name: audName.trim(), source: audSource, size: Number.parseInt(audSize, 10) || 0 },
-                      org,
-                    );
-                    setAudName("");
-                    setAudSize("0");
-                  })
-                }
+                onClick={() => void createAudience()}
               >
                 {t("mkt.createAudience")}
               </Button>
@@ -212,24 +240,7 @@ export function MarketingPage() {
               <Button
                 variant="primary"
                 icon="plus"
-                onClick={() =>
-                  void run(async () => {
-                    if (!campName.trim() || !kind) return;
-                    await marketingApi.createCampaign(
-                      {
-                        name: campName.trim(),
-                        kind: kind as CampaignKind,
-                        status: "draft",
-                        channel: campChannel.trim(),
-                        audienceId: campAudience || undefined,
-                        items: [],
-                      },
-                      org,
-                    );
-                    setCampName("");
-                    setCampChannel("");
-                  })
-                }
+                onClick={() => void createCampaign()}
               >
                 {t("mkt.createCampaign")}
               </Button>

@@ -45,7 +45,14 @@ export function ConnectorsPage() {
   }, []);
 
   async function create() {
-    if (!name.trim() || !endpoint.trim()) return;
+    if (!name.trim()) {
+      setErr(t("connectors.needName"));
+      return;
+    }
+    if (!endpoint.trim()) {
+      setErr(t("connectors.needEndpoint"));
+      return;
+    }
     try {
       await api.createConnector({
         name: name.trim(),
@@ -53,6 +60,7 @@ export function ConnectorsPage() {
         endpoint: endpoint.trim(),
         enabled: true,
       });
+      setErr("");
       await load();
     } catch (e) {
       setErr(formatPublicError(e));
@@ -60,9 +68,17 @@ export function ConnectorsPage() {
   }
 
   async function assign() {
-    if (!agentId || !linkName) return;
+    if (!agentId) {
+      setErr(t("connectors.needAgent"));
+      return;
+    }
+    if (!linkName) {
+      setErr(t("connectors.needConnector"));
+      return;
+    }
     try {
       await api.linkAgentConnector(agentId, linkName);
+      setErr("");
       await load();
     } catch (e) {
       setErr(formatPublicError(e));

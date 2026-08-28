@@ -66,10 +66,14 @@ export function VaultPage() {
   }
 
   async function putDoc() {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setErr(t("vault.needTitle"));
+      return;
+    }
     try {
       const d = await vaultApi.put({ title: title.trim(), body });
       setSelected(d);
+      setErr("");
       await load();
       await openDoc(d.id);
     } catch (e) {

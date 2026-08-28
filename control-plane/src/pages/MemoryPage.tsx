@@ -59,10 +59,18 @@ export function MemoryPage() {
   }, [sessionId]);
 
   async function postNote() {
-    if (!sessionId || !body.trim()) return;
+    if (!sessionId) {
+      setErr(t("memory.needSession"));
+      return;
+    }
+    if (!body.trim()) {
+      setErr(t("memory.needNote"));
+      return;
+    }
     try {
       await memoryApi.create({ session_id: sessionId, body: body.trim(), kind: "episodic" });
       setBody("");
+      setErr("");
       await loadNotes(sessionId);
     } catch (e) {
       setErr(formatPublicError(e));
