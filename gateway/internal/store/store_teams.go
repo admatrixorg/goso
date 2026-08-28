@@ -490,3 +490,26 @@ func (s *Store) EvolutionApplied(agentID, suggestionID string) bool {
 	defer s.mu.RUnlock()
 	return s.evoApplied[agentID][suggestionID]
 }
+
+func (s *Store) GetEvolutionGuardrails(agentID string) EvolutionGuardrails {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.evoGuard[agentID]
+	if !ok {
+		return NormalizeGuardrails(EvolutionGuardrails{})
+	}
+	return NormalizeGuardrails(g)
+}
+
+func (s *Store) PutEvolutionGuardrails(agentID string, g EvolutionGuardrails) error {
+	if agentID == "" {
+		return errors.New("agent_id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.agents[agentID]; !ok {
+		return ErrNotFound
+	}
+	s.evoGuard[agentID] = NormalizeGuardrails(g)
+	return nil
+}

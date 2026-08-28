@@ -6,6 +6,7 @@ export type TeamTask = { id: string; team_id: string; title: string; status: str
 export type TeamMessage = { id: string; team_id: string; from_agent_id: string; body: string; created_at: string };
 export type AgentLink = { from_agent_id: string; to_agent_id: string };
 export type EvolutionSuggestion = { id: string; rule: string; text: string; status: string };
+export type EvolutionGuardrails = { auto_adapt: boolean; min_runs: number; locked: string[] };
 
 function idPath(id: string): string {
   return encodeURIComponent(id);
@@ -47,7 +48,14 @@ export const teamsApi = {
     }),
 
   listEvolution: (agentId: string) =>
-    jsonFetch<{ suggestions: EvolutionSuggestion[] }>(`/api/agents/${idPath(agentId)}/evolution`),
+    jsonFetch<{ suggestions: EvolutionSuggestion[]; guardrails?: EvolutionGuardrails }>(
+      `/api/agents/${idPath(agentId)}/evolution`,
+    ),
+  patchEvolution: (agentId: string, body: { auto_adapt?: boolean; min_runs?: number }) =>
+    jsonFetch<{ guardrails: EvolutionGuardrails }>(`/api/agents/${idPath(agentId)}/evolution`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   applyEvolution: (agentId: string, sid: string) =>
     jsonFetch<unknown>(`/api/agents/${idPath(agentId)}/evolution/${idPath(sid)}/apply`, {
       method: "POST",

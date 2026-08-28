@@ -3,6 +3,7 @@ import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import {
   teamsApi,
   type EvolutionSuggestion,
+  type EvolutionGuardrails,
   type AgentLink,
   type Team,
   type TeamMember,
@@ -42,6 +43,7 @@ export function TeamsPage() {
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [links, setLinks] = useState<AgentLink[]>([]);
   const [suggestions, setSuggestions] = useState<EvolutionSuggestion[]>([]);
+  const [guardrails, setGuardrails] = useState<EvolutionGuardrails>({ auto_adapt: false, min_runs: 20, locked: [] });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -88,9 +90,19 @@ export function TeamsPage() {
         const [lk, ev] = await Promise.all([teamsApi.listLinks(aid), teamsApi.listEvolution(aid)]);
         setLinks(lk.links ?? []);
         setSuggestions(ev.suggestions ?? []);
+        if (ev.guardrails) {
+          setGuardrails({
+            auto_adapt: Boolean(ev.guardrails.auto_adapt),
+            min_runs: ev.guardrails.min_runs > 0 ? ev.guardrails.min_runs : 20,
+            locked: ev.guardrails.locked ?? [],
+          });
+        } else {
+          setGuardrails({ auto_adapt: false, min_runs: 20, locked: [] });
+        }
       } else {
         setLinks([]);
         setSuggestions([]);
+        setGuardrails({ auto_adapt: false, min_runs: 20, locked: [] });
       }
       setErr("");
     } catch (e) {
@@ -215,6 +227,23 @@ export function TeamsPage() {
     }
   }
 
+  async function saveGuardrails(next: { auto_adapt?: boolean; min_runs?: number }) {
+    if (!linkAgent.trim()) return;
+    try {
+      const j = await teamsApi.patchEvolution(linkAgent.trim(), next);
+      if (j.guardrails) {
+        setGuardrails({
+          auto_adapt: Boolean(j.guardrails.auto_adapt),
+          min_runs: j.guardrails.min_runs > 0 ? j.guardrails.min_runs : 20,
+          locked: j.guardrails.locked ?? [],
+        });
+      }
+      setErr("");
+    } catch (e) {
+      setErr(formatPublicError(e));
+    }
+  }
+
   async function patchMemberMode(agentId: string, mode: string) {
     if (!ORCHESTRATION_MODES.includes(mode as (typeof ORCHESTRATION_MODES)[number])) return;
     try {
@@ -248,6 +277,7 @@ export function TeamsPage() {
           </>
         }
       />
+      {loading ? <StatusLine kind="loading" /> : null}
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input className="z-field" placeholder={t("teams.name")} value={name} onChange={(e) => setName(e.target.value)} />
@@ -441,6 +471,40 @@ export function TeamsPage() {
                 </Card>
                 <Card>
                   <CardHeader icon="bolt" title={t("teams.evolution")} />
+                  <div style={{ padding: "10px 16px", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                      <input
+                        type="checkbox"
+                        checked={guardrails.auto_adapt}
+                        onChange={(e) => void saveGuardrails({ auto_adapt: e.target.checked })}
+                      />
+                      {t("teams.autoAdapt")}
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                      {t("teams.minRuns")}
+                      <input
+                        className="z-field"
+                        type="number"
+                        min={1}
+                        value={guardrails.min_runs}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          setGuardrails((g) => ({ ...g, min_runs: n }));
+                        }}
+                        onBlur={() => {
+                          const n = Number(guardrails.min_runs);
+                          if (!Number.isFinite(n) || n <= 0) {
+                            setGuardrails((g) => ({ ...g, min_runs: 20 }));
+                            void saveGuardrails({ min_runs: 20 });
+                            return;
+                          }
+                          void saveGuardrails({ min_runs: n });
+                        }}
+                        aria-label={t("teams.minRuns")}
+                        style={{ width: 72 }}
+                      />
+                    </label>
+                  </div>
                   {suggestions.map((s) => (
                     <div key={s.id} style={{ padding: "10px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", display: "flex", gap: 8, alignItems: "flex-start" }}>
                       <div style={{ flex: 1 }}>

@@ -79,6 +79,64 @@ type AgentMetrics struct {
 	Advertised []string       `json:"advertised,omitempty"`
 }
 
+// DefaultMinRuns is the auto-adapt floor when min_runs is unset or invalid.
+const DefaultMinRuns = 20
+
+// AlwaysLockedParams cannot be unlocked via API (name, key, identity).
+var AlwaysLockedParams = []string{"display_name", "agent_key", "identity"}
+
+// EvolutionGuardrails is persisted JSON for auto-adapt safety (SPEC 073).
+type EvolutionGuardrails struct {
+	AutoAdapt            bool     `json:"auto_adapt"`
+	MinRuns              int      `json:"min_runs"`
+	Locked               []string `json:"locked"`
+	SnapshotInstructions string   `json:"snapshot_instructions,omitempty"`
+	AppliedSuggestionID  string   `json:"applied_suggestion_id,omitempty"`
+	BaselineChatRuns     int      `json:"baseline_chat_runs,omitempty"`
+	BaselineToolErrors   int      `json:"baseline_tool_errors,omitempty"`
+}
+
+// MergeLocked always includes name/key/identity and any extra caller tokens.
+func MergeLocked(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(AlwaysLockedParams)+len(in))
+	for _, k := range AlwaysLockedParams {
+		seen[k] = struct{}{}
+		out = append(out, k)
+	}
+	for _, k := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, k)
+	}
+	return out
+}
+
+// NormalizeGuardrails fills defaults. auto_adapt stays false unless set.
+func NormalizeGuardrails(g EvolutionGuardrails) EvolutionGuardrails {
+	if g.MinRuns <= 0 {
+		g.MinRuns = DefaultMinRuns
+	}
+	g.Locked = MergeLocked(g.Locked)
+	return g
+}
+
+// PublicGuardrails omits rollback snapshot fields from API responses.
+func PublicGuardrails(g EvolutionGuardrails) EvolutionGuardrails {
+	g = NormalizeGuardrails(g)
+	return EvolutionGuardrails{
+		AutoAdapt: g.AutoAdapt,
+		MinRuns:   g.MinRuns,
+		Locked:    g.Locked,
+	}
+}
+
 // Session represents a conversation session.
 type Session struct {
 	ID        string    `json:"id"`
@@ -355,6 +413,8 @@ type StoreIface interface {
 	GetAgentMetrics(agentID string) AgentMetrics
 	MarkEvolutionApplied(agentID, suggestionID string) error
 	EvolutionApplied(agentID, suggestionID string) bool
+	GetEvolutionGuardrails(agentID string) EvolutionGuardrails
+	PutEvolutionGuardrails(agentID string, g EvolutionGuardrails) error
 	PutSecret(SecretRow) error
 	GetSecret(name string) (*SecretRow, error)
 	CreateCronJob(CronJob) (*CronJob, error)
@@ -408,6 +468,7 @@ type Store struct {
 	agentLinks   map[string][]string       // from -> to ids
 	metrics      map[string]*AgentMetrics
 	evoApplied   map[string]map[string]bool // agent_id -> suggestion_id
+	evoGuard     map[string]EvolutionGuardrails
 	secrets      map[string]SecretRow
 	toolFlags    map[string]bool
 	cronJobs     map[string]*CronJob
@@ -453,6 +514,7 @@ func New() *Store {
 		agentLinks:   make(map[string][]string),
 		metrics:      make(map[string]*AgentMetrics),
 		evoApplied:   make(map[string]map[string]bool),
+		evoGuard:     make(map[string]EvolutionGuardrails),
 		secrets:      make(map[string]SecretRow),
 		toolFlags:    make(map[string]bool),
 		cronJobs:     make(map[string]*CronJob),

@@ -145,6 +145,66 @@ func TestSQLiteStore_TeamsAndLite(t *testing.T) {
 	}
 }
 
+func TestStore_EvolutionGuardrailsDefaultAndPersist(t *testing.T) {
+	s := New()
+	a, err := s.CreateAgent(Agent{AgentKey: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := s.GetEvolutionGuardrails(a.ID)
+	if g.AutoAdapt || g.MinRuns != DefaultMinRuns {
+		t.Fatalf("defaults %#v", g)
+	}
+	for _, need := range []string{"display_name", "agent_key"} {
+		found := false
+		for _, k := range g.Locked {
+			if k == need {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("locked missing %s %#v", need, g.Locked)
+		}
+	}
+	if err := s.PutEvolutionGuardrails(a.ID, EvolutionGuardrails{AutoAdapt: true, MinRuns: 7, Locked: nil}); err != nil {
+		t.Fatal(err)
+	}
+	g = s.GetEvolutionGuardrails(a.ID)
+	if !g.AutoAdapt || g.MinRuns != 7 {
+		t.Fatalf("put %#v", g)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "guard.db")
+	sql, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := sql.CreateAgent(Agent{AgentKey: "sg"})
+	if err := sql.PutEvolutionGuardrails(b.ID, EvolutionGuardrails{AutoAdapt: true, MinRuns: 9, Locked: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = sql.Close()
+	sql2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sql2.Close()
+	got := sql2.GetEvolutionGuardrails(b.ID)
+	if !got.AutoAdapt || got.MinRuns != 9 {
+		t.Fatalf("sqlite persist %#v", got)
+	}
+	foundName := false
+	for _, k := range got.Locked {
+		if k == "display_name" {
+			foundName = true
+		}
+	}
+	if !foundName {
+		t.Fatalf("sqlite locked %#v", got.Locked)
+	}
+}
+
 func TestUpdateAgent_DoesNotRename(t *testing.T) {
 	s := New()
 	a, _ := s.CreateAgent(Agent{AgentKey: "keep", DisplayName: "Keep"})

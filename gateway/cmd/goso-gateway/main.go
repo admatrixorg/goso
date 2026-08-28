@@ -95,6 +95,7 @@ Environment:
   GOSO_DATABASE_URL        If postgres://…, gateway refuses to start (SQLite only; see docs/qa/071-pgvector-path.md)
   GOSO_MULTI_TENANT        1 = honor X-Goso-Tenant (admin token for non-default). Unset/demo = always default
   GOSO_KG_EXTRACT          1 = after chat, insert L2 entity from Name:/Entity: lines. Default off
+  GOSO_EVOLUTION_AUTO      1 = in-process auto-adapt ticker (per-agent auto_adapt still required). Default off
   GOSO_BACKUP_DIR          Snapshot dir for VACUUM INTO (default ./var/backups)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
