@@ -17,7 +17,7 @@ goso mapping (self-written): `POST /api/chat` (and `/v1/chat` alias) with `strea
 ## What changed
 
 - `llm.StreamHandler` + `ChatStream` helper. Native streamers: Echo (1–N), OpenAI-compat (upstream SSE), Anthropic (`content_block_delta`). Others: one chunk after Chat.
-- OpenAI `ChatStreamTools` streams text deltas and may return tool calls from the same turn. Scripted (ToolChat, no native stream) completes tools non-stream then emits the final text as one chunk.
+- OpenAI `ChatStreamTools` streams text deltas and may return tool calls from the same turn. Scripted (ToolChat, no native stream) completes tools non-stream then emits the final text as one chunk. If an OpenAI-compat 200 is JSON (router9 ignoring `stream=true`), ChatStream emits **one** honest chunk — never an empty success.
 - `POST /api/chat` stream path calls the provider/pipeline stream callback and flushes each delta. JSON path unchanged (`200` + `application/json`).
 - Production `splitSSEDeltas` **deleted**. Client disconnect cancels the provider `context` (`r.Context()`).
 - Control-plane `chatStream` already consumes SSE deltas; types unchanged.
@@ -41,6 +41,8 @@ Do not bind or kill demo ports `:8082` `:8091` `:3000` `:18080` `:18088`. Do not
 - Non-stream POST still JSON 200 (`TestChatSSE_JSONUnchangedWithoutStream`).
 - Client disconnect cancels provider context (`TestChatSSE_ClientDisconnectCancelsProvider`).
 - Anthropic `content_block_delta` (`TestAnthropic_ChatStreamContentBlockDelta`).
+- Router9-shaped JSON+DONE body over ChatStream is one honest `pong` chunk, not empty (`TestOpenAI_ChatStreamJSONBodyOneHonestChunk`).
+- Streamed tool_call fragments assemble, then text deltas (`TestOpenAI_ChatStreamToolsAccumulatesCallsAndDeltas`).
 - `grep splitSSEDeltas` empty in non-test production files.
 
 ## Non-goals

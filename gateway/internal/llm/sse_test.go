@@ -108,3 +108,73 @@ func TestAnthropic_ChatStreamContentBlockDelta(t *testing.T) {
 		t.Fatalf("deltas %v", got)
 	}
 }
+
+func TestOpenAI_ChatStreamJSONBodyOneHonestChunk(t *testing.T) {
+	body := []byte(`{"choices":[{"message":{"content":"pong"}}]}` + "\n\ndata: [DONE]\n")
+	for _, ct := range []string{"application/json", "text/event-stream"} {
+		ct := ct
+		t.Run(ct, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				if req["stream"] != true {
+					t.Errorf("stream %v", req["stream"])
+				}
+				w.Header().Set("Content-Type", ct)
+				_, _ = w.Write(body)
+			}))
+			defer srv.Close()
+			p := &OpenAI{
+				APIKey: "", BaseURL: srv.URL + "/v1", Client: srv.Client(),
+				Label: "router9", AllowEmptyKey: true,
+			}
+			var got []string
+			reply, err := p.ChatStream(t.Context(), []Message{{Role: "user", Content: "hi"}}, func(d string) {
+				got = append(got, d)
+			})
+			if err != nil || reply != "pong" {
+				t.Fatalf("stream %v %q", err, reply)
+			}
+			if len(got) != 1 || got[0] != "pong" {
+				t.Fatalf("want one honest chunk, got %v", got)
+			}
+		})
+	}
+}
+
+func TestOpenAI_ChatStreamToolsAccumulatesCallsAndDeltas(t *testing.T) {
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.Header().Set("Content-Type", "text/event-stream")
+		if n == 1 {
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\"}}]}}]}\n\n")
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"hi\\\"}\"}}]}}]}\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			return
+		}
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	p := &OpenAI{APIKey: "test-key", BaseURL: srv.URL, Client: srv.Client()}
+	first, err := p.ChatStreamTools(t.Context(), []Message{{Role: "user", Content: "hi"}}, []ToolSpec{{Name: "lookup"}}, nil)
+	if err != nil || len(first.ToolCalls) != 1 || first.ToolCalls[0].Name != "lookup" {
+		t.Fatalf("tool_use %v %+v", err, first)
+	}
+	if q, _ := first.ToolCalls[0].Arguments["q"].(string); q != "hi" {
+		t.Fatalf("args %+v", first.ToolCalls[0].Arguments)
+	}
+	var got []string
+	second, err := p.ChatStreamTools(t.Context(), []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", ToolCalls: first.ToolCalls},
+		{Role: "tool", ToolCallID: "call_1", Content: "ok"},
+	}, []ToolSpec{{Name: "lookup"}}, func(d string) { got = append(got, d) })
+	if err != nil || second.Text != "done" {
+		t.Fatalf("text %v %+v", err, second)
+	}
+	if len(got) != 1 || got[0] != "done" {
+		t.Fatalf("deltas %v", got)
+	}
+}
