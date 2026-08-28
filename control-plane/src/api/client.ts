@@ -167,8 +167,13 @@ export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),
   listAgents: () => jsonFetch<{ agents: Agent[] }>("/api/agents"),
   getAgent: (id: string) => jsonFetch<Agent>(`/api/agents/${id}`),
-  createAgent: (body: { agent_key: string; display_name: string; model?: string }) =>
-    jsonFetch<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
+  createAgent: (body: {
+    agent_key: string;
+    display_name: string;
+    model?: string;
+    instructions?: string;
+    orchestration_mode?: string;
+  }) => jsonFetch<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (id: string, body: { orchestration_mode?: string; model?: string; instructions?: string }) =>
     jsonFetch<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   listSessions: () => jsonFetch<{ sessions: Session[] }>("/api/sessions"),
