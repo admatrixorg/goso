@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentsPage } from "./pages/AgentsPage";
 import { SessionsPage, type SessionsPageHandle } from "./pages/SessionsPage";
 import { ChatPage } from "./pages/ChatPage";
@@ -24,6 +24,7 @@ import { WebhooksPage } from "./pages/WebhooksPage";
 import { TracesPage } from "./pages/TracesPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
+import { CommandPalette } from "./ui/CommandPalette";
 import { isDemoMode } from "./demo/mode";
 import { demoOverviewItems, demoTop, demoWorkExtra } from "./demo/nav";
 import { useI18n, type Locale } from "./i18n";
@@ -62,6 +63,23 @@ function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.ev
     { id: "connectors", label: t("nav.connectors") },
     { id: "events", label: t("nav.events") },
   ];
+}
+
+function visibleTabItems(
+  side: { items: { id: Tab; label: string; ic: IconName }[] }[],
+  settingsLabel: string,
+): { id: Tab; label: string; ic: IconName }[] {
+  const seen = new Set<Tab>();
+  const out: { id: Tab; label: string; ic: IconName }[] = [];
+  for (const g of side) {
+    for (const i of g.items) {
+      if (seen.has(i.id)) continue;
+      seen.add(i.id);
+      out.push(i);
+    }
+  }
+  if (!seen.has("settings")) out.push({ id: "settings", label: settingsLabel, ic: "gear" });
+  return out;
 }
 
 function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] {
@@ -116,6 +134,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const skipHeaderFocus = useRef(false);
+  const headerSearchRef = useRef<HTMLInputElement>(null);
 
   const top = DEMO ? [...demoTop(locale), ...liveTop(t)] : liveTop(t);
   const side = DEMO
@@ -144,6 +165,18 @@ export default function App() {
   function go(id: Tab) {
     setTab(id);
   }
+
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false);
+    setQ("");
+    skipHeaderFocus.current = true;
+    headerSearchRef.current?.blur();
+    window.setTimeout(() => {
+      skipHeaderFocus.current = false;
+    }, 0);
+  }, []);
+  const paletteItems = visibleTabItems(side, t("nav.settings"));
 
   return (
     <div style={{ height: "100vh", minWidth: 1280, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
@@ -246,11 +279,23 @@ export default function App() {
           >
             <Icon name="search" size={13} />
             <input
+              ref={headerSearchRef}
               className="z-field"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPaletteOpen(true);
+              }}
+              onFocus={() => {
+                if (skipHeaderFocus.current) return;
+                openPalette();
+              }}
               placeholder={t("chrome.search")}
               aria-label={t("chrome.search")}
+              aria-expanded={paletteOpen}
+              aria-haspopup="dialog"
+              autoComplete="off"
+              spellCheck={false}
               style={{ border: "none", background: "transparent", padding: 0, minHeight: 0, width: "100%" }}
             />
           </div>
@@ -296,12 +341,18 @@ export default function App() {
             padding: "12px 8px 8px",
           }}
         >
-          <div
+          <button
+            type="button"
             data-ig="search"
+            onClick={openPalette}
+            aria-haspopup="dialog"
+            aria-expanded={paletteOpen}
+            aria-label={t("chrome.quickSearch")}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
+              width: "100%",
               background: "var(--card)",
               border: "1px solid var(--border)",
               borderRadius: 9,
@@ -309,11 +360,12 @@ export default function App() {
               fontSize: 12.5,
               color: "var(--text-4)",
               minHeight: 34,
+              textAlign: "left",
             }}
           >
             <span style={{ flex: 1 }}>{t("chrome.quickSearch")}</span>
             <span style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
-          </div>
+          </button>
           {side.map((g) => {
             const items = g.items;
             if (!items.length) return null;
@@ -478,6 +530,19 @@ export default function App() {
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        query={q}
+        items={paletteItems}
+        title={t("palette.title")}
+        empty={t("palette.empty")}
+        hint={t("palette.hint")}
+        placeholder={t("chrome.search")}
+        onQuery={setQ}
+        onOpen={openPalette}
+        onClose={closePalette}
+        onPick={go}
+      />
     </div>
   );
 }
