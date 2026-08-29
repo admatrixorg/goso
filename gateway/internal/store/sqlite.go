@@ -18,11 +18,14 @@ import (
 )
 
 // SQLiteStore persists agents/sessions/messages in SQLite.
+// PostgresStore embeds this type and sets pg so FTS5 is skipped.
 type SQLiteStore struct {
-	db       *sql.DB
+	db       *sqlHandle
 	fts      bool
 	vaultFTS bool
 	kgFTS    bool
+	pg       bool
+	vector   bool
 }
 
 var _ StoreIface = (*SQLiteStore)(nil)
@@ -52,7 +55,7 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	s := &SQLiteStore{db: db}
+	s := &SQLiteStore{db: &sqlHandle{db: db}}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -327,6 +330,9 @@ func (s *SQLiteStore) migrate() error {
 
 func (s *SQLiteStore) initFTS() {
 	s.fts = false
+	if s.pg {
+		return
+	}
 	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
 		id UNINDEXED,
 		session_id UNINDEXED,
@@ -365,6 +371,9 @@ func (s *SQLiteStore) initFTS() {
 
 func (s *SQLiteStore) initVaultFTS() {
 	s.vaultFTS = false
+	if s.pg {
+		return
+	}
 	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts USING fts5(
 		id UNINDEXED,
 		title,
@@ -1033,7 +1042,7 @@ func (s *SQLiteStore) searchInstr(q string) ([]SearchHit, error) {
 			SELECT id, session_id, kind, body FROM memories WHERE instr(lower(body), lower(?)) > 0
 			UNION ALL
 			SELECT id, session_id, 'message', content FROM messages WHERE instr(lower(content), lower(?)) > 0
-		) LIMIT 50`, q, q)
+		) AS hits LIMIT 50`, q, q)
 	if err != nil {
 		return nil, err
 	}

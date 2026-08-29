@@ -64,7 +64,7 @@ GoClaw gốc có 8 overlay. GOSO chỉ ship **core + prod** ở SPEC 012; các o
 | Overlay GoClaw | GOSO |
 |----------------|------|
 | `docker-compose.yml` (core) | `compose.yml` — gateway + control-plane + volume `data` |
-| `docker-compose.postgres.yml` | Chưa — dual-DB Postgres/pgvector (quyết định 04), gateway chưa nối |
+| `docker-compose.postgres.yml` | Profile `postgres` in `compose.yml` (SPEC 085) — `pgvector/pgvector:pg16` host **5433**; default `up` stays SQLite |
 | selfservice (UI :3000) | Gộp vào `compose.yml` (control-plane :3000) |
 | redis | Chưa — rate-limit in-memory (SPEC 006) |
 | otel / jaeger | Chưa — SPEC 008 để overlay sau |
@@ -84,6 +84,7 @@ Xem `.env.example` và `docs/SETUP.md`. Trong Docker:
 | `GOSO_HOST` | `0.0.0.0` | Bind mọi interface trong container |
 | `GOSO_PORT` | `8080` | Cổng gateway |
 | `GOSO_DB_PATH` | `/data/goso.db` | File trên volume `data` |
+| `GOSO_DATABASE_URL` | rỗng | Optional pgx DSN (SPEC 085). Empty = SQLite. Profile `postgres` is host **5433**; in-network `postgres:5432`. Connect fail = no sqlite fallback. |
 | `GOSO_ENV` | `development` / overlay: `production` | |
 | `GOSO_ADMIN_TOKEN` | rỗng | Rỗng = dev mode |
 | `GATEWAY_URL` | `http://gateway:8080` | Control-plane proxy (nội bộ Docker network) |

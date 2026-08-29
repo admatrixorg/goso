@@ -1,6 +1,6 @@
 # QA — SPEC 071 PG16 / pgvector path (docs only)
 
-Date: 2026-08-28. Clean-room. **No live Postgres host.** DI-09 stays parked. This file is the documented path for a later driver — not an implementation.
+Date: 2026-08-28. Clean-room. **No live Postgres host in 071.** DI-09 N1 is implemented in **SPEC 085** — see `docs/qa/085-postgres-local.md`. This file remains the 071 historical path; the driver lives there.
 
 ## GoClaw behavior (READ-ONLY cite — paths only)
 
@@ -11,20 +11,20 @@ Date: 2026-08-28. Clean-room. **No live Postgres host.** DI-09 stays parked. Thi
 
 goso today ships **FTS5** on SQLite (`memory_fts`, `vault_fts`). Semantic / L2 vector search is not in this build.
 
-## DSN later
+## DSN (implemented in SPEC 085)
 
-When a thin Postgres driver exists (not now):
+Local compose profile (host port **5433**, not 5432 / demo ports):
 
 ```
-GOSO_DATABASE_URL=postgres://USER:PASS@HOST:5432/goso?sslmode=require
+docker compose --profile postgres up -d postgres
+GOSO_DATABASE_URL=postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable
 ```
 
-Until then:
-
-- `store.Open` / `OpenSQLite` **fail closed** if `GOSO_DATABASE_URL` or `GOSO_DB_PATH` looks like `postgres://` / `postgresql://`.
-- Error: `postgres is not supported in this build: SQLite only (see docs/qa/071-pgvector-path.md)`.
-- Do **not** half-open a broken PG driver or silently fall back to SQLite when a postgres DSN is set.
-- `store.StoreIface` remains the SQLite (and in-memory) implementation.
+- `store.Open` routes a postgres DSN to `OpenPostgres` (pgx via `database/sql`).
+- Connect fail → error; **never** SQLite fallback.
+- `OpenSQLite` still refuses a postgres DSN.
+- Unset `GOSO_DATABASE_URL` keeps SQLite `GOSO_DB_PATH`.
+- Default demo `:18080` stays SQLite. Details: `docs/qa/085-postgres-local.md`.
 
 ## pgvector for L2
 
@@ -33,10 +33,10 @@ Later, on PG16:
 1. `CREATE EXTENSION IF NOT EXISTS vector;`
 2. Store embeddings beside FTS (goso FTS5 stays the lexical path).
 3. Scope every query with `tenant_id` (same column added on SQLite in SPEC 071).
-4. Fail closed if the DSN is postgres but the driver/extension is missing — never return unfiltered or half-indexed hits.
+4. Driver connect fail is fail-closed (no sqlite fallback). Missing `vector` extension is optional in 085 (log and continue lexical). Do not return unfiltered hits.
 
 No code is copied from goclaw. No live host is required for SPEC 071.
 
 ## Non-goals
 
-Implementing the PG driver. Binding a Postgres port. Waiting on DI-09. Copying goclaw Go.
+SPEC 071 did not implement the driver (085 does). Binding demo ports. Copying goclaw Go.

@@ -10,11 +10,14 @@ Yêu cầu: Go 1.25+, `make`.
 # Dev tường minh (passthrough — chỉ loopback)
 GOSO_DEV_MODE=1 go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
 
-# Local bền (SQLite + admin token)
+# Local bền (SQLite + admin token). Default demo stays SQLite.
 mkdir -p data
 export GOSO_ADMIN_TOKEN='<token-dài-ngẫu-nhiên>'
 export GOSO_DB_PATH=data/goso.db
 export GOSO_VAULT_DIR=data/vault
+# Optional local Postgres (compose profile; host 5433). Unset = SQLite.
+# docker compose --profile postgres up -d postgres
+# export GOSO_DATABASE_URL='postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable'
 # export GOSO_SKILLS_DIR=data/skills   # empty = use_skill / skill_search / manage fail-closed
 export GOSO_ENV=production
 export GOSO_RATE_LIMIT=60
@@ -53,9 +56,23 @@ Optional OTLP: set `GOSO_OTEL_ENDPOINT` to a collector HTTP JSON URL. Empty (def
 
 Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
+### Optional local Postgres (SPEC 085)
+
+Default `docker compose up` and demo `:18080` stay SQLite. To try PG16 + pgvector on this host only:
+
+```bash
+docker compose --profile postgres up -d postgres
+# wait until healthy: docker compose --profile postgres ps
+export GOSO_DATABASE_URL='postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable'
+# do not set this on the :18080 demo
+go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
+```
+
+Connect fail is fatal (no SQLite fallback). From a gateway **container**, use `postgres://goso:goso@postgres:5432/goso?sslmode=disable` on the compose network — host port **5433** is for processes on the Mac. `CREATE EXTENSION vector` is optional; search stays lexical. Roundtrip test: `GOSO_TEST_DATABASE_URL=$GOSO_DATABASE_URL go test ./gateway/internal/store -run TestPostgresRoundTrip`. See `docs/qa/085-postgres-local.md`.
+
 ## 2. Backup SQLite
 
-Supported path: consistent snapshot via `VACUUM INTO` (SQLite backup API). Copying the live db file (`cp`) is **not** the supported path.
+Supported path: consistent snapshot via `VACUUM INTO` (SQLite backup API). Copying the live db file (`cp`) is **not** the supported path. When `GOSO_DATABASE_URL` is a postgres DSN, `POST /api/system/backup` returns 400 (`postgres backup not supported`) — it must not snapshot idle `GOSO_DB_PATH` SQLite. PG dump is out of scope for 085.
 
 `GOSO_BACKUP_DIR` defaults to `./var/backups`. Admin `POST /api/system/backup` creates a timestamped file and runs `PRAGMA integrity_check` on the snapshot (`{file, bytes, integrity:"ok"}`). `GET /api/system/backup` lists files with an integrity badge. In-memory (`GOSO_DB_PATH` empty or `:memory:`) cannot be snapshotted.
 

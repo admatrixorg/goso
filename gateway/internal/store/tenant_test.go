@@ -46,18 +46,6 @@ func TestRefusePostgres(t *testing.T) {
 	}
 }
 
-func TestOpenPostgresFailClosed(t *testing.T) {
-	t.Setenv("GOSO_DATABASE_URL", "postgres://localhost/goso")
-	_, _, err := Open("data/goso.db")
-	if !errors.Is(err, ErrPostgresUnsupported) {
-		t.Fatalf("Open: %v", err)
-	}
-	_, err = OpenSQLite("postgresql://localhost/goso")
-	if !errors.Is(err, ErrPostgresUnsupported) {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-}
-
 func TestSQLiteTenantBackfill(t *testing.T) {
 	t.Setenv("GOSO_DATABASE_URL", "")
 	dir := t.TempDir()

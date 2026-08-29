@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
+	"github.com/mqglobal/goso/gateway/internal/store"
 
 	_ "modernc.org/sqlite"
 )
@@ -35,7 +36,10 @@ var (
 	// ErrEscape means the snapshot name is outside the backup directory.
 	ErrEscape = errors.New("path escape")
 	// ErrNotFound means the snapshot file is missing.
-	ErrNotFound   = errors.New("snapshot not found")
+	ErrNotFound = errors.New("snapshot not found")
+	// ErrPostgres means GOSO_DATABASE_URL is a postgres DSN; VACUUM INTO
+	// would snapshot idle SQLite, not live PG rows.
+	ErrPostgres   = errors.New("postgres backup not supported")
 	errDestExists = errors.New("snapshot dest exists")
 )
 
@@ -59,6 +63,9 @@ func DBPath() string {
 
 // Snapshot writes a consistent copy of the live db via VACUUM INTO.
 func Snapshot() (SnapshotResult, error) {
+	if store.IsPostgresDSN(os.Getenv("GOSO_DATABASE_URL")) {
+		return SnapshotResult{}, ErrPostgres
+	}
 	src := DBPath()
 	if src == "" {
 		return SnapshotResult{}, ErrNoFile
