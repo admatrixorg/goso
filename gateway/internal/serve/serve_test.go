@@ -312,6 +312,32 @@ func TestViewToken_GETOnly(t *testing.T) {
 		t.Fatalf("view POST revoke %d %s", rr.Code, rr.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/api/workstations", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET workstations %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/workstations", strings.NewReader(`{"display":"x"}`))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST workstations %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/workstations/ws_1/delete", strings.NewReader(`{"confirm":"x"}`))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST workstation delete %d %s", rr.Code, rr.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/api/system/backup", nil)
 	req.Header.Set("Authorization", "Bearer view-041")
 	rr = httptest.NewRecorder()
