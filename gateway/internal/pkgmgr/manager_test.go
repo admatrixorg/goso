@@ -212,3 +212,50 @@ func TestSecretShapedNameRejected(t *testing.T) {
 		t.Fatalf("secret name %v", err)
 	}
 }
+
+func TestConfirmCaseFoldPython(t *testing.T) {
+	m := testMgr()
+	if _, err := m.Allow("python", "HTTPX", "0.27.2"); err != nil {
+		t.Fatal(err)
+	}
+	pkg, _, err := m.Install("python", "HTTPX", "0.27.2", "HTTPX")
+	if err != nil || pkg.Name != "httpx" {
+		t.Fatalf("case fold %v %#v", err, pkg)
+	}
+}
+
+func TestRecoverFailedUninstall(t *testing.T) {
+	m := testMgr()
+	if _, err := m.Allow("system", "ffmpeg", "6.1.0"); err != nil {
+		t.Fatal(err)
+	}
+	pkg, _, err := m.Install("system", "ffmpeg", "6.1.0", "ffmpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.FailAt = 1
+	pkg, job, err := m.Uninstall(pkg.ID, "ffmpeg")
+	if err == nil || pkg.Status != StatusFailed || job.Action != ActionUninstall {
+		t.Fatalf("uninstall fail %v %#v %#v", err, pkg, job)
+	}
+	pkg, job, err = m.Recover(pkg.ID, pkg.ID)
+	if err != nil || job.Action != ActionRecover {
+		t.Fatalf("recover uninstall %v %#v %#v", err, pkg, job)
+	}
+	if _, err := m.Get(pkg.ID); err != ErrNotFound {
+		t.Fatalf("still present %v", err)
+	}
+}
+
+func TestProbeBinTimeout(t *testing.T) {
+	r := probeBin(binSpec{Name: "hang", Bins: []string{"sleep"}, Args: []string{"8"}, Missing: "missing", Old: "old"})
+	if !r.Present {
+		t.Skip("sleep not on PATH")
+	}
+	if r.Compatible {
+		t.Fatalf("hang should not be compatible %#v", r)
+	}
+	if r.Warning == "" {
+		t.Fatalf("expected timeout warning %#v", r)
+	}
+}

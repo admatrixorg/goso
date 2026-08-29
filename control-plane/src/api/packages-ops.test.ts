@@ -65,6 +65,7 @@ test("filters confirms and labels", () => {
   assert.equal(pkgConfirmMatch("pk_1", pkg()), true);
   assert.equal(pkgConfirmMatch("httpx", pkg()), true);
   assert.equal(pkgConfirmMatch("python/httpx", pkg()), true);
+  assert.equal(pkgConfirmMatch("HTTPX", pkg()), true);
   assert.equal(pkgConfirmMatch("nope", pkg()), false);
   assert.equal(allowConfirmMatch("httpx", { id: "al_1", name: "httpx", ecosystem: "python" }), true);
   assert.equal(cliConfirmMatch("github", "github"), true);

@@ -258,19 +258,19 @@ export function jobActive(job: PkgJob | undefined): boolean {
 }
 
 export function pkgConfirmMatch(typed: string, row: Pick<Pkg, "id" | "name" | "ecosystem">): boolean {
-  const v = (typed || "").trim();
+  const v = (typed || "").trim().toLowerCase();
   if (!v) return false;
-  return v === row.id || v === row.name || v === `${row.ecosystem}/${row.name}`;
+  return v === row.id.toLowerCase() || v === row.name.toLowerCase() || v === `${row.ecosystem}/${row.name}`.toLowerCase();
 }
 
 export function allowConfirmMatch(typed: string, row: Pick<AllowEntry, "id" | "name" | "ecosystem">): boolean {
-  const v = (typed || "").trim();
+  const v = (typed || "").trim().toLowerCase();
   if (!v) return false;
-  return v === row.id || v === row.name || v === `${row.ecosystem}/${row.name}`;
+  return v === row.id.toLowerCase() || v === row.name.toLowerCase() || v === `${row.ecosystem}/${row.name}`.toLowerCase();
 }
 
 export function cliConfirmMatch(typed: string, kind: string): boolean {
-  return (typed || "").trim() === kind;
+  return (typed || "").trim().toLowerCase() === kind.toLowerCase();
 }
 
 export function pkgLabel(row: Pick<Pkg, "id" | "name" | "ecosystem" | "version">): string {

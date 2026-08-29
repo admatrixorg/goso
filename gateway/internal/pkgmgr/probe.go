@@ -3,6 +3,7 @@
 package pkgmgr
 
 import (
+	"context"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -51,23 +52,10 @@ func probeBin(s binSpec) Runtime {
 	if path == "" {
 		return r
 	}
-	ctxWait := 2 * time.Second
-	cmd := exec.Command(path, s.Args...)
-	done := make(chan struct{})
-	var raw []byte
-	var err error
-	go func() {
-		raw, err = cmd.CombinedOutput()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(ctxWait):
-		_ = cmd.Process.Kill()
-		r.Present = true
-		r.Warning = s.Name + " did not report a version"
-		return r
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, s.Args...)
+	raw, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(raw))
 	if err != nil && text == "" {
 		r.Present = true

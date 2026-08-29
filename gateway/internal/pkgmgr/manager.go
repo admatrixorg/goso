@@ -158,16 +158,17 @@ type allowRow struct {
 }
 
 type pkgRow struct {
-	ID        string
-	Ecosystem string
-	Name      string
-	Version   string
-	Status    string
-	Warning   string
-	JobID     string
-	LastOK    int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         string
+	Ecosystem  string
+	Name       string
+	Version    string
+	Status     string
+	Warning    string
+	JobID      string
+	LastOK     int
+	LastAction string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type jobRow struct {
@@ -246,16 +247,18 @@ func (m *Manager) nextID(prefix string) string {
 
 // Snapshot returns inventory, jobs, allowlist, and credential metadata.
 func (m *Manager) Snapshot() Snapshot {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.snapshotLocked()
-}
-
-func (m *Manager) snapshotLocked() Snapshot {
 	runtimes := m.probe()
 	if runtimes == nil {
 		runtimes = []Runtime{}
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snap := m.snapshotLocked()
+	snap.Runtimes = runtimes
+	return snap
+}
+
+func (m *Manager) snapshotLocked() Snapshot {
 	allow := make([]AllowEntry, 0, len(m.allow))
 	for _, r := range m.allow {
 		allow = append(allow, AllowEntry{ID: r.ID, Ecosystem: r.Ecosystem, Name: r.Name, Pin: r.Pin, CreatedAt: r.CreatedAt})
@@ -285,7 +288,7 @@ func (m *Manager) snapshotLocked() Snapshot {
 		jobs = append(jobs, publicJob(j))
 	}
 	return Snapshot{
-		Runtimes:    runtimes,
+		Runtimes:    []Runtime{},
 		Allowlist:   allow,
 		Packages:    pkgs,
 		Jobs:        jobs,
@@ -392,6 +395,7 @@ func (m *Manager) Install(ecosystem, name, version, confirm string) (Package, Jo
 	if !confirmMatch(confirm, name, eco+"/"+name, eco+"/"+name+"@"+version) {
 		return Package{}, Job{}, ErrConfirm
 	}
+	runtimes := m.probe()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	al, ok := m.allow[eco+"|"+name]
@@ -426,7 +430,7 @@ func (m *Manager) Install(ecosystem, name, version, confirm string) (Package, Jo
 		row.Warning = ""
 		row.UpdatedAt = now
 	}
-	job, err := m.runJobLocked(row, ActionInstall, 0)
+	job, err := m.runJobLocked(row, ActionInstall, 0, runtimes)
 	return publicPkg(row), job, err
 }
 
@@ -436,6 +440,7 @@ func (m *Manager) Uninstall(id, confirm string) (Package, Job, error) {
 	if strings.TrimSpace(confirm) == "" {
 		return Package{}, Job{}, ErrConfirmRequired
 	}
+	runtimes := m.probe()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	row, ok := m.pkgs[id]
@@ -450,7 +455,7 @@ func (m *Manager) Uninstall(id, confirm string) (Package, Job, error) {
 	}
 	row.Status = StatusUninstalling
 	row.UpdatedAt = m.clock()
-	job, err := m.runJobLocked(row, ActionUninstall, 0)
+	job, err := m.runJobLocked(row, ActionUninstall, 0, runtimes)
 	return publicPkg(row), job, err
 }
 
@@ -460,6 +465,7 @@ func (m *Manager) Recover(id, confirm string) (Package, Job, error) {
 	if strings.TrimSpace(confirm) == "" {
 		return Package{}, Job{}, ErrConfirmRequired
 	}
+	runtimes := m.probe()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	row, ok := m.pkgs[id]
@@ -472,14 +478,18 @@ func (m *Manager) Recover(id, confirm string) (Package, Job, error) {
 	if row.Status != StatusPartial && row.Status != StatusFailed {
 		return Package{}, Job{}, ErrNotPartial
 	}
-	al, ok := m.allow[row.Ecosystem+"|"+row.Name]
-	if !ok || al.Pin != row.Version {
-		return Package{}, Job{}, ErrAllow
+	if row.LastAction != ActionUninstall {
+		al, ok := m.allow[row.Ecosystem+"|"+row.Name]
+		if !ok || al.Pin != row.Version {
+			return Package{}, Job{}, ErrAllow
+		}
+		row.Status = StatusInstalling
+	} else {
+		row.Status = StatusUninstalling
 	}
 	start := row.LastOK
-	row.Status = StatusInstalling
 	row.UpdatedAt = m.clock()
-	job, err := m.runJobLocked(row, ActionRecover, start)
+	job, err := m.runJobLocked(row, ActionRecover, start, runtimes)
 	return publicPkg(row), job, err
 }
 
@@ -492,9 +502,6 @@ func (m *Manager) SetCLI(kind, token string) (CLICred, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return CLICred{}, ErrToken
-	}
-	if tokenShape.MatchString(kind) {
-		return CLICred{}, ErrSecret
 	}
 	sum := sha256.Sum256([]byte(token))
 	now := m.clock()
@@ -535,7 +542,7 @@ func (m *Manager) findPkg(eco, name string) *pkgRow {
 	return nil
 }
 
-func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int) (Job, error) {
+func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int, runtimes []Runtime) (Job, error) {
 	now := m.clock()
 	j := &jobRow{Job: Job{
 		ID: m.nextID("pj_"), Action: action, PackageID: row.ID, Ecosystem: row.Ecosystem,
@@ -546,8 +553,19 @@ func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int) (Job, 
 	failAt := m.FailAt
 	m.FailAt = 0
 
+	effective := action
+	if action == ActionRecover {
+		if row.LastAction == ActionUninstall {
+			effective = ActionUninstall
+		} else {
+			effective = ActionInstall
+		}
+	} else {
+		row.LastAction = action
+	}
+
 	steps := installSteps
-	if action == ActionUninstall {
+	if effective == ActionUninstall {
 		steps = uninstallSteps
 	}
 	var lastErr error
@@ -562,8 +580,8 @@ func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int) (Job, 
 			lastErr = errors.New(step.fail)
 			break
 		}
-		if action != ActionUninstall && n == 1 {
-			if warn, ok := runtimeGate(m.probe(), row.Ecosystem); !ok {
+		if effective != ActionUninstall && n == 1 {
+			if warn, ok := runtimeGate(runtimes, row.Ecosystem); !ok {
 				row.Warning = warn
 				lastErr = ErrRuntime
 				j.Log = appendLog(j.Log, "compatibility: "+warn)
@@ -584,38 +602,38 @@ func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int) (Job, 
 	j.FinishedAt = &fin
 	row.UpdatedAt = fin
 	if lastErr != nil {
-		if j.LastOK > 0 && action != ActionUninstall {
-			j.Status = JobPartial
-			row.Status = StatusPartial
-		} else if action == ActionUninstall && j.LastOK > 0 {
+		if j.LastOK > 0 {
 			j.Status = JobPartial
 			row.Status = StatusPartial
 		} else {
 			j.Status = JobFailed
-			if action == ActionUninstall {
-				row.Status = StatusFailed
-			} else {
-				row.Status = StatusFailed
-			}
+			row.Status = StatusFailed
 		}
 		j.Error = lastErr.Error()
 		j.Log = appendLog(j.Log, "failed: "+j.Error)
-		m.jobs = append(m.jobs, j)
+		m.appendJob(j)
 		return publicJob(j), lastErr
 	}
 	j.Status = JobSucceeded
 	j.Progress = 100
 	j.Log = appendLog(j.Log, "done")
-	if action == ActionUninstall {
+	if effective == ActionUninstall {
 		delete(m.pkgs, row.ID)
 	} else {
 		row.Status = StatusInstalled
 		if row.Warning == "" {
-			row.Warning = runtimeWarning(m.probe(), row.Ecosystem)
+			row.Warning = runtimeWarning(runtimes, row.Ecosystem)
 		}
 	}
-	m.jobs = append(m.jobs, j)
+	m.appendJob(j)
 	return publicJob(j), nil
+}
+
+func (m *Manager) appendJob(j *jobRow) {
+	m.jobs = append(m.jobs, j)
+	if len(m.jobs) > maxJobs {
+		m.jobs = append([]*jobRow(nil), m.jobs[len(m.jobs)-maxJobs:]...)
+	}
 }
 
 type stepSpec struct {
@@ -721,7 +739,7 @@ func confirmMatch(typed string, vals ...string) bool {
 		return false
 	}
 	for _, x := range vals {
-		if v == strings.TrimSpace(x) {
+		if strings.EqualFold(v, strings.TrimSpace(x)) {
 			return true
 		}
 	}
