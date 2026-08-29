@@ -26,6 +26,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/node"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
+	"github.com/mqglobal/goso/gateway/internal/pkgmgr"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
@@ -71,6 +72,8 @@ type Options struct {
 	Tenants *tenant.Registry
 	// APIKeys is the hashed gateway API-key registry. Nil → apikey.Default.
 	APIKeys *apikey.Registry
+	// Packages is the runtime/package manager. Nil → pkgmgr.Default.
+	Packages *pkgmgr.Manager
 }
 
 func (o *Options) defaults() {
@@ -116,6 +119,9 @@ func (o *Options) defaults() {
 	if o.APIKeys == nil {
 		o.APIKeys = apikey.Default()
 	}
+	if o.Packages == nil {
+		o.Packages = pkgmgr.Default()
+	}
 }
 
 // Router builds the HTTP mux.
@@ -158,6 +164,7 @@ func NewRouter(opt Options) http.Handler {
 	registerLogRoutes(mux, opt)
 	registerTenantRoutes(mux, opt)
 	registerAPIKeyRoutes(mux, opt)
+	registerPackageRoutes(mux, opt)
 	return mux
 }
 

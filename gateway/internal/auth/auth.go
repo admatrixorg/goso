@@ -25,6 +25,7 @@ var viewPrefixes = []string{
 	"/api/tenant",
 	"/api/tenants",
 	"/api/api-keys",
+	"/api/packages",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
@@ -38,6 +39,7 @@ var viewPrefixes = []string{
 	"/v1/tenant",
 	"/v1/tenants",
 	"/v1/api-keys",
+	"/v1/packages",
 }
 
 // Grant is a hashed issued API key that passed Accept. Secret is never stored here.
@@ -85,7 +87,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 }
 
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
-// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys and the matching /v1 aliases only).
+// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
 	return Require(Config{Admin: admin, View: view, Bypass: bypass})
 }
@@ -216,7 +218,7 @@ func scopeAllows(g Grant, r *http.Request) bool {
 }
 
 func privilegedWrite(path string) bool {
-	return hasPathPrefix(path, "/api/api-keys", "/v1/api-keys", "/api/tenants", "/v1/tenants")
+	return hasPathPrefix(path, "/api/api-keys", "/v1/api-keys", "/api/tenants", "/v1/tenants", "/api/packages", "/v1/packages")
 }
 
 func pairingWritePath(path string) bool {

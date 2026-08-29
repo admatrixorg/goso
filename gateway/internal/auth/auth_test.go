@@ -380,6 +380,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST api-keys 403, got %d", w.Code)
 	}
 
+	pkgList := httptest.NewRequest("GET", "/api/packages", nil)
+	pkgList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, pkgList)
+	if w.Code != 200 {
+		t.Fatalf("view GET packages 200, got %d", w.Code)
+	}
+
+	v1pkg := httptest.NewRequest("GET", "/v1/packages", nil)
+	v1pkg.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1pkg)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/packages 200, got %d", w.Code)
+	}
+
+	pkgOne := httptest.NewRequest("GET", "/api/packages/pk_1", nil)
+	pkgOne.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, pkgOne)
+	if w.Code != 200 {
+		t.Fatalf("view GET package id 200, got %d", w.Code)
+	}
+
+	pkgInstall := httptest.NewRequest("POST", "/api/packages/install", nil)
+	pkgInstall.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, pkgInstall)
+	if w.Code != 403 {
+		t.Fatalf("view POST packages install 403, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -693,6 +725,13 @@ func TestRequire_IssuedAPIKeyScopes(t *testing.T) {
 	h.ServeHTTP(w, keysPost)
 	if w.Code != 403 {
 		t.Fatalf("write POST keys %d", w.Code)
+	}
+	pkgPost := httptest.NewRequest("POST", "/api/packages/install", nil)
+	pkgPost.Header.Set("Authorization", "Bearer gk_write")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, pkgPost)
+	if w.Code != 403 {
+		t.Fatalf("write POST packages %d", w.Code)
 	}
 
 	adminKeys := fakeKeys{token: "gk_admin", grant: Grant{ID: "ak_3", Prefix: "gk_admin", Scopes: []string{"admin"}}}
