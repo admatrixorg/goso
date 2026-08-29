@@ -10,9 +10,9 @@ Add **gateway API-key issuance, masked inventory, usage, expiry, fine-grained sc
 
 ## AC
 
-- [ ] Live nav tab + page. Masked inventory, loading/empty/error.
-- [ ] Create reveals full key once. GET never returns the secret (hash + prefix only). Revoke with confirm. Audit create/revoke without logging the secret.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/113-api-keys.md`.
+- [x] Live nav tab + page. Masked inventory, loading/empty/error.
+- [x] Create reveals full key once. GET never returns the secret (hash + prefix only). Revoke with confirm. Audit create/revoke without logging the secret.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/113-api-keys.md`.
 
 ## Out of scope
 

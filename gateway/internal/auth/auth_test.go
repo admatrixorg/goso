@@ -356,6 +356,30 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST tenants 403, got %d", w.Code)
 	}
 
+	akList := httptest.NewRequest("GET", "/api/api-keys", nil)
+	akList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, akList)
+	if w.Code != 200 {
+		t.Fatalf("view GET api-keys 200, got %d", w.Code)
+	}
+
+	v1ak := httptest.NewRequest("GET", "/v1/api-keys", nil)
+	v1ak.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1ak)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/api-keys 200, got %d", w.Code)
+	}
+
+	akPost := httptest.NewRequest("POST", "/api/api-keys", nil)
+	akPost.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, akPost)
+	if w.Code != 403 {
+		t.Fatalf("view POST api-keys 403, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -619,5 +643,73 @@ func TestRequireToken_EmptyRefuses(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
 	if w.Code != 200 {
 		t.Fatalf("healthz bypass 200, got %d", w.Code)
+	}
+}
+
+type fakeKeys struct {
+	token string
+	grant Grant
+}
+
+func (f fakeKeys) Accept(token string) (Grant, bool) {
+	if token == f.token {
+		return f.grant, true
+	}
+	return Grant{}, false
+}
+
+func TestRequire_IssuedAPIKeyScopes(t *testing.T) {
+	keys := fakeKeys{token: "gk_issued", grant: Grant{ID: "ak_1", Prefix: "gk_issued", Scopes: []string{"read"}}}
+	h := Require(Config{Admin: "admin-113", Keys: keys, Bypass: []string{"/healthz"}})(okHandler())
+
+	get := httptest.NewRequest("GET", "/api/api-keys", nil)
+	get.Header.Set("Authorization", "Bearer gk_issued")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 200 {
+		t.Fatalf("read GET keys %d", w.Code)
+	}
+
+	post := httptest.NewRequest("POST", "/api/api-keys", nil)
+	post.Header.Set("Authorization", "Bearer gk_issued")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, post)
+	if w.Code != 403 {
+		t.Fatalf("read POST keys %d", w.Code)
+	}
+
+	writeKeys := fakeKeys{token: "gk_write", grant: Grant{ID: "ak_2", Prefix: "gk_write", Scopes: []string{"write"}}}
+	h = Require(Config{Admin: "admin-113", Keys: writeKeys})(okHandler())
+	agents := httptest.NewRequest("POST", "/api/agents", nil)
+	agents.Header.Set("Authorization", "Bearer gk_write")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, agents)
+	if w.Code != 200 {
+		t.Fatalf("write POST agents %d", w.Code)
+	}
+	keysPost := httptest.NewRequest("POST", "/api/api-keys", nil)
+	keysPost.Header.Set("Authorization", "Bearer gk_write")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, keysPost)
+	if w.Code != 403 {
+		t.Fatalf("write POST keys %d", w.Code)
+	}
+
+	adminKeys := fakeKeys{token: "gk_admin", grant: Grant{ID: "ak_3", Prefix: "gk_admin", Scopes: []string{"admin"}}}
+	h = Require(Config{Admin: "admin-113", Keys: adminKeys})(okHandler())
+	adminPost := httptest.NewRequest("POST", "/api/api-keys", nil)
+	adminPost.Header.Set("Authorization", "Bearer gk_admin")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, adminPost)
+	if w.Code != 200 {
+		t.Fatalf("admin POST keys %d", w.Code)
+	}
+
+	revoked := httptest.NewRequest("GET", "/api/agents", nil)
+	revoked.Header.Set("Authorization", "Bearer missing")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, revoked)
+	if w.Code != 401 {
+		t.Fatalf("unknown issued %d", w.Code)
 	}
 }

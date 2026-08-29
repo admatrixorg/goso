@@ -8,6 +8,7 @@ import { EventsPage } from "./pages/Events";
 import { ActivityPage } from "./pages/ActivityPage";
 import { LogsPage } from "./pages/LogsPage";
 import { TenantsPage } from "./pages/TenantsPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { HomePage } from "./pages/HomePage";
 import { MeetingsPage } from "./pages/MeetingsPage";
@@ -61,6 +62,7 @@ export type Tab =
   | "activity"
   | "logs"
   | "tenants"
+  | "apikeys"
   | "teams"
   | "vault"
   | "memory"
@@ -136,6 +138,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "activity", label: t("nav.activity"), ic: "shield" },
         { id: "logs", label: t("nav.logs"), ic: "list" },
         { id: "tenants", label: t("nav.tenants"), ic: "layers" },
+        { id: "apikeys", label: t("nav.apikeys"), ic: "lock" },
         { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "channels", label: t("nav.channels"), ic: "device" },
         { id: "nodes", label: t("nav.nodes"), ic: "device" },
@@ -564,6 +567,7 @@ export default function App() {
           {tab === "activity" && <ActivityPage />}
           {tab === "logs" && <LogsPage />}
           {tab === "tenants" && <TenantsPage />}
+          {tab === "apikeys" && <ApiKeysPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
