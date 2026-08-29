@@ -22,6 +22,8 @@ type Info struct {
 	Health         string   `json:"health,omitempty"`
 	Transport      string   `json:"transport,omitempty"`
 	SecretSet      bool     `json:"secret_set,omitempty"`
+	FromEnv        bool     `json:"from_env,omitempty"`
+	Writable       []string `json:"writable,omitempty"`
 	BoundAgentID   string   `json:"bound_agent_id,omitempty"`
 	DMPolicy       string   `json:"dm_policy,omitempty"`
 	GroupPolicy    string   `json:"group_policy,omitempty"`
@@ -124,8 +126,19 @@ func CatalogWith(st store.StoreIface, mgr *Manager) []Info {
 		names := helpEnvNames(n)
 		configured := requiredFilled(n)
 		secretSet := configured
-		if n == "zalo-personal" {
-			secretSet = SecretSet(st, n, kindSession, requiredEnv[n])
+		fromEnv := configured
+		switch n {
+		case "telegram":
+			_, fromEnv, secretSet = Credential(st, n, KindBot, requiredEnv[n])
+			configured = secretSet
+		case "zalo-oa":
+			_, aEnv, aSet := Credential(st, n, KindAccess, []string{"GOSO_ZALO_OA_ACCESS_TOKEN"})
+			_, sEnv, sSet := Credential(st, n, KindAppSecret, []string{"GOSO_ZALO_OA_SECRET"})
+			secretSet = aSet && sSet
+			configured = secretSet
+			fromEnv = (aEnv && aSet) || (sEnv && sSet)
+		case "zalo-personal":
+			_, fromEnv, secretSet = Credential(st, n, kindSession, requiredEnv[n])
 			configured = secretSet
 		}
 		env := ""
@@ -139,6 +152,8 @@ func CatalogWith(st store.StoreIface, mgr *Manager) []Info {
 			Env:        env,
 			EnvNames:   names,
 			SecretSet:  secretSet,
+			FromEnv:    fromEnv && secretSet,
+			Writable:   WritableFields(n),
 			Phase:      phaseOf(n),
 			Transport:  defaultTransport(n),
 		}

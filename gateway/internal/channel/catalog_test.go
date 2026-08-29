@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/mqglobal/goso/gateway/internal/secrets"
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
@@ -129,6 +132,42 @@ func TestCatalog_ConfiguredWhenEnvSet(t *testing.T) {
 	if strings.Contains(string(raw), "test-placeholder") {
 		t.Fatalf("catalog JSON leaked token value: %s", raw)
 	}
+}
+
+func TestCatalog_TelegramBoxSetsConfigured(t *testing.T) {
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
+	st := store.New()
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	if err := secrets.Put(st, SecretName("telegram", KindBot), []byte("boxed-bot-token")); err != nil {
+		t.Fatal(err)
+	}
+	got := CatalogWith(st, nil)
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "boxed-bot-token") {
+		t.Fatalf("leaked box token: %s", raw)
+	}
+	for _, c := range got {
+		if c.Name != "telegram" {
+			continue
+		}
+		if !c.Configured || !c.SecretSet || c.FromEnv || c.Missing {
+			t.Fatalf("telegram box %+v", c)
+		}
+		if len(c.Writable) != 1 || c.Writable[0] != "bot_token" {
+			t.Fatalf("writable %v", c.Writable)
+		}
+		return
+	}
+	t.Fatal("telegram missing")
 }
 
 func TestKnown(t *testing.T) {

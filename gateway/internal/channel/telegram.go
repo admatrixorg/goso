@@ -192,11 +192,42 @@ func (t *Telegram) ensureSession(agentID string, chatID int64) *store.Session {
 	return sess
 }
 
-func (t *Telegram) sendMessage(ctx context.Context, chatID int64, text string) error {
-	token := t.BotToken
-	if token == "" {
-		token = os.Getenv("GOSO_TELEGRAM_BOT_TOKEN")
+func (t *Telegram) resolveToken() string {
+	if t == nil {
+		return ""
 	}
+	if v := strings.TrimSpace(t.BotToken); v != "" {
+		return v
+	}
+	v, _, set := Credential(t.Store, "telegram", KindBot, []string{"GOSO_TELEGRAM_BOT_TOKEN"})
+	if set {
+		return v
+	}
+	return ""
+}
+
+func redactSecret(err error, secret string) error {
+	if err == nil || secret == "" {
+		return err
+	}
+	s := strings.ReplaceAll(err.Error(), secret, "[redacted]")
+	if s == err.Error() {
+		return err
+	}
+	return fmt.Errorf("%s", s)
+}
+
+// ProbeToken runs getMe with the resolved bot token (SPEC 088 test).
+func (t *Telegram) ProbeToken(ctx context.Context) error {
+	token := t.resolveToken()
+	if token == "" {
+		return fmt.Errorf("missing bot token")
+	}
+	return redactSecret(t.getMe(ctx, token), token)
+}
+
+func (t *Telegram) sendMessage(ctx context.Context, chatID int64, text string) error {
+	token := t.resolveToken()
 	if token == "" {
 		return fmt.Errorf("telegram: missing bot token")
 	}

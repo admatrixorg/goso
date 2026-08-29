@@ -10,11 +10,47 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-const kindSession = "session"
+const (
+	kindSession   = "session"
+	KindBot       = "bot"
+	KindAccess    = "access"
+	KindAppSecret = "secret"
+)
 
 // SecretName is the AES-GCM box key channel:<name>:<kind>.
 func SecretName(name, kind string) string {
 	return "channel:" + strings.TrimSpace(name) + ":" + strings.TrimSpace(kind)
+}
+
+// WritableFields are PUT /secrets JSON keys for a catalog name. Empty = no UI form.
+func WritableFields(name string) []string {
+	switch name {
+	case "telegram":
+		return []string{"bot_token"}
+	case "zalo-oa":
+		return []string{"access_token", "app_secret"}
+	default:
+		return nil
+	}
+}
+
+// FieldKind maps a PUT JSON key to the box kind for name.
+func FieldKind(name, field string) (kind string, ok bool) {
+	field = strings.ToLower(strings.TrimSpace(field))
+	switch name {
+	case "telegram":
+		if field == "bot_token" {
+			return KindBot, true
+		}
+	case "zalo-oa":
+		if field == "access_token" {
+			return KindAccess, true
+		}
+		if field == "app_secret" {
+			return KindAppSecret, true
+		}
+	}
+	return "", false
 }
 
 // EnvFirst returns the first non-empty process env among names.
