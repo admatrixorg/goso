@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 112: Tenants THIẾU page. Live `tenants` tab. Master-admin list/detail, create, status, membership/roles, guarded deactivate. API isolation + current/master context. GET never returns secrets; mutations audit. i18n vi+en. QA `docs/qa/112-tenants.md`.
 - SPEC 111: Logs THIẾU page. Live `logs` tab. Redacted permission-gated tail (`GET /api/logs` + live stream). Component/text/severity filters, pause/resume/clear-local-view, reconnect, bounded retention. GET/stream never return credentials. i18n vi+en. QA `docs/qa/111-logs.md`.
 - SPEC 110: Activity THIẾU page. Live `activity` tab. Immutable `GET /api/activity` audit trail (action/actor/entity/IP/time, cursor pagination). Separate from Events (109). GET drops secret keys and token shapes. No export in this SPEC. i18n vi+en. QA `docs/qa/110-activity.md`.
 - SPEC 109: Realtime Events PARTIAL page. EventsPage keeps bounded `GET /api/events` history and adds optional live `GET /api/events/stream` (SSE). Pause/resume/clear-local-view, type/actor filters, reconnect backoff. GET/stream drop message/tool payload secrets. i18n vi+en. QA `docs/qa/109-realtime-events.md`.

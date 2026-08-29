@@ -21,9 +21,9 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/heartbeat"
-	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
@@ -195,6 +195,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			Bypass:  []string{"/healthz", "/api/webhooks/llm"},
 		})(handler)
 	}
+	handler = httpapi.GuardDeactivatedTenant(nil, handler)
 	handler = obs.Middleware(handler)
 
 	return handler, Status{

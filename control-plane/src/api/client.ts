@@ -286,7 +286,15 @@ export type Channel = {
   env_names?: string[];
 };
 
-export type TenantInfo = { tenant: string; multi_tenant: boolean };
+export type TenantInfo = {
+  tenant: string;
+  multi_tenant: boolean;
+  name?: string;
+  status?: string;
+  master?: boolean;
+  master_id?: string;
+  master_name?: string;
+};
 
 export const api = {
   health: () => jsonFetch<{ ok: boolean; version: string }>("/healthz"),
