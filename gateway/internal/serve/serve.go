@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/apikey"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
@@ -137,7 +138,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		Registry: connReg, Gate: gate, Events: ev, Logs: logs, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
-		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr,
+		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr, APIKeys: apikey.Default(),
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.SetWsUp(true)
@@ -193,6 +194,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			Admin:   adminToken,
 			View:    viewToken,
 			Pairing: pairing,
+			Keys:    apikey.Default(),
 			Bypass:  []string{"/healthz", "/api/webhooks/llm"},
 		})(handler)
 	}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/apikey"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/auth"
@@ -68,6 +69,8 @@ type Options struct {
 	Workstations *workstation.Workstations
 	// Tenants is the master-admin tenant registry. Nil → tenant.DefaultRegistry.
 	Tenants *tenant.Registry
+	// APIKeys is the hashed gateway API-key registry. Nil → apikey.Default.
+	APIKeys *apikey.Registry
 }
 
 func (o *Options) defaults() {
@@ -110,6 +113,9 @@ func (o *Options) defaults() {
 	if o.Tenants == nil {
 		o.Tenants = tenant.DefaultRegistry()
 	}
+	if o.APIKeys == nil {
+		o.APIKeys = apikey.Default()
+	}
 }
 
 // Router builds the HTTP mux.
@@ -151,6 +157,7 @@ func NewRouter(opt Options) http.Handler {
 	registerActivityRoutes(mux, opt)
 	registerLogRoutes(mux, opt)
 	registerTenantRoutes(mux, opt)
+	registerAPIKeyRoutes(mux, opt)
 	return mux
 }
 
