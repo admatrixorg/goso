@@ -201,6 +201,185 @@ func TestPutChannelSecrets_OA(t *testing.T) {
 	}
 }
 
+func TestDeleteChannelSecrets_ClearsBoxKeepsEmptyPut400(t *testing.T) {
+	const leak = "094-bot-token-must-not-leak"
+	st := store.New()
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("GOSO_LITE", "")
+	h := NewRouter(Options{Store: st, Version: "t"})
+
+	wPut := httptest.NewRecorder()
+	reqPut := httptest.NewRequest("PUT", "/api/channels/telegram/secrets", bytes.NewBufferString(`{"bot_token":"`+leak+`"}`))
+	reqPut.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(wPut, reqPut)
+	if wPut.Code != 200 {
+		t.Fatalf("put %d %s", wPut.Code, wPut.Body.String())
+	}
+
+	wKeep := httptest.NewRecorder()
+	reqKeep := httptest.NewRequest("PUT", "/api/channels/telegram/secrets", bytes.NewBufferString(`{"bot_token":""}`))
+	reqKeep.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(wKeep, reqKeep)
+	if wKeep.Code != 400 {
+		t.Fatalf("empty PUT must stay 400, got %d %s", wKeep.Code, wKeep.Body.String())
+	}
+
+	wDel := httptest.NewRecorder()
+	h.ServeHTTP(wDel, httptest.NewRequest("DELETE", "/api/channels/telegram/secrets", nil))
+	if wDel.Code != 200 {
+		t.Fatalf("delete %d %s", wDel.Code, wDel.Body.String())
+	}
+	if strings.Contains(wDel.Body.String(), leak) {
+		t.Fatalf("DELETE echoed token: %s", wDel.Body.String())
+	}
+	var del struct {
+		OK        bool     `json:"ok"`
+		SecretSet bool     `json:"secret_set"`
+		FromEnv   bool     `json:"from_env"`
+		Cleared   []string `json:"cleared"`
+	}
+	if err := json.Unmarshal(wDel.Body.Bytes(), &del); err != nil {
+		t.Fatal(err)
+	}
+	if !del.OK || del.SecretSet || del.FromEnv || len(del.Cleared) != 1 || del.Cleared[0] != "bot_token" {
+		t.Fatalf("delete body %+v", del)
+	}
+
+	gw := httptest.NewRecorder()
+	h.ServeHTTP(gw, httptest.NewRequest("GET", "/api/channels", nil))
+	if strings.Contains(gw.Body.String(), leak) {
+		t.Fatalf("GET leaked: %s", gw.Body.String())
+	}
+	assertNoTokenLikeValues(t, gw.Body.String())
+	var body struct {
+		Channels []struct {
+			Name      string `json:"name"`
+			SecretSet bool   `json:"secret_set"`
+			FromEnv   bool   `json:"from_env"`
+			Missing   bool   `json:"missing"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(gw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range body.Channels {
+		if c.Name != "telegram" {
+			continue
+		}
+		found = true
+		if c.SecretSet || c.FromEnv || !c.Missing {
+			t.Fatalf("telegram after clear %+v", c)
+		}
+	}
+	if !found {
+		t.Fatal("telegram row")
+	}
+
+	wPark := httptest.NewRecorder()
+	h.ServeHTTP(wPark, httptest.NewRequest("DELETE", "/api/channels/discord/secrets", nil))
+	if wPark.Code != 409 {
+		t.Fatalf("discord delete %d %s", wPark.Code, wPark.Body.String())
+	}
+	wQR := httptest.NewRecorder()
+	h.ServeHTTP(wQR, httptest.NewRequest("DELETE", "/api/channels/zalo-personal/secrets", nil))
+	if wQR.Code != 400 {
+		t.Fatalf("personal delete %d %s", wQR.Code, wQR.Body.String())
+	}
+}
+
+func TestDeleteChannelSecrets_EnvStillWins(t *testing.T) {
+	st := store.New()
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "from-env-token")
+	t.Setenv("GOSO_LITE", "")
+	h := NewRouter(Options{Store: st, Version: "t"})
+	wPut := httptest.NewRecorder()
+	reqPut := httptest.NewRequest("PUT", "/api/channels/telegram/secrets", bytes.NewBufferString(`{"bot_token":"boxed-token"}`))
+	reqPut.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(wPut, reqPut)
+	if wPut.Code != 200 {
+		t.Fatalf("put %d %s", wPut.Code, wPut.Body.String())
+	}
+	wDel := httptest.NewRecorder()
+	h.ServeHTTP(wDel, httptest.NewRequest("DELETE", "/api/channels/telegram/secrets", nil))
+	if wDel.Code != 200 {
+		t.Fatalf("delete %d %s", wDel.Code, wDel.Body.String())
+	}
+	if strings.Contains(wDel.Body.String(), "from-env-token") || strings.Contains(wDel.Body.String(), "boxed-token") {
+		t.Fatalf("leaked %s", wDel.Body.String())
+	}
+	var del struct {
+		SecretSet bool `json:"secret_set"`
+		FromEnv   bool `json:"from_env"`
+	}
+	if err := json.Unmarshal(wDel.Body.Bytes(), &del); err != nil {
+		t.Fatal(err)
+	}
+	if !del.SecretSet || !del.FromEnv {
+		t.Fatalf("env must still win %+v", del)
+	}
+	v, fromEnv, set := channel.Credential(st, "telegram", channel.KindBot, []string{"GOSO_TELEGRAM_BOT_TOKEN"})
+	if !set || !fromEnv || v != "from-env-token" {
+		t.Fatalf("credential %q %v %v", v, fromEnv, set)
+	}
+}
+
+func TestDeleteChannelSecrets_OA(t *testing.T) {
+	st := store.New()
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
+	t.Setenv("GOSO_LITE", "")
+	h := NewRouter(Options{Store: st, Version: "t"})
+	wPut := httptest.NewRecorder()
+	reqPut := httptest.NewRequest("PUT", "/api/channels/zalo-oa/secrets", bytes.NewBufferString(`{"access_token":"oa-access","app_secret":"oa-secret"}`))
+	reqPut.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(wPut, reqPut)
+	if wPut.Code != 200 {
+		t.Fatalf("oa put %d %s", wPut.Code, wPut.Body.String())
+	}
+	wDel := httptest.NewRecorder()
+	h.ServeHTTP(wDel, httptest.NewRequest("DELETE", "/api/channels/zalo-oa/secrets", nil))
+	if wDel.Code != 200 {
+		t.Fatalf("oa delete %d %s", wDel.Code, wDel.Body.String())
+	}
+	if strings.Contains(wDel.Body.String(), "oa-access") || strings.Contains(wDel.Body.String(), "oa-secret") {
+		t.Fatalf("leaked %s", wDel.Body.String())
+	}
+	gw := httptest.NewRecorder()
+	h.ServeHTTP(gw, httptest.NewRequest("GET", "/api/channels", nil))
+	assertNoTokenLikeValues(t, gw.Body.String())
+	var body struct {
+		Channels []struct {
+			Name      string `json:"name"`
+			SecretSet bool   `json:"secret_set"`
+			Missing   bool   `json:"missing"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(gw.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range body.Channels {
+		if c.Name == "zalo-oa" && (c.SecretSet || !c.Missing) {
+			t.Fatalf("oa after clear %+v", c)
+		}
+	}
+}
+
 func TestPostChannelTest_TelegramGetMe(t *testing.T) {
 	st := store.New()
 	key, err := secrets.RandomKeyHex()

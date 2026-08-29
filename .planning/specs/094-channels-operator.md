@@ -10,10 +10,10 @@ Consolidate **ChannelsPage**: instance create/bind, health diagnosis, pairing po
 
 ## AC
 
-- [ ] Pairing panel stays first. Policy PATCH (`dm_policy`) remains. Pending: channel, sender, expires, Approve/Deny — no code re-entry.
-- [ ] Per-channel: health, last_error (redacted), bind agent, write-only secrets, test/connect. Telegram bot token + OA access/app secret; Personal QR (no bot token). Phase-2 parked.
-- [ ] Explicit rotate/clear where a secret is set (empty PUT already 400 — add a clear/delete-secret path or documented “unset box” if store supports it). GET never returns plaintext.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/094-channels-operator.md`.
+- [x] Pairing panel stays first. Policy PATCH (`dm_policy`) remains. Pending: channel, sender, expires, Approve/Deny — no code re-entry.
+- [x] Per-channel: health, last_error (redacted), bind agent, write-only secrets, test/connect. Telegram bot token + OA access/app secret; Personal QR (no bot token). Phase-2 parked.
+- [x] Explicit rotate/clear where a secret is set (empty PUT already 400 — add a clear/delete-secret path or documented “unset box” if store supports it). GET never returns plaintext.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/094-channels-operator.md`.
 
 ## Out of scope
 

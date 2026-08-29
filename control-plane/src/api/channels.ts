@@ -1,34 +1,25 @@
 import { jsonFetch } from "./client";
-
-export type ChannelRow = {
-  name: string;
-  configured: boolean;
-  missing: boolean;
-  env: string;
-  env_names: string[];
-  health?: string;
-  transport?: string;
-  secret_set?: boolean;
-  from_env?: boolean;
-  writable?: string[];
-  bound_agent_id?: string;
-  dm_policy?: string;
-  group_policy?: string;
-  require_mention?: boolean;
-  allow_from?: string[];
-  allow_from_count?: number;
-  phase?: number;
-  last_error?: string;
-  enabled?: boolean;
-};
-
-export type ChannelPairingItem = {
-  id: string;
-  channel: string;
-  sender_id: string;
-  status: string;
-  expires_at?: string;
-};
+export type {
+  ChannelHealthFilter,
+  ChannelPairingItem,
+  ChannelRemediation,
+  ChannelRow,
+} from "./channel-ops";
+export {
+  DM_POLICIES,
+  GROUP_POLICIES,
+  canClearBox,
+  channelRemediation,
+  filterChannels,
+  formatAllowFrom,
+  isPhase2,
+  normalizeChannelRow,
+  pairingExposesCode,
+  parseAllowFrom,
+  sanitizePairingItem,
+  secretPutBody,
+} from "./channel-ops";
+import type { ChannelPairingItem, ChannelRow } from "./channel-ops";
 
 export type ChannelSecretPut = {
   ok: boolean;
@@ -36,6 +27,7 @@ export type ChannelSecretPut = {
   secret_set?: boolean;
   from_env?: boolean;
   written?: string[];
+  cleared?: string[];
 };
 
 export type ChannelTestResult = {
@@ -52,6 +44,10 @@ export const channelsApi = {
     jsonFetch<ChannelSecretPut>(`/api/channels/${encodeURIComponent(name)}/secrets`, {
       method: "PUT",
       body: JSON.stringify(body),
+    }),
+  clearSecrets: (name: string) =>
+    jsonFetch<ChannelSecretPut>(`/api/channels/${encodeURIComponent(name)}/secrets`, {
+      method: "DELETE",
     }),
   test: (name: string) =>
     jsonFetch<ChannelTestResult>(`/api/channels/${encodeURIComponent(name)}/test`, {
