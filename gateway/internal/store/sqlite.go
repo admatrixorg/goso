@@ -598,6 +598,24 @@ func (s *SQLiteStore) UpdateSession(sess Session) (*Session, error) {
 	return cur, nil
 }
 
+func (s *SQLiteStore) DeleteSession(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	_, _ = s.db.Exec(`DELETE FROM messages WHERE session_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM memories WHERE session_id=?`, id)
+	res, err := s.db.Exec(`DELETE FROM sessions WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 type sessionScanner interface {
 	Scan(dest ...any) error
 }

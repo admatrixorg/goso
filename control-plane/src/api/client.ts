@@ -298,6 +298,7 @@ export const api = {
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   updateSession: (id: string, body: { prompt_mode: string }) =>
     jsonFetch<Session>(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSession: (id: string) => jsonFetch<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
   chat: (body: ChatBody) => jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) }),
   chatStream,

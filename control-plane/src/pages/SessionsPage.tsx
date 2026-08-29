@@ -1,5 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { api, PROMPT_MODES, type Agent, type Session } from "../api/client";
+import {
+  agentLabel,
+  filterSessions,
+  normalizePromptMode,
+  sessionDisplayName,
+} from "../api/sessions";
 import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
@@ -18,25 +24,29 @@ function promptModeKey(mode: string): MsgKey {
   return "promptMode.full";
 }
 
-function normalizePromptMode(mode?: string): string {
-  const v = (mode || "").trim().toLowerCase();
-  return PROMPT_MODES.includes(v as (typeof PROMPT_MODES)[number]) ? v : "full";
-}
-
 export const SessionsPage = forwardRef<
   SessionsPageHandle,
-  { onPick: (id: string, label?: string) => void; compact?: boolean; selectedId?: string }
->(function SessionsPage({ onPick, compact, selectedId }, ref) {
+  {
+    onPick: (id: string, label?: string) => void;
+    compact?: boolean;
+    selectedId?: string;
+    onDeleted?: (id: string) => void;
+  }
+>(function SessionsPage({ onPick, compact, selectedId, onDeleted }, ref) {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [label, setLabel] = useState("");
+  const [query, setQuery] = useState("");
+  const [filterAgent, setFilterAgent] = useState("");
   const createBoxRef = useRef<HTMLDivElement>(null);
   const agentSelectRef = useRef<HTMLSelectElement>(null);
+  const busy = creating || Boolean(deletingId);
 
   useImperativeHandle(ref, () => ({
     focusCreate() {
@@ -63,8 +73,13 @@ export const SessionsPage = forwardRef<
     void load();
   }, []);
 
+  const visible = useMemo(
+    () => filterSessions(sessions, { query, agentId: filterAgent }),
+    [sessions, query, filterAgent],
+  );
+
   async function create() {
-    if (creating || loading) return;
+    if (busy || loading) return;
     setErr("");
     if (agents.length === 0) {
       setErr(t("sessions.noAgents"));
@@ -81,7 +96,7 @@ export const SessionsPage = forwardRef<
       const created = await api.createSession(trimmedLabel ? { agent_id: picked, label: trimmedLabel } : { agent_id: picked });
       setLabel("");
       setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
-      onPick(created.id, created.label || created.id);
+      onPick(created.id, sessionDisplayName(created));
     } catch (e) {
       setErr(formatPublicError(e));
     } finally {
@@ -100,7 +115,55 @@ export const SessionsPage = forwardRef<
     }
   }
 
+  async function remove(s: Session) {
+    if (busy) return;
+    const named = sessionDisplayName(s);
+    if (!window.confirm(t("sessions.confirmDelete", { name: named }))) return;
+    setDeletingId(s.id);
+    try {
+      await api.deleteSession(s.id);
+      setSessions((prev) => prev.filter((row) => row.id !== s.id));
+      setErr("");
+      onDeleted?.(s.id);
+    } catch (e) {
+      setErr(formatPublicError(e));
+    } finally {
+      setDeletingId("");
+    }
+  }
+
   const noAgents = !loading && !err && agents.length === 0;
+  const filteredEmpty = !loading && sessions.length > 0 && visible.length === 0;
+
+  function filterBar() {
+    return (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          className="z-field"
+          style={{ flex: 1, minWidth: compact ? 0 : 160 }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("sessions.search")}
+          aria-label={t("sessions.search")}
+          autoComplete="off"
+        />
+        <select
+          className="z-field"
+          aria-label={t("sessions.filterAgent")}
+          value={filterAgent}
+          onChange={(e) => setFilterAgent(e.target.value)}
+          style={{ minWidth: compact ? 0 : 160, flex: compact ? 1 : undefined }}
+        >
+          <option value="">{t("sessions.filterAgentAll")}</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.display_name || a.agent_key}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
 
   function createFields() {
     return (
@@ -116,7 +179,7 @@ export const SessionsPage = forwardRef<
             aria-label={t("sessions.col.agent")}
             style={{ display: "block", width: "100%", marginTop: 4 }}
             value={agentId}
-            disabled={creating || agents.length === 0}
+            disabled={busy || agents.length === 0}
             onChange={(e) => setAgentId(e.target.value)}
           >
             <option value="">{t("sessions.pickAgent")}</option>
@@ -134,12 +197,12 @@ export const SessionsPage = forwardRef<
             style={{ display: "block", width: "100%", marginTop: 4 }}
             placeholder={t("sessions.placeholder.label")}
             value={label}
-            disabled={creating}
+            disabled={busy}
             autoComplete="off"
             onChange={(e) => setLabel(e.target.value)}
           />
         </label>
-        <Button variant="primary" disabled={creating || loading || agents.length === 0} onClick={() => void create()}>
+        <Button variant="primary" disabled={busy || loading || agents.length === 0} onClick={() => void create()}>
           {t("sessions.create")}
         </Button>
       </div>
@@ -156,34 +219,58 @@ export const SessionsPage = forwardRef<
           </Button>
         </div>
         <div style={{ padding: "0 4px 4px" }}>{createFields()}</div>
+        <div style={{ padding: "0 4px 4px" }}>{filterBar()}</div>
         {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-        {loading || creating ? <StatusLine kind="loading" /> : null}
-        {sessions.map((s) => {
+        {loading || creating || deletingId ? <StatusLine kind="loading" /> : null}
+        {visible.map((s) => {
           const selected = Boolean(selectedId) && selectedId === s.id;
+          const named = sessionDisplayName(s);
           return (
-            <button
+            <div
               key={s.id}
-              type="button"
-              aria-current={selected ? "true" : undefined}
-              onClick={() => onPick(s.id, s.label || s.id)}
               style={{
-                display: "block",
-                textAlign: "left",
-                background: selected ? "var(--accent-soft)" : "var(--card)",
-                border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                borderRadius: 11,
-                padding: "10px 12px",
-                transition: "background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)",
+                display: "flex",
+                alignItems: "stretch",
+                gap: 6,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.label || s.id}
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{t("sessions.agent", { id: s.agent_id })}</div>
-            </button>
+              <button
+                type="button"
+                aria-current={selected ? "true" : undefined}
+                onClick={() => onPick(s.id, named)}
+                style={{
+                  display: "block",
+                  textAlign: "left",
+                  background: selected ? "var(--accent-soft)" : "var(--card)",
+                  border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                  flex: 1,
+                  minWidth: 0,
+                  transition: "background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {named}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>
+                  {agentLabel(agents, s.agent_id)}
+                </div>
+              </button>
+              <Button
+                variant="ghost"
+                disabled={busy}
+                aria-label={t("sessions.deleteNamed", { name: named })}
+                onClick={() => void remove(s)}
+                style={{ padding: "4px 8px", alignSelf: "center" }}
+              >
+                {t("common.delete")}
+              </Button>
+            </div>
           );
         })}
         {!loading && sessions.length === 0 ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.empty")}</EmptyState> : null}
+        {filteredEmpty ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.emptyFilter")}</EmptyState> : null}
       </div>
     );
   }
@@ -209,48 +296,79 @@ export const SessionsPage = forwardRef<
         </div>
       </Card>
       <Card>
-        <CardHeader icon="msg" title={t("sessions.open")} meta={t("sessions.meta", { n: sessions.length })} />
+        <CardHeader icon="msg" title={t("sessions.open")} meta={t("sessions.meta", { n: visible.length })} />
+        <div style={{ padding: "12px 16px 8px" }}>{filterBar()}</div>
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 2.4 }}>{t("sessions.col.session")}</span>
           <span style={{ flex: 2 }}>{t("sessions.col.agent")}</span>
           <span style={{ flex: 1.6 }}>{t("sessions.col.mode")}</span>
-          <span style={{ flex: 1.2, textAlign: "right" }}></span>
+          <span style={{ flex: 1.6, textAlign: "right" }}>{t("sessions.col.actions")}</span>
         </div>
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "11px 16px",
-              fontSize: 12.5,
-              borderBottom: "1px solid var(--border-soft)",
-              cursor: "pointer",
-            }}
-            onClick={() => onPick(s.id, s.label || s.id)}
-          >
-            <span style={{ flex: 2.4, fontWeight: 600 }}>{s.label || s.id}</span>
-            <span style={{ flex: 2, color: "var(--text-2)" }}>{s.agent_id}</span>
-            <span style={{ flex: 1.6 }} onClick={(e) => e.stopPropagation()}>
-              <select
-                className="z-field"
-                aria-label={t("sessions.promptMode")}
-                value={normalizePromptMode(s.prompt_mode)}
-                onChange={(e) => void persistMode(s.id, e.target.value)}
-                style={{ width: "100%" }}
+        {visible.map((s) => {
+          const named = sessionDisplayName(s);
+          return (
+            <div
+              key={s.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "11px 16px",
+                fontSize: 12.5,
+                borderBottom: "1px solid var(--border-soft)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => onPick(s.id, named)}
+                style={{
+                  flex: 2.4,
+                  fontWeight: 600,
+                  textAlign: "left",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text)",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
               >
-                {PROMPT_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {t(promptModeKey(m))}
-                  </option>
-                ))}
-              </select>
-            </span>
-            <span style={{ flex: 1.2, textAlign: "right", color: "var(--accent)", fontWeight: 600, fontSize: 12 }}>{t("sessions.openChat")}</span>
-          </div>
-        ))}
+                {named}
+              </button>
+              <span style={{ flex: 2, color: "var(--text-2)" }}>{agentLabel(agents, s.agent_id)}</span>
+              <span style={{ flex: 1.6 }}>
+                <select
+                  className="z-field"
+                  aria-label={t("sessions.promptMode")}
+                  value={normalizePromptMode(s.prompt_mode)}
+                  onChange={(e) => void persistMode(s.id, e.target.value)}
+                  style={{ width: "100%" }}
+                >
+                  {PROMPT_MODES.map((m) => (
+                    <option key={m} value={m}>
+                      {t(promptModeKey(m))}
+                    </option>
+                  ))}
+                </select>
+              </span>
+              <span style={{ flex: 1.6, display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                <Button variant="ghost" onClick={() => onPick(s.id, named)} style={{ padding: "4px 8px" }}>
+                  {t("sessions.openChat")}
+                </Button>
+                <Button
+                  variant="quiet"
+                  disabled={busy}
+                  aria-label={t("sessions.deleteNamed", { name: named })}
+                  onClick={() => void remove(s)}
+                  style={{ padding: "4px 8px" }}
+                >
+                  {t("common.delete")}
+                </Button>
+              </span>
+            </div>
+          );
+        })}
         {loading ? <StatusLine kind="loading" /> : sessions.length === 0 ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
+        {filteredEmpty ? <EmptyState>{t("sessions.emptyFilter")}</EmptyState> : null}
         </TableScroll>
       </Card>
     </div>

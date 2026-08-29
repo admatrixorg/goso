@@ -92,6 +92,15 @@ func TestTenantIsolationAgentsSessionsWebhooks(t *testing.T) {
 		t.Fatalf("chat B %d %s", w.Code, w.Body.String())
 	}
 
+	w = tenantDo(h, "DELETE", "/api/sessions/"+sid, "", "admin-071", "beta")
+	if w.Code != 404 {
+		t.Fatalf("delete B %d %s", w.Code, w.Body.String())
+	}
+	w = tenantDo(h, "DELETE", "/api/sessions/"+sid, "", "admin-071", "acme")
+	if w.Code != 200 {
+		t.Fatalf("delete A %d %s", w.Code, w.Body.String())
+	}
+
 	w = tenantDo(h, "POST", "/api/webhooks", `{"name":"wh-a"}`, "admin-071", "acme")
 	if w.Code != 201 {
 		t.Fatalf("webhook A %d %s", w.Code, w.Body.String())

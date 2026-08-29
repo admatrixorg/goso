@@ -357,6 +357,7 @@ type StoreIface interface {
 	ListSessions() []*Session
 	GetSession(string) (*Session, error)
 	UpdateSession(Session) (*Session, error)
+	DeleteSession(string) error
 	AddMessage(Message) (*Message, error)
 	ListMessages(string) ([]*Message, error)
 	CreateConnector(ConnectorRecord) (*ConnectorRecord, error)
@@ -753,6 +754,22 @@ func (s *Store) UpdateSession(sess Session) (*Session, error) {
 	cur.PromptMode = sess.PromptMode
 	cp := *cur
 	return &cp, nil
+}
+
+func (s *Store) DeleteSession(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.sessions[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.sessions, id)
+	delete(s.messages, id)
+	delete(s.memories, id)
+	return nil
 }
 
 // --- Message ---

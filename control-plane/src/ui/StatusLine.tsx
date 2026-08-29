@@ -15,4 +15,4 @@ export function StatusLine({ kind, children }: { kind: "loading" | "error"; chil
   );
 }
 
-export { formatPublicError } from "../api/public-error";
+export { formatPublicError, redactPublicText } from "../api/public-error";
