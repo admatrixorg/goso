@@ -16,6 +16,16 @@
 
 ## Trạng thái
 
-- [ ] T01 — skeleton
-- [ ] T02 — env rebrand
-- [ ] T03 — docs/verify
+- [x] T01 — skeleton
+- [x] T02 — env rebrand
+- [x] T03 — docs/verify
+
+## QA 2026-08-29
+
+Code already present; no recook. Evidence: `docs/qa/011-mcp-rebrand.md`.
+
+| Task | Proof |
+|------|--------|
+| T01 | `mcp/package.json` `goso-mcp`; `pnpm`/`npm run verify` build |
+| T02 | `src/config.ts` `GOSO_GATEWAY_URL`; `tests/unit/config.test.ts` |
+| T03 | `mcp/README.md`; `cd mcp && npm run verify` 21 tests |
