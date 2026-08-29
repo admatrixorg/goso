@@ -71,6 +71,10 @@ func TestTools_ListFromAgentConnectors(t *testing.T) {
 
 func TestCallTool_BuiltinNotConfigured(t *testing.T) {
 	t.Setenv("GOSO_WEB_SEARCH", "")
+	t.Setenv("GOSO_SANDBOX_IMAGE", "")
+	t.Setenv("GOSO_BROWSER_BIN", "")
+	t.Setenv("CHROME_PATH", "")
+	t.Setenv("GOSO_FFMPEG", "")
 	st := store.New()
 	rt := New(st, connector.NewRegistry(), approval.New(0), eventstore.New(64), llm.Echo{})
 	cr, err := rt.CallTool(context.Background(), "builtin", "web_search", map[string]any{"q": "x"})

@@ -69,6 +69,10 @@ func TestInvoke_UnconfiguredNoNetwork(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", "")
 	t.Setenv("GOSO_WORKSPACE", "")
 	t.Setenv("GOSO_MEDIA", "")
+	t.Setenv("GOSO_SANDBOX_IMAGE", "")
+	t.Setenv("GOSO_BROWSER_BIN", "")
+	t.Setenv("CHROME_PATH", "")
+	t.Setenv("GOSO_FFMPEG", "")
 	for _, name := range []string{
 		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
 		ToolUseSkill, ToolSkillSearch, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
@@ -223,6 +227,10 @@ func TestInvoke_WebSearchEmptyJSON(t *testing.T) {
 
 func TestInvoke_SandboxNeverSpawns(t *testing.T) {
 	t.Setenv("GOSO_WEB_SEARCH", "ddg")
+	t.Setenv("GOSO_SANDBOX_IMAGE", "")
+	t.Setenv("GOSO_BROWSER_BIN", "")
+	t.Setenv("CHROME_PATH", "")
+	t.Setenv("PATH", t.TempDir())
 	res, err := Invoke(context.Background(), ToolSandbox, map[string]any{"cmd": "true"}, true)
 	if err != nil || res.Status != "not_configured" {
 		t.Fatalf("%v %+v", err, res)
@@ -236,6 +244,8 @@ func TestInvoke_SandboxNeverSpawns(t *testing.T) {
 func TestInvoke_MediaFailClosedUnlessDouble(t *testing.T) {
 	t.Cleanup(func() { MediaInvoke = nil })
 	MediaInvoke = nil
+	t.Setenv("GOSO_FFMPEG", "")
+	t.Setenv("PATH", t.TempDir())
 	t.Setenv("GOSO_MEDIA", "1")
 	for _, name := range []string{ToolMedia, ToolImageGen, ToolTTS} {
 		res, err := Invoke(context.Background(), name, map[string]any{"prompt": "x"}, true)

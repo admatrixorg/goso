@@ -69,8 +69,8 @@ GoClaw gốc có 8 overlay. GOSO chỉ ship **core + prod** ở SPEC 012; các o
 | redis | Chưa — rate-limit in-memory (SPEC 006) |
 | otel / jaeger | Chưa — SPEC 008 để overlay sau |
 | tailscale | Ngoài scope |
-| sandbox | Ngoài scope |
-| browser | Ngoài scope |
+| sandbox | Opt-in `GOSO_SANDBOX_IMAGE` + `docker` on PATH (SPEC 086). No compose overlay. Missing → `not_configured`. |
+| browser | Opt-in `GOSO_BROWSER_BIN` / `CHROME_PATH` existing file (SPEC 086). No Chrome service. Missing → `not_configured`. |
 | *(prod)* | `compose.prod.yml` — restart, auth, backup SQLite |
 
 Khi thêm overlay sau này, dùng cùng pattern `-f compose.yml -f compose.<name>.yml`.

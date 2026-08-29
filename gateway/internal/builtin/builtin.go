@@ -68,21 +68,21 @@ var catalog = []Spec{
 	},
 	{
 		Name:             ToolSandbox,
-		Description:      "Code sandbox stub. Never spawns processes.",
+		Description:      "Docker sandbox. Runs only when GOSO_SANDBOX_IMAGE is set and docker is on PATH. docker run --rm --network=none --memory=256m, 15s timeout, cmd as argv (never sh -c). Else not_configured.",
 		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"cmd":{},"args":{"type":"array","items":{"type":"string"}}},"required":["cmd"]}`),
 	},
 	{
 		Name:             ToolBrowser,
-		Description:      "Browser overlay stub. Never launches Chrome.",
+		Description:      "Headless browser. Runs only when GOSO_BROWSER_BIN or CHROME_PATH is an existing file. CheckURL then --headless --disable-gpu --no-sandbox, 20s timeout, stdout cap 64KiB. Else not_configured.",
 		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}`),
 	},
 	{
 		Name:             ToolMedia,
-		Description:      "Media overlay stub. Fail-closed not_configured unless GOSO_MEDIA*=1 and a test double is injected. Never calls a paid API.",
+		Description:      "Local ffmpeg health or workspace-jailed transcode {in,out}. Runs when GOSO_FFMPEG is an existing file, or ffmpeg is on PATH and GOSO_MEDIA=1. Missing ffmpeg → not_configured. Never a paid API.",
 		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"in":{"type":"string"},"out":{"type":"string"}}}`),
 	},
 	{
 		Name:             ToolImageGen,
@@ -182,7 +182,13 @@ func Configured(name string) bool {
 		return true
 	case ToolUseSkill, ToolSkillSearch:
 		return skill.Configured()
-	case ToolMedia, ToolImageGen, ToolTTS:
+	case ToolSandbox:
+		return sandboxConfigured()
+	case ToolBrowser:
+		return browserBin() != ""
+	case ToolMedia:
+		return ffmpegBin() != ""
+	case ToolImageGen, ToolTTS:
 		return MediaEnvAllowed() && MediaInvoke != nil
 	default:
 		return false
@@ -249,11 +255,14 @@ func notConfigured(name string) *connector.InvokeResult {
 	}
 }
 
-// Invoke runs a builtin tool. sandbox/browser never spawn (DI-12/13).
+// Invoke runs a builtin tool.
 // web_search networks only when the UI flag is on and GOSO_WEB_SEARCH=ddg|1.
 // web_fetch always runs; SSRF (security.CheckURL + GuardClient) is the only network policy.
 // Filesystem tools fail-closed unless GOSO_WORKSPACE is set; they never exec.
-// Media stays not_configured unless GOSO_MEDIA*=1 and MediaInvoke is set.
+// sandbox runs docker only when GOSO_SANDBOX_IMAGE is set and docker exists; else not_configured.
+// browser launches only when GOSO_BROWSER_BIN or CHROME_PATH is an existing file; else not_configured.
+// media runs ffmpeg when GOSO_FFMPEG (or PATH ffmpeg + GOSO_MEDIA=1) exists; image_gen/tts stay
+// not_configured unless GOSO_MEDIA*=1 and MediaInvoke is set.
 func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled bool) (*connector.InvokeResult, error) {
 	name = strings.TrimSpace(name)
 	if !IsName(name) {
@@ -285,16 +294,24 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return searchFile(ctx, args)
 	case ToolGlob:
 		return globFiles(ctx, args)
+	case ToolSandbox:
+		return invokeSandbox(ctx, args)
+	case ToolBrowser:
+		return invokeBrowser(ctx, args)
 	default:
 		if isMediaName(name) {
 			return invokeMedia(ctx, name, args)
 		}
-		// sandbox/browser (DI-12/13): persist UI flags but never exec/docker/chrome.
 		return notConfigured(name), nil
 	}
 }
 
 func invokeMedia(ctx context.Context, name string, args map[string]any) (*connector.InvokeResult, error) {
+	if name == ToolMedia {
+		if bin := ffmpegBin(); bin != "" {
+			return runFFmpeg(ctx, bin, args)
+		}
+	}
 	if MediaInvoke == nil || !MediaEnvAllowed() {
 		return notConfigured(name), nil
 	}
