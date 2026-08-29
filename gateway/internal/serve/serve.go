@@ -21,6 +21,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/heartbeat"
+	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/httpapi"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
@@ -127,11 +128,13 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	loadGatewayOverlay(st)
 	gate := approval.New(0)
 	ev := eventstore.New(1024)
+	logs := logstore.New(1024)
+	obs.SetLogs(logs)
 	rt := agent.New(st, connReg, gate, ev, provider)
 	rt.Observer = obs
 	mux := httpapi.NewRouter(httpapi.Options{
 		Store: st, Version: version, Provider: provider,
-		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
+		Registry: connReg, Gate: gate, Events: ev, Logs: logs, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
 		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr,

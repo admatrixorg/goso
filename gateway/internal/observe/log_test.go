@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/mqglobal/goso/gateway/internal/logstore"
 )
 
 func TestLogMiddleware_GeneratesAndEchoesRequestID(t *testing.T) {
@@ -90,6 +92,33 @@ func TestLogMiddleware_NoSecrets(t *testing.T) {
 	}
 	if line.Path != "/api/agents" {
 		t.Fatalf("path should omit query, got %q", line.Path)
+	}
+}
+
+func TestLogMiddleware_RecordsToLogstoreWithoutSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	obs := NewWithWriter(&buf)
+	lg := logstore.New(32)
+	obs.SetLogs(lg)
+	h := obs.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/agents?token=supersecret-token&key=sk-live-abcdef", nil)
+	req.Header.Set("Authorization", "Bearer supersecret-token")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	rows := lg.Query(logstore.Query{Limit: 10})
+	if len(rows) != 1 {
+		t.Fatalf("rows %d", len(rows))
+	}
+	if rows[0].Component != logstore.ComponentHTTP || rows[0].Level != logstore.LevelInfo {
+		t.Fatalf("entry %+v", rows[0])
+	}
+	if rows[0].Message != "GET /api/agents 200 0ms" && !strings.Contains(rows[0].Message, "GET /api/agents 200") {
+		t.Fatalf("message %q", rows[0].Message)
+	}
+	if strings.Contains(rows[0].Message, "supersecret") || strings.Contains(rows[0].Message, "sk-live") || strings.Contains(rows[0].Message, "token=") {
+		t.Fatalf("leaked %s", rows[0].Message)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/logstore"
 )
 
 const (
@@ -38,6 +41,7 @@ type Observer struct {
 	out       io.Writer
 	traces    *Buffer
 	spanTrees *SpanTreeBuffer
+	logs      *logstore.Store
 	exporter  Exporter
 	reqs      atomic.Int64
 	llms      atomic.Int64
@@ -73,6 +77,71 @@ func (o *Observer) Traces() *Buffer { return o.traces }
 
 // SpanTrees returns the nested-span ring buffer.
 func (o *Observer) SpanTrees() *SpanTreeBuffer { return o.spanTrees }
+
+// SetLogs attaches the operator log tail ring. Nil disables tailing.
+func (o *Observer) SetLogs(s *logstore.Store) {
+	if o == nil {
+		return
+	}
+	o.logs = s
+}
+
+// Logs returns the operator log tail ring, or nil.
+func (o *Observer) Logs() *logstore.Store {
+	if o == nil {
+		return nil
+	}
+	return o.logs
+}
+
+func (o *Observer) recordTail(v any) {
+	if o == nil || o.logs == nil || v == nil {
+		return
+	}
+	e := logstore.Entry{Component: logstore.ComponentGateway, Level: logstore.LevelInfo}
+	switch t := v.(type) {
+	case accessLog:
+		e.Component = logstore.ComponentHTTP
+		e.RequestID = t.RequestID
+		switch {
+		case t.Status >= 500:
+			e.Level = logstore.LevelError
+		case t.Status >= 400:
+			e.Level = logstore.LevelWarn
+		default:
+			e.Level = logstore.LevelInfo
+		}
+		e.Message = fmt.Sprintf("%s %s %d %dms", t.Method, t.Path, t.Status, t.LatencyMS)
+	case map[string]any:
+		if s, _ := t["level"].(string); s != "" {
+			e.Level = s
+		}
+		if s, _ := t["request_id"].(string); s != "" {
+			e.RequestID = s
+		}
+		msg, _ := t["msg"].(string)
+		switch msg {
+		case "llm":
+			e.Component = logstore.ComponentLLM
+			provider, _ := t["provider"].(string)
+			model, _ := t["model"].(string)
+			errStr, _ := t["error"].(string)
+			e.Message = strings.TrimSpace(strings.Join([]string{provider, model, fmt.Sprint(t["latency_ms"]) + "ms", errStr}, " "))
+		case "otlp_export":
+			e.Component = logstore.ComponentOTel
+			errStr, _ := t["error"].(string)
+			e.Message = strings.TrimSpace("otlp_export " + errStr)
+		default:
+			if msg == "" {
+				msg = "log"
+			}
+			e.Message = msg
+		}
+	default:
+		return
+	}
+	o.logs.Append(e)
+}
 
 // SetExporter replaces the OTLP exporter (tests). nil becomes noop.
 func (o *Observer) SetExporter(e Exporter) {

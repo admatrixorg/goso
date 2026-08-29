@@ -292,6 +292,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST activity 403, got %d", w.Code)
 	}
 
+	lgList := httptest.NewRequest("GET", "/api/logs", nil)
+	lgList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, lgList)
+	if w.Code != 200 {
+		t.Fatalf("view GET logs 200, got %d", w.Code)
+	}
+
+	lgStream := httptest.NewRequest("GET", "/api/logs/stream", nil)
+	lgStream.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, lgStream)
+	if w.Code != 200 {
+		t.Fatalf("view GET logs stream 200, got %d", w.Code)
+	}
+
+	v1lg := httptest.NewRequest("GET", "/v1/logs", nil)
+	v1lg.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1lg)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/logs 200, got %d", w.Code)
+	}
+
+	lgPost := httptest.NewRequest("POST", "/api/logs", nil)
+	lgPost.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, lgPost)
+	if w.Code != 403 {
+		t.Fatalf("view POST logs 403, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()

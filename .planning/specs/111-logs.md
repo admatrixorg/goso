@@ -10,9 +10,9 @@ Add a **redacted, permission-gated live log tail** with component, text, severit
 
 ## AC
 
-- [ ] Live nav tab + page. Component/text/severity filters. Pause/resume/clear-local-view. Loading/empty/error/reconnect.
-- [ ] Bounded retention. Server-side redaction. GET/stream never returns credentials.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/111-logs.md`.
+- [x] Live nav tab + page. Component/text/severity filters. Pause/resume/clear-local-view. Loading/empty/error/reconnect.
+- [x] Bounded retention. Server-side redaction. GET/stream never returns credentials.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/111-logs.md`.
 
 ## Out of scope
 
