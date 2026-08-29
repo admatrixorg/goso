@@ -332,8 +332,8 @@ func TestChannelsAPI_PatchDoesNotWriteSecrets(t *testing.T) {
 	req2 := httptest.NewRequest("PATCH", "/api/channels/telegram", bytes.NewBufferString(`{"enabled":true}`))
 	req2.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(w2, req2)
-	if w2.Code == http.StatusOK {
-		t.Fatalf("PATCH enabled must not persist (not in catalog): %s", w2.Body.String())
+	if w2.Code != http.StatusOK {
+		t.Fatalf("PATCH enabled (non-secret) %d %s", w2.Code, w2.Body.String())
 	}
 
 	w3 := httptest.NewRecorder()
@@ -360,15 +360,10 @@ func TestChannelsAPI_PatchDoesNotWriteSecrets(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("secrets rows after PATCH: %d", n)
 	}
-	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%channel%'`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	if rows.Next() {
-		var tbl string
-		_ = rows.Scan(&tbl)
-		t.Fatalf("unexpected channel table %s", tbl)
+	var cfgBlob string
+	_ = db.QueryRow(`SELECT ifnull(group_concat(name||dm_policy||allow_from), '') FROM channel_config`).Scan(&cfgBlob)
+	if strings.Contains(cfgBlob, leak) {
+		t.Fatalf("channel_config stored token: %s", cfgBlob)
 	}
 
 	gw := httptest.NewRecorder()

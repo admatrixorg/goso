@@ -9,11 +9,23 @@ import "os"
 // variable NAMES only (never secret values). Missing is true when any required
 // env is empty.
 type Info struct {
-	Name       string   `json:"name"`
-	Configured bool     `json:"configured"`
-	Missing    bool     `json:"missing"`
-	Env        string   `json:"env"`
-	EnvNames   []string `json:"env_names"`
+	Name            string   `json:"name"`
+	Configured      bool     `json:"configured"`
+	Missing         bool     `json:"missing"`
+	Env             string   `json:"env"`
+	EnvNames        []string `json:"env_names"`
+	Health          string   `json:"health,omitempty"`
+	Transport       string   `json:"transport,omitempty"`
+	SecretSet       bool     `json:"secret_set,omitempty"`
+	BoundAgentID    string   `json:"bound_agent_id,omitempty"`
+	DMPolicy        string   `json:"dm_policy,omitempty"`
+	GroupPolicy     string   `json:"group_policy,omitempty"`
+	RequireMention  bool     `json:"require_mention,omitempty"`
+	AllowFrom       []string `json:"allow_from,omitempty"`
+	AllowFromCount  int      `json:"allow_from_count,omitempty"`
+	Phase           int      `json:"phase,omitempty"`
+	LastError       string   `json:"last_error,omitempty"`
+	Enabled         bool     `json:"enabled,omitempty"`
 }
 
 // Names is the fixed 7-channel catalog (C0).
