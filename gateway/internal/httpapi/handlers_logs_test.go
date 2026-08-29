@@ -212,4 +212,27 @@ func TestLogs_ViewTokenGET(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatalf("view POST %d", w.Code)
 	}
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	sreq, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/logs/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sreq.Header.Set("Authorization", "Bearer view-111")
+	sreq.Header.Set("Accept", "text/event-stream")
+	resp, err := http.DefaultClient.Do(sreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("view stream %d", resp.StatusCode)
+	}
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if !strings.Contains(string(b), "event: ready") {
+		t.Fatalf("view stream body %s", b)
+	}
 }
