@@ -165,6 +165,8 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
 
 	aliasAPI(mux, "GET /api/kg/search", handleSearchKG(st))
+	aliasAPI(mux, "GET /api/kg/index", handleMemoryIndex(st))
+	aliasAPI(mux, "GET /api/kg/graph", handleGraphKG(st))
 	aliasAPI(mux, "GET /api/kg/entities/{id}", handleExpandKG(st))
 	aliasAPI(mux, "POST /api/kg/entities", handleCreateKGEntity(st))
 	aliasAPI(mux, "POST /api/kg/relations", handleCreateKGRelation(st))

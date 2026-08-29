@@ -160,15 +160,19 @@ func extractKG(st store.StoreIface, sessionID, reply string) {
 		return
 	}
 	tid := store.DefaultTenant
+	agentID := ""
 	if sess, err := st.GetSession(sessionID); err == nil && sess != nil {
 		tid = store.NormalizeTenant(sess.TenantID)
+		agentID = strings.TrimSpace(sess.AgentID)
 	}
 	for _, name := range names {
 		_, _ = st.PutKGEntity(store.KGEntity{
 			TenantID: tid,
+			AgentID:  agentID,
 			Name:     name,
 			Kind:     "extracted",
 			Body:     name,
+			Source:   store.KGSourceExtracted,
 		})
 	}
 }

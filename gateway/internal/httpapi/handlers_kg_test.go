@@ -327,6 +327,106 @@ func TestChat_KGExtractOn(t *testing.T) {
 	}
 }
 
+func TestKGAPI_GraphRequiresAgentAndNeverLeaksSecrets(t *testing.T) {
+	st, h := newTestServer()
+	a, err := st.CreateAgent(store.Agent{AgentKey: "kg-ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph", nil))
+	if w.Code != 400 {
+		t.Fatalf("missing agent %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph?agent_id=missing", nil))
+	if w.Code != 404 {
+		t.Fatalf("unknown agent %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/kg/entities", bytes.NewBufferString(`{"name":"Acme","kind":"org","body":"sk-live-abcdefghijk","agent_id":"`+a.ID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("POST entity %d %s", w.Code, w.Body.String())
+	}
+	var acme store.KGEntity
+	if err := json.Unmarshal(w.Body.Bytes(), &acme); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/kg/entities", bytes.NewBufferString(`{"name":"Zeta","kind":"place","agent_id":"`+a.ID+`","source":"extracted"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("POST extracted %d %s", w.Code, w.Body.String())
+	}
+	var zeta store.KGEntity
+	_ = json.Unmarshal(w.Body.Bytes(), &zeta)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/kg/relations", bytes.NewBufferString(`{"from_id":"`+acme.ID+`","to_id":"`+zeta.ID+`","rel":"ships_to","source":"extracted"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("POST rel %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph?agent_id="+a.ID+"&limit=40", nil))
+	if w.Code != 200 {
+		t.Fatalf("graph %d %s", w.Code, w.Body.String())
+	}
+	raw := w.Body.String()
+	for _, leak := range []string{`"token"`, `"secret"`, `"api_key"`, `"bot_token"`, `"private_key"`, "sk-live-"} {
+		if strings.Contains(raw, leak) {
+			t.Fatalf("GET leaked %s: %s", leak, raw)
+		}
+	}
+	var g struct {
+		Nodes               []store.KGGraphNode `json:"nodes"`
+		Edges               []store.KGGraphEdge `json:"edges"`
+		Truncated           bool                `json:"truncated"`
+		NodeCap             int                 `json:"node_cap"`
+		InferredAreNotFacts bool                `json:"inferred_are_not_facts"`
+		Embedding           string              `json:"embedding"`
+		EmbeddingConfigured bool                `json:"embedding_configured"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil {
+		t.Fatal(err)
+	}
+	if !g.InferredAreNotFacts || g.Embedding != "not_configured" || g.EmbeddingConfigured {
+		t.Fatalf("health %#v", g)
+	}
+	if len(g.Nodes) != 2 || len(g.Edges) != 1 || g.NodeCap != 40 {
+		t.Fatalf("graph size %#v", g)
+	}
+	if !g.Edges[0].Inferred {
+		t.Fatalf("edge should be inferred %#v", g.Edges[0])
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph?agent_id="+a.ID+"&limit=1", nil))
+	if w.Code != 200 {
+		t.Fatalf("cap %d %s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil || !g.Truncated || len(g.Nodes) != 1 {
+		t.Fatalf("cap body %v %#v", err, g)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/kg/graph?agent_id="+a.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("v1 alias %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/index", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"embedding":"not_configured"`) {
+		t.Fatalf("index %d %s", w.Code, w.Body.String())
+	}
+}
+
 func hasTier(hits []store.KGSearchHit, tier string) bool {
 	for _, h := range hits {
 		if h.Tier == tier {
