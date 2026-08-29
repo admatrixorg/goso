@@ -91,7 +91,7 @@ func TestSQLiteStore_AgentLLMProviderPersist(t *testing.T) {
 	if err != nil || got.LLMProvider != "p-a" || got.Model != "m-a" {
 		t.Fatalf("persist %#v %v", got, err)
 	}
-	_, err = s2.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, Model: got.Model, LLMProvider: "p-b"})
+	_, err = s2.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, Model: got.Model, LLMProvider: "p-b", Enabled: got.Enabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +124,55 @@ func TestSQLiteStore_PersistReopen(t *testing.T) {
 	msgs, _ := s2.ListMessages(sess.ID)
 	if len(msgs) != 1 || msgs[0].Content != "first" {
 		t.Fatalf("messages not persisted %v", msgs)
+	}
+}
+
+func TestSQLiteStore_AgentLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent-life.db")
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.CreateAgent(Agent{AgentKey: "life", DisplayName: "Life", Instructions: "keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.Enabled {
+		t.Fatal("create should be enabled")
+	}
+	sess, err := s.CreateSession(Session{AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddMessage(Message{SessionID: sess.ID, Content: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	off, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: a.Instructions, Model: a.Model, LLMProvider: a.LLMProvider, Enabled: false, UpdatedAt: a.Stamp()})
+	if err != nil || off.Enabled {
+		t.Fatalf("disable %#v %v", off, err)
+	}
+	if _, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: "x", Enabled: true, UpdatedAt: a.Stamp()}); err != ErrConflict {
+		t.Fatalf("stale want conflict %v", err)
+	}
+	_ = s.Close()
+	s2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	got, err := s2.GetAgent(a.ID)
+	if err != nil || got.Enabled || got.Instructions != "keep" {
+		t.Fatalf("persist %#v %v", got, err)
+	}
+	if err := s2.DeleteAgent(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s2.GetAgent(a.ID); err != ErrNotFound {
+		t.Fatalf("deleted %v", err)
+	}
+	if _, err := s2.GetSession(sess.ID); err != ErrNotFound {
+		t.Fatalf("session leftover %v", err)
 	}
 }
 

@@ -42,7 +42,7 @@ func TestStore_AgentLLMProvider(t *testing.T) {
 	if err != nil || got.LLMProvider != "p-a" {
 		t.Fatalf("create llm_provider %#v %v", got, err)
 	}
-	upd, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, OrchestrationMode: got.OrchestrationMode, Model: got.Model, LLMProvider: ""})
+	upd, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: got.Instructions, OrchestrationMode: got.OrchestrationMode, Model: got.Model, LLMProvider: "", Enabled: got.Enabled})
 	if err != nil || upd.LLMProvider != "" {
 		t.Fatalf("clear llm_provider %#v %v", upd, err)
 	}
@@ -244,5 +244,58 @@ func TestStore_ToolFlagsDefaultOff(t *testing.T) {
 	flags := s.ListToolFlags()
 	if !flags["web_search"] {
 		t.Fatalf("%v", flags)
+	}
+}
+
+func TestStore_AgentEnabledConflictAndDelete(t *testing.T) {
+	s := New()
+	a, err := s.CreateAgent(Agent{AgentKey: "life", DisplayName: "Life", Instructions: "secret prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.Enabled || a.UpdatedAt.IsZero() {
+		t.Fatalf("create defaults %#v", a)
+	}
+	sess, err := s.CreateSession(Session{AgentID: a.ID, Label: "s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: a.Instructions, Model: a.Model, LLMProvider: a.LLMProvider, Enabled: false, UpdatedAt: a.Stamp()})
+	if err != nil || got.Enabled {
+		t.Fatalf("disable %#v %v", got, err)
+	}
+	if _, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: "newer", Enabled: true, UpdatedAt: a.Stamp()}); err != ErrConflict {
+		t.Fatalf("stale patch want ErrConflict got %v", err)
+	}
+	fresh, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: "newer", Enabled: true, UpdatedAt: got.Stamp()})
+	if err != nil || !fresh.Enabled || fresh.Instructions != "newer" {
+		t.Fatalf("fresh patch %#v %v", fresh, err)
+	}
+
+	lead, err := s.CreateAgent(Agent{AgentKey: "lead", DisplayName: "Lead"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateTeam(Team{Name: "T", LeadAgentID: lead.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteAgent(lead.ID); err != ErrConflict {
+		t.Fatalf("lead delete want ErrConflict got %v", err)
+	}
+	if err := s.DeleteAgent(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetAgent(a.ID); err != ErrNotFound {
+		t.Fatalf("deleted agent %v", err)
+	}
+	if _, err := s.GetSession(sess.ID); err != ErrNotFound {
+		t.Fatalf("deleted session %v", err)
+	}
+	if err := s.DeleteAgent("missing"); err != ErrNotFound {
+		t.Fatalf("missing %v", err)
 	}
 }

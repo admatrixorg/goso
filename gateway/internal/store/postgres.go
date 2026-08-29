@@ -59,6 +59,8 @@ func (s *PostgresStore) migratePostgres() error {
 			return fmt.Errorf("postgres migrate: %w", err)
 		}
 	}
+	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
+	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	s.tryVector()
 	return nil
 }
@@ -91,7 +93,9 @@ var postgresSchema = []string{
 		instructions TEXT,
 		orchestration_mode TEXT,
 		created_at TEXT NOT NULL,
-		tenant_id TEXT NOT NULL DEFAULT 'default'
+		tenant_id TEXT NOT NULL DEFAULT 'default',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		updated_at TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_agents_tenant ON agents(tenant_id)`,
 	`CREATE TABLE IF NOT EXISTS sessions (

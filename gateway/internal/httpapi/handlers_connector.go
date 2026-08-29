@@ -445,6 +445,9 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
+		if rejectInactiveAgent(w, st, sess.AgentID) {
+			return
+		}
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}

@@ -123,6 +123,8 @@ func Apply(st store.StoreIface, agentID, sid string) (*store.Agent, error) {
 		Instructions:      next,
 		OrchestrationMode: a.OrchestrationMode,
 		Model:             a.Model,
+		LLMProvider:       a.LLMProvider,
+		Enabled:           a.Enabled,
 	})
 	if err != nil {
 		return nil, err
@@ -200,6 +202,7 @@ func rollbackInstructions(st store.StoreIface, agentID string, g store.Evolution
 		OrchestrationMode: a.OrchestrationMode,
 		Model:             a.Model,
 		LLMProvider:       a.LLMProvider,
+		Enabled:           a.Enabled,
 	})
 	if err != nil {
 		return nil, g, err

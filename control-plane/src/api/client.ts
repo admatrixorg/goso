@@ -241,7 +241,9 @@ export type Agent = {
   llm_provider?: string;
   instructions?: string;
   orchestration_mode?: string;
+  enabled?: boolean;
   created_at: string;
+  updated_at?: string;
 };
 export type Session = { id: string; agent_id: string; label?: string; prompt_mode?: string; created_at: string };
 export type Message = { id: string; session_id: string; role: string; content: string; created_at: string };
@@ -288,11 +290,20 @@ export const api = {
     llm_provider?: string;
     instructions?: string;
     orchestration_mode?: string;
+    enabled?: boolean;
   }) => jsonFetch<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (
     id: string,
-    body: { orchestration_mode?: string; model?: string; llm_provider?: string; instructions?: string },
+    body: {
+      orchestration_mode?: string;
+      model?: string;
+      llm_provider?: string;
+      instructions?: string;
+      enabled?: boolean;
+      if_updated_at?: string;
+    },
   ) => jsonFetch<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteAgent: (id: string) => jsonFetch<{ ok: boolean }>(`/api/agents/${id}`, { method: "DELETE" }),
   listSessions: () => jsonFetch<{ sessions: Session[] }>("/api/sessions"),
   createSession: (body: { agent_id: string; label?: string }) =>
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),

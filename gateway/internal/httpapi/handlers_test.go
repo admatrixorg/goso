@@ -657,6 +657,108 @@ func TestChat_UsesStoredPromptMode(t *testing.T) {
 	}
 }
 
+func TestAgentLifecycleHTTP(t *testing.T) {
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"life","display_name":"Life","instructions":"full system prompt"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var created store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if !created.Enabled {
+		t.Fatal("created should be enabled")
+	}
+	var createdRaw map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &createdRaw); err != nil {
+		t.Fatal(err)
+	}
+	stamp, _ := createdRaw["updated_at"].(string)
+	if stamp == "" {
+		t.Fatal("missing updated_at")
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents", nil))
+	if w.Code != 200 {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "full system prompt") {
+		t.Fatalf("list dumped instructions: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+created.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("get %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "full system prompt") {
+		t.Fatalf("get missing instructions: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"enabled":false,"if_updated_at":"`+stamp+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("disable %d %s", w.Code, w.Body.String())
+	}
+	var disabled store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Enabled {
+		t.Fatal("expected disabled")
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+created.ID, bytes.NewBufferString(`{"enabled":true,"if_updated_at":"`+stamp+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 409 {
+		t.Fatalf("stale patch want 409 got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/sessions", bytes.NewBufferString(`{"agent_id":"`+created.ID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("session %d %s", w.Code, w.Body.String())
+	}
+	var sess store.Session
+	if err := json.Unmarshal(w.Body.Bytes(), &sess); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/chat", bytes.NewBufferString(`{"session_id":"`+sess.ID+`","message":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 409 {
+		t.Fatalf("inactive chat want 409 got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/agents/"+created.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("delete %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+created.ID, nil))
+	if w.Code != 404 {
+		t.Fatalf("get after delete want 404 got %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/agents/"+created.ID, nil))
+	if w.Code != 404 {
+		t.Fatalf("second delete want 404 got %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestProvidersAPI_ConfiguredNamesOnly(t *testing.T) {
 	clearLLMEnv(t)
 	t.Setenv("GOSO_GROQ_API_KEY", "k-groq")

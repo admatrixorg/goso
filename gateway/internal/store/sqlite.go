@@ -72,7 +72,9 @@ func (s *SQLiteStore) migrate() error {
 			model TEXT,
 			llm_provider TEXT,
 			created_at TEXT NOT NULL,
-			tenant_id TEXT NOT NULL DEFAULT 'default'
+			tenant_id TEXT NOT NULL DEFAULT 'default',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -301,6 +303,8 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN orchestration_mode TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN llm_provider TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
+	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE memories ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
@@ -439,9 +443,13 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 		}
 	}
 	a.ID = newID()
-	a.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id) VALUES(?,?,?,?,?,?,?,?,?)`,
-		a.ID, a.AgentKey, a.DisplayName, a.Model, a.LLMProvider, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt), a.TenantID)
+	now := time.Now().UTC()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+	a.Enabled = true
+	en := 1
+	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id, enabled, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		a.ID, a.AgentKey, a.DisplayName, a.Model, a.LLMProvider, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt), a.TenantID, en, formatTime(a.UpdatedAt))
 	if err != nil {
 		if LiteEnabled() {
 			var n int
@@ -457,9 +465,10 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 
 func scanAgent(sc scanner) (*Agent, error) {
 	var a Agent
-	var ts string
+	var ts, updated string
 	var instructions, mode, llmProvider, tenant sql.NullString
-	if err := sc.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &llmProvider, &instructions, &mode, &ts, &tenant); err != nil {
+	var enabled int
+	if err := sc.Scan(&a.ID, &a.AgentKey, &a.DisplayName, &a.Model, &llmProvider, &instructions, &mode, &ts, &tenant, &enabled, &updated); err != nil {
 		return nil, err
 	}
 	a.LLMProvider = llmProvider.String
@@ -467,11 +476,16 @@ func scanAgent(sc scanner) (*Agent, error) {
 	a.OrchestrationMode = mode.String
 	a.TenantID = NormalizeTenant(tenant.String)
 	a.CreatedAt = parseTime(ts)
+	a.UpdatedAt = parseTime(updated)
+	if a.UpdatedAt.IsZero() {
+		a.UpdatedAt = a.CreatedAt
+	}
+	a.Enabled = enabled != 0
 	return &a, nil
 }
 
 func (s *SQLiteStore) ListAgents() []*Agent {
-	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id FROM agents ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id, enabled, updated_at FROM agents ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -491,7 +505,7 @@ func (s *SQLiteStore) ListAgents() []*Agent {
 }
 
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
-	row := s.db.QueryRow(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id FROM agents WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id, enabled, updated_at FROM agents WHERE id=?`, id)
 	a, err := scanAgent(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -510,6 +524,9 @@ func (s *SQLiteStore) UpdateAgent(a Agent) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !a.UpdatedAt.IsZero() && !stampsMatch(cur.Stamp(), a.UpdatedAt) {
+		return nil, ErrConflict
+	}
 	cur.Instructions = a.Instructions
 	if strings.TrimSpace(a.OrchestrationMode) != "" {
 		cur.OrchestrationMode = a.OrchestrationMode
@@ -518,12 +535,69 @@ func (s *SQLiteStore) UpdateAgent(a Agent) (*Agent, error) {
 		cur.Model = a.Model
 	}
 	cur.LLMProvider = a.LLMProvider
-	_, err = s.db.Exec(`UPDATE agents SET instructions=?, orchestration_mode=?, model=?, llm_provider=? WHERE id=?`,
-		cur.Instructions, cur.OrchestrationMode, cur.Model, cur.LLMProvider, cur.ID)
+	cur.Enabled = a.Enabled
+	cur.UpdatedAt = nextStamp(cur.Stamp())
+	en := 0
+	if cur.Enabled {
+		en = 1
+	}
+	_, err = s.db.Exec(`UPDATE agents SET instructions=?, orchestration_mode=?, model=?, llm_provider=?, enabled=?, updated_at=? WHERE id=?`,
+		cur.Instructions, cur.OrchestrationMode, cur.Model, cur.LLMProvider, en, formatTime(cur.UpdatedAt), cur.ID)
 	if err != nil {
 		return nil, err
 	}
 	return cur, nil
+}
+
+func (s *SQLiteStore) DeleteAgent(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	if _, err := s.GetAgent(id); err != nil {
+		return err
+	}
+	var leadN int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE lead_agent_id=?`, id).Scan(&leadN); err != nil {
+		return err
+	}
+	if leadN > 0 {
+		return ErrConflict
+	}
+	rows, err := s.db.Query(`SELECT id FROM sessions WHERE agent_id=?`, id)
+	if err != nil {
+		return err
+	}
+	var sessIDs []string
+	for rows.Next() {
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			continue
+		}
+		sessIDs = append(sessIDs, sid)
+	}
+	_ = rows.Close()
+	for _, sid := range sessIDs {
+		if err := s.DeleteSession(sid); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+	}
+	_, _ = s.db.Exec(`DELETE FROM agent_connectors WHERE agent_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM agent_links WHERE from_agent_id=? OR to_agent_id=?`, id, id)
+	_, _ = s.db.Exec(`DELETE FROM team_members WHERE agent_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM agent_metrics WHERE agent_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM evolution_applies WHERE agent_id=?`, id)
+	_, _ = s.db.Exec(`DELETE FROM evolution_guardrails WHERE agent_id=?`, id)
+	_, _ = s.db.Exec(`UPDATE channel_config SET agent_id='' WHERE agent_id=?`, id)
+	res, err := s.db.Exec(`DELETE FROM agents WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // --- Session ---
