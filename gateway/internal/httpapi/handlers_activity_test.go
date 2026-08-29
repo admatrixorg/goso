@@ -56,6 +56,19 @@ func TestActivity_ListRedactsSecretsAndV1(t *testing.T) {
 	if !strings.Contains(body, "203.0.113.9") || !strings.Contains(body, `"enabled":true`) && !strings.Contains(body, `"enabled": true`) {
 		t.Fatalf("kept metadata %s", body)
 	}
+	al.Append(auditlog.Record{
+		Action: "rotate", Actor: "operator", Entity: "webhook", EntityID: "wh1",
+		After: map[string]any{"ok": true, "secret_set": true, "api_key": "sk-live-abcdefghijk"},
+	})
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/activity?action=rotate", nil))
+	body = w.Body.String()
+	if !strings.Contains(body, "secret_set") {
+		t.Fatalf("lost secret_set %s", body)
+	}
+	if strings.Contains(body, "sk-live-") {
+		t.Fatalf("leaked rotate %s", body)
+	}
 	assertSameGET(t, h, "/api/activity", "/v1/activity")
 }
 

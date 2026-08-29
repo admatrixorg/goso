@@ -92,6 +92,7 @@ const TOKEN_SHAPE = /\b(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._\-+=/]{8,})/i;
 
 function hideKey(k: string): boolean {
   const lk = k.toLowerCase();
+  if (lk.endsWith("_set")) return false;
   return SECRET_KEYS.some((sk) => lk === sk || lk.includes(sk)) || PAYLOAD_KEYS.some((pk) => lk === pk);
 }
 

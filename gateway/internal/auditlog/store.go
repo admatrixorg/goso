@@ -186,6 +186,9 @@ var payloadKeys = []string{
 var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._\-+=/]+)`)
 
 func hideKey(lk string) bool {
+	if strings.HasSuffix(lk, "_set") {
+		return false
+	}
 	for _, sk := range secretKeys {
 		if lk == sk || strings.Contains(lk, sk) {
 			return true

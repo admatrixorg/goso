@@ -53,6 +53,10 @@ test("publicHasSecrets flags credential values, not audit metadata", () => {
   assert.equal(publicHasSecrets({ after: { note: "sk-live-abcdefghijk" } }), true);
   assert.equal(publicMeta({ status: "paired", password: "x" })?.status, "paired");
   assert.equal(publicMeta({ password: "x" }), undefined);
+  const flags = publicMeta({ secret_set: true, key_set: true, api_key: "sk-live-abcdefghijk" });
+  assert.equal(flags?.secret_set, true);
+  assert.equal(flags?.key_set, true);
+  assert.equal(flags?.api_key, undefined);
 });
 
 test("parseDetail is schema-safe and skips payload keys", () => {

@@ -111,6 +111,21 @@ func TestQuery_FiltersAndStableBefore(t *testing.T) {
 }
 
 func TestPublicMeta_TokenShapeAndOverflowCap(t *testing.T) {
+	kept := PublicMeta(map[string]any{
+		"secret_set": true,
+		"key_set":    true,
+		"api_key":    "sk-live-abcdefghijk",
+		"token":      "super-secret",
+	})
+	if kept["secret_set"] != true || kept["key_set"] != true {
+		t.Fatalf("status metadata %#v", kept)
+	}
+	if _, ok := kept["api_key"]; ok {
+		t.Fatalf("api_key leaked %#v", kept)
+	}
+	if _, ok := kept["token"]; ok {
+		t.Fatalf("token leaked %#v", kept)
+	}
 	meta := PublicMeta(map[string]any{
 		"note":   "Bearer abcdefghijk",
 		"status": "paired",
