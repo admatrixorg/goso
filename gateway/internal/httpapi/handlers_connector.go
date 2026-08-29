@@ -17,7 +17,6 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
-	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -33,8 +32,6 @@ func registerConnectorRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /api/agents/{id}/connectors", handleListAgentConnectors(opt))
 	mux.HandleFunc("GET /api/agents/{id}/tools", handleListAgentTools(opt))
 	mux.HandleFunc("PATCH /api/agents/{id}/tools/{name}", handlePatchAgentTool(opt))
-	mux.HandleFunc("POST /api/approvals/{id}/decision", handleApprovalDecision(opt))
-	mux.HandleFunc("GET /api/approvals/{id}", handleGetApproval(opt))
 	mux.HandleFunc("POST /api/tools/invoke", handleToolInvoke(opt))
 }
 
@@ -406,46 +403,6 @@ func handleListAgentConnectors(opt Options) http.HandlerFunc {
 	}
 }
 
-func handleApprovalDecision(opt Options) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		var body struct {
-			Decision string `json:"decision"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		req, err := opt.Gate.Decide(r.Context(), id, body.Decision)
-		if err != nil {
-			status := http.StatusBadRequest
-			if errors.Is(err, approval.ErrNotFound) {
-				status = http.StatusNotFound
-			}
-			writeErr(w, status, err.Error())
-			return
-		}
-		opt.Events.Append(eventstore.Event{
-			Connector: req.Connector,
-			Tool:      req.Tool,
-			Kind:      eventstore.KindHumanFeedback,
-			Summary:   eventstore.SummarizeArgs(map[string]any{"approval_id": req.ID, "decision": req.Decision, "status": req.Status}),
-		})
-		writeJSON(w, http.StatusOK, req)
-	}
-}
-
-func handleGetApproval(opt Options) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		req, err := opt.Gate.Get(r.PathValue("id"))
-		if err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, req)
-	}
-}
-
 func handleToolInvoke(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -467,7 +424,13 @@ func handleToolInvoke(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "connector and tool are required")
 			return
 		}
-		cr, err := opt.Runtime.CallTool(r.Context(), body.Connector, body.Tool, args)
+		ctx := r.Context()
+		if sid := strings.TrimSpace(body.SessionID); sid != "" && opt.Store != nil {
+			if sess, err := opt.Store.GetSession(sid); err == nil && sess != nil {
+				ctx = agent.WithCallMeta(ctx, sess.AgentID, sess.ID, "session:"+sess.ID)
+			}
+		}
+		cr, err := opt.Runtime.CallTool(ctx, body.Connector, body.Tool, args)
 		if err != nil {
 			status := http.StatusBadGateway
 			if errors.Is(err, connector.ErrUnavailable) {

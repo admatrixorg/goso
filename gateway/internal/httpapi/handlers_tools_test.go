@@ -176,8 +176,8 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/tools/invoke", bytes.NewBufferString(`{"connector":"builtin","tool":"write_file","arguments":{"path":"a.md","content":"x"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(w, req)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "not_configured") {
-		t.Fatalf("write_file without workspace %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "pending_approval") {
+		t.Fatalf("write_file gated %d %s", w.Code, w.Body.String())
 	}
 }
 

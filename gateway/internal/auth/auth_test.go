@@ -412,6 +412,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST packages install 403, got %d", w.Code)
 	}
 
+	apprList := httptest.NewRequest("GET", "/api/approvals", nil)
+	apprList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, apprList)
+	if w.Code != 200 {
+		t.Fatalf("view GET approvals 200, got %d", w.Code)
+	}
+
+	v1appr := httptest.NewRequest("GET", "/v1/approvals", nil)
+	v1appr.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1appr)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/approvals 200, got %d", w.Code)
+	}
+
+	apprOne := httptest.NewRequest("GET", "/api/approvals/appr-1", nil)
+	apprOne.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, apprOne)
+	if w.Code != 200 {
+		t.Fatalf("view GET approval id 200, got %d", w.Code)
+	}
+
+	apprDec := httptest.NewRequest("POST", "/api/approvals/appr-1/decision", nil)
+	apprDec.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, apprDec)
+	if w.Code != 403 {
+		t.Fatalf("view POST approvals 403, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()

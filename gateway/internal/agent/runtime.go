@@ -80,7 +80,70 @@ func New(st store.StoreIface, reg *connector.Registry, gate *approval.Gate, ev *
 	if provider == nil {
 		provider = llm.Echo{}
 	}
-	return &Runtime{Store: st, Registry: reg, Gate: gate, Events: ev, LLM: provider, Hooks: pipeline.NewDispatcher()}
+	rt := &Runtime{Store: st, Registry: reg, Gate: gate, Events: ev, LLM: provider, Hooks: pipeline.NewDispatcher()}
+	rt.attachExecutor()
+	return rt
+}
+
+type callMetaKey struct{}
+
+type callMeta struct {
+	AgentID   string
+	SessionID string
+	Requester string
+}
+
+// WithCallMeta attaches requester/agent/session for the approval inbox.
+func WithCallMeta(ctx context.Context, agentID, sessionID, requester string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cur := callMetaFrom(ctx)
+	if strings.TrimSpace(agentID) == "" {
+		agentID = cur.AgentID
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		sessionID = cur.SessionID
+	}
+	if strings.TrimSpace(requester) == "" {
+		requester = cur.Requester
+	}
+	return context.WithValue(ctx, callMetaKey{}, callMeta{AgentID: agentID, SessionID: sessionID, Requester: requester})
+}
+
+func callMetaFrom(ctx context.Context) callMeta {
+	if ctx == nil {
+		return callMeta{}
+	}
+	if v, ok := ctx.Value(callMetaKey{}).(callMeta); ok {
+		return v
+	}
+	return callMeta{}
+}
+
+func (rt *Runtime) attachExecutor() {
+	if rt == nil || rt.Gate == nil {
+		return
+	}
+	rt.Gate.Executor = func(ctx context.Context, req *approval.Request) error {
+		if req == nil {
+			return nil
+		}
+		if req.Connector != builtin.ConnectorName && !builtin.IsName(req.Tool) {
+			return nil
+		}
+		enabled := false
+		if rt.Store != nil {
+			enabled = rt.Store.GetToolFlag(req.Tool)
+			if req.AgentID != "" {
+				if en, ok := rt.Store.GetAgentToolFlag(req.AgentID, req.Tool); ok {
+					enabled = en
+				}
+			}
+		}
+		_, err := builtin.Invoke(ctx, req.Tool, req.Args, enabled)
+		return err
+	}
 }
 
 // ListTools returns tools from connectors linked to the agent (or all if none linked).
@@ -169,38 +232,10 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 	}
 
 	if meta.RequiresApproval {
-		req := rt.Gate.Submit(connectorName, tool, args, map[string]any{
+		return rt.pendingApproval(ctx, traceID, connectorName, tool, args, map[string]any{
 			"requires_approval": true,
 			"description":       meta.Description,
-		})
-		lat := time.Since(start)
-		rt.Events.Append(eventstore.Event{
-			TraceID:   traceID,
-			Connector: connectorName,
-			Tool:      tool,
-			Kind:      eventstore.KindPendingApproval,
-			Summary:   fmt.Sprintf(`{"approval_id":%q,"status":"pending_approval"}`, req.ID),
-		})
-		return &CallResult{
-			Pending: true,
-			Result: &connector.InvokeResult{
-				Tool:             tool,
-				Connector:        connectorName,
-				Status:           "pending_approval",
-				ApprovalID:       req.ID,
-				RequiresApproval: true,
-				Content:          map[string]any{"pending_approval": true, "approval_id": req.ID},
-				Latency:          lat,
-				LatencyMS:        lat.Milliseconds(),
-			},
-			Trace: Trace{
-				Connector:  connectorName,
-				Tool:       tool,
-				LatencyMS:  lat.Milliseconds(),
-				Status:     "pending_approval",
-				ApprovalID: req.ID,
-			},
-		}, nil
+		}, start), nil
 	}
 
 	res, err := c.Invoke(ctx, tool, args)
@@ -235,6 +270,11 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 }
 
 func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args map[string]any, start time.Time) (*CallResult, error) {
+	if builtin.RequiresApproval(tool) {
+		return rt.pendingApproval(ctx, traceID, builtin.ConnectorName, tool, args, map[string]any{
+			"requires_approval": true,
+		}, start), nil
+	}
 	enabled := false
 	if rt.Store != nil {
 		enabled = rt.Store.GetToolFlag(tool)
@@ -269,6 +309,56 @@ func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args m
 			Status:    res.Status,
 		},
 	}, nil
+}
+
+func (rt *Runtime) pendingApproval(ctx context.Context, traceID, connectorName, tool string, args map[string]any, proof map[string]any, start time.Time) *CallResult {
+	meta := callMetaFrom(ctx)
+	requester := meta.Requester
+	if requester == "" && meta.AgentID != "" {
+		requester = "agent:" + meta.AgentID
+	}
+	if requester == "" && meta.SessionID != "" {
+		requester = "session:" + meta.SessionID
+	}
+	req := rt.Gate.SubmitMeta(approval.SubmitIn{
+		Connector: connectorName,
+		Tool:      tool,
+		Args:      args,
+		Proof:     proof,
+		Requester: requester,
+		AgentID:   meta.AgentID,
+		SessionID: meta.SessionID,
+	})
+	lat := time.Since(start)
+	rt.Events.Append(eventstore.Event{
+		TraceID:   traceID,
+		Connector: connectorName,
+		Tool:      tool,
+		Kind:      eventstore.KindPendingApproval,
+		Summary:   fmt.Sprintf(`{"approval_id":%q,"status":"pending_approval"}`, req.ID),
+		AgentID:   meta.AgentID,
+		Actor:     requester,
+	})
+	return &CallResult{
+		Pending: true,
+		Result: &connector.InvokeResult{
+			Tool:             tool,
+			Connector:        connectorName,
+			Status:           "pending_approval",
+			ApprovalID:       req.ID,
+			RequiresApproval: true,
+			Content:          map[string]any{"pending_approval": true, "approval_id": req.ID},
+			Latency:          lat,
+			LatencyMS:        lat.Milliseconds(),
+		},
+		Trace: Trace{
+			Connector:  connectorName,
+			Tool:       tool,
+			LatencyMS:  lat.Milliseconds(),
+			Status:     "pending_approval",
+			ApprovalID: req.ID,
+		},
+	}
 }
 
 func notConfiguredResult(tool string) *connector.InvokeResult {
@@ -339,6 +429,7 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 	sessionMode := ""
 	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
 		sessionMode = sess.PromptMode
+		ctx = WithCallMeta(ctx, sess.AgentID, sess.ID, "agent:"+sess.AgentID)
 		if a, e := rt.Store.GetAgent(sess.AgentID); e == nil && a != nil {
 			p, rerr := llm.Resolve(rt.Store, a.LLMProvider, a.Model, rt.LLM)
 			if rerr != nil {
@@ -462,6 +553,7 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		return out, nil
 	}
 	conn, tool := pipeline.ResolveCall(call)
+	ctx = WithCallMeta(ctx, agentID, "", "agent:"+agentID)
 	cr, err := a.rt.CallTool(ctx, conn, tool, call.Arguments)
 	out := pipeline.CallOutcome{}
 	if cr != nil {

@@ -26,6 +26,7 @@ var viewPrefixes = []string{
 	"/api/tenants",
 	"/api/api-keys",
 	"/api/packages",
+	"/api/approvals",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
@@ -40,6 +41,7 @@ var viewPrefixes = []string{
 	"/v1/tenants",
 	"/v1/api-keys",
 	"/v1/packages",
+	"/v1/approvals",
 }
 
 // Grant is a hashed issued API key that passed Accept. Secret is never stored here.
