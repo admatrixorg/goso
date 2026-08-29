@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +36,8 @@ type Span struct {
 	Status          string            `json:"status,omitempty"`
 	Error           string            `json:"error,omitempty"`
 	CacheReadTokens int               `json:"cache_read_tokens"`
+	InputTokens     int               `json:"input_tokens,omitempty"`
+	OutputTokens    int               `json:"output_tokens,omitempty"`
 	Attributes      map[string]string `json:"attributes,omitempty"`
 }
 
@@ -147,6 +150,16 @@ func (c *Collector) Snapshot() []Span {
 	return out
 }
 
+// TraceID returns the collector's trace id.
+func (c *Collector) TraceID() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.traceID
+}
+
 // SetCacheReadTokens records prompt-cache read tokens (default 0).
 func (s *LiveSpan) SetCacheReadTokens(n int) {
 	if s == nil || s.col == nil {
@@ -161,6 +174,26 @@ func (s *LiveSpan) SetCacheReadTokens(n int) {
 		return
 	}
 	s.col.spans[s.idx].CacheReadTokens = n
+}
+
+// SetTokens records prompt and completion token counts.
+func (s *LiveSpan) SetTokens(in, out int) {
+	if s == nil || s.col == nil {
+		return
+	}
+	if in < 0 {
+		in = 0
+	}
+	if out < 0 {
+		out = 0
+	}
+	s.col.mu.Lock()
+	defer s.col.mu.Unlock()
+	if s.idx < 0 || s.idx >= len(s.col.spans) {
+		return
+	}
+	s.col.spans[s.idx].InputTokens = in
+	s.col.spans[s.idx].OutputTokens = out
 }
 
 // SetAttr sets a non-secret attribute.
@@ -281,6 +314,27 @@ func (b *SpanTreeBuffer) Len() int {
 		return b.cap
 	}
 	return b.next
+}
+
+// All returns every stored tree, newest first.
+func (b *SpanTreeBuffer) All() []SpanTree {
+	if b == nil {
+		return []SpanTree{}
+	}
+	return b.Recent(b.cap)
+}
+
+// Get returns the newest tree with trace id, if present.
+func (b *SpanTreeBuffer) Get(id string) (SpanTree, bool) {
+	if b == nil || strings.TrimSpace(id) == "" {
+		return SpanTree{}, false
+	}
+	for _, t := range b.All() {
+		if t.TraceID == id {
+			return t, true
+		}
+	}
+	return SpanTree{}, false
 }
 
 // Recent returns up to limit trees, newest first.

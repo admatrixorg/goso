@@ -133,7 +133,10 @@ export default function App() {
   const [sessionId, setSessionId] = useState(() => readSelectedSession()?.id ?? "");
   const [sessionLabel, setSessionLabel] = useState(() => readSelectedSession()?.label ?? "");
   const sessionsRef = useRef<SessionsPageHandle>(null);
-  const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window !== "undefined" && window.location.hash.startsWith("#traces")) return "traces";
+    return DEMO ? "home" : "crm";
+  });
 
   function pickSession(id: string, label?: string) {
     const named = label?.trim() || id;
@@ -181,6 +184,14 @@ export default function App() {
   function go(id: Tab) {
     setTab(id);
   }
+
+  useEffect(() => {
+    const onHash = () => {
+      if (window.location.hash.startsWith("#traces")) setTab("traces");
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => {

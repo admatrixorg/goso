@@ -10,9 +10,9 @@ Complete **TracesPage**: searchable/filterable traces, trace detail and spans, t
 
 ## AC
 
-- [ ] List: search/filter (agent/channel/status if fields exist), time range, pagination. Loading/empty/error.
-- [ ] Detail: spans, token/latency/status. Redact prompt/tool/result secrets. Bounded payload.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/101-traces.md`.
+- [x] List: search/filter (agent/channel/status if fields exist), time range, pagination. Loading/empty/error.
+- [x] Detail: spans, token/latency/status. Redact prompt/tool/result secrets. Bounded payload.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/101-traces.md`.
 
 ## Out of scope
 

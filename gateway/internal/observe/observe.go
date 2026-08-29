@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -25,7 +26,11 @@ const (
 
 type ctxKey int
 
-const requestIDKey ctxKey = 1
+const (
+	requestIDKey ctxKey = 1
+	tenantKey    ctxKey = 2
+	agentKey     ctxKey = 3
+)
 
 // Observer is the gateway observability hub: access logs, LLM traces, nested spans, counters.
 type Observer struct {
@@ -86,7 +91,9 @@ func (o *Observer) RecordSpans(spans []Span) {
 		return
 	}
 	copied := make([]Span, len(spans))
-	copy(copied, spans)
+	for i, s := range spans {
+		copied[i] = PublicSpan(s)
+	}
 	tree := SpanTree{TraceID: copied[0].TraceID, Spans: copied}
 	if o.spanTrees != nil {
 		o.spanTrees.Add(tree)
@@ -154,6 +161,8 @@ func (o *Observer) WsUp() bool {
 func (o *Observer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/traces", o.HandleTraces)
 	mux.HandleFunc("GET /v1/traces", o.HandleTraces)
+	mux.HandleFunc("GET /api/traces/{id}", o.HandleTraceDetail)
+	mux.HandleFunc("GET /v1/traces/{id}", o.HandleTraceDetail)
 	mux.HandleFunc("GET /api/stats", o.HandleStats)
 	mux.HandleFunc("GET /api/metrics", o.HandleStats) // SPEC 018 alias
 	mux.HandleFunc("GET /metrics", o.HandleMetrics)
@@ -173,6 +182,48 @@ func RequestIDFromContext(ctx context.Context) string {
 // WithRequestID stores request id on ctx (tests / nested spans).
 func WithRequestID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, requestIDKey, id)
+}
+
+// WithTenant stores the recording tenant on ctx.
+func WithTenant(ctx context.Context, id string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, tenantKey, id)
+}
+
+// TenantFrom returns the tenant stored by WithTenant, or "".
+func TenantFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(tenantKey).(string)
+	return v
+}
+
+// WithAgent stores the recording agent id on ctx.
+func WithAgent(ctx context.Context, id string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, agentKey, id)
+}
+
+// AgentFrom returns the agent id stored by WithAgent, or "".
+func AgentFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(agentKey).(string)
+	return v
 }
 
 func newRequestID() string {
