@@ -124,6 +124,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
 	aliasAPI(mux, "GET /api/sessions", handleListSessions(st))
 	mux.HandleFunc("PATCH /api/sessions/{id}", handlePatchSession(st))
+	mux.HandleFunc("DELETE /api/sessions/{id}", handleDeleteSession(st))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", handleAddMessage(st))
 	mux.HandleFunc("GET /api/sessions/{id}/messages", handleListMessages(st))
 
@@ -377,6 +378,25 @@ func handlePatchSession(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, sess)
+	}
+}
+
+func handleDeleteSession(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := sessionVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if err := st.DeleteSession(id); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "session not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 

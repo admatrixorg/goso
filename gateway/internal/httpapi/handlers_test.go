@@ -557,6 +557,55 @@ func TestPatchSession_PromptMode(t *testing.T) {
 	}
 }
 
+func TestDeleteSession(t *testing.T) {
+	_, h := newTestServer()
+	_, sessID := setupChat(t, h)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/sessions/"+sessID+"/messages", bytes.NewBufferString(`{"content":"keep?"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("add message %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/sessions/"+sessID, nil))
+	if w.Code != 200 {
+		t.Fatalf("delete %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("delete body %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/sessions/"+sessID+"/messages", nil))
+	if w.Code != 404 {
+		t.Fatalf("messages after delete want 404, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/sessions", nil))
+	if w.Code != 200 {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), sessID) {
+		t.Fatalf("list still has deleted session: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/sessions/"+sessID, nil))
+	if w.Code != 404 {
+		t.Fatalf("second delete want 404, got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/sessions/missing", nil))
+	if w.Code != 404 {
+		t.Fatalf("missing want 404, got %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestChat_UsesStoredPromptMode(t *testing.T) {
 	st := store.New()
 	a, _ := st.CreateAgent(store.Agent{AgentKey: "pm1", DisplayName: "Agent One"})

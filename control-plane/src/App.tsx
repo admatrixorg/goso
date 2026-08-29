@@ -29,6 +29,7 @@ import { GatewayStatus } from "./ui/GatewayStatus";
 import { isDemoMode } from "./demo/mode";
 import { demoOverviewItems, demoTop, demoWorkExtra } from "./demo/nav";
 import { useI18n, type Locale } from "./i18n";
+import { clearSelectedSession, readSelectedSession, writeSelectedSession } from "./api/sessions";
 
 const DEMO = isDemoMode();
 
@@ -129,10 +130,24 @@ function useTheme() {
 
 export default function App() {
   const { t, locale, setLocale } = useI18n();
-  const [sessionId, setSessionId] = useState("");
-  const [sessionLabel, setSessionLabel] = useState("");
+  const [sessionId, setSessionId] = useState(() => readSelectedSession()?.id ?? "");
+  const [sessionLabel, setSessionLabel] = useState(() => readSelectedSession()?.label ?? "");
   const sessionsRef = useRef<SessionsPageHandle>(null);
   const [tab, setTab] = useState<Tab>(DEMO ? "home" : "crm");
+
+  function pickSession(id: string, label?: string) {
+    const named = label?.trim() || id;
+    setSessionId(id);
+    setSessionLabel(named);
+    writeSelectedSession({ id, label: named });
+  }
+
+  function dropSession(id: string) {
+    if (sessionId !== id) return;
+    setSessionId("");
+    setSessionLabel("");
+    clearSelectedSession();
+  }
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -455,11 +470,12 @@ export default function App() {
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
             <SessionsPage
+              selectedId={sessionId}
               onPick={(id, label) => {
-                setSessionId(id);
-                setSessionLabel(label?.trim() || id);
+                pickSession(id, label);
                 setTab("chat");
               }}
+              onDeleted={dropSession}
             />
           )}
           {tab === "chat" && (
@@ -469,10 +485,8 @@ export default function App() {
                   ref={sessionsRef}
                   compact
                   selectedId={sessionId}
-                  onPick={(id, label) => {
-                    setSessionId(id);
-                    setSessionLabel(label?.trim() || id);
-                  }}
+                  onPick={pickSession}
+                  onDeleted={dropSession}
                 />
               </div>
               <div className="z-chat-transcript">
@@ -480,6 +494,7 @@ export default function App() {
                   sessionId={sessionId}
                   sessionLabel={sessionLabel}
                   onNew={() => sessionsRef.current?.focusCreate()}
+                  onGone={dropSession}
                 />
               </div>
             </div>

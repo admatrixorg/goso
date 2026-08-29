@@ -55,6 +55,18 @@ func TestSQLiteStore_CRUD(t *testing.T) {
 	if err != nil || len(msgs2) != 1 || msgs2[0].Content != "hi" {
 		t.Fatalf("ListMessages %v %v", err, msgs2)
 	}
+	if err := s.DeleteSession(sess.ID); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	if _, err := s.GetSession(sess.ID); err != ErrNotFound {
+		t.Fatalf("GetSession after delete: %v", err)
+	}
+	if _, err := s.ListMessages(sess.ID); err != ErrNotFound {
+		t.Fatalf("ListMessages after delete: %v", err)
+	}
+	if err := s.DeleteSession("missing"); err != ErrNotFound {
+		t.Fatalf("DeleteSession missing: %v", err)
+	}
 	_ = os.Getenv // keep import
 }
 
