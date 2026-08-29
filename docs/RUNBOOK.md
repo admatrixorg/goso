@@ -96,10 +96,10 @@ Tất cả secret đi qua env, không commit. Đổi giá trị rồi **restart 
 | `GOSO_ANTHROPIC_API_KEY` | LLM Anthropic | Tạo key mới trên console Anthropic, set env, restart. Key cũ revoke trên console. |
 | `GOSO_OPENAI_API_KEY` | LLM OpenAI | Tương tự. |
 | `GOSO_OPENROUTER_API_KEY` / `GOSO_GROQ_API_KEY` / `GOSO_DEEPSEEK_API_KEY` / `GOSO_GEMINI_API_KEY` / `GOSO_MISTRAL_API_KEY` / `GOSO_XAI_API_KEY` / `GOSO_MINIMAX_API_KEY` / `GOSO_DASHSCOPE_API_KEY` | Named OpenAI-compat (SPEC 039) | Tạo key trên console vendor, set env, restart. Empty = provider absent. |
-| `GOSO_TELEGRAM_BOT_TOKEN` | Telegram `sendMessage` | `@BotFather` /revoke rồi token mới, cập nhật webhook nếu có. |
-| `GOSO_ZALO_OA_ACCESS_TOKEN` | Zalo OA | Làm mới access token OA, restart. |
-| `GOSO_ZALO_PERSONAL_TOKEN` | Zalo Personal | Làm mới token, restart. |
-| `GOSO_DISCORD_BOT_TOKEN` / `GOSO_SLACK_BOT_TOKEN` / `GOSO_FEISHU_APP_SECRET` / `GOSO_WHATSAPP_ACCESS_TOKEN` | Channel adapters (SPEC 040/078) | Placeholders only in git. Live tokens = DI-01..07. Empty = `configured: false`, `missing: true` on `GET /api/channels`. Names listed in `env_names[]`. PATCH does not store tokens. |
+| `GOSO_TELEGRAM_BOT_TOKEN` | Telegram `sendMessage` / getMe | `@BotFather` /revoke rồi token mới. Mode `poll` (default) không cần public URL; `webhook` cần `GOSO_PUBLIC_URL`. |
+| `GOSO_ZALO_OA_ACCESS_TOKEN` + `GOSO_ZALO_OA_SECRET` | Zalo OA webhook | Cả hai required. Production reject unverified. |
+| `GOSO_ZALO_PERSONAL_TOKEN` | Zalo Personal session | Env thắng box. Logout CP chỉ xóa box. Sidecar inject webhook 004. Unofficial/ban. |
+| `GOSO_DISCORD_BOT_TOKEN` / `GOSO_SLACK_BOT_TOKEN` + `GOSO_SLACK_APP_TOKEN` / `GOSO_FEISHU_APP_SECRET` / `GOSO_WHATSAPP_ACCESS_TOKEN` | Phase-2 parked | Health `parked`. Slack lists bot+app env names. Native WhatsApp = DI-01. |
 
 Không log token (auth middleware chỉ trả `{"error":"unauthorized"}`). Không dán key vào issue/chat.
 
