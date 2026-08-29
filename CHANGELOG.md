@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 114: Packages THIẾU page. Live `packages` tab. System/Python/Node/GitHub inventory with runtime probes and compatibility warnings. Allowlist pins required. Install/uninstall/recover with confirm, job progress and failure logs. CLI credentials are a separate write-only surface; GET never returns tokens. i18n vi+en. QA `docs/qa/114-packages.md`.
 - SPEC 113: API Keys THIẾU page. Live `apikeys` tab. Create reveals the secret once; GET lists hash + prefix only. Revoke with confirm. Audit create/revoke without logging the secret. i18n vi+en. QA `docs/qa/113-api-keys.md`.
 - SPEC 112: Tenants THIẾU page. Live `tenants` tab. Master-admin list/detail, create, status, membership/roles, guarded deactivate. API isolation + current/master context. GET never returns secrets; mutations audit. i18n vi+en. QA `docs/qa/112-tenants.md`.
 - SPEC 111: Logs THIẾU page. Live `logs` tab. Redacted permission-gated tail (`GET /api/logs` + live stream). Component/text/severity filters, pause/resume/clear-local-view, reconnect, bounded retention. GET/stream never return credentials. i18n vi+en. QA `docs/qa/111-logs.md`.

@@ -10,9 +10,9 @@ Add **runtime/package administration** only behind elevated permissions, with sy
 
 ## AC
 
-- [ ] Live nav tab + page. Inventory, loading/empty/error/progress.
-- [ ] Install/uninstall with confirm. Allowlists/pinning. Failure logs. GET never returns credentials. Elevated permission.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/114-packages.md`.
+- [x] Live nav tab + page. Inventory, loading/empty/error/progress.
+- [x] Install/uninstall with confirm. Allowlists/pinning. Failure logs. GET never returns credentials. Elevated permission.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/114-packages.md`.
 
 ## Out of scope
 
