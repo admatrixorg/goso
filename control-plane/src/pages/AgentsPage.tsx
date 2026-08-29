@@ -67,10 +67,15 @@ export function AgentsPage() {
   async function load() {
     setLoading(true);
     try {
-      const [j, p] = await Promise.all([api.listAgents(), providersApi.list()]);
-      setAgents(j.agents ?? []);
-      setProviders(p.providers ?? []);
-      setErr("");
+      const [j, p] = await Promise.allSettled([api.listAgents(), providersApi.list()]);
+      if (j.status === "fulfilled") {
+        setAgents(j.value.agents ?? []);
+      }
+      if (p.status === "fulfilled") {
+        setProviders(p.value.providers ?? []);
+      }
+      const fail = j.status === "rejected" ? j.reason : null;
+      setErr(fail ? formatPublicError(fail) : "");
     } catch (e) {
       setErr(formatPublicError(e));
     } finally {
@@ -96,8 +101,7 @@ export function AgentsPage() {
       const detail = await api.getAgent(a.id);
       applyDetail(detail);
     } catch (e) {
-      applyDetail(a);
-      setErr(formatPublicError(e));
+      setErr(mapErr(e));
     } finally {
       setLoadingDetail(false);
     }
@@ -114,6 +118,7 @@ export function AgentsPage() {
     const kind = agentConflictKind(e);
     if (kind === "lead") return t("agents.cannotDeleteLead");
     if (kind === "inactive") return t("agents.inactive");
+    if (kind === "exists") return t("agents.keyExists");
     if (kind === "conflict") return t("agents.conflict");
     return formatPublicError(e);
   }

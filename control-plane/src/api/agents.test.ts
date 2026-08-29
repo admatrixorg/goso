@@ -53,5 +53,6 @@ test("isConflictStatus and agentConflictKind", () => {
   assert.equal(agentConflictKind(new Error('409 {"error":"agent was modified"}')), "conflict");
   assert.equal(agentConflictKind(new Error('409 {"error":"agent is team lead"}')), "lead");
   assert.equal(agentConflictKind(new Error('409 {"error":"agent is inactive"}')), "inactive");
+  assert.equal(agentConflictKind(new Error('409 {"error":"agent_key already exists"}')), "exists");
   assert.equal(agentConflictKind(new Error("502 upstream")), null);
 });

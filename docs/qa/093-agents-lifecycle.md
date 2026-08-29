@@ -39,7 +39,7 @@ Do not bind or kill demo ports `:8082` `:8091` `:18080` `:18791`. Do not merge. 
 ## Proof
 
 - `npm run typecheck` exit 0. `npm test` covers `filterAgents`, status/provider filters, `agentDisplayName`, `validateAgentKey`, `isConflictStatus` / `agentConflictKind`.
-- `go test` store + httpapi + team: create enabled by default, list omits instructions, GET keeps them, disable + stale PATCH 409, inactive chat 409, delete 200 then 404, team-lead delete ErrConflict.
+- `go test` store + httpapi + team: create enabled by default, list omits instructions, GET keeps them, disable + stale PATCH 409, last-write without stamp 200, inactive chat 409, delete 200 then 404, team-lead delete 409.
 - GET agent list has no `instructions` field when a prompt is stored. Delete confirm interpolates the agent name. List status uses `enabled`.
 - `agpl-check` and `agpl-check-docs` exit 0.
 

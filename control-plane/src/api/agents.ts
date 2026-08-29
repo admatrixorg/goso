@@ -60,10 +60,12 @@ export function isConflictStatus(err: unknown): boolean {
   return /\b409\b/.test(String(err));
 }
 
-export function agentConflictKind(err: unknown): "conflict" | "lead" | "inactive" | null {
+export function agentConflictKind(err: unknown): "conflict" | "lead" | "inactive" | "exists" | null {
   if (!isConflictStatus(err)) return null;
   const s = String(err);
   if (/team lead/i.test(s)) return "lead";
   if (/inactive/i.test(s)) return "inactive";
+  if (/already exists/i.test(s)) return "exists";
+  if (/was modified/i.test(s)) return "conflict";
   return "conflict";
 }
