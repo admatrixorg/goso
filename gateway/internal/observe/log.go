@@ -55,12 +55,15 @@ func (o *Observer) Middleware(next http.Handler) http.Handler {
 }
 
 func (o *Observer) writeJSON(v any) {
-	if o == nil || o.out == nil {
+	if o == nil {
 		return
 	}
-	enc := json.NewEncoder(o.out)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v)
+	if o.out != nil {
+		enc := json.NewEncoder(o.out)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(v)
+	}
+	o.recordTail(v)
 }
 
 type statusRecorder struct {

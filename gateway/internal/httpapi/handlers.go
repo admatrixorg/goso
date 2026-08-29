@@ -22,6 +22,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/node"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -38,6 +39,7 @@ type Options struct {
 	Registry *connector.Registry
 	Gate     *approval.Gate
 	Events   *eventstore.Store
+	Logs     *logstore.Store
 	Audit    *auditlog.Store
 	Runtime  *agent.Runtime
 	Meter    *billing.Store
@@ -74,6 +76,9 @@ func (o *Options) defaults() {
 	}
 	if o.Events == nil {
 		o.Events = eventstore.New(256)
+	}
+	if o.Logs == nil {
+		o.Logs = logstore.New(256)
 	}
 	if o.Audit == nil {
 		o.Audit = auditlog.New(auditlog.DefaultCapacity)
@@ -138,6 +143,7 @@ func NewRouter(opt Options) http.Handler {
 	registerStorageRoutes(mux, opt)
 	registerEventRoutes(mux, opt)
 	registerActivityRoutes(mux, opt)
+	registerLogRoutes(mux, opt)
 	return mux
 }
 
