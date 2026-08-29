@@ -208,7 +208,7 @@ func TestStore_EvolutionGuardrailsDefaultAndPersist(t *testing.T) {
 func TestUpdateAgent_DoesNotRename(t *testing.T) {
 	s := New()
 	a, _ := s.CreateAgent(Agent{AgentKey: "keep", DisplayName: "Keep"})
-	_, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: "prefix", OrchestrationMode: "auto"})
+	_, err := s.UpdateAgent(Agent{ID: a.ID, Instructions: "prefix", OrchestrationMode: "auto", Enabled: a.Enabled})
 	if err != nil {
 		t.Fatal(err)
 	}

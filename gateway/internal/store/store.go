@@ -21,7 +21,9 @@ type Agent struct {
 	LLMProvider       string    `json:"llm_provider,omitempty"`
 	Instructions      string    `json:"instructions,omitempty"`
 	OrchestrationMode string    `json:"orchestration_mode,omitempty"`
+	Enabled           bool      `json:"enabled"`
 	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // Lite caps when GOSO_LITE=1 (desktop default may set this later).
@@ -353,6 +355,7 @@ type StoreIface interface {
 	CreateAgent(Agent) (*Agent, error)
 	ListAgents() []*Agent
 	GetAgent(string) (*Agent, error)
+	DeleteAgent(string) error
 	CreateSession(Session) (*Session, error)
 	ListSessions() []*Session
 	GetSession(string) (*Session, error)
@@ -452,9 +455,30 @@ type StoreIface interface {
 var (
 	ErrNotFound = errors.New("not found")
 	ErrExists   = errors.New("already exists")
+	ErrConflict = errors.New("conflict")
 	ErrLiteCap  = errors.New("lite cap exceeded")
 	ErrCronCap  = errors.New("cron job cap exceeded")
 )
+
+// Stamp returns updated_at, falling back to created_at when empty.
+func (a Agent) Stamp() time.Time {
+	if !a.UpdatedAt.IsZero() {
+		return a.UpdatedAt.UTC()
+	}
+	return a.CreatedAt.UTC()
+}
+
+func stampsMatch(have, want time.Time) bool {
+	if want.IsZero() {
+		return true
+	}
+	h := have.UTC()
+	w := want.UTC()
+	if h.Equal(w) {
+		return true
+	}
+	return h.Format(time.RFC3339Nano) == w.Format(time.RFC3339Nano)
+}
 
 // LiteEnabled reports whether GOSO_LITE=1 (or true) is set.
 func LiteEnabled() bool {
@@ -645,10 +669,14 @@ func (s *Store) CreateAgent(a Agent) (*Agent, error) {
 		}
 	}
 	a.ID = s.nextID()
-	a.CreatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+	a.Enabled = true
 	cp := a
 	s.agents[cp.ID] = &cp
-	return &cp, nil
+	out := cp
+	return &out, nil
 }
 
 func (s *Store) ListAgents() []*Agent {
@@ -683,7 +711,10 @@ func (s *Store) UpdateAgent(a Agent) (*Agent, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	// Prompt prefix and mode only. Never rewrite agent_key or display_name.
+	if !a.UpdatedAt.IsZero() && !stampsMatch(cur.Stamp(), a.UpdatedAt) {
+		return nil, ErrConflict
+	}
+	// Prompt prefix, mode, provider, enabled. Never rewrite agent_key or display_name.
 	cur.Instructions = a.Instructions
 	if strings.TrimSpace(a.OrchestrationMode) != "" {
 		cur.OrchestrationMode = a.OrchestrationMode
@@ -692,8 +723,73 @@ func (s *Store) UpdateAgent(a Agent) (*Agent, error) {
 		cur.Model = a.Model
 	}
 	cur.LLMProvider = a.LLMProvider
+	cur.Enabled = a.Enabled
+	cur.UpdatedAt = nextStamp(cur.Stamp())
 	cp := *cur
 	return &cp, nil
+}
+
+func nextStamp(prev time.Time) time.Time {
+	now := time.Now().UTC()
+	if !now.After(prev) {
+		return prev.Add(time.Nanosecond)
+	}
+	return now
+}
+
+func (s *Store) DeleteAgent(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.agents[id]; !ok {
+		return ErrNotFound
+	}
+	for _, tm := range s.teams {
+		if tm != nil && tm.LeadAgentID == id {
+			return ErrConflict
+		}
+	}
+	for sid, sess := range s.sessions {
+		if sess == nil || sess.AgentID != id {
+			continue
+		}
+		delete(s.sessions, sid)
+		delete(s.messages, sid)
+		delete(s.memories, sid)
+	}
+	delete(s.agentConns, id)
+	delete(s.agentLinks, id)
+	for from, tos := range s.agentLinks {
+		kept := tos[:0]
+		for _, to := range tos {
+			if to != id {
+				kept = append(kept, to)
+			}
+		}
+		s.agentLinks[from] = kept
+	}
+	for tid, mems := range s.teamMembers {
+		kept := mems[:0]
+		for _, m := range mems {
+			if m != nil && m.AgentID != id {
+				kept = append(kept, m)
+			}
+		}
+		s.teamMembers[tid] = kept
+	}
+	delete(s.metrics, id)
+	delete(s.evoApplied, id)
+	delete(s.evoGuard, id)
+	for _, cfg := range s.channelConfig {
+		if cfg != nil && cfg.AgentID == id {
+			cfg.AgentID = ""
+		}
+	}
+	delete(s.agents, id)
+	return nil
 }
 
 // --- Session ---

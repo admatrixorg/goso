@@ -119,6 +119,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	aliasAPI(mux, "GET /api/agents", handleListAgents(st))
 	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
 	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st))
+	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
@@ -175,6 +176,7 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			LLMProvider       string `json:"llm_provider"`
 			Instructions      string `json:"instructions"`
 			OrchestrationMode string `json:"orchestration_mode"`
+			Enabled           *bool  `json:"enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -215,6 +217,17 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if body.Enabled != nil && !*body.Enabled {
+			upd := *a
+			upd.Enabled = false
+			upd.UpdatedAt = a.Stamp()
+			disabled, err := st.UpdateAgent(upd)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			a = disabled
+		}
 		writeJSON(w, http.StatusCreated, a)
 	}
 }
@@ -225,8 +238,21 @@ func handleListAgents(st store.StoreIface) http.HandlerFunc {
 		if list == nil {
 			list = []*store.Agent{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"agents": list})
+		out := make([]*store.Agent, 0, len(list))
+		for _, a := range list {
+			out = append(out, agentListView(a))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"agents": out})
 	}
+}
+
+func agentListView(a *store.Agent) *store.Agent {
+	if a == nil {
+		return nil
+	}
+	cp := *a
+	cp.Instructions = ""
+	return &cp
 }
 
 func handleGetAgent(st store.StoreIface) http.HandlerFunc {
@@ -254,6 +280,8 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 			Model             *string `json:"model"`
 			LLMProvider       *string `json:"llm_provider"`
 			Instructions      *string `json:"instructions"`
+			Enabled           *bool   `json:"enabled"`
+			IfUpdatedAt       *string `json:"if_updated_at"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -265,6 +293,15 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 			OrchestrationMode: cur.OrchestrationMode,
 			Model:             cur.Model,
 			LLMProvider:       cur.LLMProvider,
+			Enabled:           cur.Enabled,
+		}
+		if body.IfUpdatedAt != nil {
+			want, err := parseIfUpdatedAt(*body.IfUpdatedAt)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			upd.UpdatedAt = want
 		}
 		if body.OrchestrationMode != nil {
 			mode, err := parseOrchMode(*body.OrchestrationMode)
@@ -290,10 +327,17 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 		if body.Instructions != nil {
 			upd.Instructions = *body.Instructions
 		}
+		if body.Enabled != nil {
+			upd.Enabled = *body.Enabled
+		}
 		a, err := st.UpdateAgent(upd)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			if errors.Is(err, store.ErrConflict) {
+				writeErr(w, http.StatusConflict, "agent was modified")
 				return
 			}
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -301,6 +345,55 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, a)
 	}
+}
+
+func handleDeleteAgent(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		if err := st.DeleteAgent(id); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "agent not found")
+				return
+			}
+			if errors.Is(err, store.ErrConflict) {
+				writeErr(w, http.StatusConflict, "agent is team lead")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+func parseIfUpdatedAt(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, errors.New("invalid if_updated_at")
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), nil
+	}
+	return time.Time{}, errors.New("invalid if_updated_at")
+}
+
+func rejectInactiveAgent(w http.ResponseWriter, st store.StoreIface, agentID string) bool {
+	a, err := st.GetAgent(agentID)
+	if err != nil || a == nil {
+		return false
+	}
+	if a.Enabled {
+		return false
+	}
+	writeErr(w, http.StatusConflict, "agent is inactive")
+	return true
 }
 
 func handleCreateSession(st store.StoreIface) http.HandlerFunc {
@@ -527,6 +620,9 @@ func handleChat(st store.StoreIface, meter *billing.Store) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "session not found")
 			return
 		}
+		if rejectInactiveAgent(w, st, sess.AgentID) {
+			return
+		}
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
@@ -561,6 +657,9 @@ func handleChatWithLLM(st store.StoreIface, provider llm.Provider, meter *billin
 		sess, err := sessionVisible(st, body.SessionID, requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "session not found")
+			return
+		}
+		if rejectInactiveAgent(w, st, sess.AgentID) {
 			return
 		}
 		if rejectIfQuotaExceeded(w, meter) {

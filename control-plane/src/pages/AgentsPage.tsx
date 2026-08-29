@@ -1,7 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  agentConflictKind,
+  agentDisplayName,
+  filterAgents,
+  isAgentActive,
+  uniqueProviders,
+  validateAgentKey,
+  type AgentStatusFilter,
+} from "../api/agents";
 import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import { providersApi, type ProviderInfo } from "../api/providers";
 import { useI18n, type MsgKey } from "../i18n";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
@@ -15,7 +25,7 @@ function modeLabelKey(mode: string): MsgKey {
   return "agents.mode.unset";
 }
 
-const emptyForm = { key: "", name: "", model: "", llm_provider: "", instructions: "", mode: "" };
+const emptyForm = { key: "", name: "", model: "", llm_provider: "", instructions: "", mode: "", enabled: true };
 
 function formFromAgent(a: Agent) {
   return {
@@ -25,6 +35,7 @@ function formFromAgent(a: Agent) {
     llm_provider: a.llm_provider || "",
     instructions: a.instructions || "",
     mode: a.orchestration_mode || "",
+    enabled: isAgentActive(a),
   };
 }
 
@@ -35,10 +46,23 @@ export function AgentsPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [selectedId, setSelectedId] = useState("");
+  const [updatedAt, setUpdatedAt] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("");
+  const [providerFilter, setProviderFilter] = useState("");
 
   const editing = Boolean(selectedId);
+  const busy = saving || deleting || loadingDetail;
+
+  const visible = useMemo(
+    () => filterAgents(agents, { query, status: statusFilter, provider: providerFilter }),
+    [agents, query, statusFilter, providerFilter],
+  );
+  const providerOptions = useMemo(() => uniqueProviders(agents), [agents]);
 
   async function load() {
     setLoading(true);
@@ -58,25 +82,50 @@ export function AgentsPage() {
     void load();
   }, []);
 
-  function pick(a: Agent) {
+  function applyDetail(a: Agent) {
     setSelectedId(a.id);
     setForm(formFromAgent(a));
+    setUpdatedAt((a.updated_at || a.created_at || "").trim());
+  }
+
+  async function pick(a: Agent) {
+    if (busy) return;
     setErr("");
+    setLoadingDetail(true);
+    try {
+      const detail = await api.getAgent(a.id);
+      applyDetail(detail);
+    } catch (e) {
+      applyDetail(a);
+      setErr(formatPublicError(e));
+    } finally {
+      setLoadingDetail(false);
+    }
   }
 
   function resetForm() {
     setSelectedId("");
+    setUpdatedAt("");
     setForm(emptyForm);
     setErr("");
   }
 
+  function mapErr(e: unknown): string {
+    const kind = agentConflictKind(e);
+    if (kind === "lead") return t("agents.cannotDeleteLead");
+    if (kind === "inactive") return t("agents.inactive");
+    if (kind === "conflict") return t("agents.conflict");
+    return formatPublicError(e);
+  }
+
   async function save() {
     setErr("");
+    const keyErr = validateAgentKey(form.key, editing);
+    if (keyErr) {
+      setErr(t(keyErr));
+      return;
+    }
     if (!editing) {
-      if (!form.key.trim()) {
-        setErr(t("agents.needKey"));
-        return;
-      }
       setSaving(true);
       try {
         const created = await api.createAgent({
@@ -86,37 +135,65 @@ export function AgentsPage() {
           llm_provider: form.llm_provider.trim() || undefined,
           instructions: form.instructions.trim() || undefined,
           orchestration_mode: form.mode || undefined,
+          enabled: form.enabled,
         });
-        setSelectedId(created.id);
-        setForm(formFromAgent(created));
+        applyDetail(created);
         await load();
       } catch (e) {
-        setErr(formatPublicError(e));
+        setErr(mapErr(e));
       } finally {
         setSaving(false);
       }
       return;
     }
 
-    const body: { model?: string; llm_provider?: string; instructions?: string; orchestration_mode?: string } = {
+    const body: {
+      model?: string;
+      llm_provider?: string;
+      instructions?: string;
+      orchestration_mode?: string;
+      enabled: boolean;
+      if_updated_at?: string;
+    } = {
       model: form.model.trim(),
       llm_provider: form.llm_provider.trim(),
       instructions: form.instructions.trim(),
+      enabled: form.enabled,
     };
     if (ORCHESTRATION_MODES.includes(form.mode as (typeof ORCHESTRATION_MODES)[number])) {
       body.orchestration_mode = form.mode;
     }
+    if (updatedAt) body.if_updated_at = updatedAt;
     setSaving(true);
     try {
       const updated = await api.updateAgent(selectedId, body);
-      setForm(formFromAgent(updated));
+      applyDetail(updated);
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setErr(mapErr(e));
     } finally {
       setSaving(false);
     }
   }
+
+  async function remove() {
+    if (!editing || busy) return;
+    const current = agents.find((a) => a.id === selectedId);
+    const named = agentDisplayName(current || { id: selectedId, display_name: form.name, agent_key: form.key });
+    if (!window.confirm(t("agents.confirmDelete", { name: named }))) return;
+    setDeleting(true);
+    try {
+      await api.deleteAgent(selectedId);
+      resetForm();
+      await load();
+    } catch (e) {
+      setErr(mapErr(e));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const filteredEmpty = !loading && agents.length > 0 && visible.length === 0;
 
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -132,25 +209,61 @@ export function AgentsPage() {
       />
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       <Card>
-        <CardHeader icon="user" title={t("agents.list")} meta={t("agents.meta", { n: agents.length })} />
+        <CardHeader icon="user" title={t("agents.list")} meta={t("agents.meta", { n: visible.length })} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 16px 8px" }}>
+          <input
+            className="z-field"
+            style={{ flex: 1, minWidth: 160 }}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("agents.search")}
+            aria-label={t("agents.search")}
+            autoComplete="off"
+          />
+          <select
+            className="z-field"
+            aria-label={t("agents.filterStatus")}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as AgentStatusFilter)}
+            style={{ minWidth: 140 }}
+          >
+            <option value="">{t("agents.filterStatusAll")}</option>
+            <option value="active">{t("agents.status.active")}</option>
+            <option value="inactive">{t("agents.status.inactive")}</option>
+          </select>
+          <select
+            className="z-field"
+            aria-label={t("agents.filterProvider")}
+            value={providerFilter}
+            onChange={(e) => setProviderFilter(e.target.value)}
+            style={{ minWidth: 140 }}
+          >
+            <option value="">{t("agents.filterProviderAll")}</option>
+            {providerOptions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
           <span style={{ flex: 1.4 }}>{t("agents.col.key")}</span>
           <span style={{ flex: 2 }}>{t("agents.col.name")}</span>
-          <span style={{ flex: 2 }}>{t("agents.col.id")}</span>
-          <span style={{ flex: 1.2 }}>{t("agents.col.model")}</span>
+          <span style={{ flex: 1.1 }}>{t("agents.col.status")}</span>
           <span style={{ flex: 1.2 }}>{t("agents.col.provider")}</span>
+          <span style={{ flex: 1.2 }}>{t("agents.col.model")}</span>
           <span style={{ flex: 1.4 }}>{t("agents.col.mode")}</span>
         </div>
-        {agents.map((a) => {
+        {visible.map((a) => {
           const on = selectedId === a.id;
+          const active = isAgentActive(a);
           return (
             <button
               key={a.id}
               type="button"
               onClick={() => {
-                if (saving) return;
-                pick(a);
+                void pick(a);
               }}
               style={{
                 display: "flex",
@@ -163,20 +276,24 @@ export function AgentsPage() {
                 background: on ? "var(--accent-soft)" : "transparent",
                 color: "var(--text)",
                 gap: 8,
-                cursor: "pointer",
+                cursor: busy ? "default" : "pointer",
                 alignItems: "center",
               }}
             >
               <span style={{ flex: 1.4, fontWeight: 600 }}>{a.agent_key}</span>
               <span style={{ flex: 2 }}>{a.display_name}</span>
-              <span style={{ flex: 2, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{a.id}</span>
-              <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.model || "—"}</span>
+              <span style={{ flex: 1.1 }}>
+                <Badge tone={active ? "positive" : "neutral"}>{active ? t("agents.status.active") : t("agents.status.inactive")}</Badge>
+              </span>
               <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.llm_provider || t("agents.provider.default")}</span>
+              <span style={{ flex: 1.2, color: "var(--text-2)" }}>{a.model || "—"}</span>
               <span style={{ flex: 1.4 }}>{t(modeLabelKey(a.orchestration_mode || ""))}</span>
             </button>
           );
         })}
-        {loading ? <StatusLine kind="loading" /> : agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
+        {loading || loadingDetail ? <StatusLine kind="loading" /> : null}
+        {!loading && agents.length === 0 ? <EmptyState>{t("agents.empty")}</EmptyState> : null}
+        {filteredEmpty ? <EmptyState>{t("agents.emptyFilter")}</EmptyState> : null}
         </TableScroll>
       </Card>
       <Card>
@@ -189,7 +306,7 @@ export function AgentsPage() {
               style={{ display: "block", width: "100%", marginTop: 4 }}
               placeholder={t("agents.placeholder.key")}
               value={form.key}
-              disabled={editing}
+              disabled={editing || busy}
               autoComplete="off"
               onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
             />
@@ -201,7 +318,7 @@ export function AgentsPage() {
               style={{ display: "block", width: "100%", marginTop: 4 }}
               placeholder={t("agents.placeholder.name")}
               value={form.name}
-              disabled={editing}
+              disabled={editing || busy}
               autoComplete="off"
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
@@ -213,7 +330,7 @@ export function AgentsPage() {
               aria-label={t("agents.col.provider")}
               style={{ display: "block", width: "100%", marginTop: 4 }}
               value={form.llm_provider}
-              disabled={saving}
+              disabled={busy}
               onChange={(e) => setForm((f) => ({ ...f, llm_provider: e.target.value }))}
             >
               <option value="">{t("agents.provider.default")}</option>
@@ -234,6 +351,7 @@ export function AgentsPage() {
               style={{ display: "block", width: "100%", marginTop: 4 }}
               placeholder={t("agents.placeholder.model")}
               value={form.model}
+              disabled={busy}
               autoComplete="off"
               onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
             />
@@ -246,6 +364,7 @@ export function AgentsPage() {
               style={{ display: "block", width: "100%", marginTop: 4, minHeight: 90, resize: "vertical" }}
               placeholder={t("agents.placeholder.instructions")}
               value={form.instructions}
+              disabled={busy}
               onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
             />
           </label>
@@ -256,7 +375,7 @@ export function AgentsPage() {
               aria-label={t("agents.col.mode")}
               style={{ display: "block", width: "100%", marginTop: 4 }}
               value={form.mode}
-              disabled={saving}
+              disabled={busy}
               onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}
             >
               {form.mode ? null : <option value="">{t("agents.mode.unset")}</option>}
@@ -267,15 +386,29 @@ export function AgentsPage() {
               ))}
             </select>
           </label>
+          <label style={{ fontSize: 12, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={form.enabled}
+              disabled={busy}
+              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+            />
+            {t("agents.enabled")}
+          </label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Button variant="primary" disabled={saving} onClick={() => void save()}>
+            <Button variant="primary" disabled={busy} onClick={() => void save()}>
               {editing ? t("common.save") : t("agents.create")}
             </Button>
-            <Button disabled={saving} onClick={resetForm}>
+            <Button disabled={busy} onClick={resetForm}>
               {t("agents.new")}
             </Button>
+            {editing ? (
+              <Button disabled={busy} onClick={() => void remove()} aria-label={t("agents.deleteNamed", { name: form.name || form.key || selectedId })}>
+                {t("common.delete")}
+              </Button>
+            ) : null}
           </div>
-          {saving ? <StatusLine kind="loading" /> : null}
+          {saving || deleting ? <StatusLine kind="loading" /> : null}
         </div>
       </Card>
     </div>
