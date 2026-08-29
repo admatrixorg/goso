@@ -4,10 +4,15 @@ package builtin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/connector"
 )
 
 func TestInvoke_FSEmptyEnvNoTouch(t *testing.T) {
@@ -429,5 +434,382 @@ func TestInvoke_SendFileEmptyEnvNoTouch(t *testing.T) {
 	res, err := Invoke(context.Background(), ToolSendFile, map[string]any{"path": target}, true)
 	if err != nil || res == nil || res.Status != "not_configured" {
 		t.Fatalf("empty %v %+v", err, res)
+	}
+}
+
+func TestInvoke_SearchHappyAndJail(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "notes", "a.md"), []byte("Hello GOSO\nsecond\nHELLO again"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "root.txt"), []byte("no match here"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("search %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	if len(hits) != 2 {
+		t.Fatalf("hits %+v", m["hits"])
+	}
+	if hits[0]["path"] != "notes/a.md" || hits[0]["line"] != 1 || hits[0]["snippet"] != "Hello GOSO" {
+		t.Fatalf("hit0 %+v", hits[0])
+	}
+	if hits[1]["line"] != 3 {
+		t.Fatalf("hit1 %+v", hits[1])
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": "notes"}, false)
+	if err != nil || res.Status != "ok" {
+		t.Fatalf("scoped %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	hits, _ = m["hits"].([]map[string]any)
+	if len(hits) != 2 {
+		t.Fatalf("scoped hits %+v", m["hits"])
+	}
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "secret.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": ".."}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("dotdot %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("dotdot msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": filepath.Join(other, "secret.txt")}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("abs outside %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("abs outside msg %+v", m)
+	}
+}
+
+func TestInvoke_SearchEmptyQNoWalk(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "  "}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("empty q %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "q is required" {
+		t.Fatalf("empty q msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{"q": "", "path": ".."}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("empty q escape %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "q is required" {
+		t.Fatalf("must not walk path %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("missing q %v %+v", err, res)
+	}
+}
+
+func TestInvoke_SearchEmptyEnvNoTouch(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "secret.txt")
+	if err := os.WriteFile(target, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": target}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+}
+
+func TestInvoke_SearchCapBinaryAndLargeSkip(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	var b strings.Builder
+	for i := 0; i < 60; i++ {
+		b.WriteString("needle line\n")
+	}
+	if err := os.WriteFile(filepath.Join(ws, "many.txt"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "bin.dat"), []byte("needle\x00hidden"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	big := strings.Repeat("needle ", (MaxReadBytes/7)+8)
+	if err := os.WriteFile(filepath.Join(ws, "big.txt"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "needle"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("search %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	if len(hits) != maxFSHits {
+		t.Fatalf("cap got %d", len(hits))
+	}
+	if m["truncated"] != true {
+		t.Fatalf("truncated %+v", m)
+	}
+	for _, h := range hits {
+		if h["path"] != "many.txt" {
+			t.Fatalf("binary or large leaked %+v", h)
+		}
+	}
+}
+
+func TestInvoke_SearchSymlinkEscape(t *testing.T) {
+	ws := t.TempDir()
+	other := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	secret := filepath.Join(other, "secret.txt")
+	if err := os.WriteFile(secret, []byte("needle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(ws, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(ws, "out")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "needle"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("search %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	if len(hits) != 0 {
+		t.Fatalf("symlink leaked %+v", hits)
+	}
+	res, err = Invoke(context.Background(), ToolSearch, map[string]any{"q": "needle", "path": "out"}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("dir symlink %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("dir symlink msg %+v", m)
+	}
+}
+
+func TestInvoke_GlobHappyAndJail(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "notes", "a.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "notes", "b.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "c.md"), []byte("z"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "*.md"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("glob %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	got := map[string]bool{}
+	for _, h := range hits {
+		p, _ := h["path"].(string)
+		got[p] = true
+	}
+	if !got["c.md"] || !got["notes/a.md"] {
+		t.Fatalf("basename+rel %+v", hits)
+	}
+	if got["notes/b.txt"] {
+		t.Fatalf("txt matched %+v", hits)
+	}
+	res, err = Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "notes/*.md"}, false)
+	if err != nil || res.Status != "ok" {
+		t.Fatalf("path pattern %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	hits, _ = m["hits"].([]map[string]any)
+	if len(hits) != 1 || hits[0]["path"] != "notes/a.md" {
+		t.Fatalf("path pattern hits %+v", hits)
+	}
+	res, err = Invoke(context.Background(), ToolGlob, map[string]any{"pattern": ".."}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("dotdot %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("dotdot msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "../secret"}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("dotdot prefix %v %+v", err, res)
+	}
+	m, _ = res.Content.(map[string]any)
+	if m["error"] != "path escape" {
+		t.Fatalf("dotdot prefix msg %+v", m)
+	}
+}
+
+func TestInvoke_GlobEmptyPatternNoWalk(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.WriteFile(filepath.Join(ws, "a.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "  "}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "pattern is required" {
+		t.Fatalf("empty msg %+v", m)
+	}
+	res, err = Invoke(context.Background(), ToolGlob, map[string]any{}, true)
+	if err != nil || res.Status != "error" {
+		t.Fatalf("missing %v %+v", err, res)
+	}
+}
+
+func TestInvoke_GlobEmptyEnvNoTouch(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "*.md"}, true)
+	if err != nil || res == nil || res.Status != "not_configured" {
+		t.Fatalf("empty %v %+v", err, res)
+	}
+}
+
+func TestInvoke_GlobCap(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	for i := 0; i < maxListEnts+10; i++ {
+		name := filepath.Join(ws, fmt.Sprintf("f%03d.txt", i))
+		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "*.txt"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("glob %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	if len(hits) != maxListEnts {
+		t.Fatalf("cap got %d", len(hits))
+	}
+	if m["truncated"] != true {
+		t.Fatalf("truncated %+v", m)
+	}
+}
+
+func TestInvoke_GlobSymlinkNoEscape(t *testing.T) {
+	ws := t.TempDir()
+	other := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.WriteFile(filepath.Join(other, "secret.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(other, "secret.md"), filepath.Join(ws, "link.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(ws, "out")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "*.md"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("glob %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	hits, _ := m["hits"].([]map[string]any)
+	for _, h := range hits {
+		p, _ := h["path"].(string)
+		if strings.Contains(p, "secret") || strings.HasPrefix(p, "out/") {
+			t.Fatalf("escaped %+v", hits)
+		}
+	}
+}
+
+func TestInvoke_SearchMissingPathNotFound(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": "nope"}, true)
+	if err != nil || res == nil || res.Status != "not_found" {
+		t.Fatalf("missing %v %+v", err, res)
+	}
+}
+
+func TestInvoke_SearchSkipsFifo(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("needle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(ws, "pipe"), 0o644); err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	type ret struct {
+		res *connector.InvokeResult
+		err error
+	}
+	ch := make(chan ret, 1)
+	go func() {
+		r, e := Invoke(ctx, ToolSearch, map[string]any{"q": "needle"}, false)
+		ch <- ret{r, e}
+	}()
+	select {
+	case <-ctx.Done():
+		t.Fatal("search hung on fifo")
+	case got := <-ch:
+		if got.err != nil || got.res == nil || got.res.Status != "ok" {
+			t.Fatalf("search %v %+v", got.err, got.res)
+		}
+		m, _ := got.res.Content.(map[string]any)
+		hits, _ := m["hits"].([]map[string]any)
+		if len(hits) != 1 || hits[0]["path"] != "a.txt" {
+			t.Fatalf("hits %+v", hits)
+		}
+	}
+}
+
+func TestInvoke_GlobInvalidPattern(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", ws)
+	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "["}, true)
+	if err != nil || res == nil || res.Status != "error" {
+		t.Fatalf("invalid %v %+v", err, res)
+	}
+	m, _ := res.Content.(map[string]any)
+	if m["error"] != "invalid pattern" {
+		t.Fatalf("msg %+v", m)
+	}
+}
+
+func TestConfigured_SearchGlobWorkspace(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	if Configured(ToolSearch) || Configured(ToolGlob) {
+		t.Fatal("empty workspace must not configure search/glob")
+	}
+	t.Setenv("GOSO_WORKSPACE", t.TempDir())
+	if !Configured(ToolSearch) || !Configured(ToolGlob) {
+		t.Fatal("workspace must configure search/glob")
 	}
 }
