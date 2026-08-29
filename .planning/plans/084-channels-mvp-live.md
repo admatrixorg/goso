@@ -241,21 +241,21 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 
 ## Trạng thái cook
 
-- [ ] T01 glossary (optional)
-- [ ] T02 store tables + DeleteSecret
-- [ ] T03 pairing helper
-- [ ] T04 CheckPolicy
-- [ ] T05 `/api/channel-pairing`
-- [ ] T06 PATCH non-secret + binding
-- [ ] T07 secrets-box overlay
-- [ ] T08 health / lite / parked / env_names
-- [ ] T09 Telegram Start
-- [ ] T10 `ws_up`
-- [ ] T11 Zalo OA verify
-- [ ] T12 Personal QR/logout
-- [ ] T13 CP UI
-- [ ] T14 docs + smoke script
-- [ ] T15 QC
+- [x] T01 glossary (optional)
+- [x] T02 store tables + DeleteSecret
+- [x] T03 pairing helper
+- [x] T04 CheckPolicy
+- [x] T05 `/api/channel-pairing`
+- [x] T06 PATCH non-secret + binding
+- [x] T07 secrets-box overlay
+- [x] T08 health / lite / parked / env_names
+- [x] T09 Telegram Start
+- [x] T10 `ws_up`
+- [x] T11 Zalo OA verify
+- [x] T12 Personal QR/logout
+- [x] T13 CP UI
+- [x] T14 docs + smoke script
+- [x] T15 QC
 
 ---
 

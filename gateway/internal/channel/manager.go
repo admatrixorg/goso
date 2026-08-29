@@ -121,5 +121,3 @@ func (m *Manager) Transport(name string) string {
 	defer m.mu.Unlock()
 	return m.transport[name]
 }
-
-

@@ -26,12 +26,12 @@ type Telegram struct {
 	LLM      llm.Provider
 	Meter    *billing.Store
 	// Sender can be overridden in tests to capture sendMessage calls.
-	Sender      func(ctx context.Context, chatID int64, text string) error
-	HTTPClient  *http.Client
-	APIBase     string
-	probeEvery  time.Duration
-	onProbeFail func(error)
-	pollStop    context.CancelFunc
+	Sender       func(ctx context.Context, chatID int64, text string) error
+	HTTPClient   *http.Client
+	APIBase      string
+	probeEvery   time.Duration
+	onProbeFail  func(error)
+	pollStop     context.CancelFunc
 	pollCancelMu sync.Mutex
 }
 

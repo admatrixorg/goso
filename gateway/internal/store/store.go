@@ -463,29 +463,29 @@ func LiteEnabled() bool {
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
-	mu           sync.RWMutex
-	agents       map[string]*Agent
-	sessions     map[string]*Session
-	messages     map[string][]*Message // session_id -> messages
-	memories     map[string][]*Memory  // session_id -> memories
-	connectors   map[string]*ConnectorRecord
-	agentConns   map[string]map[string]struct{} // agent_id -> connector names
-	vaultDocs    map[string]*VaultDoc
-	vaultLinks   map[string][]VaultLink // from_id -> outbound
-	teams        map[string]*Team
-	teamMembers  map[string][]*TeamMember  // team_id
-	teamTasks    map[string]*TeamTask      // task id
-	teamMsgs     map[string][]*TeamMessage // team_id
-	agentLinks   map[string][]string       // from -> to ids
-	metrics      map[string]*AgentMetrics
-	evoApplied   map[string]map[string]bool // agent_id -> suggestion_id
-	evoGuard     map[string]EvolutionGuardrails
-	secrets      map[string]SecretRow
-	toolFlags    map[string]bool
-	cronJobs     map[string]*CronJob
-	llmProviders map[string]*LLMProvider
-	webhooks     map[string]*Webhook
-	webhookJobs  map[string]*WebhookJob
+	mu             sync.RWMutex
+	agents         map[string]*Agent
+	sessions       map[string]*Session
+	messages       map[string][]*Message // session_id -> messages
+	memories       map[string][]*Memory  // session_id -> memories
+	connectors     map[string]*ConnectorRecord
+	agentConns     map[string]map[string]struct{} // agent_id -> connector names
+	vaultDocs      map[string]*VaultDoc
+	vaultLinks     map[string][]VaultLink // from_id -> outbound
+	teams          map[string]*Team
+	teamMembers    map[string][]*TeamMember  // team_id
+	teamTasks      map[string]*TeamTask      // task id
+	teamMsgs       map[string][]*TeamMessage // team_id
+	agentLinks     map[string][]string       // from -> to ids
+	metrics        map[string]*AgentMetrics
+	evoApplied     map[string]map[string]bool // agent_id -> suggestion_id
+	evoGuard       map[string]EvolutionGuardrails
+	secrets        map[string]SecretRow
+	toolFlags      map[string]bool
+	cronJobs       map[string]*CronJob
+	llmProviders   map[string]*LLMProvider
+	webhooks       map[string]*Webhook
+	webhookJobs    map[string]*WebhookJob
 	kgEntities     map[string]*KGEntity
 	kgRelations    map[string]*KGRelation
 	channelConfig  map[string]*ChannelConfig
@@ -512,28 +512,28 @@ func Open(path string) (StoreIface, func() error, error) {
 
 func New() *Store {
 	return &Store{
-		agents:       make(map[string]*Agent),
-		sessions:     make(map[string]*Session),
-		messages:     make(map[string][]*Message),
-		memories:     make(map[string][]*Memory),
-		connectors:   make(map[string]*ConnectorRecord),
-		agentConns:   make(map[string]map[string]struct{}),
-		vaultDocs:    make(map[string]*VaultDoc),
-		vaultLinks:   make(map[string][]VaultLink),
-		teams:        make(map[string]*Team),
-		teamMembers:  make(map[string][]*TeamMember),
-		teamTasks:    make(map[string]*TeamTask),
-		teamMsgs:     make(map[string][]*TeamMessage),
-		agentLinks:   make(map[string][]string),
-		metrics:      make(map[string]*AgentMetrics),
-		evoApplied:   make(map[string]map[string]bool),
-		evoGuard:     make(map[string]EvolutionGuardrails),
-		secrets:      make(map[string]SecretRow),
-		toolFlags:    make(map[string]bool),
-		cronJobs:     make(map[string]*CronJob),
-		llmProviders: make(map[string]*LLMProvider),
-		webhooks:     make(map[string]*Webhook),
-		webhookJobs:  make(map[string]*WebhookJob),
+		agents:         make(map[string]*Agent),
+		sessions:       make(map[string]*Session),
+		messages:       make(map[string][]*Message),
+		memories:       make(map[string][]*Memory),
+		connectors:     make(map[string]*ConnectorRecord),
+		agentConns:     make(map[string]map[string]struct{}),
+		vaultDocs:      make(map[string]*VaultDoc),
+		vaultLinks:     make(map[string][]VaultLink),
+		teams:          make(map[string]*Team),
+		teamMembers:    make(map[string][]*TeamMember),
+		teamTasks:      make(map[string]*TeamTask),
+		teamMsgs:       make(map[string][]*TeamMessage),
+		agentLinks:     make(map[string][]string),
+		metrics:        make(map[string]*AgentMetrics),
+		evoApplied:     make(map[string]map[string]bool),
+		evoGuard:       make(map[string]EvolutionGuardrails),
+		secrets:        make(map[string]SecretRow),
+		toolFlags:      make(map[string]bool),
+		cronJobs:       make(map[string]*CronJob),
+		llmProviders:   make(map[string]*LLMProvider),
+		webhooks:       make(map[string]*Webhook),
+		webhookJobs:    make(map[string]*WebhookJob),
 		kgEntities:     make(map[string]*KGEntity),
 		kgRelations:    make(map[string]*KGRelation),
 		channelConfig:  make(map[string]*ChannelConfig),

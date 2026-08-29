@@ -9,14 +9,14 @@ import (
 
 // ChannelConfig is non-secret per-catalog-name channel settings (SPEC 084).
 type ChannelConfig struct {
-	Name            string    `json:"name"`
-	Enabled         bool      `json:"enabled"`
-	AgentID         string    `json:"agent_id,omitempty"`
-	DMPolicy        string    `json:"dm_policy"`
-	GroupPolicy     string    `json:"group_policy"`
-	RequireMention  bool      `json:"require_mention"`
-	AllowFrom       []string  `json:"allow_from,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Name           string    `json:"name"`
+	Enabled        bool      `json:"enabled"`
+	AgentID        string    `json:"agent_id,omitempty"`
+	DMPolicy       string    `json:"dm_policy"`
+	GroupPolicy    string    `json:"group_policy"`
+	RequireMention bool      `json:"require_mention"`
+	AllowFrom      []string  `json:"allow_from,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // ChannelPairing is a hashed DM pairing request (not 077 view-token pairing).

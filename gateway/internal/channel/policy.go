@@ -33,10 +33,10 @@ type Policy struct {
 type PolicyAction string
 
 const (
-	PolicyAccept          PolicyAction = "accept"
-	PolicyReject          PolicyAction = "reject"
-	PolicyNeedPairing     PolicyAction = "pairing"
-	PolicyNeedMention     PolicyAction = "mention"
+	PolicyAccept      PolicyAction = "accept"
+	PolicyReject      PolicyAction = "reject"
+	PolicyNeedPairing PolicyAction = "pairing"
+	PolicyNeedMention PolicyAction = "mention"
 )
 
 // DefaultPolicy returns SPEC §6 defaults for a catalog name.
