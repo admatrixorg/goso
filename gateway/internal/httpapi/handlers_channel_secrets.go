@@ -71,13 +71,7 @@ func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "no secret fields")
 			return
 		}
-		var row channel.Info
-		for _, c := range overlayChannelRows(st, channel.CatalogWith(st, nil)) {
-			if c.Name == name {
-				row = c
-				break
-			}
-		}
+		row := channelRowByName(st, name)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":         true,
 			"name":       name,
@@ -86,6 +80,58 @@ func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
 			"written":    written,
 		})
 	}
+}
+
+func handleDeleteChannelSecrets(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		if !channel.Known(name) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		if store.LiteEnabled() {
+			writeErr(w, http.StatusForbidden, "lite: channels off")
+			return
+		}
+		fields := channel.WritableFields(name)
+		if fields == nil {
+			if name == "zalo-personal" {
+				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")
+				return
+			}
+			writeErr(w, http.StatusConflict, "parked")
+			return
+		}
+		cleared := make([]string, 0, len(fields))
+		for _, field := range fields {
+			kind, ok := channel.FieldKind(name, field)
+			if !ok {
+				continue
+			}
+			if err := secrets.Delete(st, channel.SecretName(name, kind)); err != nil {
+				writeErr(w, http.StatusInternalServerError, "clear failed")
+				return
+			}
+			cleared = append(cleared, field)
+		}
+		row := channelRowByName(st, name)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":         true,
+			"name":       name,
+			"secret_set": row.SecretSet,
+			"from_env":   row.FromEnv,
+			"cleared":    cleared,
+		})
+	}
+}
+
+func channelRowByName(st store.StoreIface, name string) channel.Info {
+	for _, c := range overlayChannelRows(st, channel.CatalogWith(st, nil)) {
+		if c.Name == name {
+			return c
+		}
+	}
+	return channel.Info{Name: name}
 }
 
 func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {

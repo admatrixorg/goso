@@ -1,7 +1,25 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "../api/client";
-import { channelsApi, type ChannelPairingItem, type ChannelRow } from "../api/channels";
-import { useI18n } from "../i18n";
+import {
+  canClearBox,
+  channelRemediation,
+  channelsApi,
+  DM_POLICIES,
+  filterChannels,
+  formatAllowFrom,
+  GROUP_POLICIES,
+  isPhase2,
+  normalizeChannelRow,
+  parseAllowFrom,
+  sanitizePairingItem,
+  secretPutBody,
+  type ChannelHealthFilter,
+  type ChannelPairingItem,
+  type ChannelRemediation,
+  type ChannelRow,
+} from "../api/channels";
+import { redactPublicText } from "../api/public-error";
+import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
@@ -16,9 +34,38 @@ function healthTone(h: string): "positive" | "warning" | "critical" | "neutral" 
   return "neutral";
 }
 
+function policyLabel(v: string): MsgKey {
+  if (v === "open") return "channels.policy.open";
+  if (v === "pairing") return "channels.policy.pairing";
+  if (v === "allowlist") return "channels.policy.allowlist";
+  return "channels.policy.disabled";
+}
+
+function remediateKey(kind: ChannelRemediation): MsgKey {
+  if (kind === "missing") return "channels.remediate.missing";
+  if (kind === "failed") return "channels.remediate.failed";
+  if (kind === "parked") return "channels.remediate.parked";
+  if (kind === "stopped") return "channels.remediate.stopped";
+  if (kind === "from_env") return "channels.remediate.from_env";
+  return "channels.remediate.ok";
+}
+
 type Draft = { bot_token: string; access_token: string; app_secret: string };
 
 const emptyDraft = (): Draft => ({ bot_token: "", access_token: "", app_secret: "" });
+
+const HEALTH_FILTERS: ChannelHealthFilter[] = ["running", "failed", "missing", "parked", "stopped"];
+
+const pwStyle: CSSProperties = {
+  fontSize: 12.5,
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--card)",
+  color: "var(--text)",
+  width: "100%",
+  boxSizing: "border-box",
+};
 
 export function ChannelsPage() {
   const { t } = useI18n();
@@ -32,43 +79,30 @@ export function ChannelsPage() {
   const [pending, setPending] = useState<ChannelPairingItem[]>([]);
   const [qrStatus, setQrStatus] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [allowDrafts, setAllowDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState("");
   const [testing, setTesting] = useState("");
+  const [clearing, setClearing] = useState("");
+  const [query, setQuery] = useState("");
+  const [healthFilter, setHealthFilter] = useState<ChannelHealthFilter>("");
+
+  const visible = useMemo(() => filterChannels(rows, { query, health: healthFilter }), [rows, query, healthFilter]);
+  const filteredEmpty = !loading && rows.length > 0 && visible.length === 0;
 
   async function load() {
     try {
       const j = await channelsApi.list();
-      const list = (j.channels ?? []).map((c) => {
-        const envNames = Array.isArray(c?.env_names)
-          ? c.env_names.filter((n): n is string => typeof n === "string" && n.length > 0)
-          : [];
-        const env = typeof c?.env === "string" ? c.env : "";
-        const writable = Array.isArray(c?.writable)
-          ? c.writable.filter((n): n is string => typeof n === "string" && n.length > 0)
-          : [];
-        return {
-          name: typeof c?.name === "string" ? c.name : "",
-          configured: c?.configured === true,
-          missing: c?.missing === true || c?.configured !== true,
-          env,
-          env_names: envNames.length ? envNames : env ? [env] : [],
-          health: typeof c?.health === "string" ? c.health : "",
-          dm_policy: typeof c?.dm_policy === "string" ? c.dm_policy : "",
-          group_policy: typeof c?.group_policy === "string" ? c.group_policy : "",
-          bound_agent_id: typeof c?.bound_agent_id === "string" ? c.bound_agent_id : "",
-          phase: typeof c?.phase === "number" ? c.phase : 0,
-          last_error: typeof c?.last_error === "string" ? c.last_error : "",
-          secret_set: c?.secret_set === true,
-          from_env: c?.from_env === true,
-          writable,
-        } satisfies ChannelRow;
-      });
-      setRows(list.filter((c) => c.name));
+      const list = (j.channels ?? []).map((c) => normalizeChannelRow(c)).filter((c): c is ChannelRow => c != null);
+      setRows(list);
       setLite(j.lite === true);
       const ag = await api.listAgents().catch(() => ({ agents: [] }));
       setAgents(ag.agents ?? []);
       const pr = await channelsApi.pairingList().catch(() => ({ items: [] as ChannelPairingItem[] }));
-      setPending((pr.items ?? []).filter((i) => i.status === "pending"));
+      setPending(
+        (pr.items ?? [])
+          .map((i) => sanitizePairingItem(i))
+          .filter((i) => i.status === "pending" && i.id),
+      );
       const qr = await channelsApi.qr().catch(() => ({ status: "" }));
       setQrStatus(qr.status ?? "");
       setErr("");
@@ -102,16 +136,21 @@ export function ChannelsPage() {
     }
   }
 
-  async function enableTelegramPairing() {
+  async function patchPolicy(name: string, body: Record<string, unknown>) {
+    setErr("");
+    setOk("");
     try {
-      await channelsApi.patch("telegram", { dm_policy: "pairing" });
+      await channelsApi.patch(name, body);
+      setOk(t("channels.policySaved"));
       await load();
     } catch (e) {
       setErr(formatPublicError(e));
     }
   }
 
-  const telegramPolicy = rows.find((c) => c.name === "telegram")?.dm_policy || "";
+  const telegram = rows.find((c) => c.name === "telegram");
+  const zaloOa = rows.find((c) => c.name === "zalo-oa");
+  const telegramPolicy = telegram?.dm_policy || "";
 
   function draftOf(name: string): Draft {
     return drafts[name] ?? emptyDraft();
@@ -121,13 +160,12 @@ export function ChannelsPage() {
     setDrafts((prev) => ({ ...prev, [name]: { ...emptyDraft(), ...prev[name], ...patch } }));
   }
 
+  function allowOf(c: ChannelRow): string {
+    return allowDrafts[c.name] ?? formatAllowFrom(c.allow_from);
+  }
+
   async function saveSecrets(c: ChannelRow) {
-    const d = draftOf(c.name);
-    const body: Record<string, string> = {};
-    for (const field of c.writable ?? []) {
-      const v = (d as Record<string, string>)[field];
-      if (typeof v === "string" && v.trim()) body[field] = v.trim();
-    }
+    const body = secretPutBody(c.writable, draftOf(c.name));
     if (!Object.keys(body).length) {
       setErr(t("channels.needSecret"));
       return;
@@ -148,6 +186,24 @@ export function ChannelsPage() {
     }
   }
 
+  async function clearSecrets(c: ChannelRow) {
+    if (!canClearBox(c)) return;
+    if (!window.confirm(t("channels.confirmClear", { name: c.name }))) return;
+    setClearing(c.name);
+    setErr("");
+    setOk("");
+    try {
+      const r = await channelsApi.clearSecrets(c.name);
+      setDrafts((prev) => ({ ...prev, [c.name]: emptyDraft() }));
+      setOk(r.from_env ? t("channels.fromEnvClearHint") : t("channels.cleared"));
+      await load();
+    } catch (e) {
+      setErr(formatPublicError(e));
+    } finally {
+      setClearing("");
+    }
+  }
+
   async function testChannel(name: string) {
     setTesting(name);
     setErr("");
@@ -163,16 +219,14 @@ export function ChannelsPage() {
     }
   }
 
-  const pwStyle: CSSProperties = {
-    fontSize: 12.5,
-    padding: "6px 10px",
-    borderRadius: 8,
-    border: "1px solid var(--border)",
-    background: "var(--card)",
-    color: "var(--text)",
-    width: "100%",
-    boxSizing: "border-box",
-  };
+  async function saveAllow(c: ChannelRow) {
+    await patchPolicy(c.name, { allow_from: parseAllowFrom(allowOf(c)) });
+    setAllowDrafts((prev) => {
+      const next = { ...prev };
+      delete next[c.name];
+      return next;
+    });
+  }
 
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -190,6 +244,7 @@ export function ChannelsPage() {
       {ok ? <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--text-2)" }}>{ok}</p> : null}
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.envOnly")}</p>
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.noSecrets")}</p>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.emptyPut")}</p>
       {loading ? (
         <StatusLine kind="loading" />
       ) : lite ? (
@@ -204,16 +259,44 @@ export function ChannelsPage() {
           />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.45 }}>{t("channels.pairing.guide")}</p>
-            {telegramPolicy ? (
-              <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.pairing.policy", { policy: telegramPolicy })}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.pairing.noCode")}</p>
+            {telegram ? (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 280 }}>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.pairing.dm")}</span>
+                <select
+                  className="z-field"
+                  aria-label={t("channels.pairing.dm")}
+                  value={telegram.dm_policy || ""}
+                  onChange={(e) => void patchPolicy("telegram", { dm_policy: e.target.value })}
+                >
+                  {DM_POLICIES.map((p) => (
+                    <option key={p} value={p}>{t(policyLabel(p))}</option>
+                  ))}
+                </select>
+              </label>
             ) : null}
             {telegramPolicy === "open" ? (
               <>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.pairing.openHint")}</p>
                 <div>
-                  <Button onClick={() => void enableTelegramPairing()}>{t("channels.pairing.enable")}</Button>
+                  <Button onClick={() => void patchPolicy("telegram", { dm_policy: "pairing" })}>{t("channels.pairing.enable")}</Button>
                 </div>
               </>
+            ) : null}
+            {zaloOa ? (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 280 }}>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.pairing.oaDm")}</span>
+                <select
+                  className="z-field"
+                  aria-label={t("channels.pairing.oaDm")}
+                  value={zaloOa.dm_policy || ""}
+                  onChange={(e) => void patchPolicy("zalo-oa", { dm_policy: e.target.value })}
+                >
+                  {DM_POLICIES.map((p) => (
+                    <option key={p} value={p}>{t(policyLabel(p))}</option>
+                  ))}
+                </select>
+              </label>
             ) : null}
             {pending.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.pairing.empty")}</p>
@@ -246,7 +329,30 @@ export function ChannelsPage() {
           </div>
         </Card>
         <Card>
-          <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: rows.length })} />
+          <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: visible.length })} />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 16px 8px" }}>
+            <input
+              className="z-field"
+              style={{ flex: 1, minWidth: 160 }}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("channels.search")}
+              aria-label={t("channels.search")}
+              autoComplete="off"
+            />
+            <select
+              className="z-field"
+              aria-label={t("channels.filterHealth")}
+              value={healthFilter}
+              onChange={(e) => setHealthFilter(e.target.value as ChannelHealthFilter)}
+              style={{ minWidth: 140 }}
+            >
+              <option value="">{t("channels.filterHealthAll")}</option>
+              {HEALTH_FILTERS.map((h) => (
+                <option key={h} value={h}>{t(`channels.health.${h}` as MsgKey)}</option>
+              ))}
+            </select>
+          </div>
           <TableScroll>
           <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
             <span style={{ flex: 1.2 }}>{t("channels.col.name")}</span>
@@ -254,7 +360,11 @@ export function ChannelsPage() {
             <span style={{ flex: 1.2 }}>{t("channels.col.policy")}</span>
             <span style={{ flex: 2.2 }}>{t("channels.col.envNames")}</span>
           </div>
-          {rows.map((c) => (
+          {visible.map((c) => {
+            const parked = isPhase2(c);
+            const writable = c.writable ?? [];
+            const rem = channelRemediation(c);
+            return (
             <div key={c.name} style={{ padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ flex: 1.2, fontWeight: 600 }}>{c.name}</span>
@@ -288,19 +398,72 @@ export function ChannelsPage() {
                       </Button>
                     </span>
                   ))}
-                  {c.last_error ? <span style={{ fontSize: 11, color: "var(--text-3)" }}>{c.last_error}</span> : null}
                 </span>
               </div>
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-3)" }}>{t(remediateKey(rem))}</p>
+              {c.last_error ? <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--text-3)" }}>{redactPublicText(c.last_error)}</p> : null}
               {c.name === "zalo-personal" ? (
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-3)" }}>{t("channels.personalNoToken")}</p>
               ) : null}
-              {c.phase === 2 ? (
+              {parked ? (
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-3)" }}>{t("channels.parkedNoSecret")}</p>
-              ) : null}
-              {(c.writable ?? []).length > 0 ? (
+              ) : (
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.dmPolicy")}</span>
+                    <select
+                      className="z-field"
+                      aria-label={t("channels.dmPolicy")}
+                      value={c.dm_policy || ""}
+                      onChange={(e) => void patchPolicy(c.name, { dm_policy: e.target.value })}
+                    >
+                      {DM_POLICIES.map((p) => (
+                        <option key={p} value={p}>{t(policyLabel(p))}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.groupPolicy")}</span>
+                    <select
+                      className="z-field"
+                      aria-label={t("channels.groupPolicy")}
+                      value={c.group_policy || ""}
+                      onChange={(e) => void patchPolicy(c.name, { group_policy: e.target.value })}
+                    >
+                      {GROUP_POLICIES.map((p) => (
+                        <option key={p} value={p}>{t(policyLabel(p))}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={c.require_mention === true}
+                      onChange={(e) => void patchPolicy(c.name, { require_mention: e.target.checked })}
+                    />
+                    {t("channels.requireMention")}
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.allowFrom")}</span>
+                    <textarea
+                      className="z-field"
+                      aria-label={t("channels.allowFrom")}
+                      rows={2}
+                      value={allowOf(c)}
+                      onChange={(e) => setAllowDrafts((prev) => ({ ...prev, [c.name]: e.target.value }))}
+                      style={{ resize: "vertical", minHeight: 48 }}
+                    />
+                    <span style={{ fontSize: 11, color: "var(--text-3)" }}>{t("channels.allowFromHint")}</span>
+                    <div>
+                      <Button onClick={() => void saveAllow(c)}>{t("channels.savePolicy")}</Button>
+                    </div>
+                  </label>
+                </div>
+              )}
+              {writable.length > 0 ? (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, maxWidth: 520 }}>
                   {c.from_env ? <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.fromEnv")}</p> : null}
-                  {(c.writable ?? []).includes("bot_token") ? (
+                  {writable.includes("bot_token") ? (
                     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.botToken")}</span>
                       <input
@@ -314,7 +477,7 @@ export function ChannelsPage() {
                       <span style={{ fontSize: 11, color: "var(--text-3)" }}>{t("channels.botTokenHint")}</span>
                     </label>
                   ) : null}
-                  {(c.writable ?? []).includes("access_token") ? (
+                  {writable.includes("access_token") ? (
                     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.accessToken")}</span>
                       <input
@@ -326,7 +489,7 @@ export function ChannelsPage() {
                       />
                     </label>
                   ) : null}
-                  {(c.writable ?? []).includes("app_secret") ? (
+                  {writable.includes("app_secret") ? (
                     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 600 }}>{t("channels.appSecret")}</span>
                       <input
@@ -341,16 +504,29 @@ export function ChannelsPage() {
                   ) : null}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <Button disabled={saving === c.name} onClick={() => void saveSecrets(c)}>
-                      {t("channels.saveSecrets")}
+                      {c.secret_set ? t("channels.rotate") : t("channels.saveSecrets")}
                     </Button>
+                    {canClearBox(c) ? (
+                      <Button disabled={clearing === c.name} onClick={() => void clearSecrets(c)}>
+                        {t("channels.clear")}
+                      </Button>
+                    ) : null}
                     <Button disabled={testing === c.name} onClick={() => void testChannel(c.name)}>
                       {t("channels.test")}
                     </Button>
                   </div>
                 </div>
+              ) : c.name === "zalo-personal" ? (
+                <div style={{ marginTop: 10 }}>
+                  <Button disabled={testing === c.name} onClick={() => void testChannel(c.name)}>
+                    {t("channels.test")}
+                  </Button>
+                </div>
               ) : null}
             </div>
-          ))}
+            );
+          })}
+          {filteredEmpty ? <EmptyState>{t("channels.filterEmpty")}</EmptyState> : null}
           {rows.length === 0 ? <EmptyState>{t("channels.empty")}</EmptyState> : null}
           </TableScroll>
         </Card>
@@ -359,7 +535,14 @@ export function ChannelsPage() {
           <p style={{ margin: "0 16px 8px", fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.qr.risk")}</p>
           <p style={{ margin: "0 16px 8px", fontSize: 12.5 }}>{t("channels.qr.status", { status: qrStatus || "—" })}</p>
           <div style={{ padding: "0 16px 16px" }}>
-            <Button onClick={() => void channelsApi.logoutPersonal().then(load).catch((e) => setErr(formatPublicError(e)))}>{t("channels.qr.logout")}</Button>
+            <Button
+              onClick={() => {
+                if (!window.confirm(t("channels.logoutConfirm"))) return;
+                void channelsApi.logoutPersonal().then(load).catch((e) => setErr(formatPublicError(e)));
+              }}
+            >
+              {t("channels.qr.logout")}
+            </Button>
           </div>
         </Card>
         </>
