@@ -162,3 +162,65 @@ func TestVaultAPI_NotFound(t *testing.T) {
 		t.Fatalf("empty title %d", w.Code)
 	}
 }
+
+func TestVaultAPI_HealthAndGraph(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOSO_VAULT_DIR", root)
+	_, h := newTestServer()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PUT", "/api/vault/docs", bytes.NewBufferString(`{"title":"Alpha","body":"see [[Beta]]"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("put alpha %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PUT", "/api/vault/docs", bytes.NewBufferString(`{"title":"Beta","body":"see [[Alpha]]"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("put beta %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/vault/health", nil))
+	if w.Code != 200 {
+		t.Fatalf("health %d %s", w.Code, w.Body.String())
+	}
+	var health struct {
+		Docs  int  `json:"docs"`
+		Stale bool `json:"stale"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil || health.Docs != 2 || health.Stale {
+		t.Fatalf("health body %v %s", err, w.Body.String())
+	}
+	if err := os.WriteFile(filepath.Join(root, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/vault/health", nil))
+	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil || !health.Stale {
+		t.Fatalf("stale %v %s", err, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/vault/graph?limit=40", nil))
+	if w.Code != 200 {
+		t.Fatalf("graph %d %s", w.Code, w.Body.String())
+	}
+	var g struct {
+		Nodes     []map[string]any `json:"nodes"`
+		Edges     []map[string]any `json:"edges"`
+		Truncated bool             `json:"truncated"`
+		NodeCap   int              `json:"node_cap"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil || len(g.Nodes) != 2 || g.Truncated || g.NodeCap != 40 {
+		t.Fatalf("graph body %v %s", err, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/vault/graph?limit=1", nil))
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil || !g.Truncated || len(g.Nodes) != 1 {
+		t.Fatalf("graph cap %v %s", err, w.Body.String())
+	}
+}

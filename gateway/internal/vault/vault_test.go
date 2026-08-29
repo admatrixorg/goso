@@ -221,3 +221,71 @@ func TestParseWikilinksUnclosed(t *testing.T) {
 		t.Fatalf("slug %q", Slug("Foo_Bar Baz"))
 	}
 }
+
+func TestHealth_UnindexedAndHealthy(t *testing.T) {
+	root := t.TempDir()
+	svc := New(store.New(), root)
+	if _, err := svc.Put("Alpha", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	h, err := svc.Health(nil)
+	if err != nil || h == nil || h.Stale || h.Docs != 1 || h.DiskFiles != 1 {
+		t.Fatalf("healthy %v %#v", err, h)
+	}
+	if err := os.WriteFile(filepath.Join(root, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err = svc.Health(nil)
+	if err != nil || h == nil || !h.Stale || h.Unindexed != 1 {
+		t.Fatalf("unindexed %v %#v", err, h)
+	}
+	if _, err := svc.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	h, err = svc.Health(nil)
+	if err != nil || h == nil || h.Stale || h.Docs != 2 {
+		t.Fatalf("after sync %v %#v", err, h)
+	}
+	if err := os.Remove(filepath.Join(root, "extra.md")); err != nil {
+		t.Fatal(err)
+	}
+	h, err = svc.Health(nil)
+	if err != nil || h == nil || !h.Stale || h.MissingOnDisk != 1 {
+		t.Fatalf("missing %v %#v", err, h)
+	}
+}
+
+func TestGraph_CapsNodes(t *testing.T) {
+	root := t.TempDir()
+	svc := New(store.New(), root)
+	a, err := svc.Put("Alpha", "see [[Beta]]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.Put("Beta", "see [[Alpha]]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := svc.Graph(40, nil)
+	if g == nil || g.Truncated || len(g.Nodes) != 2 || len(g.Edges) == 0 {
+		t.Fatalf("graph %#v", g)
+	}
+	ids := map[string]struct{}{}
+	for _, n := range g.Nodes {
+		ids[n.ID] = struct{}{}
+	}
+	if _, ok := ids[a.ID]; !ok {
+		t.Fatalf("missing alpha %#v", g.Nodes)
+	}
+	if _, ok := ids[b.ID]; !ok {
+		t.Fatalf("missing beta %#v", g.Nodes)
+	}
+	capped := svc.Graph(1, nil)
+	if capped == nil || !capped.Truncated || len(capped.Nodes) != 1 || capped.NodeCap != 1 {
+		t.Fatalf("cap %#v", capped)
+	}
+	denied := svc.Graph(40, func(*store.VaultDoc) bool { return false })
+	if denied == nil || len(denied.Nodes) != 0 {
+		t.Fatalf("deny %#v", denied)
+	}
+}
