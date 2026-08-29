@@ -93,7 +93,19 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	in := Inbound{Channel: "zalo-oa", SenderID: userID, ChatID: userID, PeerKind: "direct", Text: text}
 	switch CheckPolicy("zalo-oa", pol, in, paired) {
-	case PolicyReject, PolicyNeedMention, PolicyNeedPairing:
+	case PolicyReject, PolicyNeedMention:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		return
+	case PolicyNeedPairing:
+		if msg := OfferPairingCode(z.Store, "zalo-oa", userID, time.Time{}); msg != "" {
+			sender := z.Sender
+			if sender == nil {
+				sender = z.sendMessage
+			}
+			_ = sender(r.Context(), userID, msg)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))

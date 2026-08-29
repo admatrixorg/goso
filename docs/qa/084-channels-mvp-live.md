@@ -20,8 +20,8 @@ goso mapping (self-written): Telegram `GOSO_TELEGRAM_MODE=poll|webhook` default 
 - Policy/pairing: `TestPolicy_*`, `TestPairing_*`, `TestChannelPairing_HTTP*`
 - PATCH: `TestPatchChannel_NonSecretBinding`, token 400 kept
 - Catalog: 7 names, Slack 2 env names, OA 3 help names, phase-2 parked, Lite no Start
-- Telegram: getMe httptest, webhook without public URL failed, `X-Goso-Telegram-Secret`
-- OA verify demo/prod; Personal QR no cookie; logout box only
+- Telegram: getMe httptest; poll `getUpdates`; webhook without public URL failed; webhook with `GOSO_PUBLIC_URL` calls `setWebhook`; `X-Goso-Telegram-Secret`; pairing inbound sends `Pairing code:` (debounced)
+- OA verify demo/prod; configured OA/Personal health `running` (webhook/sidecar path mounted); Personal QR no cookie; logout box only
 - `ws_up` on stats
 - CP typecheck
 - Live smoke script skip-always without flags

@@ -3,6 +3,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -45,6 +46,15 @@ func (t *Telegram) startLive(ctx context.Context, mgr *Manager) {
 		}
 		return
 	}
+	if mode == "webhook" {
+		pub := strings.TrimSpace(os.Getenv("GOSO_PUBLIC_URL"))
+		if err := t.setWebhook(ctx, token, strings.TrimRight(pub, "/")+"/api/channels/telegram/webhook"); err != nil {
+			if mgr != nil {
+				mgr.SetFailed("telegram", err.Error())
+			}
+			return
+		}
+	}
 	if mgr != nil {
 		mgr.SetRunning("telegram", mode)
 	}
@@ -58,6 +68,7 @@ func (t *Telegram) startLive(ctx context.Context, mgr *Manager) {
 		t.pollStop = cancel
 		t.pollCancelMu.Unlock()
 		go t.pollLoop(cctx, token)
+		go t.pollUpdates(cctx, token)
 	}
 }
 
@@ -119,4 +130,99 @@ func (t *Telegram) pollLoop(ctx context.Context, token string) {
 			}
 		}
 	}
+}
+
+func (t *Telegram) setWebhook(ctx context.Context, token, hookURL string) error {
+	base := t.APIBase
+	if base == "" {
+		base = "https://api.telegram.org"
+	}
+	body, _ := json.Marshal(map[string]any{"url": hookURL})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base, "/")+"/bot"+token+"/setWebhook", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := t.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("setWebhook %d", resp.StatusCode)
+	}
+	var out struct {
+		OK bool `json:"ok"`
+	}
+	_ = json.Unmarshal(b, &out)
+	if !out.OK {
+		return fmt.Errorf("setWebhook not ok")
+	}
+	return nil
+}
+
+func (t *Telegram) pollUpdates(ctx context.Context, token string) {
+	var offset int64
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		updates, err := t.getUpdates(ctx, token, offset)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+			continue
+		}
+		for _, u := range updates {
+			t.dispatchUpdate(ctx, u)
+			if u.UpdateID >= offset {
+				offset = u.UpdateID + 1
+			}
+		}
+	}
+}
+
+func (t *Telegram) getUpdates(ctx context.Context, token string, offset int64) ([]TelegramUpdate, error) {
+	base := t.APIBase
+	if base == "" {
+		base = "https://api.telegram.org"
+	}
+	u := fmt.Sprintf("%s/bot%s/getUpdates?timeout=1&offset=%d", strings.TrimRight(base, "/"), token, offset)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := t.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("getUpdates %d", resp.StatusCode)
+	}
+	var out struct {
+		OK     bool             `json:"ok"`
+		Result []TelegramUpdate `json:"result"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil || !out.OK {
+		return nil, fmt.Errorf("getUpdates decode")
+	}
+	return out.Result, nil
+}
+
+func (t *Telegram) dispatchUpdate(ctx context.Context, upd TelegramUpdate) {
+	_ = t.ingest(ctx, upd)
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -73,6 +74,23 @@ func ApprovePairing(st store.StoreIface, id string, now time.Time) error {
 // DenyPairing marks a pending unexpired row denied.
 func DenyPairing(st store.StoreIface, id string, now time.Time) error {
 	return setPairingStatus(st, id, "denied", now)
+}
+
+var inboundPairDebounce = NewPairingDebounce(0)
+
+// OfferPairingCode mints a pairing instruction (debounced 60s). Empty if capped/debounced/no store.
+func OfferPairingCode(st store.StoreIface, channelName, sender string, now time.Time) string {
+	if st == nil || strings.TrimSpace(sender) == "" {
+		return ""
+	}
+	if !inboundPairDebounce.ShouldSend(channelName, sender, now) {
+		return ""
+	}
+	issued, err := IssuePairing(st, channelName, sender, now)
+	if err != nil || issued == nil {
+		return ""
+	}
+	return "Pairing code: " + issued.Code
 }
 
 func setPairingStatus(st store.StoreIface, id, status string, now time.Time) error {

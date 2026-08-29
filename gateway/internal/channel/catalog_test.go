@@ -66,6 +66,22 @@ func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 	}
 }
 
+func TestCatalog_OAConfiguredIsRunning(t *testing.T) {
+	t.Setenv("GOSO_LITE", "")
+	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "tok")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "sec")
+	got := Catalog()
+	for _, c := range got {
+		if c.Name == "zalo-oa" {
+			if !c.Configured || c.Health != "running" || c.Transport != "webhook" {
+				t.Fatalf("oa %+v", c)
+			}
+			return
+		}
+	}
+	t.Fatal("zalo-oa missing")
+}
+
 var wantEnv = map[string]string{
 	"telegram":      "GOSO_TELEGRAM_BOT_TOKEN",
 	"zalo-personal": "GOSO_ZALO_PERSONAL_TOKEN",

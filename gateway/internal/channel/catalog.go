@@ -172,6 +172,10 @@ func deriveHealth(row Info, mgr *Manager) string {
 	if row.Missing {
 		return "missing"
 	}
+	// Webhook/sidecar inject paths are always mounted for phase-1 OA/Personal.
+	if row.Name == "zalo-oa" || row.Name == "zalo-personal" {
+		return "running"
+	}
 	if mgr != nil && mgr.Running(row.Name) {
 		return "running"
 	}

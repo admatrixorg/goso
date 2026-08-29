@@ -92,11 +92,19 @@ func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	if upd.Message == nil || upd.Message.Text == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
+	warn := t.ingest(r.Context(), upd)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if warn != "" {
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "warning": warn})
 		return
+	}
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
+	if upd.Message == nil || upd.Message.Text == "" {
+		return ""
 	}
 	text := upd.Message.Text
 	chatID := upd.Message.Chat.ID
@@ -118,21 +126,20 @@ func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	if t.Store != nil && fromID != "" {
 		paired = SenderPaired(t.Store, "telegram", fromID, time.Time{})
 	}
+	sendFn := t.Sender
+	if sendFn == nil {
+		sendFn = t.sendMessage
+	}
 	switch CheckPolicy("telegram", pol, in, paired) {
 	case PolicyReject, PolicyNeedMention:
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-		return
+		return ""
 	case PolicyNeedPairing:
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-		return
+		if msg := OfferPairingCode(t.Store, "telegram", fromID, time.Time{}); msg != "" {
+			_ = sendFn(ctx, chatID, msg)
+		}
+		return ""
 	}
 
-	// Find or create session keyed by telegram chat_id.
-	// Use a synthetic agent for telegram.
 	agent := t.ensureAgent()
 	if cfg != nil && cfg.AgentID != "" && t.Store != nil {
 		if a, err := t.Store.GetAgent(cfg.AgentID); err == nil {
@@ -140,44 +147,27 @@ func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sess := t.ensureSession(agent.ID, chatID)
-
-	// Persist user message.
 	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
-
-	// Call LLM.
 	provider := t.LLM
 	if provider == nil {
 		provider = llm.Echo{}
 	}
-	// Build history for LLM.
 	history, _ := t.Store.ListMessages(sess.ID)
 	var msgs []llm.Message
 	for _, m := range history {
 		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
 	}
-	reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
+	reply, usage, err := llm.ChatUsage(ctx, provider, msgs)
 	if err != nil {
 		reply = fmt.Sprintf("LLM error: %v", err)
 	} else {
 		trackUsage(t.Meter, agent.ID, provider.Name(), usage)
 	}
 	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
-
-	// Send reply to Telegram.
-	sendFn := t.Sender
-	if sendFn == nil {
-		sendFn = t.sendMessage
+	if err := sendFn(ctx, chatID, reply); err != nil {
+		return err.Error()
 	}
-	if err := sendFn(r.Context(), chatID, reply); err != nil {
-		// still return 200 to avoid Telegram retry storm; log via error body
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "warning": err.Error()})
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"ok":true}`))
+	return ""
 }
 
 func (t *Telegram) ensureAgent() *store.Agent {
