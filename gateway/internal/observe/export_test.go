@@ -43,10 +43,12 @@ func TestHTTPExporter_PostsJSONNoGrafanaHeader(t *testing.T) {
 	t.Setenv("GRAFANA_CLOUD_API_KEY", "graf-secret")
 	var gotAuth []string
 	var gotCT string
+	var gotUA string
 	var gotBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = append([]string{}, r.Header.Values("Authorization")...)
 		gotCT = r.Header.Get("Content-Type")
+		gotUA = r.Header.Get("User-Agent")
 		gotBody, _ = io.ReadAll(r.Body)
 		for k := range r.Header {
 			if strings.Contains(strings.ToLower(k), "grafana") {
@@ -72,6 +74,9 @@ func TestHTTPExporter_PostsJSONNoGrafanaHeader(t *testing.T) {
 	}
 	if gotCT != "application/json" {
 		t.Fatalf("content-type %s", gotCT)
+	}
+	if gotUA != "goso-otel/1" {
+		t.Fatalf("user-agent %s", gotUA)
 	}
 	if len(gotAuth) != 0 {
 		t.Fatalf("authorization %v", gotAuth)

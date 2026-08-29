@@ -3,6 +3,10 @@
 # Gateway:        http://localhost:8080
 # Control Plane:  http://localhost:3000
 # Optional PG16:  docker compose --profile postgres up -d postgres  (host 5433)
+# Optional Jaeger: docker compose --profile otel up -d jaeger
+#   OTLP HTTP 4318, UI 16686 (not 8082/8091/18080/3000).
+#   Compose-network gateway: GOSO_OTEL_ENDPOINT=http://jaeger:4318/v1/traces
+#   Host-run gateway:        GOSO_OTEL_ENDPOINT=http://127.0.0.1:4318/v1/traces
 
 name: goso
 
@@ -49,6 +53,7 @@ services:
       GOSO_INJECTION: ${GOSO_INJECTION:-}
       GOSO_DEV_MODE: ${GOSO_DEV_MODE:-}
       GOSO_DATABASE_URL: ${GOSO_DATABASE_URL:-}
+      GOSO_OTEL_ENDPOINT: ${GOSO_OTEL_ENDPOINT:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -87,6 +92,17 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  # Local Jaeger all-in-one (SPEC 087). Profile `otel` only — default `up` stays noop OTLP.
+  jaeger:
+    profiles:
+      - otel
+    image: jaegertracing/all-in-one:1.66.0
+    ports:
+      - "4318:4318"
+      - "16686:16686"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
 
 volumes:
   data:

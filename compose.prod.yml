@@ -5,7 +5,8 @@
 # sandbox, browser, selfservice, upgrade). This file adds restart policy,
 # production env, auth token, log rotation, and a SQLite backup sidecar.
 # Optional local Postgres is compose profile `postgres` in compose.yml (SPEC 085),
-# not this overlay — default and demo stay SQLite. Redis/jaeger/tailscale stay docs.
+# not this overlay — default and demo stay SQLite. Optional Jaeger is compose
+# profile `otel` in compose.yml (SPEC 087). Redis/tailscale stay docs.
 
 services:
   gateway:

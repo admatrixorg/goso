@@ -52,7 +52,7 @@ Pairing (SPEC 077): admin `POST /api/pairing` returns a one-time code (10 minute
 
 `GET /api/traces` returns LLM traces plus nested span trees. `GET /metrics` and JSON access logs stay as in SPEC 008.
 
-Optional OTLP: set `GOSO_OTEL_ENDPOINT` to a collector HTTP JSON URL. Empty (default) = no export. Do not put Grafana Cloud API keys in env (DI-18).
+Optional OTLP: set `GOSO_OTEL_ENDPOINT` to a collector HTTP JSON URL. Empty (default) = no export. Local Jaeger: `docker compose --profile otel up -d jaeger`, then host `http://127.0.0.1:4318/v1/traces` (UI `http://127.0.0.1:16686`) or compose-network `http://jaeger:4318/v1/traces`. Do not put Grafana Cloud API keys in env (DI-18).
 
 Dừng: `SIGINT`/`SIGTERM` (Ctrl-C) — gateway shutdown 5s.
 
@@ -69,6 +69,21 @@ go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
 ```
 
 Connect fail is fatal (no SQLite fallback). From a gateway **container**, use `postgres://goso:goso@postgres:5432/goso?sslmode=disable` on the compose network — host port **5433** is for processes on the Mac. `CREATE EXTENSION vector` is optional; search stays lexical. Roundtrip test: `GOSO_TEST_DATABASE_URL=$GOSO_DATABASE_URL go test ./gateway/internal/store -run TestPostgresRoundTrip`. See `docs/qa/085-postgres-local.md`.
+
+### Optional local Jaeger (SPEC 087)
+
+Default `docker compose up` does not start Jaeger. Empty `GOSO_OTEL_ENDPOINT` stays noop. To export OTLP HTTP JSON to a local all-in-one collector:
+
+```bash
+docker compose --profile otel up -d jaeger
+export GOSO_OTEL_ENDPOINT=http://127.0.0.1:4318/v1/traces
+# UI: http://127.0.0.1:16686
+# From a gateway container on the compose network:
+# export GOSO_OTEL_ENDPOINT=http://jaeger:4318/v1/traces
+go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1
+```
+
+Ports **4318** (OTLP HTTP) and **16686** (UI) only — not demo `:8082` `:8091` `:3000` `:18080` `:18088`. `HTTPExporter` sends `User-Agent: goso-otel/1` and never an `Authorization` header. Do not put Grafana Cloud keys in env (DI-18). See `docs/qa/087-otel-local.md`.
 
 ## 2. Backup SQLite
 
@@ -178,7 +193,7 @@ Không có SLA vendor. Con số dưới đây là vận hành GOSO SQLite, khôn
 | **RPO** | Worst case mất dữ liệu từ lần snapshot toàn vẹn gần nhất. Prod sidecar mặc định mỗi `BACKUP_INTERVAL_SECONDS` (3600s) — tối đa ~1 giờ nếu interval giữ nguyên. Snapshot thủ công (`POST /api/system/backup`) rút RPO xuống lần bấm gần nhất. |
 | **RTO** | Dừng gateway, `goso-gateway restore --file … --apply`, khởi động lại. Thường vài phút trên host local; không đo fake. |
 
-TLS: compose không terminate TLS. Khi public, đặt reverse proxy (Caddy/nginx) trước `:8080` / `:3000`. Không bật Grafana. **DI-10** (OTEL collector / Jaeger vendor) và **DI-18** (Grafana SaaS) vẫn parked — `GOSO_OTEL_ENDPOINT` rỗng = noop; không nhét API key Grafana Cloud.
+TLS: compose không terminate TLS. Khi public, đặt reverse proxy (Caddy/nginx) trước `:8080` / `:3000`. Không bật Grafana. Local Jaeger is compose profile `otel` (SPEC 087, OTLP HTTP 4318 / UI 16686) — not a Grafana overlay. **DI-18** (Grafana SaaS) stays parked: `GOSO_OTEL_ENDPOINT` rỗng = noop; không nhét API key Grafana Cloud.
 
 Cảnh báo: compose `healthcheck` + `GET /healthz`. Không có pager / alert vendor trong SPEC 070.
 

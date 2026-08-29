@@ -111,7 +111,7 @@ Environment:
   GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, web_fetch, and browser
   GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = filesystem tools fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
-  GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.
+  GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). Local Jaeger: docker compose --profile otel up -d jaeger then http://127.0.0.1:4318/v1/traces (compose-network http://jaeger:4318/v1/traces). No Grafana Cloud keys.
 
 `, name, version)
 }
