@@ -218,6 +218,8 @@ func writeTenantErr(w http.ResponseWriter, err error) bool {
 		writeErr(w, http.StatusConflict, "cannot deactivate master tenant")
 	case errors.Is(err, tenant.ErrCap):
 		writeErr(w, http.StatusConflict, "too many tenants")
+	case errors.Is(err, tenant.ErrMemberCap):
+		writeErr(w, http.StatusConflict, "too many members")
 	case errors.Is(err, tenant.ErrConfirmRequired):
 		writeErr(w, http.StatusBadRequest, "confirm is required")
 	case errors.Is(err, tenant.ErrConfirm):

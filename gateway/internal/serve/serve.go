@@ -182,6 +182,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 
 	devMode := envTruthy(os.Getenv("GOSO_DEV_MODE"))
 	var handler http.Handler = security.LimitAPI(mux)
+	handler = httpapi.GuardDeactivatedTenant(nil, handler)
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
@@ -195,7 +196,6 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			Bypass:  []string{"/healthz", "/api/webhooks/llm"},
 		})(handler)
 	}
-	handler = httpapi.GuardDeactivatedTenant(nil, handler)
 	handler = obs.Middleware(handler)
 
 	return handler, Status{

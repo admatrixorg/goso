@@ -221,6 +221,29 @@ func TestTenants_ViewTokenGETOnly(t *testing.T) {
 	}
 }
 
+func TestTenants_InvalidPathDoesNotMutateMaster(t *testing.T) {
+	_, _, h := tenantsServer(t)
+	w := tenantJSON(t, h, "GET", "/api/tenants/!!!", "", "", "")
+	if w.Code != 404 {
+		t.Fatalf("get invalid %d %s", w.Code, w.Body.String())
+	}
+	w = tenantJSON(t, h, "POST", "/api/tenants/%20/members", `{"subject":"ops@acme.test","role":"admin"}`, "", "")
+	if w.Code != 404 {
+		t.Fatalf("member invalid %d %s", w.Code, w.Body.String())
+	}
+	w = tenantJSON(t, h, "GET", "/api/tenants/default", "", "", "")
+	if w.Code != 200 {
+		t.Fatalf("master %d %s", w.Code, w.Body.String())
+	}
+	var detail struct {
+		Members []any `json:"members"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &detail)
+	if len(detail.Members) != 0 {
+		t.Fatalf("master members %#v", detail.Members)
+	}
+}
+
 func TestTenantEndpointIncludesMaster(t *testing.T) {
 	_, _, h := tenantsServer(t)
 	w := httptest.NewRecorder()

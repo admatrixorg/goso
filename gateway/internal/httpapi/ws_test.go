@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
 func wsURL(t *testing.T, h http.Handler) (string, func()) {
@@ -77,6 +78,46 @@ func TestWS_PingPongAndChat(t *testing.T) {
 	msgs, _ := st.ListMessages(sess.ID)
 	if len(msgs) != 2 {
 		t.Fatalf("messages %v", msgs)
+	}
+}
+
+func TestWS_ChatRejectedWhenTenantDeactivated(t *testing.T) {
+	t.Setenv("GOSO_MULTI_TENANT", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "adm-112")
+	reg := tenant.New()
+	if _, err := reg.Create("acme", "Acme"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.SetStatus("acme", tenant.StatusDeactivated, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	prev := tenant.DefaultRegistry()
+	tenant.SetDefault(reg)
+	t.Cleanup(func() { tenant.SetDefault(prev) })
+
+	st := store.New()
+	mux := http.NewServeMux()
+	RegisterWS(mux, st, llm.Echo{})
+	u, closer := wsURL(t, mux)
+	t.Cleanup(closer)
+	hdr := http.Header{}
+	hdr.Set("Authorization", "Bearer adm-112")
+	hdr.Set("X-Goso-Tenant", "acme")
+	c, _, err := websocket.DefaultDialer.Dial(u, hdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	payload, _ := json.Marshal(map[string]any{"session_id": "s1", "message": "hello"})
+	if err := c.WriteJSON(map[string]any{"op": "chat", "payload": json.RawMessage(payload)}); err != nil {
+		t.Fatal(err)
+	}
+	var frame wsFrame
+	if err := c.ReadJSON(&frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame.Op != "error" || !strings.Contains(string(frame.Payload), "tenant deactivated") {
+		t.Fatalf("frame %+v %s", frame, string(frame.Payload))
 	}
 }
 

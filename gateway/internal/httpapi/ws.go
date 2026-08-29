@@ -14,6 +14,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
 // WS JSON frames: {op, payload}. ping→pong, chat {session_id, message}→reply text.
@@ -92,7 +93,12 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 					_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"message is required"}`)})
 					continue
 				}
-				reply, sessID, chatErr := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message, "", requestTenant(r))
+				tid := requestTenant(r)
+				if !tenant.DefaultRegistry().Writable(tid) {
+					_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"tenant deactivated"}`)})
+					continue
+				}
+				reply, sessID, chatErr := runWebhookChat(r.Context(), st, provider, in.SessionID, in.Message, "", tid)
 				if chatErr != nil {
 					msg := chatErr.Error()
 					if errors.Is(chatErr, llm.ErrProviderNotFound) {

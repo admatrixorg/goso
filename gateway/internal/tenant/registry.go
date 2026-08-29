@@ -29,6 +29,7 @@ var (
 	ErrSecret          = errors.New("secret-shaped value is not allowed")
 	ErrMemberExists    = errors.New("member already exists")
 	ErrCap             = errors.New("too many tenants")
+	ErrMemberCap       = errors.New("too many members")
 )
 
 const (
@@ -150,6 +151,15 @@ func clip(s string, max int) string {
 	return s
 }
 
+// resourceID is a path/registry key. Invalid ids do not alias to default.
+func resourceID(id string) string {
+	id = strings.TrimSpace(id)
+	if !store.TenantOK(id) {
+		return ""
+	}
+	return id
+}
+
 func looksSecret(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -238,7 +248,10 @@ func (r *Registry) Get(id string) (Public, error) {
 	if r == nil {
 		return Public{}, ErrNotFound
 	}
-	id = store.NormalizeTenant(id)
+	id = resourceID(id)
+	if id == "" {
+		return Public{}, ErrNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rec := r.rows[id]
@@ -341,7 +354,10 @@ func (r *Registry) SetStatus(id, status, confirm string) (Public, error) {
 	if !statusOK(status) {
 		return Public{}, ErrStatus
 	}
-	id = store.NormalizeTenant(id)
+	id = resourceID(id)
+	if id == "" {
+		return Public{}, ErrNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rec := r.rows[id]
@@ -382,7 +398,10 @@ func (r *Registry) AddMember(id, subject, role string) (Public, Member, error) {
 	if !roleOK(role) {
 		return Public{}, Member{}, ErrRole
 	}
-	id = store.NormalizeTenant(id)
+	id = resourceID(id)
+	if id == "" {
+		return Public{}, Member{}, ErrNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rec := r.rows[id]
@@ -390,7 +409,7 @@ func (r *Registry) AddMember(id, subject, role string) (Public, Member, error) {
 		return Public{}, Member{}, ErrNotFound
 	}
 	if len(rec.Members) >= maxMembers {
-		return Public{}, Member{}, ErrCap
+		return Public{}, Member{}, ErrMemberCap
 	}
 	for _, m := range rec.Members {
 		if strings.EqualFold(m.Subject, subject) {
@@ -411,7 +430,10 @@ func (r *Registry) SetMemberRole(id, memberID, role string) (Public, Member, err
 	if !roleOK(role) {
 		return Public{}, Member{}, ErrRole
 	}
-	id = store.NormalizeTenant(id)
+	id = resourceID(id)
+	if id == "" {
+		return Public{}, Member{}, ErrNotFound
+	}
 	memberID = strings.TrimSpace(memberID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -433,7 +455,10 @@ func (r *Registry) RemoveMember(id, memberID, confirm string) (Public, Member, e
 	if r == nil {
 		return Public{}, Member{}, ErrNotFound
 	}
-	id = store.NormalizeTenant(id)
+	id = resourceID(id)
+	if id == "" {
+		return Public{}, Member{}, ErrNotFound
+	}
 	memberID = strings.TrimSpace(memberID)
 	r.mu.Lock()
 	defer r.mu.Unlock()

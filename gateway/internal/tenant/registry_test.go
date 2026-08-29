@@ -121,6 +121,23 @@ func TestRegistryMembersRolesNoSecrets(t *testing.T) {
 	}
 }
 
+func TestRegistryInvalidPathIDDoesNotAliasMaster(t *testing.T) {
+	r := New()
+	if _, err := r.Get("!!!"); err != ErrNotFound {
+		t.Fatalf("get invalid %v", err)
+	}
+	if _, err := r.SetStatus("!!!", StatusDeactivated, "default"); err != ErrNotFound {
+		t.Fatalf("status invalid %v", err)
+	}
+	if _, _, err := r.AddMember("!!!", "ops@acme.test", RoleAdmin); err != ErrNotFound {
+		t.Fatalf("member invalid %v", err)
+	}
+	got, err := r.Get(Default)
+	if err != nil || len(got.Members) != 0 {
+		t.Fatalf("master mutated %v %#v", err, got.Members)
+	}
+}
+
 func TestRegistryContextUnregistered(t *testing.T) {
 	r := New()
 	ctx := r.Context("acme")

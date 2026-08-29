@@ -63,7 +63,7 @@ export function TenantsPage() {
   }
 
   useEffect(() => {
-    void load("");
+    void load(selected);
   }, [q]);
 
   const filtered = useMemo(() => filterTenants(list.tenants, q), [list.tenants, q]);
