@@ -98,6 +98,7 @@ func NewRouter(opt Options) http.Handler {
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux)
 	registerPairingRoutes(mux, opt.Pairing)
+	registerChannelPairingRoutes(mux, opt.Store)
 	return mux
 }
 
