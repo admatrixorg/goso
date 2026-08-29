@@ -80,6 +80,13 @@ func TestTelegram_PairingSendsCode(t *testing.T) {
 	if len(sent) != 1 || !strings.HasPrefix(sent[0], "Pairing code: ") || len(sent[0]) < 20 {
 		t.Fatalf("sent %v", sent)
 	}
+	rows := st.ListChannelPairings()
+	if len(rows) != 1 || rows[0].Status != "pending" || rows[0].SenderID != "991" || rows[0].Channel != "telegram" {
+		t.Fatalf("pending row %+v", rows)
+	}
+	if rows[0].CodeHash == "" || strings.Contains(sent[0], rows[0].CodeHash) {
+		t.Fatalf("hash %+v sent %q", rows[0], sent[0])
+	}
 }
 
 func TestTelegram_WebhookSecret(t *testing.T) {

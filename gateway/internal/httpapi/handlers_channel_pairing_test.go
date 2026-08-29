@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +109,82 @@ func TestChannelPairing_HTTPViewForbidden(t *testing.T) {
 	h.ServeHTTP(w, ap)
 	if w.Code != 403 {
 		t.Fatalf("view approve %d", w.Code)
+	}
+}
+
+func TestTelegramWebhook_CreatesPendingOnGET(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	t.Setenv("GOSO_LITE", "")
+	st := store.New()
+	tg := &channel.Telegram{Store: st, Sender: func(context.Context, int64, string) error { return nil }}
+	h := NewRouter(Options{Store: st, Version: "t", TG: tg.HandleUpdate})
+
+	body := `{"message":{"chat":{"id":42},"from":{"id":777},"text":"hello"}}`
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("webhook %d %s", w.Code, w.Body.String())
+	}
+
+	list := httptest.NewRequest("GET", "/api/channel-pairing", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, list)
+	if w.Code != 200 {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(strings.ToLower(w.Body.String()), "code_hash") || strings.Contains(w.Body.String(), `"code":`) {
+		t.Fatalf("leaked %s", w.Body.String())
+	}
+	var out struct {
+		Items []struct {
+			Channel  string `json:"channel"`
+			SenderID string `json:"sender_id"`
+			Status   string `json:"status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Items) != 1 || out.Items[0].Channel != "telegram" || out.Items[0].SenderID != "777" || out.Items[0].Status != "pending" {
+		t.Fatalf("items %+v %s", out.Items, w.Body.String())
+	}
+}
+
+func TestListChannels_MergedDefaultPolicy(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/channels", nil))
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Channels []struct {
+			Name        string `json:"name"`
+			DMPolicy    string `json:"dm_policy"`
+			GroupPolicy string `json:"group_policy"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	var tg, oa struct{ DM, Group string }
+	for _, c := range body.Channels {
+		switch c.Name {
+		case "telegram":
+			tg.DM, tg.Group = c.DMPolicy, c.GroupPolicy
+		case "zalo-oa":
+			oa.DM, oa.Group = c.DMPolicy, c.GroupPolicy
+		}
+	}
+	if tg.DM != "open" || tg.Group != "allowlist" {
+		t.Fatalf("demo telegram %+v", tg)
+	}
+	if oa.DM != "pairing" {
+		t.Fatalf("oa %+v", oa)
 	}
 }
 
