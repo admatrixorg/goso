@@ -42,10 +42,9 @@ var viewPrefixes = []string{
 
 // Grant is a hashed issued API key that passed Accept. Secret is never stored here.
 type Grant struct {
-	ID       string
-	Prefix   string
-	Scopes   []string
-	TenantID string
+	ID     string
+	Prefix string
+	Scopes []string
 }
 
 // Has reports whether the grant includes scope (admin implies all).

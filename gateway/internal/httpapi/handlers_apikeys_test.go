@@ -132,6 +132,10 @@ func TestAPIKeys_SearchExpiryAndRejects(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatalf("secret name %d %s", w.Code, w.Body.String())
 	}
+	w = apiKeyJSON(t, h, "POST", "/api/api-keys", `{"name":"gk_abababababababababababab","scopes":["read"]}`, "")
+	if w.Code != 400 {
+		t.Fatalf("own-format secret name %d %s", w.Code, w.Body.String())
+	}
 	w = apiKeyJSON(t, h, "POST", "/api/api-keys", `{"name":"x","scopes":["root"]}`, "")
 	if w.Code != 400 {
 		t.Fatalf("unknown scope %d %s", w.Code, w.Body.String())

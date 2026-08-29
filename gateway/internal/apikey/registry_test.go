@@ -51,6 +51,9 @@ func TestCreateRejectsSecretShapedAndUnknownScope(t *testing.T) {
 	if _, err := r.Create(Input{Name: "sk-live-abcdefgh", Scopes: []string{"read"}}); err != ErrSecret {
 		t.Fatalf("secret name %v", err)
 	}
+	if _, err := r.Create(Input{Name: "gk_" + strings.Repeat("ab", 12), Scopes: []string{"read"}}); err != ErrSecret {
+		t.Fatalf("own-format secret name %v", err)
+	}
 	if _, err := r.Create(Input{Name: "ops", Scopes: nil}); err != ErrScope {
 		t.Fatalf("no scope %v", err)
 	}

@@ -40,7 +40,7 @@ const SECRET_KEYS = new Set([
   "private_key",
 ]);
 const SECRET_VAL =
-  /\b(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|Bearer\s+[A-Za-z0-9._\-+=/]{8,}|token=)/i;
+  /\b(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|gk_[0-9a-f]{16,}|Bearer\s+[A-Za-z0-9._\-+=/]{8,}|token=)/i;
 
 export function publicHasSecrets(row: unknown): boolean {
   if (row == null || typeof row !== "object") return false;

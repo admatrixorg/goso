@@ -46,7 +46,6 @@ const (
 	prefixLen      = 11
 	secretBytes    = 24
 	maxName        = 80
-	maxTenant      = 64
 	maxKeys        = 256
 	maxScopes      = 8
 )
@@ -60,7 +59,7 @@ var knownScopes = map[string]struct{}{
 	ScopeProvision: {},
 }
 
-var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|Bearer\s+[A-Za-z0-9._\-+=/]{8,}|token=)`)
+var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|gk_[0-9a-f]{16,}|Bearer\s+[A-Za-z0-9._\-+=/]{8,}|token=)`)
 
 // Public is the GET row. Hash and plaintext secret are never included.
 type Public struct {
@@ -162,11 +161,8 @@ func (r *Registry) Create(in Input) (Created, error) {
 	if len(name) > maxName || secretShaped(name) {
 		return Created{}, ErrSecret
 	}
-	tid := strings.TrimSpace(in.TenantID)
-	if tid == "" {
-		tid = store.DefaultTenant
-	}
-	if len(tid) > maxTenant || secretShaped(tid) {
+	tid := store.NormalizeTenant(in.TenantID)
+	if secretShaped(tid) {
 		return Created{}, ErrSecret
 	}
 	scopes, err := normalizeScopes(in.Scopes)
@@ -294,7 +290,7 @@ func (r *Registry) Accept(token string) (auth.Grant, bool) {
 	row.UseCount++
 	row.LastUsedAt = now
 	scopes := append([]string(nil), row.Scopes...)
-	return auth.Grant{ID: row.ID, Prefix: row.Prefix, Scopes: scopes, TenantID: row.TenantID}, true
+	return auth.Grant{ID: row.ID, Prefix: row.Prefix, Scopes: scopes}, true
 }
 
 func publicOf(row *record, now time.Time) Public {

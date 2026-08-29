@@ -50,6 +50,8 @@ test("publicHasSecrets flags token payloads, not listing metadata", () => {
   assert.equal(publicHasSecrets({ id: "ak_1", api_key: "k" }), true);
   assert.equal(publicHasSecrets({ id: "ak_1", hash: "abc" }), true);
   assert.equal(publicHasSecrets({ id: "ak_1", name: "Bearer abcdefghijk" }), true);
+  assert.equal(publicHasSecrets({ id: "ak_1", name: "gk_" + "ab".repeat(12) }), true);
+  assert.equal(publicHasSecrets({ id: "ak_1", prefix: "gk_abcd1234" }), false);
 });
 
 test("asCreated keeps secret once; hideCopiedSecret clears it", () => {
