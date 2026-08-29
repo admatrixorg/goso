@@ -3,6 +3,8 @@
 package builtin
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"io"
 	"mime"
@@ -21,21 +23,30 @@ const (
 	ToolListFiles = "list_files"
 	ToolEdit      = "edit"
 	ToolSendFile  = "send_file"
+	ToolSearch    = "search"
+	ToolGlob      = "glob"
 	// MaxReadBytes is the read_file/edit cap. Larger files are rejected, not truncated.
 	MaxReadBytes = 1 << 20
 	maxListEnts  = 256
+	maxFSHits    = 50
+	binarySniff  = 512
+	maxSnippet   = 256
 )
 
 var (
-	errNotConfigured = errors.New("not_configured")
-	errPathEscape    = errors.New("path escape")
-	errPathRequired  = errors.New("path is required")
-	errNotFile       = errors.New("not a file")
-	errNotDir        = errors.New("not a directory")
-	errTooLarge      = errors.New("too large")
-	errOldRequired   = errors.New("old is required")
-	errOldNotFound   = errors.New("old not found")
-	errNewRequired   = errors.New("new is required")
+	errNotConfigured   = errors.New("not_configured")
+	errPathEscape      = errors.New("path escape")
+	errPathRequired    = errors.New("path is required")
+	errNotFile         = errors.New("not a file")
+	errNotDir          = errors.New("not a directory")
+	errTooLarge        = errors.New("too large")
+	errOldRequired     = errors.New("old is required")
+	errOldNotFound     = errors.New("old not found")
+	errNewRequired     = errors.New("new is required")
+	errQRequired       = errors.New("q is required")
+	errPatternRequired = errors.New("pattern is required")
+	errInvalidPattern  = errors.New("invalid pattern")
+	errHitCap          = errors.New("hit cap")
 )
 
 func workspaceConfigured() bool {
@@ -126,16 +137,27 @@ func mapFSErr(name string, err error) *connector.InvokeResult {
 	if errors.Is(err, errNewRequired) {
 		return toolErr(name, "error", "new is required")
 	}
+	if errors.Is(err, errQRequired) {
+		return toolErr(name, "error", "q is required")
+	}
+	if errors.Is(err, errPatternRequired) {
+		return toolErr(name, "error", "pattern is required")
+	}
+	if errors.Is(err, errInvalidPattern) {
+		return toolErr(name, "error", "invalid pattern")
+	}
 	if os.IsNotExist(err) {
 		return toolErr(name, "not_found", "not_found")
 	}
 	switch name {
 	case ToolWriteFile, ToolEdit:
 		return toolErr(name, "error", "write failed")
-	case ToolListFiles:
+	case ToolListFiles, ToolGlob:
 		return toolErr(name, "error", "list failed")
 	case ToolSendFile:
 		return toolErr(name, "error", "stat failed")
+	case ToolSearch:
+		return toolErr(name, "error", "search failed")
 	default:
 		return toolErr(name, "error", "read failed")
 	}
@@ -561,4 +583,265 @@ func sendFile(args map[string]any) (*connector.InvokeResult, error) {
 			"mime":  fileMIME(rel),
 		},
 	}, nil
+}
+
+func qArg(args map[string]any) string {
+	s, ok := stringArg(args, "q")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func patternArg(args map[string]any) string {
+	s, ok := stringArg(args, "pattern")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func searchFile(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
+	if !workspaceConfigured() {
+		return notConfigured(ToolSearch), nil
+	}
+	q := qArg(args)
+	if q == "" {
+		return mapFSErr(ToolSearch, errQRequired), nil
+	}
+	abs, _, err := jailPath(listPathArg(args))
+	if err != nil {
+		return mapFSErr(ToolSearch, err), nil
+	}
+	root, err := workspaceAbs()
+	if err != nil {
+		return mapFSErr(ToolSearch, err), nil
+	}
+	qLower := strings.ToLower(q)
+	hits := make([]map[string]any, 0)
+	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
+		if ctx != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				return cerr
+			}
+		}
+		if err != nil {
+			if p == abs {
+				return err
+			}
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			if d.Type()&os.ModeSymlink != 0 {
+				return filepath.SkipDir
+			}
+			if confineUnder(root, p) != nil {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if len(hits) >= maxFSHits {
+			return errHitCap
+		}
+		if !walkEntryRegular(d) {
+			return nil
+		}
+		if confineUnder(root, p) != nil {
+			return nil
+		}
+		fileHits, ok := searchRegularFile(p, root, qLower)
+		if !ok {
+			return nil
+		}
+		for _, h := range fileHits {
+			hits = append(hits, h)
+			if len(hits) >= maxFSHits {
+				return errHitCap
+			}
+		}
+		return nil
+	})
+	if walkErr != nil && !errors.Is(walkErr, errHitCap) {
+		return mapFSErr(ToolSearch, walkErr), nil
+	}
+	content := map[string]any{"hits": hits}
+	if len(hits) >= maxFSHits {
+		content["truncated"] = true
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolSearch,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content:   content,
+	}, nil
+}
+
+func searchRegularFile(abs, root, qLower string) ([]map[string]any, bool) {
+	f, st, err := openRegular(abs, os.O_RDONLY)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	if st.Size() > MaxReadBytes {
+		return nil, false
+	}
+	body, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	if err != nil || len(body) > MaxReadBytes {
+		return nil, false
+	}
+	sniff := body
+	if len(sniff) > binarySniff {
+		sniff = sniff[:binarySniff]
+	}
+	if bytes.IndexByte(sniff, 0) >= 0 {
+		return nil, false
+	}
+	rel, err := filepath.Rel(canonPath(root), canonPath(abs))
+	if err != nil {
+		return nil, false
+	}
+	relSlash := filepath.ToSlash(rel)
+	lines := strings.Split(string(body), "\n")
+	out := make([]map[string]any, 0)
+	for i, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if !strings.Contains(strings.ToLower(line), qLower) {
+			continue
+		}
+		out = append(out, map[string]any{
+			"path":    relSlash,
+			"line":    i + 1,
+			"snippet": clipSnippet(line),
+		})
+		if len(out) >= maxFSHits {
+			break
+		}
+	}
+	return out, true
+}
+
+func clipSnippet(s string) string {
+	if len(s) <= maxSnippet {
+		return s
+	}
+	return s[:maxSnippet]
+}
+
+func globFiles(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
+	if !workspaceConfigured() {
+		return notConfigured(ToolGlob), nil
+	}
+	pattern := patternArg(args)
+	if pattern == "" {
+		return mapFSErr(ToolGlob, errPatternRequired), nil
+	}
+	if strings.IndexByte(pattern, 0) >= 0 || security.HasDotDot(pattern) {
+		return mapFSErr(ToolGlob, errPathEscape), nil
+	}
+	if _, err := filepath.Match(pattern, "x"); err != nil {
+		return mapFSErr(ToolGlob, errInvalidPattern), nil
+	}
+	root, err := workspaceAbs()
+	if err != nil {
+		return mapFSErr(ToolGlob, err), nil
+	}
+	abs, _, err := jailPath(".")
+	if err != nil {
+		return mapFSErr(ToolGlob, err), nil
+	}
+	hits := make([]map[string]any, 0)
+	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
+		if ctx != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				return cerr
+			}
+		}
+		if err != nil {
+			if p == abs {
+				return err
+			}
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if confineUnder(root, p) != nil {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() && d.Type()&os.ModeSymlink != 0 {
+			return filepath.SkipDir
+		}
+		rel, relErr := filepath.Rel(canonPath(root), canonPath(p))
+		if relErr != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if relSlash == "." {
+			return nil
+		}
+		ok, matchErr := globMatch(pattern, relSlash)
+		if matchErr != nil {
+			return errInvalidPattern
+		}
+		if !ok {
+			return nil
+		}
+		hits = append(hits, map[string]any{"path": relSlash})
+		if len(hits) >= maxListEnts {
+			return errHitCap
+		}
+		return nil
+	})
+	if walkErr != nil && !errors.Is(walkErr, errHitCap) {
+		return mapFSErr(ToolGlob, walkErr), nil
+	}
+	content := map[string]any{"hits": hits}
+	if len(hits) >= maxListEnts {
+		content["truncated"] = true
+	}
+	return &connector.InvokeResult{
+		Tool:      ToolGlob,
+		Connector: ConnectorName,
+		Status:    "ok",
+		Content:   content,
+	}, nil
+}
+
+func walkEntryRegular(d os.DirEntry) bool {
+	if d == nil {
+		return false
+	}
+	t := d.Type()
+	if t&os.ModeSymlink != 0 {
+		return false
+	}
+	if t != 0 {
+		return t.IsRegular()
+	}
+	info, err := d.Info()
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}
+
+func globMatch(pattern, relSlash string) (bool, error) {
+	ok, err := filepath.Match(pattern, relSlash)
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		return true, nil
+	}
+	base := relSlash
+	if i := strings.LastIndex(relSlash, "/"); i >= 0 {
+		base = relSlash[i+1:]
+	}
+	return filepath.Match(pattern, base)
 }

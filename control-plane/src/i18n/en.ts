@@ -207,7 +207,7 @@ export const en: Record<MsgKey, string> = {
   "functions.skills.needName": "Name is required ([a-z0-9_-]{1,64}).",
   "functions.skills.needBody": "Body is required.",
   "functions.skills.confirmDelete": "Delete this skill? The SKILL.md folder will be removed.",
-  "functions.workspace.note": "Filesystem tools (read_file, write_file, list_files, edit, send_file) jail to GOSO_WORKSPACE. Empty env is fail-closed (not_configured, no FS). write_file and edit require approval. send_file is metadata only (no off-box upload). sandbox/browser stay not_configured (DI-12/13). media/image_gen/tts stay not_configured unless a test double is injected.",
+  "functions.workspace.note": "Filesystem tools (read_file, write_file, list_files, edit, send_file, search, glob) jail to GOSO_WORKSPACE. Empty env is fail-closed (not_configured, no FS). write_file and edit require approval. search and glob are read-only. send_file is metadata only (no off-box upload). sandbox/browser stay not_configured (DI-12/13). media/image_gen/tts stay not_configured unless a test double is injected.",
   "functions.cron": "Cron",
   "functions.cron.meta": "{n} jobs",
   "functions.cron.empty": "No jobs. In-process 1m ticker; empty list is a no-op. Cap 20. 5-field is UTC. No OS crontab.",

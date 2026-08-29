@@ -132,6 +132,18 @@ var catalog = []Spec{
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
 	},
+	{
+		Name:             ToolSearch,
+		Description:      "Case-insensitive substring search in file contents under GOSO_WORKSPACE. Optional relative path. Skips dirs, files over 1MiB, and NUL in the first 512 bytes. Cap 50 hits. Fail-closed unless GOSO_WORKSPACE is set. Read-only, no exec.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"},"path":{"type":"string"}},"required":["q"]}`),
+	},
+	{
+		Name:             ToolGlob,
+		Description:      "Match slash-normalized relative paths (and basenames) under GOSO_WORKSPACE with filepath.Match. Recursive. Cap 256. Fail-closed unless GOSO_WORKSPACE is set. Read-only, no exec.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"]}`),
+	},
 }
 
 // Catalog returns the builtin tool list (always advertised).
@@ -156,7 +168,7 @@ func IsName(name string) bool {
 // independent of the UI enabled flag.
 func Configured(name string) bool {
 	switch strings.TrimSpace(name) {
-	case ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile:
+	case ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile, ToolSearch, ToolGlob:
 		return workspaceConfigured()
 	case ToolWebSearch:
 		return WebSearchNetworkAllowed() && strings.TrimSpace(InstantAnswerBase) != ""
@@ -258,6 +270,10 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return editFile(args)
 	case ToolSendFile:
 		return sendFile(args)
+	case ToolSearch:
+		return searchFile(ctx, args)
+	case ToolGlob:
+		return globFiles(ctx, args)
 	default:
 		if isMediaName(name) {
 			return invokeMedia(ctx, name, args)

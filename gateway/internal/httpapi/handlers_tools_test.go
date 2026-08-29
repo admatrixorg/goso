@@ -56,6 +56,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	}
 	var sawSearch, sawSandbox, sawSkill, sawSkillSearch, sawRead, sawWrite bool
 	var sawList, sawEdit, sawSend, sawImage, sawTTS bool
+	var sawFSSearch, sawGlob bool
 	for _, tl := range listed.Tools {
 		if tl.Name == "web_search" {
 			sawSearch = true
@@ -123,8 +124,20 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 				t.Fatalf("tts %+v", tl)
 			}
 		}
+		if tl.Name == "search" {
+			sawFSSearch = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
+				t.Fatalf("search %+v", tl)
+			}
+		}
+		if tl.Name == "glob" {
+			sawGlob = true
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
+				t.Fatalf("glob %+v", tl)
+			}
+		}
 	}
-	if !sawSearch || !sawSandbox || !sawSkill || !sawSkillSearch || !sawRead || !sawWrite || !sawList || !sawEdit || !sawSend || !sawImage || !sawTTS {
+	if !sawSearch || !sawSandbox || !sawSkill || !sawSkillSearch || !sawRead || !sawWrite || !sawList || !sawEdit || !sawSend || !sawImage || !sawTTS || !sawFSSearch || !sawGlob {
 		t.Fatalf("builtins missing %s", w.Body.String())
 	}
 
