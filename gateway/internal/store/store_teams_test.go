@@ -59,6 +59,18 @@ func TestStore_TeamsKanbanMailboxAndLinks(t *testing.T) {
 	if !s.HasAgentLink(lead.ID, mem.ID) || !s.HasAgentLink(mem.ID, lead.ID) {
 		t.Fatal("expected bidirectional links")
 	}
+	if err := s.RemoveAgentLink(lead.ID, mem.ID); err != nil {
+		t.Fatalf("unlink: %v", err)
+	}
+	if s.HasAgentLink(lead.ID, mem.ID) || !s.HasAgentLink(mem.ID, lead.ID) {
+		t.Fatal("directed unlink should drop only from→to")
+	}
+	if err := s.RemoveAgentLink(mem.ID, lead.ID); err != nil {
+		t.Fatalf("unlink reverse: %v", err)
+	}
+	if err := s.RemoveAgentLink(mem.ID, lead.ID); err != ErrNotFound {
+		t.Fatalf("missing link want ErrNotFound got %v", err)
+	}
 	s.RecordChatRun(lead.ID)
 	s.RecordToolUse(lead.ID, "delegate", true)
 	m := s.GetAgentMetrics(lead.ID)
@@ -121,6 +133,12 @@ func TestSQLiteStore_TeamsAndLite(t *testing.T) {
 	_, _ = s.CreateTeamTask(TeamTask{TeamID: team.ID, Title: "T"})
 	_, _ = s.CreateTeamMessage(TeamMessage{TeamID: team.ID, FromAgentID: a.ID, Body: "m"})
 	_ = s.AddAgentLink(a.ID, a.ID)
+	if err := s.RemoveAgentLink(a.ID, a.ID); err != nil {
+		t.Fatalf("sqlite unlink: %v", err)
+	}
+	if s.HasAgentLink(a.ID, a.ID) {
+		t.Fatal("sqlite unlink leftover")
+	}
 	s.RecordChatRun(a.ID)
 	_ = s.Close()
 

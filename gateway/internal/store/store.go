@@ -417,6 +417,7 @@ type StoreIface interface {
 	AddAgentLink(fromID, toID string) error
 	ListAgentLinks(fromID string) ([]AgentLink, error)
 	HasAgentLink(fromID, toID string) bool
+	RemoveAgentLink(fromID, toID string) error
 	RecordChatRun(agentID string)
 	RecordToolUse(agentID, tool string, failed bool)
 	RecordAdvertisedTools(agentID string, names []string)

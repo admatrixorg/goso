@@ -414,6 +414,26 @@ func (s *SQLiteStore) HasAgentLink(fromID, toID string) bool {
 	return n > 0
 }
 
+func (s *SQLiteStore) RemoveAgentLink(fromID, toID string) error {
+	fromID = strings.TrimSpace(fromID)
+	toID = strings.TrimSpace(toID)
+	if fromID == "" || toID == "" {
+		return errors.New("from and to agent ids are required")
+	}
+	if _, err := s.GetAgent(fromID); err != nil {
+		return ErrNotFound
+	}
+	res, err := s.db.Exec(`DELETE FROM agent_links WHERE from_agent_id=? AND to_agent_id=?`, fromID, toID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) loadMetrics(agentID string) AgentMetrics {
 	m := AgentMetrics{AgentID: agentID, ToolUses: map[string]int{}}
 	var uses, adv sql.NullString

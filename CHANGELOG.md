@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 097: Teams operator surface. Searchable list/detail, lead/member roles, directed vs bidirectional links, named confirm for delete/unlink/remove. Evolution stays guarded (`auto_adapt` / locked); suggestion text is truncated and never dumps system prompts. i18n vi+en. QA `docs/qa/097-teams.md`.
 - SPEC 096: Functions operator surface. Per-agent tool grants stay separate from global connector enable. Skills search/create/archive. MCP/connectors add+test with write-only tokens (`token_set` on GET). Cron enable + last_run / redacted last_error. i18n vi+en. QA `docs/qa/096-functions.md`.
 - SPEC 095: Providers operator surface. Search/filter by type/source/enabled, write-only `api_key`, `key_set`/`source` on GET, sqlite enable, and `DELETE /api/providers/{name}/key` to clear the boxed key (empty PATCH still keeps it). Test models/chat shows latency and redacted errors, never a raw JSON dump. Env overlay stays read-only. i18n vi+en. QA `docs/qa/095-providers.md`.
 - SPEC 094: Channels operator surface. Pairing Approve/Deny stays first (089) with `dm_policy` PATCH and no code re-entry. Catalog rows show health, redacted `last_error`, agent bind, group overrides, write-only secrets, test/connect. Telegram bot token + OA access/app secret; Personal QR only; phase-2 parked. `DELETE /api/channels/{name}/secrets` clears the box (empty PUT stays 400); GET never returns plaintext (`secret_set` / `from_env`). i18n vi+en. QA `docs/qa/094-channels-operator.md`.

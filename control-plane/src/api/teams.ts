@@ -4,7 +4,7 @@ export type Team = { id: string; name: string; lead_agent_id?: string; created_a
 export type TeamMember = { team_id: string; agent_id: string; role: string };
 export type TeamTask = { id: string; team_id: string; title: string; status: string; assignee_agent_id?: string };
 export type TeamMessage = { id: string; team_id: string; from_agent_id: string; body: string; created_at: string };
-export type AgentLink = { from_agent_id: string; to_agent_id: string };
+export type AgentLink = { from_agent_id: string; to_agent_id: string; bidirectional?: boolean };
 export type EvolutionSuggestion = { id: string; rule: string; text: string; status: string };
 export type EvolutionGuardrails = { auto_adapt: boolean; min_runs: number; locked: string[] };
 
@@ -19,10 +19,13 @@ export const teamsApi = {
     jsonFetch<Team>("/api/teams", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: { name: string; lead_agent_id: string }) =>
     jsonFetch<Team>(`/api/teams/${idPath(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  remove: (id: string) => jsonFetch<{ ok: boolean }>(`/api/teams/${idPath(id)}`, { method: "DELETE" }),
 
   listMembers: (id: string) => jsonFetch<{ members: TeamMember[] }>(`/api/teams/${idPath(id)}/members`),
   addMember: (id: string, body: { agent_id: string; role: string }) =>
     jsonFetch<TeamMember>(`/api/teams/${idPath(id)}/members`, { method: "POST", body: JSON.stringify(body) }),
+  removeMember: (id: string, agentId: string) =>
+    jsonFetch<{ ok: boolean }>(`/api/teams/${idPath(id)}/members/${idPath(agentId)}`, { method: "DELETE" }),
 
   listTasks: (id: string, status?: string) => {
     const qs = status ? `?status=${encodeURIComponent(status)}` : "";
@@ -46,6 +49,12 @@ export const teamsApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  removeLink: (agentId: string, toId: string, pair?: boolean) => {
+    const qs = pair ? "?pair=1" : "";
+    return jsonFetch<{ ok: boolean; links: AgentLink[] }>(`/api/agents/${idPath(agentId)}/links/${idPath(toId)}${qs}`, {
+      method: "DELETE",
+    });
+  },
 
   listEvolution: (agentId: string) =>
     jsonFetch<{ suggestions: EvolutionSuggestion[]; guardrails?: EvolutionGuardrails }>(
