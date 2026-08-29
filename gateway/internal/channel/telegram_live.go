@@ -111,11 +111,11 @@ func (t *Telegram) getMe(ctx context.Context, token string) error {
 }
 
 func (t *Telegram) pollLoop(ctx context.Context, token string) {
-	ticker := time.NewTicker(t.probeEvery)
-	if t.probeEvery <= 0 {
-		ticker.Stop()
-		ticker = time.NewTicker(5 * time.Minute)
+	every := t.probeEvery
+	if every <= 0 {
+		every = 5 * time.Minute
 	}
+	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for {
 		select {

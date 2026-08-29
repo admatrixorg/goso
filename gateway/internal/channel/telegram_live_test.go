@@ -62,6 +62,23 @@ func TestTelegram_StartGetMeAndWebhookURL(t *testing.T) {
 	}
 }
 
+func TestTelegram_StartZeroProbeDoesNotPanic(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"ok":true,"result":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("GOSO_LITE", "")
+	t.Setenv("GOSO_TELEGRAM_MODE", "poll")
+	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "tok")
+	tg := &Telegram{BotToken: "tok", APIBase: srv.URL, HTTPClient: srv.Client()}
+	mgr := NewManager()
+	tg.Start(context.Background(), mgr)
+	t.Cleanup(tg.Stop)
+	if !mgr.Running("telegram") {
+		t.Fatalf("running err=%s", mgr.LastError("telegram"))
+	}
+}
+
 func TestTelegram_PairingSendsCode(t *testing.T) {
 	t.Setenv("GOSO_ENV", "production")
 	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
