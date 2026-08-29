@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -172,6 +173,10 @@ func handleCreateProvider(opt Options) http.HandlerFunc {
 				return
 			}
 		}
+		recordAudit(opt.Audit, r, auditlog.Record{
+			Action: "create", Entity: "provider", EntityID: row.Name,
+			After: auditMeta(true, map[string]any{"type": row.Type, "key_set": key != ""}),
+		})
 		writeJSON(w, http.StatusCreated, publicProvider(opt, row.Name))
 	}
 }
@@ -267,6 +272,11 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 				return
 			}
 		}
+		recordAudit(opt.Audit, r, auditlog.Record{
+			Action: "update", Entity: "provider", EntityID: saved.Name,
+			Before: auditMeta(true, map[string]any{"enabled": cur.Enabled}),
+			After:  auditMeta(true, map[string]any{"enabled": saved.Enabled, "key_rotated": key != ""}),
+		})
 		writeJSON(w, http.StatusOK, publicProvider(opt, saved.Name))
 	}
 }
@@ -299,6 +309,10 @@ func handleDeleteProviderKey(opt Options) http.HandlerFunc {
 			return
 		}
 		info := publicProvider(opt, name)
+		recordAudit(opt.Audit, r, auditlog.Record{
+			Action: "clear", Entity: "provider", EntityID: name,
+			After: auditMeta(true, map[string]any{"key_set": false}),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":      true,
 			"name":    info.Name,

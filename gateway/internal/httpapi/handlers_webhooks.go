@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -40,13 +41,13 @@ func registerWebhookRoutes(mux *http.ServeMux, opt Options) {
 	reg.Start()
 
 	aliasAPI(mux, "GET /api/webhooks", handleListWebhooks(reg))
-	mux.HandleFunc("POST /api/webhooks", handleCreateWebhook(reg, st))
+	mux.HandleFunc("POST /api/webhooks", handleCreateWebhook(reg, st, opt.Audit))
 	aliasAPI(mux, "GET /api/webhooks/jobs/{id}", handleGetWebhookJob(reg))
 	aliasAPI(mux, "GET /api/webhooks/{id}", handleGetWebhook(reg))
-	mux.HandleFunc("POST /api/webhooks/{id}/rotate", handleRotateWebhook(reg, ev))
+	mux.HandleFunc("POST /api/webhooks/{id}/rotate", handleRotateWebhook(reg, ev, opt.Audit))
 	mux.HandleFunc("POST /api/webhooks/{id}/test", handleTestWebhook(reg, ev))
 	mux.HandleFunc("POST /api/webhooks/{id}/replay", handleReplayWebhook(reg, ev))
-	mux.HandleFunc("DELETE /api/webhooks/{id}", handleRevokeWebhook(reg, ev))
+	mux.HandleFunc("DELETE /api/webhooks/{id}", handleRevokeWebhook(reg, ev, opt.Audit))
 	mux.HandleFunc("POST /api/webhooks/llm", handleWebhookLLM(reg, st, provider))
 }
 
@@ -70,7 +71,7 @@ func handleGetWebhook(reg *webhook.Registry) http.HandlerFunc {
 	}
 }
 
-func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface) http.HandlerFunc {
+func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var opts webhook.CreateOpts
 		raw, err := io.ReadAll(r.Body)
@@ -112,11 +113,15 @@ func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface) http.Handle
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		recordAudit(al, r, auditlog.Record{
+			Action: "create", Entity: "webhook", EntityID: c.ID,
+			After: auditMeta(true, map[string]any{"secret_set": true}),
+		})
 		writeJSON(w, http.StatusCreated, c)
 	}
 }
 
-func handleRotateWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
+func handleRotateWebhook(reg *webhook.Registry, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		p, err := reg.Get(id)
@@ -138,11 +143,15 @@ func handleRotateWebhook(reg *webhook.Registry, ev *eventstore.Store) http.Handl
 			return
 		}
 		auditWebhook(ev, "rotate", id, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "rotate", Entity: "webhook", EntityID: id,
+			After: auditMeta(true, map[string]any{"secret_set": true}),
+		})
 		writeJSON(w, http.StatusOK, c)
 	}
 }
 
-func handleRevokeWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
+func handleRevokeWebhook(reg *webhook.Registry, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		p, err := reg.Get(id)
@@ -163,6 +172,10 @@ func handleRevokeWebhook(reg *webhook.Registry, ev *eventstore.Store) http.Handl
 			return
 		}
 		auditWebhook(ev, "revoke", id, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "revoke", Entity: "webhook", EntityID: id,
+			After: auditMeta(true, nil),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }

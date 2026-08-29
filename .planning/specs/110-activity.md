@@ -10,9 +10,9 @@ Add an **immutable administrative audit trail** for configuration and privileged
 
 ## AC
 
-- [ ] Live nav tab + page. Filters, pagination, loading/empty/error.
-- [ ] Immutable records. Operational events stay on Events. GET never returns secrets. Export only for authorized roles if implemented.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/110-activity.md`.
+- [x] Live nav tab + page. Filters, pagination, loading/empty/error.
+- [x] Immutable records. Operational events stay on Events. GET never returns secrets. Export only for authorized roles if implemented.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/110-activity.md`.
 
 ## Out of scope
 

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/storage"
 )
@@ -19,8 +20,8 @@ func registerStorageRoutes(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "GET /api/storage", handleStorageList())
 	aliasAPI(mux, "GET /api/storage/preview", handleStoragePreview())
 	aliasAPI(mux, "GET /api/storage/download", handleStorageDownload())
-	aliasAPI(mux, "POST /api/storage/upload", handleStorageUpload(opt.Events))
-	aliasAPI(mux, "POST /api/storage/delete", handleStorageDelete(opt.Events))
+	aliasAPI(mux, "POST /api/storage/upload", handleStorageUpload(opt.Events, opt.Audit))
+	aliasAPI(mux, "POST /api/storage/delete", handleStorageDelete(opt.Events, opt.Audit))
 }
 
 func storagePath(r *http.Request) string {
@@ -74,7 +75,7 @@ func handleStorageDownload() http.HandlerFunc {
 	}
 }
 
-func handleStorageUpload(ev *eventstore.Store) http.HandlerFunc {
+func handleStorageUpload(ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(storage.MaxFileBytes); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid multipart")
@@ -94,11 +95,15 @@ func handleStorageUpload(ev *eventstore.Store) http.HandlerFunc {
 			return
 		}
 		auditStorage(ev, "upload", ent.Path, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "upload", Entity: "storage", EntityID: ent.Path,
+			After: auditMeta(true, map[string]any{"path": ent.Path, "size": ent.Size}),
+		})
 		writeJSON(w, http.StatusCreated, ent)
 	}
 }
 
-func handleStorageDelete(ev *eventstore.Store) http.HandlerFunc {
+func handleStorageDelete(ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Path    string `json:"path"`
@@ -115,6 +120,10 @@ func handleStorageDelete(ev *eventstore.Store) http.HandlerFunc {
 			return
 		}
 		auditStorage(ev, "delete", ent.Path, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "delete", Entity: "storage", EntityID: ent.Path,
+			After: auditMeta(true, map[string]any{"path": ent.Path}),
+		})
 		writeJSON(w, http.StatusOK, ent)
 	}
 }

@@ -20,6 +20,7 @@ var viewPrefixes = []string{
 	"/api/workstations",
 	"/api/storage",
 	"/api/events",
+	"/api/activity",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
@@ -28,6 +29,7 @@ var viewPrefixes = []string{
 	"/v1/workstations",
 	"/v1/storage",
 	"/v1/events",
+	"/v1/activity",
 }
 
 // Config is admin/view Bearer enforcement plus optional pairing grants.
@@ -47,7 +49,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 }
 
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
-// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events and the matching /v1 aliases only).
+// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
 	return Require(Config{Admin: admin, View: view, Bypass: bypass})
 }

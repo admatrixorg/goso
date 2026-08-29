@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-func registerConfigRoutes(mux *http.ServeMux, st store.StoreIface) {
-	aliasAPI(mux, "GET /api/config", handleGetConfig(st))
-	aliasAPI(mux, "PUT /api/config", handlePutConfig(st))
+func registerConfigRoutes(mux *http.ServeMux, opt Options) {
+	aliasAPI(mux, "GET /api/config", handleGetConfig(opt.Store))
+	aliasAPI(mux, "PUT /api/config", handlePutConfig(opt.Store, opt.Audit))
 }
 
 func loadOverlay(st store.StoreIface) (*store.GatewaySettings, error) {
@@ -56,7 +57,7 @@ func handleGetConfig(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handlePutConfig(st store.StoreIface) http.HandlerFunc {
+func handlePutConfig(st store.StoreIface, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			UpdatedAt string            `json:"updated_at"`
@@ -107,6 +108,14 @@ func handlePutConfig(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		config.SetOverlay(saved.Values)
+		fields := make([]string, 0, len(body.Values))
+		for k := range body.Values {
+			fields = append(fields, k)
+		}
+		recordAudit(al, r, auditlog.Record{
+			Action: "update", Entity: "config",
+			After: auditMeta(true, map[string]any{"fields": fields}),
+		})
 		writeConfigSnapshot(w, saved.UpdatedAt)
 	}
 }

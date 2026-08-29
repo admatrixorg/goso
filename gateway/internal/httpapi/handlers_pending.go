@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -26,8 +27,8 @@ func registerPendingRoutes(mux *http.ServeMux, opt Options) {
 		buf = channel.DefaultPending()
 	}
 	aliasAPI(mux, "GET /api/pending-messages", handleListPending(buf, opt.Store))
-	aliasAPI(mux, "POST /api/pending-messages/{id}/compact", handleCompactPending(buf, opt.Store, opt.Events))
-	aliasAPI(mux, "POST /api/pending-messages/{id}/clear", handleClearPending(buf, opt.Events))
+	aliasAPI(mux, "POST /api/pending-messages/{id}/compact", handleCompactPending(buf, opt.Store, opt.Events, opt.Audit))
+	aliasAPI(mux, "POST /api/pending-messages/{id}/clear", handleClearPending(buf, opt.Events, opt.Audit))
 }
 
 func pendingForbidden(w http.ResponseWriter) bool {
@@ -56,7 +57,7 @@ func handleListPending(buf *channel.Pending, st store.StoreIface) http.HandlerFu
 	}
 }
 
-func handleCompactPending(buf *channel.Pending, st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handleCompactPending(buf *channel.Pending, st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if pendingForbidden(w) {
 			return
@@ -71,11 +72,15 @@ func handleCompactPending(buf *channel.Pending, st store.StoreIface, ev *eventst
 			return
 		}
 		auditPending(ev, "compact", g.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "compact", Entity: "pending", EntityID: g.ID,
+			After: auditMeta(true, map[string]any{"count": g.Count}),
+		})
 		writeJSON(w, http.StatusOK, decoratePending(st, g))
 	}
 }
 
-func handleClearPending(buf *channel.Pending, ev *eventstore.Store) http.HandlerFunc {
+func handleClearPending(buf *channel.Pending, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if pendingForbidden(w) {
 			return
@@ -94,6 +99,10 @@ func handleClearPending(buf *channel.Pending, ev *eventstore.Store) http.Handler
 			return
 		}
 		auditPending(ev, "clear", before.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "clear", Entity: "pending", EntityID: before.ID,
+			After: auditMeta(true, nil),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": before.ID})
 	}
 }
