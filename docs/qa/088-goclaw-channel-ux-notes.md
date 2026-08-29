@@ -8,7 +8,11 @@ Date: 2026-08-29. Source: live Dewee Dashboard at `http://127.0.0.1:18791` (proc
 - Two modes: **Token** vs **Pairing**.
 - Token mode fields: **User ID** + **Gateway Token**. Token input is `type=password` (masked). Copy on the form: “Use system for full system access”.
 - Pairing mode: request access; an admin approves. **No gateway token field.** This is **device / dashboard pairing**, not channel DM pairing.
-- File `/tmp/goclaw-orb-creds.txt` (`user` + `password`) is **not** the dashboard login. That pair returned “Invalid credentials”. Login succeeded with User ID `system` + the process `GOCLAW_GATEWAY_TOKEN` (value not recorded).
+- File `/tmp/goclaw-orb-creds.txt` (`user` + `password`, chmod 600) is **not** the dashboard login, even when mapped correctly onto this form:
+  - User ID `mqglobal` + Gateway Token = file `password` → **Invalid credentials.**
+  - User ID `system` + same file `password` → **Invalid credentials.**
+  - File `password` is a different secret from process `GOCLAW_GATEWAY_TOKEN` (not compared in this doc).
+- Login that works: User ID `system` + process env `GOCLAW_GATEWAY_TOKEN` (value not recorded). Token field stays `type=password`, placeholder `Bearer token`.
 - After login: origin `/overview`. Sidebar groups CORE / CONVERSATIONS / CONNECTIVITY / CAPABILITIES / DATA / MONITORING / SYSTEM. Channels sits under CONNECTIVITY; Providers and API Keys under SYSTEM.
 
 ## 2. Channels list
