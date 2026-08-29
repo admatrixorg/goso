@@ -94,6 +94,9 @@ func TestLogStore_QueryAfterAndSubscribe(t *testing.T) {
 	if len(later) != 1 || later[0].Message != "two" {
 		t.Fatalf("after %+v", later)
 	}
+	if s.MaxSeq() != later[0].Seq {
+		t.Fatalf("max seq %d", s.MaxSeq())
+	}
 }
 
 func TestLogStore_SlowSubscriberDropped(t *testing.T) {

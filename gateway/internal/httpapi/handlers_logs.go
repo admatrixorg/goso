@@ -52,6 +52,9 @@ func handleStreamLogs(opt Options) http.HandlerFunc {
 			return
 		}
 		q := logQuery(r)
+		if q.AfterSeq > opt.Logs.MaxSeq() {
+			q.AfterSeq = 0
+		}
 		live, cancel := opt.Logs.Subscribe(32)
 		defer cancel()
 		sw := newSSEWriter(w)

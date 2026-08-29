@@ -185,6 +185,60 @@ func TestLogs_StreamLiveAndReconnect(t *testing.T) {
 	if !strings.Contains(string(b), "replay-me") {
 		t.Fatalf("replay %s", b)
 	}
+
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel3()
+	req3, _ := http.NewRequestWithContext(ctx3, http.MethodGet, srv.URL+"/api/logs/stream", nil)
+	req3.Header.Set("Last-Event-ID", "999999")
+	req3.Header.Set("Accept", "text/event-stream")
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp3.Body.Close()
+	ready3 := make(chan struct{})
+	gotFuture := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(resp3.Body)
+		sc.Buffer(make([]byte, 0, 64*1024), 64*1024)
+		var block []string
+		flush := func() {
+			joined := strings.Join(block, "\n")
+			block = nil
+			if strings.Contains(joined, "event: ready") {
+				select {
+				case <-ready3:
+				default:
+					close(ready3)
+				}
+			}
+			if strings.Contains(joined, "event: log") {
+				gotFuture <- joined
+			}
+		}
+		for sc.Scan() {
+			line := sc.Text()
+			if line == "" {
+				flush()
+				continue
+			}
+			block = append(block, line)
+		}
+	}()
+	select {
+	case <-ready3:
+	case <-time.After(2 * time.Second):
+		t.Fatal("future cursor ready timeout")
+	}
+	lg.Append(logstore.Entry{Level: logstore.LevelInfo, Component: logstore.ComponentGateway, Message: "after-reset"})
+	select {
+	case payload := <-gotFuture:
+		if !strings.Contains(payload, "after-reset") {
+			t.Fatalf("future cursor %s", payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("future Last-Event-ID skipped live line")
+	}
 }
 
 func TestLogs_ViewTokenGET(t *testing.T) {

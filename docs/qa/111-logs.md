@@ -34,7 +34,7 @@ Do not bind or kill demo ports `:8082` `:8091` `:18080` `:18791`. Do not merge. 
 ## Proof
 
 - `npm run typecheck` exit 0. `npm test` including `asPublicLog` dropping `token`/`Authorization`/Bearer/`sk-`/`token=` shapes, `publicHasSecrets`, `mergeLive` cap 200 + seq dedupe, filters, `backoffDelay` 1s…15s, `parseSseBlock`.
-- `go test` logstore: ring cap, secret keys dropped, token/`token=` shapes redacted, component/text/level filters, `after` cursor, slow-sub drop. httpapi: GET omits `sk-`/`token`/`Bearer`; SSE live log + `Last-Event-ID` replay; `/v1/logs` alias; view-token GET 200 / POST 403. auth/serve: view GET `/api/logs` and `/api/logs/stream` 200, POST 403. observe: access-log tail uses path only (no query/token).
+- `go test` logstore: ring cap, secret keys dropped, token/`token=` shapes redacted, component/text/level filters, `after` cursor, slow-sub drop. httpapi: GET omits `sk-`/`token`/`Bearer`; SSE live log + `Last-Event-ID` replay; `Last-Event-ID` ahead of store max is ignored so a new process still tails; `/v1/logs` alias; view-token GET 200 / POST 403. auth/serve: view GET `/api/logs` and `/api/logs/stream` 200, POST 403. observe: access-log tail uses path only (no query/token). Stop resets the browser seq cursor.
 - Page copy: Start/Stop, pause/resume, clear view; “Start to tail gateway logs.” / “Bấm Bắt đầu để theo dõi log gateway.” Stream is plain text, no `dangerouslySetInnerHTML`.
 - `agpl-check` and `agpl-check-docs` exit 0.
 

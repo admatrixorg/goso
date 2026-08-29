@@ -162,6 +162,13 @@ func (s *Store) Query(q Query) []Entry {
 	return out
 }
 
+// MaxSeq is the last assigned seq (0 if empty).
+func (s *Store) MaxSeq() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.seq
+}
+
 // Components lists distinct component names currently in the ring.
 func (s *Store) Components() []string {
 	s.mu.Lock()

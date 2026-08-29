@@ -54,6 +54,7 @@ export function LogsPage() {
   const [retryIn, setRetryIn] = useState(0);
   const lastSeq = useRef(0);
   const seeded = useRef(false);
+  const seedGen = useRef(0);
 
   const filters = useMemo(
     () => ({ component: component || undefined, q: q || undefined, levels }),
@@ -68,6 +69,7 @@ export function LogsPage() {
   useEffect(() => {
     if (!live) {
       seeded.current = false;
+      lastSeq.current = 0;
       setConn("off");
       setRetryIn(0);
       return;
@@ -90,15 +92,18 @@ export function LogsPage() {
       });
     const seed = async () => {
       if (seeded.current) return;
+      const gen = seedGen.current;
       setLoading(true);
       try {
         const j = await logsApi.list({ limit: 100 });
-        if (stopped) return;
+        if (stopped || gen !== seedGen.current) return;
         setRows(j.logs);
         setExtraComps(j.components);
+        let max = 0;
         for (const e of j.logs) {
-          if (typeof e.seq === "number" && e.seq > lastSeq.current) lastSeq.current = e.seq;
+          if (typeof e.seq === "number" && e.seq > max) max = e.seq;
         }
+        lastSeq.current = max;
         setErr("");
         seeded.current = true;
       } catch (e) {
@@ -197,7 +202,10 @@ export function LogsPage() {
             <Button
               variant="quiet"
               disabled={!live}
-              onClick={() => setRows([])}
+              onClick={() => {
+                seedGen.current += 1;
+                setRows([]);
+              }}
             >
               {t("logs.clear")}
             </Button>
