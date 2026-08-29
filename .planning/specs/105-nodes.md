@@ -10,9 +10,9 @@ Add a **device/node page** that separates pending pairing from paired devices: a
 
 ## AC
 
-- [ ] Live nav tab + page. Pending vs paired lists. Loading/empty/error.
-- [ ] Approve/deny pending; revoke paired. GET never returns pairing codes or tokens. 403 view-token on mutations.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/105-nodes.md`.
+- [x] Live nav tab + page. Pending vs paired lists. Loading/empty/error.
+- [x] Approve/deny pending; revoke paired. GET never returns pairing codes or tokens. 403 view-token on mutations.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/105-nodes.md`.
 
 ## Out of scope
 

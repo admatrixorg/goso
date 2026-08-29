@@ -156,6 +156,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST undo 403, got %d", w.Code)
 	}
 
+	nodes := httptest.NewRequest("GET", "/api/nodes", nil)
+	nodes.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, nodes)
+	if w.Code != 200 {
+		t.Fatalf("view GET nodes 200, got %d", w.Code)
+	}
+
+	approve := httptest.NewRequest("POST", "/api/nodes/nd_1/approve", nil)
+	approve.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, approve)
+	if w.Code != 403 {
+		t.Fatalf("view POST approve 403, got %d", w.Code)
+	}
+
+	deny := httptest.NewRequest("POST", "/api/nodes/nd_1/deny", nil)
+	deny.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, deny)
+	if w.Code != 403 {
+		t.Fatalf("view POST deny 403, got %d", w.Code)
+	}
+
+	revoke := httptest.NewRequest("POST", "/api/nodes/nd_1/revoke", nil)
+	revoke.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, revoke)
+	if w.Code != 403 {
+		t.Fatalf("view POST revoke 403, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -220,6 +252,10 @@ func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
 		"/v1/kg/entities",
 		"/v1/skills",
 		"/api/pairing",
+		"/api/nodes/nd_1/approve",
+		"/api/nodes/nd_1/deny",
+		"/api/nodes/nd_1/revoke",
+		"/v1/nodes/nd_1/approve",
 	}
 	for _, path := range paths {
 		req := httptest.NewRequest("POST", path, nil)
@@ -268,6 +304,45 @@ func TestRequire_PairingExchangeExactPath(t *testing.T) {
 	h.ServeHTTP(w, create)
 	if w.Code != 401 {
 		t.Fatalf("anon POST pairing 401, got %d", w.Code)
+	}
+}
+
+func TestRequire_NodeRequestExactPath(t *testing.T) {
+	h := Require(Config{Admin: "admin-077", Bypass: []string{"/healthz"}})(okHandler())
+
+	req := httptest.NewRequest("POST", "/api/nodes/request", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("exact POST nodes request 200, got %d", w.Code)
+	}
+
+	v1 := httptest.NewRequest("POST", "/v1/nodes/request", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1)
+	if w.Code != 200 {
+		t.Fatalf("v1 POST nodes request 200, got %d", w.Code)
+	}
+
+	extra := httptest.NewRequest("POST", "/api/nodes/request/extra", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, extra)
+	if w.Code != 401 {
+		t.Fatalf("suffix request 401, got %d", w.Code)
+	}
+
+	get := httptest.NewRequest("GET", "/api/nodes/request", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 401 {
+		t.Fatalf("GET nodes request 401, got %d", w.Code)
+	}
+
+	list := httptest.NewRequest("GET", "/api/nodes", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, list)
+	if w.Code != 401 {
+		t.Fatalf("anon GET nodes 401, got %d", w.Code)
 	}
 }
 

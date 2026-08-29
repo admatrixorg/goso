@@ -16,10 +16,12 @@ var viewPrefixes = []string{
 	"/api/sessions",
 	"/api/pending-messages",
 	"/api/contacts",
+	"/api/nodes",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
 	"/v1/contacts",
+	"/v1/nodes",
 }
 
 // Config is admin/view Bearer enforcement plus optional pairing grants.
@@ -39,7 +41,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 }
 
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
-// (GET /healthz /api/agents /api/sessions and the matching /v1 aliases only).
+// (GET /healthz /api/agents /api/sessions /api/nodes and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
 	return Require(Config{Admin: admin, View: view, Bypass: bypass})
 }
@@ -48,7 +50,7 @@ func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.
 func Require(cfg Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if pairingExchangePath(r) {
+			if pairingExchangePath(r) || nodeRequestPath(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -90,6 +92,18 @@ func pairingExchangePath(r *http.Request) bool {
 	}
 	switch r.URL.Path {
 	case "/api/pairing/exchange", "/v1/pairing/exchange":
+		return true
+	default:
+		return false
+	}
+}
+
+func nodeRequestPath(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/api/nodes/request", "/v1/nodes/request":
 		return true
 	default:
 		return false
