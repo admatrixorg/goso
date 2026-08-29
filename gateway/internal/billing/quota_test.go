@@ -5,6 +5,8 @@ package billing
 import (
 	"testing"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/config"
 )
 
 func TestDayLimit(t *testing.T) {
@@ -35,6 +37,16 @@ func TestDayLimit(t *testing.T) {
 	t.Setenv("GOSO_QUOTA_DAY", " 42 ")
 	if DayLimit() != 42 {
 		t.Fatalf("42 want 42, got %d", DayLimit())
+	}
+	t.Setenv("GOSO_QUOTA_DAY", "")
+	t.Cleanup(config.ResetOverlay)
+	config.SetOverlay(map[string]string{"quota_day": "8"})
+	if DayLimit() != 8 {
+		t.Fatalf("overlay want 8, got %d", DayLimit())
+	}
+	t.Setenv("GOSO_QUOTA_DAY", "2")
+	if DayLimit() != 2 {
+		t.Fatalf("env must still win overlay, got %d", DayLimit())
 	}
 }
 

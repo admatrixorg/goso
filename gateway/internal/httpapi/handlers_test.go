@@ -13,6 +13,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -20,6 +21,7 @@ import (
 )
 
 func newTestServer() (*store.Store, http.Handler) {
+	config.ResetOverlay()
 	st := store.New()
 	mux := Router(st, "0.1.0").(*http.ServeMux)
 	RegisterWS(mux, st, llm.Echo{})

@@ -1,4 +1,8 @@
+import { jsonFetch } from "./client";
 import { asList, crmOrgId, crmRequest } from "./crm";
+import type { GatewayConfig, GatewayPatch } from "./settings-ops";
+
+export type { GatewayConfig, GatewayField, GatewayPatch } from "./settings-ops";
 
 export type SettingsUser = { id: string; orgId: string; name: string; email: string; roleId: string; active: boolean };
 export type SettingsRole = { id: string; orgId: string; name: string; flags: Record<string, unknown> };
@@ -95,4 +99,8 @@ export const settingsApi = {
 
   billing: (orgId?: string) => crmRequest<Developing>("/api/settings/billing", org(orgId)),
   placeholders: (orgId?: string) => crmRequest<Developing>("/api/settings/placeholders", org(orgId)),
+
+  getGateway: () => jsonFetch<GatewayConfig>("/api/config"),
+  putGateway: (body: GatewayPatch) =>
+    jsonFetch<GatewayConfig>("/api/config", { method: "PUT", body: JSON.stringify(body) }),
 };

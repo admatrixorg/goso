@@ -97,6 +97,7 @@ func NewRouter(opt Options) http.Handler {
 	aliasAPI(mux, "POST /api/chat", chat)
 	mux.HandleFunc("GET /api/usage", handleUsage(opt.Meter))
 	mux.HandleFunc("GET /api/quota", handleQuota(opt.Meter))
+	registerConfigRoutes(mux, opt.Store)
 	registerConnectorRoutes(mux, opt)
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux)

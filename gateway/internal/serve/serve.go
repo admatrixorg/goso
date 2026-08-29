@@ -16,6 +16,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
+	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
@@ -50,6 +51,17 @@ func DefaultProvider() llm.Provider {
 		return llm.NewE2EScripted()
 	}
 	return llm.NewRegistry().Preferred()
+}
+
+func loadGatewayOverlay(st store.StoreIface) {
+	if st == nil {
+		return
+	}
+	row, err := st.GetGatewaySettings()
+	if err != nil || row == nil {
+		return
+	}
+	config.SetOverlay(row.Values)
 }
 
 func loadConnectors(st store.StoreIface, connReg *connector.Registry) {
@@ -112,6 +124,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)
+	loadGatewayOverlay(st)
 	gate := approval.New(0)
 	ev := eventstore.New(1024)
 	rt := agent.New(st, connReg, gate, ev, provider)

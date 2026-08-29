@@ -302,6 +302,11 @@ func (s *SQLiteStore) migrate() error {
 			approved_at TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_channel_pairing_sender ON channel_pairing(channel, sender_id, status)`,
+		`CREATE TABLE IF NOT EXISTS gateway_settings (
+			id TEXT PRIMARY KEY,
+			values_json TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
