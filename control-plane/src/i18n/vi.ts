@@ -156,6 +156,7 @@ export const vi = {
   "agents.confirmDelete": "Xóa agent “{name}”? Phiên của agent này cũng bị xóa. Không hoàn tác được.",
   "agents.deleteNamed": "Xóa agent {name}",
   "agents.conflict": "Agent vừa được sửa ở nơi khác. Tải lại rồi lưu lại.",
+  "agents.keyExists": "Khóa agent đã tồn tại.",
   "agents.cannotDeleteLead": "Không xóa được: agent đang là trưởng nhóm.",
   "agents.inactive": "Agent đang tắt.",
 

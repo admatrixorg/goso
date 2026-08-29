@@ -158,6 +158,7 @@ export const en: Record<MsgKey, string> = {
   "agents.confirmDelete": "Delete agent “{name}”? Sessions for this agent are removed. This cannot be undone.",
   "agents.deleteNamed": "Delete agent {name}",
   "agents.conflict": "This agent was edited elsewhere. Refresh and save again.",
+  "agents.keyExists": "Agent key already exists.",
   "agents.cannotDeleteLead": "Cannot delete: this agent is a team lead.",
   "agents.inactive": "Agent is inactive.",
 
