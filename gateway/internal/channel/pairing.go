@@ -15,7 +15,7 @@ import (
 )
 
 // PairingAlphabet excludes ambiguous 0 O 1 I L (SPEC 084).
-const PairingAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const PairingAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 const (
 	pairingTTL      = 60 * time.Minute

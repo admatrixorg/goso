@@ -15,6 +15,7 @@ import (
 
 func TestZaloPersonal_HandleUpdate(t *testing.T) {
 	st := store.New()
+	_ = st.PutChannelConfig(store.ChannelConfig{Name: "zalo-personal", DMPolicy: "allowlist", AllowFrom: []string{"t123"}})
 	var sentThread, sentText string
 	z := &ZaloPersonal{
 		Store: st, LLM: llm.Echo{},
@@ -44,6 +45,7 @@ func TestZaloPersonal_HandleUpdate(t *testing.T) {
 
 func TestZaloPersonal_FromIDFallback(t *testing.T) {
 	st := store.New()
+	_ = st.PutChannelConfig(store.ChannelConfig{Name: "zalo-personal", DMPolicy: "allowlist", AllowFrom: []string{"f999"}})
 	z := &ZaloPersonal{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _, _ string) error { return nil }}
 	body, _ := json.Marshal(map[string]any{
 		"from_id": "f999",

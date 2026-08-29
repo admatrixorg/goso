@@ -57,6 +57,25 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var cfg *store.ChannelConfig
+	if z.Store != nil {
+		cfg, _ = z.Store.GetChannelConfig("zalo-personal")
+	}
+	pol := MergePolicy("zalo-personal", cfg)
+	from := upd.FromID
+	if from == "" {
+		from = threadID
+	}
+	in := Inbound{Channel: "zalo-personal", SenderID: from, ChatID: threadID, PeerKind: "direct", Text: text}
+	paired := z.Store != nil && SenderPaired(z.Store, "zalo-personal", from, time.Time{})
+	switch CheckPolicy("zalo-personal", pol, in, paired) {
+	case PolicyReject, PolicyNeedMention, PolicyNeedPairing:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		return
+	}
+
 	agent := z.ensureAgent()
 	sess := z.ensureSession(agent.ID, threadID)
 
