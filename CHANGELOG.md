@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 099: Memory operator surface. Agent/session/scope filters, lexical search, episodic vs durable lists, detail + L2 relation expand, `GET /api/memory/index` (FTS vs substring; embedding always `not_configured`), GET/PATCH/DELETE by id. List rows return `snippet` only (no body). Named delete confirm. i18n vi+en. QA `docs/qa/099-memory.md`.
 - SPEC 098: Vault operator surface. Search plus type/agent/team filters, document metadata, inbound/outbound wikilinks, disk sync health (`GET /api/vault/health`) with stale warning, and a bounded relationship **list** (`GET /api/vault/graph`, cap 40 nodes — no canvas). Untrusted body is plain text. i18n vi+en. QA `docs/qa/098-vault.md`.
 - SPEC 097: Teams operator surface. Searchable list/detail, lead/member roles, directed vs bidirectional links, named confirm for delete/unlink/remove. Evolution stays guarded (`auto_adapt` / locked); suggestion text is truncated and never dumps system prompts. i18n vi+en. QA `docs/qa/097-teams.md`.
 - SPEC 096: Functions operator surface. Per-agent tool grants stay separate from global connector enable. Skills search/create/archive. MCP/connectors add+test with write-only tokens (`token_set` on GET). Cron enable + last_run / redacted last_error. i18n vi+en. QA `docs/qa/096-functions.md`.

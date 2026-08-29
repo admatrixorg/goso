@@ -10,10 +10,10 @@ Unify **MemoryPage** around document and episodic workflows: agent/scope filters
 
 ## AC
 
-- [ ] Filters: agent/scope, search, loading/empty/error. Separate episodic vs durable documents if both exist.
-- [ ] Detail + relation expand. Embedding/index “not configured” guidance when missing (do not invent a paid embedder).
-- [ ] Create/edit/delete where APIs allow; destructive confirm names the target. No secret payloads in lists.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/099-memory.md`.
+- [x] Filters: agent/scope, search, loading/empty/error. Separate episodic vs durable documents if both exist.
+- [x] Detail + relation expand. Embedding/index “not configured” guidance when missing (do not invent a paid embedder).
+- [x] Create/edit/delete where APIs allow; destructive confirm names the target. No secret payloads in lists.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/099-memory.md`.
 
 ## Out of scope
 

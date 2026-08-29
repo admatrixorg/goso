@@ -359,6 +359,32 @@ func TestSQLiteStore_FTSAndSummary(t *testing.T) {
 	if err != nil || got.Body != "alpha omega 2" {
 		t.Fatalf("latest %v %v", err, got)
 	}
+
+	b, _ := s.CreateAgent(Agent{AgentKey: "k2", DisplayName: "K2"})
+	sess2, _ := s.CreateSession(Session{AgentID: b.ID})
+	dur, err := s.PutMemory(Memory{SessionID: sess.ID, Body: "durable charter", Kind: "document"})
+	if err != nil || dur.Kind != KindDurable {
+		t.Fatalf("durable alias %v %#v", err, dur)
+	}
+	_, _ = s.PutMemory(Memory{SessionID: sess2.ID, Body: "other agent note", Kind: KindDurable})
+	byAgent, err := s.QueryMemories(MemoryQuery{AgentID: a.ID})
+	if err != nil || len(byAgent) < 2 {
+		t.Fatalf("query agent %v %d", err, len(byAgent))
+	}
+	byKind, err := s.QueryMemories(MemoryQuery{Kind: KindDurable, SessionID: sess.ID})
+	if err != nil || len(byKind) != 1 || byKind[0].ID != dur.ID {
+		t.Fatalf("query kind %v %#v", err, byKind)
+	}
+	upd, err := s.UpdateMemory(Memory{ID: dur.ID, Body: "durable charter v2", Kind: KindDurable})
+	if err != nil || upd.Body != "durable charter v2" {
+		t.Fatalf("update %v %#v", err, upd)
+	}
+	if err := s.DeleteMemory(dur.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := s.GetMemory(dur.ID); err != ErrNotFound {
+		t.Fatalf("deleted get: %v", err)
+	}
 }
 
 func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {

@@ -150,6 +150,39 @@ func TestStore_MemoryAndSearch(t *testing.T) {
 	if err != nil || got.Body != "updated" {
 		t.Fatalf("LatestSummary %v %v", err, got)
 	}
+
+	other, _ := s.CreateAgent(Agent{AgentKey: "mem2", DisplayName: "M2"})
+	sess2, _ := s.CreateSession(Session{AgentID: other.ID})
+	dur, err := s.PutMemory(Memory{SessionID: sess.ID, Body: "durable charter", Kind: "document"})
+	if err != nil || dur.Kind != KindDurable {
+		t.Fatalf("durable alias %v %#v", err, dur)
+	}
+	_, _ = s.PutMemory(Memory{SessionID: sess2.ID, Body: "other agent note", Kind: KindDurable})
+	byAgent, err := s.QueryMemories(MemoryQuery{AgentID: a.ID})
+	if err != nil || len(byAgent) < 2 {
+		t.Fatalf("query agent %v %d", err, len(byAgent))
+	}
+	byKind, err := s.QueryMemories(MemoryQuery{Kind: KindDurable, SessionID: sess.ID})
+	if err != nil || len(byKind) != 1 || byKind[0].ID != dur.ID {
+		t.Fatalf("query kind %v %#v", err, byKind)
+	}
+	gotDur, err := s.GetMemory(dur.ID)
+	if err != nil || gotDur.Body != "durable charter" {
+		t.Fatalf("get %v %#v", err, gotDur)
+	}
+	upd, err := s.UpdateMemory(Memory{ID: dur.ID, Body: "durable charter v2", Kind: KindDurable})
+	if err != nil || upd.Body != "durable charter v2" {
+		t.Fatalf("update %v %#v", err, upd)
+	}
+	if err := s.DeleteMemory(dur.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := s.GetMemory(dur.ID); err != ErrNotFound {
+		t.Fatalf("deleted get: %v", err)
+	}
+	if s.HasMemoryFTS() {
+		t.Fatal("in-memory store has no FTS5")
+	}
 }
 
 func TestStore_VaultWikilinksAndSearch(t *testing.T) {

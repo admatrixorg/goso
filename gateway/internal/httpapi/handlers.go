@@ -130,6 +130,10 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux.HandleFunc("GET /api/sessions/{id}/messages", handleListMessages(st))
 
 	mux.HandleFunc("GET /api/memory/search", handleSearchMemory(st))
+	aliasAPI(mux, "GET /api/memory/index", handleMemoryIndex(st))
+	aliasAPI(mux, "GET /api/memory/{id}", handleGetMemory(st))
+	aliasAPI(mux, "PATCH /api/memory/{id}", handlePatchMemory(st))
+	aliasAPI(mux, "DELETE /api/memory/{id}", handleDeleteMemory(st))
 	aliasAPI(mux, "GET /api/memory", handleListMemory(st))
 	mux.HandleFunc("POST /api/memory", handleCreateMemory(st))
 

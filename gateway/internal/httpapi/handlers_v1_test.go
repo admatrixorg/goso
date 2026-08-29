@@ -41,8 +41,8 @@ func TestV1AliasesMatchAPI(t *testing.T) {
 	h.ServeHTTP(wAPI, httptest.NewRequest(http.MethodGet, "/api/memory", nil))
 	wV1 := httptest.NewRecorder()
 	h.ServeHTTP(wV1, httptest.NewRequest(http.MethodGet, "/v1/memory", nil))
-	if wAPI.Code != http.StatusBadRequest || wV1.Code != wAPI.Code || wAPI.Body.String() != wV1.Body.String() {
-		t.Fatalf("memory missing session_id api=%d %s v1=%d %s", wAPI.Code, wAPI.Body.String(), wV1.Code, wV1.Body.String())
+	if wAPI.Code != http.StatusOK || wV1.Code != wAPI.Code || wAPI.Body.String() != wV1.Body.String() {
+		t.Fatalf("memory list-all api=%d %s v1=%d %s", wAPI.Code, wAPI.Body.String(), wV1.Code, wV1.Body.String())
 	}
 }
 
