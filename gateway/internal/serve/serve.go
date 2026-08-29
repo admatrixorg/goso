@@ -103,6 +103,8 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	tg := &channel.Telegram{Store: st, LLM: provider, Meter: meter}
 	zp := &channel.ZaloPersonal{Store: st, LLM: provider, Meter: meter}
 	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
+	chMgr := channel.NewManager()
+	chMgr.Telegram = tg
 	dc := &channel.Discord{Store: st, LLM: provider, Meter: meter}
 	sl := &channel.Slack{Store: st, LLM: provider, Meter: meter}
 	fs := &channel.Feishu{Store: st, LLM: provider, Meter: meter}
@@ -119,11 +121,12 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		Registry: connReg, Gate: gate, Events: ev, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
-		LLM: llm.NewRegistry(), Pairing: pairing,
+		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.Register(mux)
 	if !testing.Testing() {
+		go chMgr.StartAll(context.Background())
 		go cron.Loop(context.Background(), st, httpapi.FireSessionChat(rt, st, provider, meter))
 		if heartbeat.Enabled() {
 			go heartbeat.Loop(context.Background(), obs)
