@@ -160,6 +160,7 @@ type CronJob struct {
 	Message   string     `json:"message"`
 	Enabled   bool       `json:"enabled"`
 	LastRun   *time.Time `json:"last_run,omitempty"`
+	LastError string     `json:"last_error,omitempty"`
 }
 
 // Message represents a chat message.
@@ -372,6 +373,8 @@ type StoreIface interface {
 	GetToolFlag(name string) bool
 	SetToolFlag(name string, enabled bool) error
 	ListToolFlags() map[string]bool
+	GetAgentToolFlag(agentID, name string) (enabled bool, ok bool)
+	SetAgentToolFlag(agentID, name string, enabled bool) error
 	LinkAgentConnector(agentID, connectorName string) error
 	ListAgentConnectors(agentID string) ([]string, error)
 	PutMemory(Memory) (*Memory, error)
@@ -437,7 +440,9 @@ type StoreIface interface {
 	ListCronJobs() []*CronJob
 	GetCronJob(string) (*CronJob, error)
 	DeleteCronJob(string) error
+	SetCronEnabled(id string, enabled bool) error
 	MarkCronRun(id string, at time.Time) error
+	MarkCronError(id, msg string) error
 	CreateLLMProvider(LLMProvider) (*LLMProvider, error)
 	ListLLMProviders() []*LLMProvider
 	GetLLMProvider(string) (*LLMProvider, error)
@@ -508,6 +513,7 @@ type Store struct {
 	evoGuard       map[string]EvolutionGuardrails
 	secrets        map[string]SecretRow
 	toolFlags      map[string]bool
+	agentToolFlags map[string]map[string]bool // agent_id -> tool name -> enabled
 	cronJobs       map[string]*CronJob
 	llmProviders   map[string]*LLMProvider
 	webhooks       map[string]*Webhook
@@ -568,6 +574,7 @@ func New() *Store {
 		evoGuard:       make(map[string]EvolutionGuardrails),
 		secrets:        make(map[string]SecretRow),
 		toolFlags:      make(map[string]bool),
+		agentToolFlags: make(map[string]map[string]bool),
 		cronJobs:       make(map[string]*CronJob),
 		llmProviders:   make(map[string]*LLMProvider),
 		webhooks:       make(map[string]*Webhook),
@@ -1006,6 +1013,36 @@ func (s *Store) ListToolFlags() map[string]bool {
 		out[k] = v
 	}
 	return out
+}
+
+func (s *Store) GetAgentToolFlag(agentID, name string) (bool, bool) {
+	agentID = strings.TrimSpace(agentID)
+	name = strings.TrimSpace(name)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	row, ok := s.agentToolFlags[agentID]
+	if !ok {
+		return false, false
+	}
+	en, ok := row[name]
+	return en, ok
+}
+
+func (s *Store) SetAgentToolFlag(agentID, name string, enabled bool) error {
+	agentID = strings.TrimSpace(agentID)
+	name = strings.TrimSpace(name)
+	if agentID == "" || name == "" {
+		return errors.New("agent_id and name are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.agentToolFlags[agentID]
+	if !ok {
+		row = map[string]bool{}
+		s.agentToolFlags[agentID] = row
+	}
+	row[name] = enabled
+	return nil
 }
 
 func (s *Store) LinkAgentConnector(agentID, connectorName string) error {

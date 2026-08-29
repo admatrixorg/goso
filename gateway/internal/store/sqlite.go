@@ -201,13 +201,20 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS agent_tool_flags (
+			agent_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(agent_id, name)
+		)`,
 		`CREATE TABLE IF NOT EXISTS cron_jobs (
 			id TEXT PRIMARY KEY,
 			spec TEXT NOT NULL,
 			session_id TEXT NOT NULL,
 			message TEXT NOT NULL,
 			enabled INTEGER NOT NULL DEFAULT 1,
-			last_run TEXT
+			last_run TEXT,
+			last_error TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS llm_providers (
 			name TEXT PRIMARY KEY,
@@ -314,6 +321,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE webhooks ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
+	_, _ = s.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN last_error TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
@@ -936,6 +944,35 @@ func (s *SQLiteStore) ListToolFlags() map[string]bool {
 		out[name] = en != 0
 	}
 	return out
+}
+
+func (s *SQLiteStore) GetAgentToolFlag(agentID, name string) (bool, bool) {
+	agentID = strings.TrimSpace(agentID)
+	name = strings.TrimSpace(name)
+	var en int
+	err := s.db.QueryRow(`SELECT enabled FROM agent_tool_flags WHERE agent_id=? AND name=?`, agentID, name).Scan(&en)
+	if err != nil {
+		return false, false
+	}
+	return en != 0, true
+}
+
+func (s *SQLiteStore) SetAgentToolFlag(agentID, name string, enabled bool) error {
+	agentID = strings.TrimSpace(agentID)
+	name = strings.TrimSpace(name)
+	if agentID == "" || name == "" {
+		return errors.New("agent_id and name are required")
+	}
+	en := 0
+	if enabled {
+		en = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO agent_tool_flags(agent_id, name, enabled) VALUES(?,?,?)
+		 ON CONFLICT(agent_id, name) DO UPDATE SET enabled=excluded.enabled`,
+		agentID, name, en,
+	)
+	return err
 }
 
 func (s *SQLiteStore) LinkAgentConnector(agentID, connectorName string) error {

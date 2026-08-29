@@ -30,6 +30,21 @@ func TokenSecretName(name string) string {
 	return "connector/" + strings.TrimSpace(name) + "/token"
 }
 
+// NormalizeTransport maps operator aliases onto the three stored transports:
+// http, mcp-http (SSE / streamable HTTP), mcp-stdio. Empty defaults to http.
+func NormalizeTransport(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", TransportHTTP, "mcp":
+		return TransportHTTP, nil
+	case TransportMCPHTTP, "sse", "mcp-sse", "streamable-http":
+		return TransportMCPHTTP, nil
+	case TransportMCPStdio, "stdio":
+		return TransportMCPStdio, nil
+	default:
+		return "", fmt.Errorf("unknown transport %q", raw)
+	}
+}
+
 // DefaultCRMEndpoint returns GOSOCRM_API_URL or the local CRM default.
 func DefaultCRMEndpoint() string {
 	if v := strings.TrimSpace(os.Getenv("GOSOCRM_API_URL")); v != "" {
@@ -83,9 +98,9 @@ func Build(cfg Config) (Connector, error) {
 	if name == "" {
 		return nil, errors.New("connector name is required")
 	}
-	transport := strings.TrimSpace(cfg.Transport)
-	if transport == "" {
-		transport = TransportHTTP
+	transport, err := NormalizeTransport(cfg.Transport)
+	if err != nil {
+		return nil, err
 	}
 	if cfg.Timeout == 0 && cfg.TimeoutMS > 0 {
 		cfg.Timeout = time.Duration(cfg.TimeoutMS) * time.Millisecond
@@ -105,7 +120,6 @@ func Build(cfg Config) (Connector, error) {
 	}
 
 	var inner Connector
-	var err error
 	switch transport {
 	case TransportHTTP:
 		inner, err = newHTTPConnector(cfg)

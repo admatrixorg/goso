@@ -10,11 +10,11 @@ Reshape **FunctionsPage** into a coherent capabilities surface: per-agent tool g
 
 ## AC
 
-- [ ] Tools: per-agent grant/enable, `requires_approval` visible, configured vs not_configured. Do not expose connector tokens in tool lists.
-- [ ] Skills: search (existing BM25), create, delete/archive with confirm, empty/error. No script exec.
-- [ ] Connectors/MCP: list + add (stdio / SSE / HTTP as already stored transports). Test connection. Env/token fields write-only; GET never returns token values. Env-owned/disabled states explicit.
-- [ ] Cron: list/create/enable, session bind, last-run/error if present, empty/error. No live vendor secrets.
-- [ ] i18n vi+en. Loading/empty/error per card. CP typecheck. Tests. agpl 0. `docs/qa/096-functions.md`.
+- [x] Tools: per-agent grant/enable, `requires_approval` visible, configured vs not_configured. Do not expose connector tokens in tool lists.
+- [x] Skills: search (existing BM25), create, delete/archive with confirm, empty/error. No script exec.
+- [x] Connectors/MCP: list + add (stdio / SSE / HTTP as already stored transports). Test connection. Env/token fields write-only; GET never returns token values. Env-owned/disabled states explicit.
+- [x] Cron: list/create/enable, session bind, last-run/error if present, empty/error. No live vendor secrets.
+- [x] i18n vi+en. Loading/empty/error per card. CP typecheck. Tests. agpl 0. `docs/qa/096-functions.md`.
 
 ## Out of scope
 

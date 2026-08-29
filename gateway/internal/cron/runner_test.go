@@ -4,6 +4,7 @@ package cron
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,6 +88,9 @@ func TestTick_FireErrorDoesNotMark(t *testing.T) {
 	Tick(context.Background(), st, now.Add(time.Second), fail)
 	if n.Load() != 2 {
 		t.Fatalf("retry %d", n.Load())
+	}
+	if strings.TrimSpace(got.LastError) == "" {
+		t.Fatal("last_error not stored")
 	}
 }
 

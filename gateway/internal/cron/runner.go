@@ -53,6 +53,11 @@ func Tick(ctx context.Context, st store.StoreIface, now time.Time, fire FireFunc
 		cancel()
 		if err != nil {
 			log.Printf("goso cron: job %s: %v", j.ID, err)
+			msg := err.Error()
+			if len(msg) > 400 {
+				msg = msg[:400]
+			}
+			_ = st.MarkCronError(j.ID, msg)
 			continue
 		}
 		if err := st.MarkCronRun(j.ID, stampRun(now)); err != nil {

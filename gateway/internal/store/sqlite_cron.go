@@ -38,13 +38,14 @@ func (s *SQLiteStore) CreateCronJob(j CronJob) (*CronJob, error) {
 	}
 	j.ID = newID()
 	j.LastRun = nil
+	j.LastError = ""
 	enabled := 0
 	if j.Enabled {
 		enabled = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO cron_jobs(id, spec, session_id, message, enabled, last_run) VALUES(?,?,?,?,?,?)`,
-		j.ID, j.Spec, j.SessionID, j.Message, enabled, "",
+		`INSERT INTO cron_jobs(id, spec, session_id, message, enabled, last_run, last_error) VALUES(?,?,?,?,?,?,?)`,
+		j.ID, j.Spec, j.SessionID, j.Message, enabled, "", "",
 	)
 	if err != nil {
 		return nil, err
@@ -54,7 +55,7 @@ func (s *SQLiteStore) CreateCronJob(j CronJob) (*CronJob, error) {
 }
 
 func (s *SQLiteStore) ListCronJobs() []*CronJob {
-	rows, err := s.db.Query(`SELECT id, spec, session_id, message, enabled, last_run FROM cron_jobs ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, spec, session_id, message, enabled, last_run, last_error FROM cron_jobs ORDER BY id`)
 	if err != nil {
 		return []*CronJob{}
 	}
@@ -71,7 +72,7 @@ func (s *SQLiteStore) ListCronJobs() []*CronJob {
 }
 
 func (s *SQLiteStore) GetCronJob(id string) (*CronJob, error) {
-	row := s.db.QueryRow(`SELECT id, spec, session_id, message, enabled, last_run FROM cron_jobs WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, spec, session_id, message, enabled, last_run, last_error FROM cron_jobs WHERE id=?`, id)
 	j, err := scanCronJob(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -95,7 +96,35 @@ func (s *SQLiteStore) DeleteCronJob(id string) error {
 }
 
 func (s *SQLiteStore) MarkCronRun(id string, at time.Time) error {
-	res, err := s.db.Exec(`UPDATE cron_jobs SET last_run=? WHERE id=?`, formatTime(at), id)
+	res, err := s.db.Exec(`UPDATE cron_jobs SET last_run=?, last_error='' WHERE id=?`, formatTime(at), id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) SetCronEnabled(id string, enabled bool) error {
+	en := 0
+	if enabled {
+		en = 1
+	}
+	res, err := s.db.Exec(`UPDATE cron_jobs SET enabled=? WHERE id=?`, en, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) MarkCronError(id, msg string) error {
+	res, err := s.db.Exec(`UPDATE cron_jobs SET last_error=? WHERE id=?`, strings.TrimSpace(msg), id)
 	if err != nil {
 		return err
 	}
@@ -110,7 +139,7 @@ func scanCronJob(sc scanner) (*CronJob, error) {
 	var j CronJob
 	var enabled int
 	var last string
-	if err := sc.Scan(&j.ID, &j.Spec, &j.SessionID, &j.Message, &enabled, &last); err != nil {
+	if err := sc.Scan(&j.ID, &j.Spec, &j.SessionID, &j.Message, &enabled, &last, &j.LastError); err != nil {
 		return nil, err
 	}
 	j.Enabled = enabled != 0

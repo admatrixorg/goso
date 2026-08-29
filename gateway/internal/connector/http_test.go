@@ -138,3 +138,26 @@ func TestHTTPTransport_OfflineUnavailable(t *testing.T) {
 		t.Fatalf("expected unavailable, got %v", err)
 	}
 }
+
+func TestNormalizeTransport_StoredAliases(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", TransportHTTP},
+		{"http", TransportHTTP},
+		{"sse", TransportMCPHTTP},
+		{"mcp-http", TransportMCPHTTP},
+		{"streamable-http", TransportMCPHTTP},
+		{"stdio", TransportMCPStdio},
+		{"mcp-stdio", TransportMCPStdio},
+	}
+	for _, c := range cases {
+		got, err := NormalizeTransport(c.in)
+		if err != nil || got != c.want {
+			t.Fatalf("%q -> %q %v want %q", c.in, got, err, c.want)
+		}
+	}
+	if _, err := NormalizeTransport("grpc"); err == nil {
+		t.Fatal("unknown transport")
+	}
+}

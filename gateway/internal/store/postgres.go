@@ -62,6 +62,7 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
+	_, _ = s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''`)
 	s.tryVector()
 	return nil
 }
@@ -228,13 +229,20 @@ var postgresSchema = []string{
 		name TEXT PRIMARY KEY,
 		enabled INTEGER NOT NULL DEFAULT 0
 	)`,
+	`CREATE TABLE IF NOT EXISTS agent_tool_flags (
+		agent_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY(agent_id, name)
+	)`,
 	`CREATE TABLE IF NOT EXISTS cron_jobs (
 		id TEXT PRIMARY KEY,
 		spec TEXT NOT NULL,
 		session_id TEXT NOT NULL,
 		message TEXT NOT NULL,
 		enabled INTEGER NOT NULL DEFAULT 1,
-		last_run TEXT
+		last_run TEXT,
+		last_error TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS llm_providers (
 		name TEXT PRIMARY KEY,

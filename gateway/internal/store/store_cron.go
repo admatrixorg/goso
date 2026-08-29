@@ -44,6 +44,7 @@ func (s *Store) CreateCronJob(j CronJob) (*CronJob, error) {
 	}
 	j.ID = s.nextID()
 	j.LastRun = nil
+	j.LastError = ""
 	cp := j
 	s.cronJobs[cp.ID] = &cp
 	return cloneCronJob(&cp), nil
@@ -89,5 +90,28 @@ func (s *Store) MarkCronRun(id string, at time.Time) error {
 	}
 	t := at.UTC()
 	v.LastRun = &t
+	v.LastError = ""
+	return nil
+}
+
+func (s *Store) SetCronEnabled(id string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.cronJobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	v.Enabled = enabled
+	return nil
+}
+
+func (s *Store) MarkCronError(id, msg string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.cronJobs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	v.LastError = strings.TrimSpace(msg)
 	return nil
 }
