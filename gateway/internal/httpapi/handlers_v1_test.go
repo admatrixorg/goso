@@ -33,6 +33,7 @@ func TestV1AliasesMatchAPI(t *testing.T) {
 		"/teams",
 		"/cron",
 		"/pending-messages",
+		"/contacts",
 		"/memory?session_id=" + sess.ID,
 	} {
 		assertSameGET(t, h, "/api"+path, "/v1"+path)

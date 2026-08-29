@@ -146,6 +146,12 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 			agent = a
 		}
 	}
+	sight := Sighting{Channel: "telegram", Dest: fmt.Sprintf("%d", chatID), Kind: peer, SenderID: fromID}
+	if agent != nil {
+		sight.AgentID = agent.ID
+		sight.TenantID = agent.TenantID
+	}
+	ObserveDefault(sight)
 	if BufferIfNeeded(nil, agent, "telegram", fmt.Sprintf("%d", chatID)) {
 		return ""
 	}

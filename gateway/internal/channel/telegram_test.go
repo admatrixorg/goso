@@ -134,6 +134,10 @@ func TestTelegram_DisabledAgentBuffers(t *testing.T) {
 	buf := NewPending()
 	SetDefaultPending(buf)
 	t.Cleanup(func() { SetDefaultPending(prev) })
+	prevC := DefaultContacts()
+	dir := NewContacts()
+	SetDefaultContacts(dir)
+	t.Cleanup(func() { SetDefaultContacts(prevC) })
 
 	st := store.New()
 	a, err := st.CreateAgent(store.Agent{AgentKey: "telegram", DisplayName: "Telegram Bot"})
@@ -183,5 +187,13 @@ func TestTelegram_DisabledAgentBuffers(t *testing.T) {
 	raw, _ := json.Marshal(list)
 	if strings.Contains(string(raw), "bot_token") || strings.Contains(string(raw), "12345:AA") {
 		t.Fatalf("payload in listing %s", raw)
+	}
+	contacts := dir.List("", "", "", "")
+	if len(contacts) != 1 || contacts[0].Dest != "777" {
+		t.Fatalf("contacts %#v", contacts)
+	}
+	craw, _ := json.Marshal(contacts)
+	if strings.Contains(string(craw), "bot_token") || strings.Contains(string(craw), "12345:AA") {
+		t.Fatalf("payload in contacts %s", craw)
 	}
 }

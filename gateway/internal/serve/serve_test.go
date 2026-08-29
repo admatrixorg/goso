@@ -269,6 +269,23 @@ func TestViewToken_GETOnly(t *testing.T) {
 		t.Fatalf("view POST compact %d %s", rr.Code, rr.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/api/contacts", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET contacts %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/contacts/ct_1/merge", strings.NewReader(`{"source_id":"ct_2","confirm":"x"}`))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST merge %d %s", rr.Code, rr.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/api/system/backup", nil)
 	req.Header.Set("Authorization", "Bearer view-041")
 	rr = httptest.NewRecorder()

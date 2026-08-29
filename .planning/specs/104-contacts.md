@@ -10,9 +10,9 @@ Add a **live contact directory** sourced from channel interactions: search, chan
 
 ## AC
 
-- [ ] Live nav tab + page (not demo-only Friends). Search/filter, loading/empty/error.
-- [ ] Detail: canonical identity + channel ids. GET never returns tokens. Merge requires confirmation and keeps identifiers.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/104-contacts.md`.
+- [x] Live nav tab + page (not demo-only Friends). Search/filter, loading/empty/error.
+- [x] Detail: canonical identity + channel ids. GET never returns tokens. Merge requires confirmation and keeps identifiers.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/104-contacts.md`.
 
 ## Out of scope
 
