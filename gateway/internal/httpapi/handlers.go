@@ -130,6 +130,7 @@ func NewRouter(opt Options) http.Handler {
 	registerContactsRoutes(mux, opt)
 	registerNodeRoutes(mux, opt)
 	registerWorkstationRoutes(mux, opt)
+	registerStorageRoutes(mux, opt)
 	return mux
 }
 
