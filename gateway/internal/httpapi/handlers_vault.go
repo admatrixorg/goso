@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -156,5 +157,43 @@ func handleSyncVault(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, res)
+	}
+}
+
+func vaultTenantAllow(r *http.Request) func(*store.VaultDoc) bool {
+	tid := requestTenant(r)
+	return func(d *store.VaultDoc) bool {
+		return d != nil && store.SameTenant(d.TenantID, tid)
+	}
+}
+
+func handleVaultHealth(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h, err := vaultSvc(st).Health(vaultTenantAllow(r))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, h)
+	}
+}
+
+func handleVaultGraph(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := vault.DefaultGraphNodeCap
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err == nil {
+				limit = n
+			}
+		}
+		g := vaultSvc(st).Graph(limit, vaultTenantAllow(r))
+		if g.Nodes == nil {
+			g.Nodes = []vault.GraphNode{}
+		}
+		if g.Edges == nil {
+			g.Edges = []vault.GraphEdge{}
+		}
+		writeJSON(w, http.StatusOK, g)
 	}
 }

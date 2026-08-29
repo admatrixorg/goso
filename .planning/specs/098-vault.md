@@ -10,10 +10,10 @@ Extend **VaultPage** from document/link lists to an operator knowledge workspace
 
 ## AC
 
-- [ ] List: search + type/agent/team filters, loading/empty/error, sync health/stale warning if APIs exist.
-- [ ] Detail: document metadata, inbound/outbound links. Untrusted body is escaped/plain (no raw HTML inject).
-- [ ] Optional bounded graph (or explicit “no canvas” usable list). Cap node counts.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/098-vault.md`.
+- [x] List: search + type/agent/team filters, loading/empty/error, sync health/stale warning if APIs exist.
+- [x] Detail: document metadata, inbound/outbound links. Untrusted body is escaped/plain (no raw HTML inject).
+- [x] Optional bounded graph (or explicit “no canvas” usable list). Cap node counts.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/098-vault.md`.
 
 ## Out of scope
 
