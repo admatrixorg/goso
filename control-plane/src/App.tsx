@@ -5,7 +5,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { ConnectorsPage } from "./pages/Connectors";
 import { FunctionsPage } from "./pages/FunctionsPage";
 import { EventsPage } from "./pages/Events";
-import { CrmMetricsPage } from "./pages/CrmMetrics";
+import { OverviewPage } from "./pages/OverviewPage";
 import { HomePage } from "./pages/HomePage";
 import { MeetingsPage } from "./pages/MeetingsPage";
 import { TasksPage } from "./pages/TasksPage";
@@ -450,7 +450,7 @@ export default function App() {
           {DEMO && tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
           {DEMO && tab === "meetings" && <MeetingsPage />}
           {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
-          {tab === "crm" && <CrmMetricsPage />}
+          {tab === "crm" && <OverviewPage />}
           {tab === "heatmap" && <HeatmapPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (

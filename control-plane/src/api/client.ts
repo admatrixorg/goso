@@ -1,6 +1,10 @@
 // Gateway API client — talks to GOSO gateway (proxied via Vite or direct).
 // Token is read from import.meta.env or localStorage; not hardcoded.
 
+import { emptyGatewayStats, parseStatsBody, type GatewayStatsProbe } from "./stats";
+
+export type { GatewayStatsProbe } from "./stats";
+
 const GATEWAY_URL = (import.meta.env.VITE_GATEWAY_URL as string) || "";
 
 function base(): string {
@@ -83,15 +87,15 @@ export async function probeHealthz(signal?: AbortSignal): Promise<{ status: numb
   }
 }
 
-/** GET /api/stats without throwing — used by chrome for optional last_heartbeat. */
-export async function probeStats(signal?: AbortSignal): Promise<{ lastHeartbeat: string }> {
+/** GET /api/stats without throwing — used by chrome and Overview. status 0 = network/timeout. */
+export async function probeStats(signal?: AbortSignal): Promise<GatewayStatsProbe> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), HEALTH_TIMEOUT_MS);
   const onAbort = () => ctrl.abort();
   if (signal) {
     if (signal.aborted) {
       clearTimeout(timer);
-      return { lastHeartbeat: "" };
+      return emptyGatewayStats(0);
     }
     signal.addEventListener("abort", onAbort, { once: true });
   }
@@ -108,13 +112,15 @@ export async function probeStats(signal?: AbortSignal): Promise<{ lastHeartbeat:
       } catch {
         /* ignore */
       }
-      return { lastHeartbeat: "" };
+      return emptyGatewayStats(res.status);
     }
-    const body = (await res.json()) as { last_heartbeat?: unknown };
-    const raw = typeof body.last_heartbeat === "string" ? body.last_heartbeat.trim() : "";
-    return { lastHeartbeat: raw };
+    try {
+      return parseStatsBody(await res.json(), res.status);
+    } catch {
+      return emptyGatewayStats(res.status);
+    }
   } catch {
-    return { lastHeartbeat: "" };
+    return emptyGatewayStats(0);
   } finally {
     clearTimeout(timer);
     if (signal) signal.removeEventListener("abort", onAbort);
