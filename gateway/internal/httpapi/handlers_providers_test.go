@@ -127,7 +127,7 @@ func TestProviders_CRUDTestConnection(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.Name != "acme" || !created.KeySet || created.Source != "sqlite" {
+	if created.Name != "acme" || !created.KeySet || created.Source != "sqlite" || !created.Enabled {
 		t.Fatalf("created %+v", created)
 	}
 
@@ -277,5 +277,146 @@ func TestProviders_PostEchoConflict(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 409 {
 		t.Fatalf("echo exists %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProviders_DeleteKeyNeverLeakAndEnvWins(t *testing.T) {
+	clearLLMEnv(t)
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_ROUTER9_BASE_URL", "http://127.0.0.1:20127/v1")
+
+	st := store.New()
+	h := providerRouter(t, st)
+
+	create := `{"name":"acme","type":"openai-compat","base_url":"http://127.0.0.1:9","model":"m","api_key":"unit-key"}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/providers", bytes.NewBufferString(create))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/providers/acme", bytes.NewBufferString(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("disable %d %s", w.Code, w.Body.String())
+	}
+	var disabled llm.ProviderInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Enabled || !disabled.KeySet {
+		t.Fatalf("disable should keep key: %+v", disabled)
+	}
+	if strings.Contains(w.Body.String(), "unit-key") || strings.Contains(w.Body.String(), `"api_key"`) {
+		t.Fatal("PATCH leaked secret")
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/providers/acme/key", nil))
+	if w.Code != 200 {
+		t.Fatalf("delete key %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "unit-key") || strings.Contains(w.Body.String(), `"api_key"`) {
+		t.Fatal("DELETE leaked secret")
+	}
+	var cleared struct {
+		OK     bool `json:"ok"`
+		KeySet bool `json:"key_set"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &cleared); err != nil {
+		t.Fatal(err)
+	}
+	if !cleared.OK || cleared.KeySet {
+		t.Fatalf("cleared %+v %s", cleared, w.Body.String())
+	}
+	if _, err := secrets.Get(st, llm.APIKeySecretName("acme")); err == nil {
+		t.Fatal("boxed key should be gone")
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/providers", nil))
+	if strings.Contains(w.Body.String(), "unit-key") || strings.Contains(w.Body.String(), `"api_key"`) {
+		t.Fatal("GET leaked secret after clear")
+	}
+	var listed struct {
+		Providers []llm.ProviderInfo `json:"providers"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	var acme, router9 *llm.ProviderInfo
+	for i := range listed.Providers {
+		switch listed.Providers[i].Name {
+		case "acme":
+			acme = &listed.Providers[i]
+		case "router9":
+			router9 = &listed.Providers[i]
+		}
+	}
+	if acme == nil || acme.KeySet || acme.Source != "sqlite" || acme.Enabled {
+		t.Fatalf("acme after clear %+v", acme)
+	}
+	if router9 == nil || router9.Source != "env" {
+		t.Fatalf("env must win %+v", router9)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/providers/router9/key", nil))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "env overlay") {
+		t.Fatalf("env delete %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/providers/missing/key", nil))
+	if w.Code != 404 {
+		t.Fatalf("missing delete %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProviders_TestErrorNeverLeaksKey(t *testing.T) {
+	clearLLMEnv(t)
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"nope","api_key":"unit-key","authorization":"Bearer unit-key"}`))
+	}))
+	defer srv.Close()
+	st := store.New()
+	h := providerRouter(t, st)
+	create := `{"name":"leak","type":"openai-compat","base_url":"` + srv.URL + `","model":"m","api_key":"unit-key"}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/providers", bytes.NewBufferString(create))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/providers/leak/test", bytes.NewBufferString(`{"kind":"models"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("test %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "unit-key") || strings.Contains(w.Body.String(), `"api_key":"unit-key"`) {
+		t.Fatalf("test leaked secret: %s", w.Body.String())
+	}
+	var tr llm.TestResult
+	if err := json.Unmarshal(w.Body.Bytes(), &tr); err != nil {
+		t.Fatal(err)
+	}
+	if tr.OK || tr.Error == "" || tr.LatencyMS < 0 {
+		t.Fatalf("want redacted failure %+v", tr)
 	}
 }

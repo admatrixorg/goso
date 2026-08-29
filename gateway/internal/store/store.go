@@ -305,6 +305,7 @@ type LLMProvider struct {
 	Type     string `json:"type"`
 	BaseURL  string `json:"base_url"`
 	Model    string `json:"model"`
+	Enabled  bool   `json:"enabled"`
 }
 
 // Webhook is a persisted inbound webhook row. HMACEnc is ciphertext (or empty

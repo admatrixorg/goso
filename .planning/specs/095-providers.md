@@ -10,10 +10,10 @@ Complete **ProvidersPage** for key-based and subscription providers: add/edit/en
 
 ## AC
 
-- [ ] List: search/filter, type, source (`env`/`sqlite`), `key_set` badge, optional enabled state. Empty/loading/error. Env-owned rows stay read-only (existing `env overlay`).
-- [ ] Add/edit: name (create only), type, base_url, model, write-only `api_key` (blank on load, empty PATCH does not clear). Test models/chat with `latency_ms` and redacted error. Do not dump raw JSON that could contain keys.
-- [ ] Explicit rotate/clear for sqlite-boxed keys (empty PATCH already keeps the key — add DELETE `/api/providers/{name}/key` or equivalent). GET `/api/providers` never includes `api_key`. Env-wins after clear.
-- [ ] i18n vi+en. CP typecheck. Tests for helpers + httpapi never-leak. agpl 0. `docs/qa/095-providers.md`.
+- [x] List: search/filter, type, source (`env`/`sqlite`), `key_set` badge, optional enabled state. Empty/loading/error. Env-owned rows stay read-only (existing `env overlay`).
+- [x] Add/edit: name (create only), type, base_url, model, write-only `api_key` (blank on load, empty PATCH does not clear). Test models/chat with `latency_ms` and redacted error. Do not dump raw JSON that could contain keys.
+- [x] Explicit rotate/clear for sqlite-boxed keys (empty PATCH already keeps the key — add DELETE `/api/providers/{name}/key` or equivalent). GET `/api/providers` never includes `api_key`. Env-wins after clear.
+- [x] i18n vi+en. CP typecheck. Tests for helpers + httpapi never-leak. agpl 0. `docs/qa/095-providers.md`.
 
 ## Out of scope
 

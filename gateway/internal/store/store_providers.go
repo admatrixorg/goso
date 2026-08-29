@@ -76,5 +76,6 @@ func (s *Store) UpdateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 	}
 	cur.BaseURL = strings.TrimSpace(p.BaseURL)
 	cur.Model = strings.TrimSpace(p.Model)
+	cur.Enabled = p.Enabled
 	return cloneLLMProvider(cur), nil
 }

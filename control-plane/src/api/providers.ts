@@ -1,29 +1,23 @@
 import { jsonFetch } from "./client";
-
-export type ProviderInfo = {
-  name: string;
-  type: string;
-  base_url: string;
-  model: string;
-  key_set: boolean;
-  source: "env" | "sqlite" | string;
-};
-
-export type ProviderTestResult = {
-  ok: boolean;
-  latency_ms: number;
-  models?: string[];
-  reply?: string;
-  error?: string;
-};
-
-export type ProviderWrite = {
-  name?: string;
-  type?: string;
-  base_url?: string;
-  model?: string;
-  api_key?: string;
-};
+export type {
+  ProviderEnabledFilter,
+  ProviderInfo,
+  ProviderSourceFilter,
+  ProviderTestResult,
+  ProviderTestView,
+  ProviderWrite,
+} from "./provider-ops";
+export {
+  PROVIDER_TYPES,
+  canClearProviderKey,
+  filterProviders,
+  formatProviderTest,
+  isEnvOwned,
+  isProviderEnabled,
+  providerWriteBody,
+  uniqueProviderTypes,
+} from "./provider-ops";
+import type { ProviderInfo, ProviderTestResult, ProviderWrite } from "./provider-ops";
 
 export const providersApi = {
   list: () => jsonFetch<{ providers: ProviderInfo[] }>("/api/providers"),
@@ -34,6 +28,11 @@ export const providersApi = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  clearKey: (name: string) =>
+    jsonFetch<{ ok: boolean; name: string; key_set: boolean; source: string }>(
+      `/api/providers/${encodeURIComponent(name)}/key`,
+      { method: "DELETE" },
+    ),
   test: (name: string, kind?: "models" | "chat") =>
     jsonFetch<ProviderTestResult>(`/api/providers/${encodeURIComponent(name)}/test`, {
       method: "POST",
