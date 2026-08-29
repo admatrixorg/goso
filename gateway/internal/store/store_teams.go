@@ -390,6 +390,34 @@ func (s *Store) HasAgentLink(fromID, toID string) bool {
 	return false
 }
 
+func (s *Store) RemoveAgentLink(fromID, toID string) error {
+	fromID = strings.TrimSpace(fromID)
+	toID = strings.TrimSpace(toID)
+	if fromID == "" || toID == "" {
+		return errors.New("from and to agent ids are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.agents[fromID]; !ok {
+		return ErrNotFound
+	}
+	tos := s.agentLinks[fromID]
+	kept := tos[:0]
+	found := false
+	for _, id := range tos {
+		if id == toID {
+			found = true
+			continue
+		}
+		kept = append(kept, id)
+	}
+	if !found {
+		return ErrNotFound
+	}
+	s.agentLinks[fromID] = kept
+	return nil
+}
+
 func (s *Store) metricLocked(agentID string) *AgentMetrics {
 	m, ok := s.metrics[agentID]
 	if !ok {

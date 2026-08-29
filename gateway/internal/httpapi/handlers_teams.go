@@ -31,8 +31,9 @@ func registerTeamRoutes(mux *http.ServeMux, st store.StoreIface) {
 	mux.HandleFunc("PUT /api/teams/{id}", handleUpdateTeam(st))
 	mux.HandleFunc("DELETE /api/teams/{id}", handleDeleteTeam(st))
 
-	mux.HandleFunc("GET /api/agents/{id}/links", handleListLinks(st))
-	mux.HandleFunc("POST /api/agents/{id}/links", handleAddLink(st))
+	aliasAPI(mux, "GET /api/agents/{id}/links", handleListLinks(st))
+	aliasAPI(mux, "POST /api/agents/{id}/links", handleAddLink(st))
+	aliasAPI(mux, "DELETE /api/agents/{id}/links/{to_id}", handleRemoveLink(st))
 	mux.HandleFunc("GET /api/agents/{id}/evolution", handleEvolution(st))
 	mux.HandleFunc("PATCH /api/agents/{id}/evolution", handleEvolutionGuardrails(st))
 	mux.HandleFunc("POST /api/agents/{id}/evolution/tick", handleEvolutionTick(st))
@@ -321,12 +322,12 @@ func handleListLinks(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
-		list, err := st.ListAgentLinks(strings.TrimSpace(r.PathValue("id")))
-		if err != nil {
+		from := strings.TrimSpace(r.PathValue("id"))
+		if _, err := st.ListAgentLinks(from); err != nil {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"links": list})
+		writeJSON(w, http.StatusOK, map[string]any{"links": publicAgentLinks(st, from)})
 	}
 }
 
@@ -358,8 +359,48 @@ func handleAddLink(st store.StoreIface) http.HandlerFunc {
 		if body.Bidirectional {
 			_ = st.AddAgentLink(strings.TrimSpace(body.ToAgentID), from)
 		}
-		links, _ := st.ListAgentLinks(from)
-		writeJSON(w, http.StatusCreated, map[string]any{"links": links})
+		writeJSON(w, http.StatusCreated, map[string]any{"links": publicAgentLinks(st, from)})
+	}
+}
+
+func publicAgentLinks(st store.StoreIface, from string) []map[string]any {
+	list, err := st.ListAgentLinks(from)
+	if err != nil {
+		return []map[string]any{}
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, l := range list {
+		out = append(out, map[string]any{
+			"from_agent_id": l.FromAgentID,
+			"to_agent_id":   l.ToAgentID,
+			"bidirectional": st.HasAgentLink(l.ToAgentID, from),
+		})
+	}
+	return out
+}
+
+func handleRemoveLink(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		from := strings.TrimSpace(r.PathValue("id"))
+		to := strings.TrimSpace(r.PathValue("to_id"))
+		if _, err := agentVisible(st, from, requestTenant(r)); err != nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		if err := st.RemoveAgentLink(from, to); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "link not found")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		pair := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("pair")), "1") ||
+			strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("pair")), "true")
+		if pair {
+			_ = st.RemoveAgentLink(to, from)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": publicAgentLinks(st, from)})
 	}
 }
 

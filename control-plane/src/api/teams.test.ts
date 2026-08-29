@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  agentLabel,
+  EVOLUTION_TEXT_CAP,
+  filterTeams,
+  isTeamLead,
+  linkArrow,
+  linkDirection,
+  lockedFields,
+  namedConfirmTarget,
+  safeEvolutionText,
+  teamDisplayName,
+  validateTeamDraft,
+} from "./teams-ops.ts";
+
+const teams = [
+  { id: "t1", name: "Ops", lead_agent_id: "a-lead" },
+  { id: "t2", name: "Support desk", lead_agent_id: "a-sup" },
+  { id: "abc-xyz", name: "", lead_agent_id: "" },
+];
+
+const agents = [
+  { id: "a-lead", agent_key: "lead", display_name: "Lead bot" },
+  { id: "a-sup", agent_key: "support", display_name: "  " },
+];
+
+test("filterTeams matches name, id, lead", () => {
+  assert.equal(filterTeams(teams, "ops").map((t) => t.id).join(), "t1");
+  assert.equal(filterTeams(teams, "ABC").map((t) => t.id).join(), "abc-xyz");
+  assert.equal(filterTeams(teams, "a-sup").map((t) => t.id).join(), "t2");
+  assert.equal(filterTeams(teams, "  ").length, 3);
+  assert.equal(filterTeams(teams).length, 3);
+});
+
+test("teamDisplayName and agentLabel", () => {
+  assert.equal(teamDisplayName({ id: "t1", name: " Ops " }), "Ops");
+  assert.equal(teamDisplayName({ id: "missing", name: "  " }), "missing");
+  assert.equal(agentLabel(agents, "a-lead"), "Lead bot");
+  assert.equal(agentLabel(agents, "a-sup"), "support");
+  assert.equal(agentLabel(agents, "gone"), "gone");
+});
+
+test("validateTeamDraft and lead helper", () => {
+  assert.equal(validateTeamDraft("  ", "a1"), "teams.needName");
+  assert.equal(validateTeamDraft("Ops", "  "), "teams.needLead");
+  assert.equal(validateTeamDraft("Ops", "a1"), null);
+  assert.equal(isTeamLead({ lead_agent_id: "a-lead" }, "a-lead"), true);
+  assert.equal(isTeamLead({ lead_agent_id: "a-lead" }, "a-sup"), false);
+  assert.equal(isTeamLead(undefined, "a-lead"), false);
+});
+
+test("link direction is visible as directed or bidirectional", () => {
+  assert.equal(linkDirection({}), "directed");
+  assert.equal(linkDirection({ bidirectional: false }), "directed");
+  assert.equal(linkDirection({ bidirectional: true }), "bidirectional");
+  assert.equal(linkArrow("directed"), "→");
+  assert.equal(linkArrow("bidirectional"), "↔");
+});
+
+test("namedConfirmTarget requires the exact name", () => {
+  assert.equal(namedConfirmTarget("Ops", "Ops"), true);
+  assert.equal(namedConfirmTarget("Ops", " Ops "), true);
+  assert.equal(namedConfirmTarget("Ops", "ops"), false);
+  assert.equal(namedConfirmTarget("Ops", "Support"), false);
+  assert.equal(namedConfirmTarget("  ", "  "), false);
+});
+
+test("safeEvolutionText never dumps a full system prompt", () => {
+  assert.equal(safeEvolutionText("  Tool failure rate is high.  "), "Tool failure rate is high.");
+  const dump = "You are a helpful assistant. ".repeat(40) + "instructions: " + "secret policy ".repeat(20);
+  const out = safeEvolutionText(dump);
+  assert.ok(out.endsWith("…"));
+  assert.ok(out.length <= EVOLUTION_TEXT_CAP + 1);
+  assert.equal(out.includes("secret policy"), false);
+  assert.deepEqual(lockedFields({ locked: [" display_name ", "agent_key", ""] }), ["display_name", "agent_key"]);
+  assert.deepEqual(lockedFields(undefined), []);
+});

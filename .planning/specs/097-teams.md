@@ -10,10 +10,10 @@ Finish **TeamsPage** as the operational team workspace: create/edit, lead/member
 
 ## AC
 
-- [ ] List: search, empty/loading/error. Detail: members + lead, links (direction visible), tasks/messages if APIs exist.
-- [ ] Create/edit team; add/remove member; set lead. Unlink/remove requires named confirmation.
-- [ ] Evolution suggestions remain guarded (existing auto_adapt/locked). Do not dump full system prompts.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/097-teams.md`.
+- [x] List: search, empty/loading/error. Detail: members + lead, links (direction visible), tasks/messages if APIs exist.
+- [x] Create/edit team; add/remove member; set lead. Unlink/remove requires named confirmation.
+- [x] Evolution suggestions remain guarded (existing auto_adapt/locked). Do not dump full system prompts.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/097-teams.md`.
 
 ## Out of scope
 

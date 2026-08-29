@@ -110,6 +110,51 @@ func TestTeamsAPI_CRUDKanbanMailbox(t *testing.T) {
 	if w.Code != 201 {
 		t.Fatalf("links %d %s", w.Code, w.Body.String())
 	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+lead.ID+"/links", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"bidirectional":true`) {
+		t.Fatalf("list links %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "instructions") {
+		t.Fatalf("links leaked prompt %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	put := httptest.NewRequest("PUT", "/api/teams/"+tm.ID, bytes.NewBufferString(`{"name":"Ops desk","lead_agent_id":"`+mem.ID+`"}`))
+	put.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, put)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Ops desk") {
+		t.Fatalf("update team %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/teams/"+tm.ID+"/members/"+mem.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("remove member %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/agents/"+lead.ID+"/links/"+mem.ID+"?pair=1", nil))
+	if w.Code != 200 {
+		t.Fatalf("unlink %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+lead.ID+"/links", nil))
+	if w.Code != 200 || strings.Contains(w.Body.String(), mem.ID) {
+		t.Fatalf("unlinked leftover %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/teams/"+tm.ID, nil))
+	if w.Code != 200 {
+		t.Fatalf("delete team %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/teams/"+tm.ID, nil))
+	if w.Code != 404 {
+		t.Fatalf("deleted team %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestTeamsAPI_LiteCapsAndBearer(t *testing.T) {
