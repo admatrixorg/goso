@@ -104,8 +104,9 @@ Environment:
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
-  GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions
+  GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions /api/nodes
   Pairing                  Admin POST /api/pairing → one-time code (10 min); POST /api/pairing/exchange → view grant
+  Nodes                    POST /api/nodes/request (no Bearer) pending device; GET list; admin approve/deny/revoke
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
   GOSO_INJECTION           log or block prompt-injection matches on /api/chat (production default block)
   GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, web_fetch, and browser

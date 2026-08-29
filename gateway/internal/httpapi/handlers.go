@@ -21,6 +21,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/node"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -55,6 +56,8 @@ type Options struct {
 	Pending *channel.Pending
 	// Contacts is the inbound identity directory. Nil → DefaultContacts.
 	Contacts *channel.Contacts
+	// Nodes is the dashboard device registry. Nil → node.Default.
+	Nodes *node.Nodes
 }
 
 func (o *Options) defaults() {
@@ -81,6 +84,9 @@ func (o *Options) defaults() {
 	}
 	if o.Contacts == nil {
 		o.Contacts = channel.DefaultContacts()
+	}
+	if o.Nodes == nil {
+		o.Nodes = node.Default()
 	}
 }
 
@@ -116,6 +122,7 @@ func NewRouter(opt Options) http.Handler {
 	registerZaloPersonalQR(mux, opt.Store)
 	registerPendingRoutes(mux, opt)
 	registerContactsRoutes(mux, opt)
+	registerNodeRoutes(mux, opt)
 	return mux
 }
 
