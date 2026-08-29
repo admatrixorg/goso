@@ -94,13 +94,32 @@ func TestEventStore_TokenShapes(t *testing.T) {
 	s := New(32)
 	e := s.Append(Event{
 		Kind:    KindAttempt,
-		Summary: "key sk-abcdefghijklmnopqrstuvwxyz Bearer abcdefghijklmnop leftover",
+		Summary: "key sk-abcdefghijklmnopqrstuvwxyz Bearer abcdefghijklmnop xai-abcdefghijk AIzaabcdefghijk leftover",
 	})
 	if strings.Contains(e.Summary, "sk-abcdefghijklmnopqrstuvwxyz") || strings.Contains(e.Summary, "Bearer abcdefghijklmnop") {
 		t.Fatalf("token shape leaked: %s", e.Summary)
 	}
+	if strings.Contains(e.Summary, "xai-abcdefghijk") || strings.Contains(e.Summary, "AIzaabcdefghijk") {
+		t.Fatalf("vendor token leaked: %s", e.Summary)
+	}
 	if !strings.Contains(e.Summary, "[redacted]") {
 		t.Fatalf("expected redaction, got %s", e.Summary)
+	}
+}
+
+func TestEventStore_SlowSubscriberClosed(t *testing.T) {
+	s := New(32)
+	ch, cancel := s.Subscribe(1)
+	defer cancel()
+	s.Append(Event{Kind: KindAttempt, Type: TypeConnector})
+	s.Append(Event{Kind: KindSuccess, Type: TypeConnector})
+	s.Append(Event{Kind: KindError, Type: TypeConnector})
+	got := 0
+	for range ch {
+		got++
+	}
+	if got == 0 {
+		t.Fatal("expected at least the buffered event before close")
 	}
 }
 

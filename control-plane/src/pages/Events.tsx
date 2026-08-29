@@ -153,8 +153,9 @@ export function EventsPage() {
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    const timer = setTimeout(() => void load(), history.length === 0 ? 0 : 250);
+    return () => clearTimeout(timer);
+  }, [type, actor, kind, connector]);
 
   useEffect(() => {
     if (!live || paused) {
@@ -180,7 +181,7 @@ export function EventsPage() {
         setRetryIn(0);
         try {
           await eventsApi.stream(
-            { kind: kind || undefined, connector: connector || undefined, type: type || undefined, actor: actor || undefined },
+            undefined,
             (e) => {
               if (typeof e.seq === "number" && e.seq > lastSeq.current) lastSeq.current = e.seq;
               setLiveRows((prev) => mergeLive(prev, e));
@@ -216,7 +217,7 @@ export function EventsPage() {
       if (waitTimer) clearTimeout(waitTimer);
       waitDone?.();
     };
-  }, [live, paused, kind, connector, type, actor]);
+  }, [live, paused]);
 
   const connLabel =
     conn === "connecting"
@@ -262,7 +263,6 @@ export function EventsPage() {
               disabled={!live}
               onClick={() => {
                 setLiveRows([]);
-                lastSeq.current = 0;
                 setOpen("");
               }}
             >

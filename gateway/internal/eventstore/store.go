@@ -105,10 +105,18 @@ func (s *Store) Append(e Event) Event {
 	s.seq++
 	e.Seq = s.seq
 	s.ring = append(s.ring, e)
-	for _, ch := range s.subs {
+	var dead []int
+	for id, ch := range s.subs {
 		select {
 		case ch <- e:
 		default:
+			dead = append(dead, id)
+		}
+	}
+	for _, id := range dead {
+		if ch, ok := s.subs[id]; ok {
+			delete(s.subs, id)
+			close(ch)
 		}
 	}
 	s.mu.Unlock()
@@ -222,7 +230,7 @@ var payloadKeys = []string{
 	"tool_input", "tool_result", "text", "input", "output", "message",
 }
 
-var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._\-+=/]+)`)
+var tokenShape = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|wh_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._\-+=/]+)`)
 
 func redactTokenShapes(s string) string {
 	return tokenShape.ReplaceAllString(s, "[redacted]")

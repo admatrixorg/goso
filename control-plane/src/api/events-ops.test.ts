@@ -46,6 +46,8 @@ test("publicHasSecrets flags token shapes and payload keys", () => {
   assert.equal(publicHasSecrets({ summary: `{"body":"hi"}` }), true);
   assert.equal(publicHasSecrets({ summary: "sk-abcdefghijk" }), true);
   assert.equal(publicHasSecrets({ summary: "Bearer abcdefghijklmnop" }), true);
+  assert.equal(publicHasSecrets({ summary: "xai-abcdefghijk" }), true);
+  assert.equal(publicHasSecrets({ summary: "AIzaabcdefghijk" }), true);
 });
 
 test("parseDetail is schema-safe and skips payload keys", () => {

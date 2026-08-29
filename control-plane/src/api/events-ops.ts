@@ -89,7 +89,7 @@ const DETAIL_KEYS = [
   "team_id",
 ];
 
-const TOKEN_SHAPE = /\b(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._\-+=/]{8,})/i;
+const TOKEN_SHAPE = /\b(sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]+|xai-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|wh_[A-Za-z0-9]+|Bearer\s+[A-Za-z0-9._\-+=/]{8,})/i;
 
 export function backoffDelay(attempt: number): number {
   const n = Math.max(0, attempt);
