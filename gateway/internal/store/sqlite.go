@@ -235,7 +235,8 @@ func (s *SQLiteStore) migrate() error {
 			require_hmac INTEGER NOT NULL DEFAULT 0,
 			revoked INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
-			tenant_id TEXT NOT NULL DEFAULT 'default'
+			tenant_id TEXT NOT NULL DEFAULT 'default',
+			endpoint TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_webhooks_token_hash ON webhooks(token_hash)`,
 		`CREATE TABLE IF NOT EXISTS webhook_jobs (
@@ -322,6 +323,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN last_error TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE webhooks ADD COLUMN endpoint TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)

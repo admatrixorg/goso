@@ -63,6 +63,7 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT ''`)
 	s.tryVector()
 	return nil
 }
@@ -264,7 +265,8 @@ var postgresSchema = []string{
 		require_hmac INTEGER NOT NULL DEFAULT 0,
 		revoked INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL,
-		tenant_id TEXT NOT NULL DEFAULT 'default'
+		tenant_id TEXT NOT NULL DEFAULT 'default',
+		endpoint TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_webhooks_token_hash ON webhooks(token_hash)`,
 	`CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id)`,

@@ -1,6 +1,18 @@
-import { useEffect, useState } from "react";
-import { webhooksApi, type WebhookCreated, type WebhookPublic } from "../api/webhooks";
-import { useI18n } from "../i18n";
+import { useEffect, useState, type CSSProperties } from "react";
+import {
+  asCreated,
+  asPublic,
+  canReplay,
+  canTestOrReplay,
+  hideCopiedSecret,
+  lastDeliveryLabel,
+  listTargetName,
+  webhookEndpoint,
+  webhookStatus,
+  type LastSecret,
+} from "../api/webhooks-ops";
+import { webhooksApi, type WebhookPublic } from "../api/webhooks";
+import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
@@ -8,35 +20,28 @@ import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
-type LastSecret = {
-  id: string;
-  token_prefix: string;
-  token?: string;
-  hmac_key?: string;
-  note?: string;
+const fieldStyle: CSSProperties = {
+  fontSize: 12.5,
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--card)",
+  color: "var(--text)",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-function asCreated(j: WebhookCreated): LastSecret {
-  return {
-    id: typeof j.id === "string" ? j.id : "",
-    token_prefix: typeof j.token_prefix === "string" ? j.token_prefix : "",
-    token: typeof j.token === "string" ? j.token : undefined,
-    hmac_key: typeof j.hmac_key === "string" ? j.hmac_key : undefined,
-  };
+function statusTone(status: string): "positive" | "warning" | "critical" | "neutral" {
+  if (status === "active") return "positive";
+  if (status === "failing") return "warning";
+  if (status === "revoked") return "critical";
+  return "neutral";
 }
 
-function asPublic(rows: WebhookPublic[] | undefined): WebhookPublic[] {
-  return (rows ?? [])
-    .map((w) => ({
-      id: typeof w?.id === "string" ? w.id : "",
-      token_prefix: typeof w?.token_prefix === "string" ? w.token_prefix : "",
-      name: typeof w?.name === "string" ? w.name : "",
-      kind: typeof w?.kind === "string" ? w.kind : "llm",
-      agent_id: typeof w?.agent_id === "string" ? w.agent_id : "",
-      require_hmac: Boolean(w?.require_hmac),
-      revoked: Boolean(w?.revoked),
-    }))
-    .filter((w) => w.id);
+function statusKey(status: string): MsgKey {
+  if (status === "revoked") return "webhooks.status.revoked";
+  if (status === "failing") return "webhooks.status.failing";
+  return "webhooks.status.active";
 }
 
 export function WebhooksPage() {
@@ -48,6 +53,8 @@ export function WebhooksPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState("");
+  const [name, setName] = useState("");
+  const [endpoint, setEndpoint] = useState("");
 
   async function load() {
     try {
@@ -67,11 +74,18 @@ export function WebhooksPage() {
   async function create() {
     setBusy("create");
     try {
-      const created = asCreated(await webhooksApi.create());
+      const created = asCreated(
+        await webhooksApi.create({
+          name: name.trim() || undefined,
+          endpoint: endpoint.trim() || undefined,
+        }),
+      );
       setLast(created);
       setCopied("");
       setOk("");
       setErr("");
+      setName("");
+      setEndpoint("");
       await load();
     } catch (e) {
       setErr(formatPublicError(e));
@@ -80,10 +94,12 @@ export function WebhooksPage() {
     }
   }
 
-  async function rotate(id: string) {
-    setBusy("rotate:" + id);
+  async function rotate(row: WebhookPublic) {
+    const named = listTargetName(row);
+    if (!window.confirm(t("webhooks.confirmRotate", { name: named }))) return;
+    setBusy("rotate:" + row.id);
     try {
-      const created = asCreated(await webhooksApi.rotate(id));
+      const created = asCreated(await webhooksApi.rotate(row.id));
       created.note = t("webhooks.rotated");
       setLast(created);
       setCopied("");
@@ -97,15 +113,45 @@ export function WebhooksPage() {
     }
   }
 
-  async function revoke(id: string) {
-    setBusy("revoke:" + id);
+  async function revoke(row: WebhookPublic) {
+    const named = listTargetName(row);
+    if (!window.confirm(t("webhooks.confirmRevoke", { name: named }))) return;
+    setBusy("revoke:" + row.id);
     try {
-      await webhooksApi.revoke(id);
+      await webhooksApi.revoke(row.id);
       setOk(t("webhooks.revokedOk"));
       setErr("");
-      if (last?.id === id) {
+      if (last?.id === row.id) {
         setLast(null);
       }
+      await load();
+    } catch (e) {
+      setErr(formatPublicError(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function test(row: WebhookPublic) {
+    setBusy("test:" + row.id);
+    try {
+      await webhooksApi.test(row.id);
+      setOk(t("webhooks.testedOk"));
+      setErr("");
+      await load();
+    } catch (e) {
+      setErr(formatPublicError(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function replay(row: WebhookPublic) {
+    setBusy("replay:" + row.id);
+    try {
+      await webhooksApi.replay(row.id);
+      setOk(t("webhooks.replayedOk"));
+      setErr("");
       await load();
     } catch (e) {
       setErr(formatPublicError(e));
@@ -120,16 +166,14 @@ export function WebhooksPage() {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      setLast({
-        ...last,
-        token: kind === "token" ? undefined : last.token,
-        hmac_key: kind === "hmac" ? undefined : last.hmac_key,
-      });
+      setLast(hideCopiedSecret(last, kind));
       setCopied(t("webhooks.copied"));
     } catch (e) {
       setErr(formatPublicError(e));
     }
   }
+
+  const empty = !loading && !err && rows.length === 0;
 
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -138,50 +182,84 @@ export function WebhooksPage() {
         title={t("webhooks.title")}
         description={t("webhooks.desc")}
         actions={
-          <>
-            <Button icon="refresh" iconGesture onClick={() => void load()}>
-              {t("common.refresh")}
-            </Button>
-            <Button variant="primary" icon="plus" disabled={busy === "create"} onClick={() => void create()}>
-              {t("webhooks.create")}
-            </Button>
-          </>
+          <Button icon="refresh" iconGesture onClick={() => void load()}>
+            {t("common.refresh")}
+          </Button>
         }
       />
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.notHooks")}</p>
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noSecrets")}</p>
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       {ok && !err ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
       ) : null}
-      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("webhooks.noSecrets")}</p>
+      <Card>
+        <CardHeader icon="plus" title={t("webhooks.create")} />
+        <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--text-3)", fontWeight: 600 }}>{t("webhooks.name")}</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={fieldStyle} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+            <span style={{ color: "var(--text-3)", fontWeight: 600 }}>{t("webhooks.endpoint")}</span>
+            <input
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+              placeholder={t("webhooks.endpointPlaceholder")}
+              style={fieldStyle}
+              autoComplete="off"
+            />
+            <span style={{ color: "var(--text-4)", fontSize: 11.5 }}>{t("webhooks.endpointHint")}</span>
+          </label>
+          <div>
+            <Button variant="primary" icon="plus" disabled={busy === "create"} onClick={() => void create()}>
+              {t("webhooks.create")}
+            </Button>
+          </div>
+        </div>
+      </Card>
       <Card>
         <CardHeader icon="hook" title={t("webhooks.list")} meta={t("webhooks.meta", { n: rows.length })} />
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
-          <span style={{ flex: 2 }}>{t("webhooks.col.id")}</span>
-          <span style={{ flex: 1 }}>{t("webhooks.col.prefix")}</span>
-          <span style={{ width: 90 }}>{t("webhooks.col.hmacReq")}</span>
-          <span style={{ width: 160 }}>{t("webhooks.col.actions")}</span>
+          <span style={{ width: 90 }}>{t("webhooks.col.status")}</span>
+          <span style={{ flex: 2 }}>{t("webhooks.col.endpoint")}</span>
+          <span style={{ flex: 2 }}>{t("webhooks.col.last")}</span>
+          <span style={{ width: 220 }}>{t("webhooks.col.actions")}</span>
         </div>
-        {rows.map((w) => (
-          <div key={w.id} style={{ display: "flex", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8, alignItems: "center" }}>
-            <code style={{ flex: 2, fontSize: 12 }}>{w.id}</code>
-            <code style={{ flex: 1, fontSize: 12 }}>{w.token_prefix}</code>
-            <span style={{ width: 90 }}>
-              {w.require_hmac ? <Badge tone="warning">{t("webhooks.requireHmac")}</Badge> : <Badge tone="neutral">{w.kind || "llm"}</Badge>}
-            </span>
-            <span style={{ width: 160, display: "flex", gap: 6 }}>
-              <Button disabled={busy.startsWith("rotate")} onClick={() => void rotate(w.id)} style={{ padding: "4px 10px" }}>
-                {t("webhooks.rotate")}
-              </Button>
-              <Button disabled={busy.startsWith("revoke")} onClick={() => void revoke(w.id)} style={{ padding: "4px 10px" }}>
-                {t("webhooks.revoke")}
-              </Button>
-            </span>
-          </div>
-        ))}
-        {loading ? <StatusLine kind="loading" /> : rows.length === 0 ? <EmptyState>{t("webhooks.empty")}</EmptyState> : null}
+        {rows.map((w) => {
+          const status = webhookStatus(w);
+          const lastLabel = lastDeliveryLabel(w);
+          const outbound = canTestOrReplay(w);
+          const replayable = canReplay(w);
+          return (
+            <div key={w.id} style={{ display: "flex", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8, alignItems: "center" }}>
+              <span style={{ width: 90 }}>
+                <Badge tone={statusTone(status)}>{t(statusKey(status))}</Badge>
+              </span>
+              <code style={{ flex: 2, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>{webhookEndpoint(w)}</code>
+              <span style={{ flex: 2, color: "var(--text-3)" }}>{lastLabel || t("webhooks.never")}</span>
+              <span style={{ width: 220, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Button disabled={busy === "test:" + w.id || !outbound} onClick={() => void test(w)} style={{ padding: "4px 10px" }}>
+                  {t("webhooks.test")}
+                </Button>
+                <Button disabled={busy === "replay:" + w.id || !replayable} onClick={() => void replay(w)} style={{ padding: "4px 10px" }}>
+                  {t("webhooks.replay")}
+                </Button>
+                <Button disabled={busy === "rotate:" + w.id || status === "revoked"} onClick={() => void rotate(w)} style={{ padding: "4px 10px" }}>
+                  {t("webhooks.rotate")}
+                </Button>
+                <Button disabled={busy === "revoke:" + w.id || status === "revoked"} onClick={() => void revoke(w)} style={{ padding: "4px 10px" }}>
+                  {t("webhooks.revoke")}
+                </Button>
+              </span>
+            </div>
+          );
+        })}
+        {loading ? <StatusLine kind="loading" /> : null}
+        {empty ? <EmptyState>{t("webhooks.empty")}</EmptyState> : null}
         </TableScroll>
       </Card>
       <Card>

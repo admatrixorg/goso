@@ -36,10 +36,11 @@ func (s *SQLiteStore) CreateWebhook(w Webhook) (*Webhook, error) {
 	if w.Revoked {
 		rev = 1
 	}
+	w.Endpoint = strings.TrimSpace(w.Endpoint)
 	_, err := s.db.Exec(
-		`INSERT INTO webhooks(id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		w.ID, w.Name, w.Kind, w.AgentID, w.TokenPrefix, w.TokenHash, w.HMACEnc, req, rev, formatTime(w.CreatedAt), w.TenantID,
+		`INSERT INTO webhooks(id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id, endpoint)
+		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		w.ID, w.Name, w.Kind, w.AgentID, w.TokenPrefix, w.TokenHash, w.HMACEnc, req, rev, formatTime(w.CreatedAt), w.TenantID, w.Endpoint,
 	)
 	if err != nil {
 		return nil, err
@@ -49,7 +50,7 @@ func (s *SQLiteStore) CreateWebhook(w Webhook) (*Webhook, error) {
 }
 
 func (s *SQLiteStore) ListWebhooks() []*Webhook {
-	rows, err := s.db.Query(`SELECT id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id FROM webhooks ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id, endpoint FROM webhooks ORDER BY created_at`)
 	if err != nil {
 		return []*Webhook{}
 	}
@@ -66,7 +67,7 @@ func (s *SQLiteStore) ListWebhooks() []*Webhook {
 }
 
 func (s *SQLiteStore) GetWebhook(id string) (*Webhook, error) {
-	row := s.db.QueryRow(`SELECT id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id FROM webhooks WHERE id=?`, strings.TrimSpace(id))
+	row := s.db.QueryRow(`SELECT id, name, kind, agent_id, token_prefix, token_hash, hmac_enc, require_hmac, revoked, created_at, tenant_id, endpoint FROM webhooks WHERE id=?`, strings.TrimSpace(id))
 	w, err := scanWebhook(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -100,6 +101,7 @@ func (s *SQLiteStore) UpdateWebhook(w Webhook) (*Webhook, error) {
 	cur.HMACEnc = w.HMACEnc
 	cur.RequireHMAC = w.RequireHMAC
 	cur.Revoked = w.Revoked
+	cur.Endpoint = strings.TrimSpace(w.Endpoint)
 	req, rev := 0, 0
 	if cur.RequireHMAC {
 		req = 1
@@ -108,8 +110,8 @@ func (s *SQLiteStore) UpdateWebhook(w Webhook) (*Webhook, error) {
 		rev = 1
 	}
 	res, err := s.db.Exec(
-		`UPDATE webhooks SET name=?, kind=?, agent_id=?, token_prefix=?, token_hash=?, hmac_enc=?, require_hmac=?, revoked=? WHERE id=?`,
-		cur.Name, cur.Kind, cur.AgentID, cur.TokenPrefix, cur.TokenHash, cur.HMACEnc, req, rev, cur.ID,
+		`UPDATE webhooks SET name=?, kind=?, agent_id=?, token_prefix=?, token_hash=?, hmac_enc=?, require_hmac=?, revoked=?, endpoint=? WHERE id=?`,
+		cur.Name, cur.Kind, cur.AgentID, cur.TokenPrefix, cur.TokenHash, cur.HMACEnc, req, rev, cur.Endpoint, cur.ID,
 	)
 	if err != nil {
 		return nil, err
@@ -123,10 +125,10 @@ func (s *SQLiteStore) UpdateWebhook(w Webhook) (*Webhook, error) {
 
 func scanWebhook(sc scanner) (*Webhook, error) {
 	var w Webhook
-	var name, kind, agentID, hmacEnc, tenant sql.NullString
+	var name, kind, agentID, hmacEnc, tenant, endpoint sql.NullString
 	var req, rev int
 	var ts string
-	if err := sc.Scan(&w.ID, &name, &kind, &agentID, &w.TokenPrefix, &w.TokenHash, &hmacEnc, &req, &rev, &ts, &tenant); err != nil {
+	if err := sc.Scan(&w.ID, &name, &kind, &agentID, &w.TokenPrefix, &w.TokenHash, &hmacEnc, &req, &rev, &ts, &tenant, &endpoint); err != nil {
 		return nil, err
 	}
 	w.Name = name.String
@@ -134,6 +136,7 @@ func scanWebhook(sc scanner) (*Webhook, error) {
 	w.AgentID = agentID.String
 	w.HMACEnc = hmacEnc.String
 	w.TenantID = NormalizeTenant(tenant.String)
+	w.Endpoint = strings.TrimSpace(endpoint.String)
 	w.RequireHMAC = req != 0
 	w.Revoked = rev != 0
 	w.CreatedAt = parseTime(ts)
@@ -193,6 +196,26 @@ func (s *SQLiteStore) GetWebhookJob(id string) (*WebhookJob, error) {
 	row := s.db.QueryRow(
 		`SELECT id, webhook_id, status, input, reply, error, callback_url, attempts, next_attempt_at, idempotency_key, body_hash, lease_token, created_at, updated_at
 		 FROM webhook_jobs WHERE id=?`, strings.TrimSpace(id),
+	)
+	j, err := scanWebhookJob(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return j, nil
+}
+
+func (s *SQLiteStore) LatestWebhookJob(webhookID string) (*WebhookJob, error) {
+	webhookID = strings.TrimSpace(webhookID)
+	if webhookID == "" {
+		return nil, ErrNotFound
+	}
+	row := s.db.QueryRow(
+		`SELECT id, webhook_id, status, input, reply, error, callback_url, attempts, next_attempt_at, idempotency_key, body_hash, lease_token, created_at, updated_at
+		 FROM webhook_jobs WHERE webhook_id=? ORDER BY updated_at DESC, created_at DESC LIMIT 1`,
+		webhookID,
 	)
 	j, err := scanWebhookJob(row)
 	if err != nil {
