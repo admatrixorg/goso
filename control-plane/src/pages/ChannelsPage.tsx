@@ -102,6 +102,17 @@ export function ChannelsPage() {
     }
   }
 
+  async function enableTelegramPairing() {
+    try {
+      await channelsApi.patch("telegram", { dm_policy: "pairing" });
+      await load();
+    } catch (e) {
+      setErr(formatPublicError(e));
+    }
+  }
+
+  const telegramPolicy = rows.find((c) => c.name === "telegram")?.dm_policy || "";
+
   function draftOf(name: string): Draft {
     return drafts[name] ?? emptyDraft();
   }
@@ -185,6 +196,55 @@ export function ChannelsPage() {
         <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("channels.liteOff")}</p>
       ) : (
         <>
+        <Card>
+          <CardHeader
+            icon="hook"
+            title={t("channels.pairing")}
+            meta={pending.length ? t("channels.pairing.pending", { n: pending.length }) : "0"}
+          />
+          <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.45 }}>{t("channels.pairing.guide")}</p>
+            {telegramPolicy ? (
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.pairing.policy", { policy: telegramPolicy })}</p>
+            ) : null}
+            {telegramPolicy === "open" ? (
+              <>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("channels.pairing.openHint")}</p>
+                <div>
+                  <Button onClick={() => void enableTelegramPairing()}>{t("channels.pairing.enable")}</Button>
+                </div>
+              </>
+            ) : null}
+            {pending.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("channels.pairing.empty")}</p>
+            ) : (
+              pending.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    fontSize: 12.5,
+                    padding: "8px 0",
+                    borderTop: "1px solid var(--border-soft)",
+                  }}
+                >
+                  <strong>{p.channel}</strong>
+                  <span>{t("channels.pairing.sender", { id: p.sender_id || "—" })}</span>
+                  {p.expires_at ? <span style={{ color: "var(--text-3)" }}>{t("channels.pairing.expires", { at: p.expires_at })}</span> : null}
+                  <Button onClick={() => void channelsApi.pairingApprove(p.id).then(load).catch((e) => setErr(formatPublicError(e)))}>
+                    {t("channels.pairing.approve")}
+                  </Button>
+                  <Button onClick={() => void channelsApi.pairingDeny(p.id).then(load).catch((e) => setErr(formatPublicError(e)))}>
+                    {t("channels.pairing.deny")}
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
         <Card>
           <CardHeader icon="hook" title={t("channels.list")} meta={t("channels.meta", { n: rows.length })} />
           <TableScroll>
@@ -293,16 +353,6 @@ export function ChannelsPage() {
           ))}
           {rows.length === 0 ? <EmptyState>{t("channels.empty")}</EmptyState> : null}
           </TableScroll>
-        </Card>
-        <Card>
-          <CardHeader icon="hook" title={t("channels.pairing")} meta={String(pending.length)} />
-          {pending.length === 0 ? <EmptyState>{t("channels.pairing.empty")}</EmptyState> : pending.map((p) => (
-            <div key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 16px", fontSize: 12.5 }}>
-              <span>{p.channel} {p.sender_id}</span>
-              <Button onClick={() => void channelsApi.pairingApprove(p.id).then(load).catch((e) => setErr(formatPublicError(e)))}>{t("channels.pairing.approve")}</Button>
-              <Button onClick={() => void channelsApi.pairingDeny(p.id).then(load).catch((e) => setErr(formatPublicError(e)))}>{t("channels.pairing.deny")}</Button>
-            </div>
-          ))}
         </Card>
         <Card>
           <CardHeader icon="hook" title={t("channels.qr")} />

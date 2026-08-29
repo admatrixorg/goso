@@ -704,21 +704,21 @@ func handleChannelHealth(st store.StoreIface, mgr *channel.Manager) http.Handler
 func overlayChannelRows(st store.StoreIface, rows []channel.Info) []channel.Info {
 	out := make([]channel.Info, len(rows))
 	copy(out, rows)
-	if st == nil {
-		return out
-	}
 	for i := range out {
-		cfg, err := st.GetChannelConfig(out[i].Name)
-		if err != nil {
-			continue
+		var cfg *store.ChannelConfig
+		if st != nil {
+			if got, err := st.GetChannelConfig(out[i].Name); err == nil && got != nil {
+				cfg = got
+				out[i].BoundAgentID = cfg.AgentID
+				out[i].AllowFrom = append([]string(nil), cfg.AllowFrom...)
+				out[i].AllowFromCount = len(cfg.AllowFrom)
+				out[i].Enabled = cfg.Enabled
+			}
 		}
-		out[i].BoundAgentID = cfg.AgentID
-		out[i].DMPolicy = cfg.DMPolicy
-		out[i].GroupPolicy = cfg.GroupPolicy
-		out[i].RequireMention = cfg.RequireMention
-		out[i].AllowFrom = append([]string(nil), cfg.AllowFrom...)
-		out[i].AllowFromCount = len(cfg.AllowFrom)
-		out[i].Enabled = cfg.Enabled
+		pol := channel.MergePolicy(out[i].Name, cfg)
+		out[i].DMPolicy = pol.DMPolicy
+		out[i].GroupPolicy = pol.GroupPolicy
+		out[i].RequireMention = pol.RequireMention
 	}
 	return out
 }
