@@ -214,7 +214,8 @@ func (s *SQLiteStore) migrate() error {
 			type TEXT NOT NULL,
 			base_url TEXT,
 			model TEXT,
-			tenant_id TEXT NOT NULL DEFAULT 'default'
+			tenant_id TEXT NOT NULL DEFAULT 'default',
+			enabled INTEGER NOT NULL DEFAULT 1
 		)`,
 		`CREATE TABLE IF NOT EXISTS webhooks (
 			id TEXT PRIMARY KEY,
@@ -312,6 +313,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE teams ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE webhooks ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
+	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)

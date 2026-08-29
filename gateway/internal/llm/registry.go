@@ -27,6 +27,7 @@ type ProviderInfo struct {
 	Model   string `json:"model"`
 	KeySet  bool   `json:"key_set"`
 	Source  string `json:"source"`
+	Enabled bool   `json:"enabled"`
 }
 
 // Registry holds available providers based on env.
@@ -103,7 +104,7 @@ func envType(name string) string {
 
 // Describe builds a public info row from a live provider (no secrets).
 func Describe(name string, p Provider, typ, source string) ProviderInfo {
-	info := ProviderInfo{Name: name, Type: typ, Source: source}
+	info := ProviderInfo{Name: name, Type: typ, Source: source, Enabled: true}
 	switch v := p.(type) {
 	case *OpenAI:
 		info.BaseURL = v.BaseURL

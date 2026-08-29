@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -102,7 +103,8 @@ func probeChat(ctx context.Context, p Provider) TestResult {
 	reply, err := p.Chat(ctx, []Message{{Role: "user", Content: "ping"}})
 	ms := time.Since(start).Milliseconds()
 	if err != nil {
-		return TestResult{OK: false, LatencyMS: ms, Error: err.Error()}
+		_, key, _, _ := httpMeta(p)
+		return TestResult{OK: false, LatencyMS: ms, Error: redactProbeError(err.Error(), key)}
 	}
 	return TestResult{OK: true, LatencyMS: ms, Reply: reply}
 }
@@ -121,12 +123,12 @@ func probeModels(ctx context.Context, p Provider) TestResult {
 	}
 	endpoint := modelsURL(base)
 	if err := checkEndpoint(endpoint); err != nil {
-		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: err.Error()}
+		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: redactProbeError(err.Error(), key)}
 	}
 	client = guardedClient(client, probeTimeout)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: err.Error()}
+		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: redactProbeError(err.Error(), key)}
 	}
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
@@ -138,21 +140,21 @@ func probeModels(ctx context.Context, p Provider) TestResult {
 	resp, err := client.Do(req)
 	ms := time.Since(start).Milliseconds()
 	if err != nil {
-		return TestResult{OK: false, LatencyMS: ms, Error: err.Error()}
+		return TestResult{OK: false, LatencyMS: ms, Error: redactProbeError(err.Error(), key)}
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		msg := strings.TrimSpace(string(body))
-		if len(msg) > 400 {
-			msg = msg[:400] + "…"
-		}
 		if msg == "" {
 			msg = resp.Status
 		}
-		return TestResult{OK: false, LatencyMS: ms, Error: fmt.Sprintf("%d: %s", resp.StatusCode, msg)}
+		return TestResult{OK: false, LatencyMS: ms, Error: redactProbeError(fmt.Sprintf("%d: %s", resp.StatusCode, msg), key)}
 	}
 	ids := parseModelIDs(body)
+	if len(ids) > 50 {
+		ids = ids[:50]
+	}
 	return TestResult{OK: true, LatencyMS: ms, Models: ids}
 }
 
@@ -173,6 +175,37 @@ func httpMeta(p Provider) (base, key string, client *http.Client, anthropic bool
 	default:
 		return "", "", nil, false
 	}
+}
+
+var (
+	reBearer     = regexp.MustCompile(`(?i)Bearer\s+\S+`)
+	reAuthKV     = regexp.MustCompile(`(?i)(authorization|x-api-key)\s*[:=]\s*\S+`)
+	reJSONSecret = regexp.MustCompile(`(?i)"(authorization|api[_-]?key|secret|token|password|x-api-key)"\s*:\s*"(?:\\.|[^"\\])*"`)
+	reSk         = regexp.MustCompile(`\bsk-[A-Za-z0-9_-]+`)
+	reGsk        = regexp.MustCompile(`\bgsk_[A-Za-z0-9]+`)
+	reXai        = regexp.MustCompile(`\bxai-[A-Za-z0-9]+`)
+)
+
+// redactProbeError strips credentials, Authorization headers, and secret JSON
+// fields from a probe error. Never echo the live API key.
+func redactProbeError(s, key string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	if key != "" {
+		s = strings.ReplaceAll(s, key, "[redacted]")
+	}
+	s = reBearer.ReplaceAllString(s, "Bearer [redacted]")
+	s = reAuthKV.ReplaceAllString(s, "$1=[redacted]")
+	s = reJSONSecret.ReplaceAllString(s, `"$1":"[redacted]"`)
+	s = reSk.ReplaceAllString(s, "sk-[redacted]")
+	s = reGsk.ReplaceAllString(s, "gsk_[redacted]")
+	s = reXai.ReplaceAllString(s, "xai-[redacted]")
+	if len(s) > 400 {
+		s = s[:400] + "…"
+	}
+	return s
 }
 
 func parseModelIDs(raw []byte) []string {

@@ -21,6 +21,7 @@ func registerProviderRoutes(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "GET /api/providers", handleListProviders(opt))
 	aliasAPI(mux, "POST /api/providers", handleCreateProvider(opt))
 	aliasAPI(mux, "PATCH /api/providers/{name}", handlePatchProvider(opt))
+	aliasAPI(mux, "DELETE /api/providers/{name}/key", handleDeleteProviderKey(opt))
 	aliasAPI(mux, "POST /api/providers/{name}/test", handleTestProvider(opt))
 }
 
@@ -78,6 +79,7 @@ func mergeProviderInfos(opt Options) []llm.ProviderInfo {
 				Model:   row.Model,
 				KeySet:  keySet,
 				Source:  llm.SourceSQLite,
+				Enabled: row.Enabled,
 			})
 		}
 	}
@@ -100,6 +102,7 @@ type providerWrite struct {
 	BaseURL string `json:"base_url"`
 	Model   string `json:"model"`
 	APIKey  string `json:"api_key"`
+	Enabled *bool  `json:"enabled"`
 }
 
 func handleCreateProvider(opt Options) http.HandlerFunc {
@@ -144,8 +147,12 @@ func handleCreateProvider(opt Options) http.HandlerFunc {
 				return
 			}
 		}
+		enabled := true
+		if body.Enabled != nil {
+			enabled = *body.Enabled
+		}
 		row, err := opt.Store.CreateLLMProvider(store.LLMProvider{
-			Name: body.Name, TenantID: requestTenant(r), Type: body.Type, BaseURL: body.BaseURL, Model: body.Model,
+			Name: body.Name, TenantID: requestTenant(r), Type: body.Type, BaseURL: body.BaseURL, Model: body.Model, Enabled: enabled,
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrExists) {
@@ -201,6 +208,7 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 			BaseURL *string `json:"base_url"`
 			Model   *string `json:"model"`
 			APIKey  *string `json:"api_key"`
+			Enabled *bool   `json:"enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -222,6 +230,9 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 		}
 		if body.Model != nil {
 			upd.Model = strings.TrimSpace(*body.Model)
+		}
+		if body.Enabled != nil {
+			upd.Enabled = *body.Enabled
 		}
 		key := ""
 		if body.APIKey != nil {
@@ -257,6 +268,44 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 			}
 		}
 		writeJSON(w, http.StatusOK, publicProvider(opt, saved.Name))
+	}
+}
+
+func handleDeleteProviderKey(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if opt.Store == nil {
+			writeErr(w, http.StatusInternalServerError, "store required")
+			return
+		}
+		name := strings.TrimSpace(r.PathValue("name"))
+		reg := opt.LLM
+		if reg == nil {
+			reg = llm.NewRegistry()
+		}
+		if reg.Has(name) {
+			writeErr(w, http.StatusBadRequest, "env overlay")
+			return
+		}
+		cur, err := opt.Store.GetLLMProvider(name)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		if hideWrongTenant(w, cur.TenantID, requestTenant(r)) {
+			return
+		}
+		if err := secrets.Delete(opt.Store, llm.APIKeySecretName(name)); err != nil {
+			writeErr(w, http.StatusInternalServerError, "clear failed")
+			return
+		}
+		info := publicProvider(opt, name)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"name":    info.Name,
+			"key_set": info.KeySet,
+			"source":  info.Source,
+			"enabled": info.Enabled,
+		})
 	}
 }
 

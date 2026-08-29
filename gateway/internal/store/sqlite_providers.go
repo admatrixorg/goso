@@ -21,8 +21,8 @@ func (s *SQLiteStore) CreateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 	}
 	p.TenantID = NormalizeTenant(p.TenantID)
 	_, err := s.db.Exec(
-		`INSERT INTO llm_providers(name, type, base_url, model, tenant_id) VALUES(?,?,?,?,?)`,
-		p.Name, p.Type, p.BaseURL, p.Model, p.TenantID,
+		`INSERT INTO llm_providers(name, type, base_url, model, tenant_id, enabled) VALUES(?,?,?,?,?,?)`,
+		p.Name, p.Type, p.BaseURL, p.Model, p.TenantID, boolInt(p.Enabled),
 	)
 	if err != nil {
 		return nil, ErrExists
@@ -32,7 +32,7 @@ func (s *SQLiteStore) CreateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 }
 
 func (s *SQLiteStore) ListLLMProviders() []*LLMProvider {
-	rows, err := s.db.Query(`SELECT name, type, base_url, model, tenant_id FROM llm_providers ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, type, base_url, model, tenant_id, enabled FROM llm_providers ORDER BY name`)
 	if err != nil {
 		return []*LLMProvider{}
 	}
@@ -50,7 +50,7 @@ func (s *SQLiteStore) ListLLMProviders() []*LLMProvider {
 
 func (s *SQLiteStore) GetLLMProvider(name string) (*LLMProvider, error) {
 	name = strings.TrimSpace(name)
-	row := s.db.QueryRow(`SELECT name, type, base_url, model, tenant_id FROM llm_providers WHERE name=?`, name)
+	row := s.db.QueryRow(`SELECT name, type, base_url, model, tenant_id, enabled FROM llm_providers WHERE name=?`, name)
 	p, err := scanLLMProvider(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -75,9 +75,10 @@ func (s *SQLiteStore) UpdateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 	}
 	cur.BaseURL = strings.TrimSpace(p.BaseURL)
 	cur.Model = strings.TrimSpace(p.Model)
+	cur.Enabled = p.Enabled
 	res, err := s.db.Exec(
-		`UPDATE llm_providers SET type=?, base_url=?, model=? WHERE name=?`,
-		cur.Type, cur.BaseURL, cur.Model, cur.Name,
+		`UPDATE llm_providers SET type=?, base_url=?, model=?, enabled=? WHERE name=?`,
+		cur.Type, cur.BaseURL, cur.Model, boolInt(cur.Enabled), cur.Name,
 	)
 	if err != nil {
 		return nil, err
@@ -92,9 +93,18 @@ func (s *SQLiteStore) UpdateLLMProvider(p LLMProvider) (*LLMProvider, error) {
 func scanLLMProvider(sc scanner) (*LLMProvider, error) {
 	var p LLMProvider
 	var tenant sql.NullString
-	if err := sc.Scan(&p.Name, &p.Type, &p.BaseURL, &p.Model, &tenant); err != nil {
+	var enabled int
+	if err := sc.Scan(&p.Name, &p.Type, &p.BaseURL, &p.Model, &tenant, &enabled); err != nil {
 		return nil, err
 	}
 	p.TenantID = NormalizeTenant(tenant.String)
+	p.Enabled = enabled != 0
 	return cloneLLMProvider(&p), nil
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

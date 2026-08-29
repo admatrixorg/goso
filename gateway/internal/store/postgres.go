@@ -61,6 +61,7 @@ func (s *PostgresStore) migratePostgres() error {
 	}
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	s.tryVector()
 	return nil
 }
@@ -240,7 +241,8 @@ var postgresSchema = []string{
 		type TEXT NOT NULL,
 		base_url TEXT,
 		model TEXT,
-		tenant_id TEXT NOT NULL DEFAULT 'default'
+		tenant_id TEXT NOT NULL DEFAULT 'default',
+		enabled INTEGER NOT NULL DEFAULT 1
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_llm_providers_tenant ON llm_providers(tenant_id)`,
 	`CREATE TABLE IF NOT EXISTS webhooks (
