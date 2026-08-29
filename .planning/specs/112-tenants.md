@@ -10,9 +10,9 @@ Add **master-admin tenant lifecycle and user-access management** with searchable
 
 ## AC
 
-- [ ] Live nav tab + page. Searchable list/detail, loading/empty/error.
-- [ ] Create/status/membership visibility. Guarded deactivation with confirm. API tenant isolation. GET never returns secrets. Audit mutations.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/112-tenants.md`.
+- [x] Live nav tab + page. Searchable list/detail, loading/empty/error.
+- [x] Create/status/membership visibility. Guarded deactivation with confirm. API tenant isolation. GET never returns secrets. Audit mutations.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/112-tenants.md`.
 
 ## Out of scope
 

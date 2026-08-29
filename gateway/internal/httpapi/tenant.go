@@ -14,13 +14,6 @@ func requestTenant(r *http.Request) string {
 	return tenant.Resolve(r)
 }
 
-func handleTenant(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"tenant":       requestTenant(r),
-		"multi_tenant": tenant.Enabled(),
-	})
-}
-
 func hideWrongTenant(w http.ResponseWriter, rowTenant, want string) bool {
 	if store.SameTenant(rowTenant, want) {
 		return false

@@ -27,6 +27,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
 	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
@@ -65,6 +66,8 @@ type Options struct {
 	Nodes *node.Nodes
 	// Workstations is the SSH/Docker execution-target registry. Nil → workstation.Default.
 	Workstations *workstation.Workstations
+	// Tenants is the master-admin tenant registry. Nil → tenant.DefaultRegistry.
+	Tenants *tenant.Registry
 }
 
 func (o *Options) defaults() {
@@ -103,6 +106,9 @@ func (o *Options) defaults() {
 	}
 	if o.Workstations == nil {
 		o.Workstations = workstation.Default()
+	}
+	if o.Tenants == nil {
+		o.Tenants = tenant.DefaultRegistry()
 	}
 }
 
@@ -144,6 +150,7 @@ func NewRouter(opt Options) http.Handler {
 	registerEventRoutes(mux, opt)
 	registerActivityRoutes(mux, opt)
 	registerLogRoutes(mux, opt)
+	registerTenantRoutes(mux, opt)
 	return mux
 }
 
@@ -157,7 +164,6 @@ func routerBase(opt Options) *http.ServeMux {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version, "ws_up": WSMounted()})
 	})
-	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
 	// Agents
 	mux.HandleFunc("POST /api/agents", handleCreateAgent(st, ev, al))

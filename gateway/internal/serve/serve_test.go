@@ -398,6 +398,23 @@ func TestViewToken_GETOnly(t *testing.T) {
 		t.Fatalf("view POST logs %d %s", rr.Code, rr.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET tenants %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/tenants", strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST tenants %d %s", rr.Code, rr.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/api/system/backup", nil)
 	req.Header.Set("Authorization", "Bearer view-041")
 	rr = httptest.NewRecorder()

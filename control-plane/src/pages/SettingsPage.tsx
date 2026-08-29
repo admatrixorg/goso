@@ -312,6 +312,10 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               <div style={{ fontSize: 13 }}>
                 {t("settings.tenant.current")}: <strong>{isDemoMode() || !gwTenant.multi_tenant ? "default" : gwTenant.tenant}</strong>
               </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                {t("settings.tenant.master")}: <strong>{gwTenant.master_id || "default"}</strong>
+                {gwTenant.master ? ` · ${t("tenants.badge.master")}` : ""}
+              </div>
               {gwTenant.multi_tenant && !isDemoMode() ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <input
