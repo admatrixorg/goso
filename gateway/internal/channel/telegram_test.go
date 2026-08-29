@@ -15,6 +15,8 @@ import (
 )
 
 func TestTelegram_HandleUpdate_EchoAndStore(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
 	st := store.New()
 	var sentChatID int64
 	var sentText string
@@ -60,6 +62,8 @@ func TestTelegram_HandleUpdate_EchoAndStore(t *testing.T) {
 }
 
 func TestTelegram_RecordsUsage(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
 	st := store.New()
 	meter := billing.New()
 	tg := &Telegram{

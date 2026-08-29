@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -14,7 +15,10 @@ import (
 )
 
 func TestZaloOA_HandleUpdate(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
 	st := store.New()
+	_ = st.PutChannelConfig(store.ChannelConfig{Name: "zalo-oa", DMPolicy: "open"})
 	var sentUserID, sentText string
 	z := &ZaloOA{
 		Store: st, LLM: llm.Echo{},
@@ -47,7 +51,10 @@ func TestZaloOA_HandleUpdate(t *testing.T) {
 }
 
 func TestZaloOA_UserIDFallback(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
 	st := store.New()
+	_ = st.PutChannelConfig(store.ChannelConfig{Name: "zalo-oa", DMPolicy: "open"})
 	z := &ZaloOA{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _, _ string) error { return nil }}
 	body, _ := json.Marshal(map[string]any{
 		"user_id": "u999",
@@ -58,6 +65,36 @@ func TestZaloOA_UserIDFallback(t *testing.T) {
 	z.HandleUpdate(w, req)
 	if w.Code != 200 || len(st.ListSessions()) != 1 {
 		t.Fatalf("status %d sessions %d", w.Code, len(st.ListSessions()))
+	}
+}
+
+func TestZaloOA_VerifyMatrix(t *testing.T) {
+	st := store.New()
+	z := &ZaloOA{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _, _ string) error { return nil }}
+	body := `{"user_id":"u1","message":{"text":"hi"}}`
+	t.Setenv("GOSO_ZALO_OA_SECRET", "sec")
+	t.Setenv("GOSO_ENV", "demo")
+	req := httptest.NewRequest("POST", "/", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	z.HandleUpdate(w, req)
+	if w.Code != 401 {
+		t.Fatalf("secret set missing header %d", w.Code)
+	}
+	_ = st.PutChannelConfig(store.ChannelConfig{Name: "zalo-oa", DMPolicy: "open"})
+	req = httptest.NewRequest("POST", "/", strings.NewReader(body))
+	req.Header.Set("X-Goso-OA-Secret", "sec")
+	w = httptest.NewRecorder()
+	z.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("good secret %d", w.Code)
+	}
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
+	t.Setenv("GOSO_ENV", "production")
+	req = httptest.NewRequest("POST", "/", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	z.HandleUpdate(w, req)
+	if w.Code != 401 {
+		t.Fatalf("prod no secret %d", w.Code)
 	}
 }
 

@@ -12,8 +12,11 @@ func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 	t.Setenv("GOSO_TELEGRAM_BOT_TOKEN", "")
 	t.Setenv("GOSO_ZALO_PERSONAL_TOKEN", "")
 	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
+	t.Setenv("GOSO_ZALO_OA_APP_ID", "")
 	t.Setenv("GOSO_DISCORD_BOT_TOKEN", "")
 	t.Setenv("GOSO_SLACK_BOT_TOKEN", "")
+	t.Setenv("GOSO_SLACK_APP_TOKEN", "")
 	t.Setenv("GOSO_FEISHU_APP_SECRET", "")
 	t.Setenv("GOSO_WHATSAPP_ACCESS_TOKEN", "")
 	got := Catalog()
@@ -34,10 +37,49 @@ func TestCatalog_SevenNamesUnconfigured(t *testing.T) {
 		if got[i].Env != wantEnv[n] {
 			t.Fatalf("%s env %q want %q", n, got[i].Env, wantEnv[n])
 		}
-		if len(got[i].EnvNames) != 1 || got[i].EnvNames[0] != wantEnv[n] {
-			t.Fatalf("%s env_names %v want [%s]", n, got[i].EnvNames, wantEnv[n])
+		if len(got[i].EnvNames) < 1 || got[i].EnvNames[0] != wantEnv[n] {
+			t.Fatalf("%s env_names %v want first %s", n, got[i].EnvNames, wantEnv[n])
+		}
+		if n == "websocket" {
+			t.Fatal("websocket must not be a catalog row")
 		}
 	}
+	var slack, oa, disc Info
+	for _, c := range got {
+		switch c.Name {
+		case "slack":
+			slack = c
+		case "zalo-oa":
+			oa = c
+		case "discord":
+			disc = c
+		}
+	}
+	if len(slack.EnvNames) != 2 || slack.EnvNames[1] != "GOSO_SLACK_APP_TOKEN" || slack.Health != "parked" || slack.Phase != 2 {
+		t.Fatalf("slack %+v", slack)
+	}
+	if len(oa.EnvNames) != 3 || oa.EnvNames[1] != "GOSO_ZALO_OA_SECRET" {
+		t.Fatalf("oa env %v", oa.EnvNames)
+	}
+	if disc.Health != "parked" {
+		t.Fatalf("discord health %s", disc.Health)
+	}
+}
+
+func TestCatalog_OAConfiguredIsRunning(t *testing.T) {
+	t.Setenv("GOSO_LITE", "")
+	t.Setenv("GOSO_ZALO_OA_ACCESS_TOKEN", "tok")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "sec")
+	got := Catalog()
+	for _, c := range got {
+		if c.Name == "zalo-oa" {
+			if !c.Configured || c.Health != "running" || c.Transport != "webhook" {
+				t.Fatalf("oa %+v", c)
+			}
+			return
+		}
+	}
+	t.Fatal("zalo-oa missing")
 }
 
 var wantEnv = map[string]string{

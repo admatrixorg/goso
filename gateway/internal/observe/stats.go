@@ -17,6 +17,7 @@ type Stats struct {
 	RequestCount  int64  `json:"request_count"`
 	LLMCallCount  int64  `json:"llm_call_count"`
 	LastHeartbeat string `json:"last_heartbeat,omitempty"`
+	WsUp          bool   `json:"ws_up"`
 }
 
 // Snapshot returns current uptime and counters.
@@ -36,6 +37,7 @@ func (o *Observer) Snapshot() Stats {
 		RequestCount:  o.reqs.Load(),
 		LLMCallCount:  o.llms.Load(),
 		LastHeartbeat: o.LastHeartbeat(),
+		WsUp:          o.WsUp(),
 	}
 }
 

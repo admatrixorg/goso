@@ -17,7 +17,18 @@
 
 ## Trạng thái
 
-- [ ] T01 — estimator
-- [ ] T02 — usage api
-- [ ] T03 — wire
-- [ ] T04 — QA
+- [x] T01 — estimator
+- [x] T02 — usage api
+- [x] T03 — wire
+- [x] T04 — QA
+
+## QA 2026-08-29
+
+Code already present; no recook. Evidence: `docs/qa/010-billing-quota.md`.
+
+| Task | Proof |
+|------|--------|
+| T01 | `TestEstimateTokens` |
+| T02 | `TestUsageQuery`; `GET /api/usage` in `handlers_test.go` |
+| T03 | `llm.EstimateUsage` + `recordUsage` on chat |
+| T04 | `go test ./gateway/internal/billing ./gateway/internal/llm ./gateway/internal/httpapi -count=1` ok |

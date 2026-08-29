@@ -93,6 +93,18 @@ func Put(st store.StoreIface, name string, plaintext []byte) error {
 	return st.PutSecret(store.SecretRow{Name: name, Nonce: nonce, CT: ct})
 }
 
+// Delete removes an encrypted blob. Missing name is a no-op.
+func Delete(st store.StoreIface, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ErrName
+	}
+	if st == nil {
+		return errors.New("store required")
+	}
+	return st.DeleteSecret(name)
+}
+
 // Get decrypts a stored provider key blob.
 func Get(st store.StoreIface, name string) ([]byte, error) {
 	if st == nil {

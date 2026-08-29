@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -48,7 +49,13 @@ func wsUpgrader() websocket.Upgrader {
 }
 
 // RegisterWS registers GET /ws JSON RPC (not echo-only).
+var wsMounted atomic.Bool
+
+// WSMounted reports GET /ws is registered on the mux.
+func WSMounted() bool { return wsMounted.Load() }
+
 func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) {
+	wsMounted.Store(true)
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		up := wsUpgrader()
 		conn, err := up.Upgrade(w, r, nil)

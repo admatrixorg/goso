@@ -5,6 +5,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -48,6 +49,8 @@ type Options struct {
 	LLM *llm.Registry
 	// Pairing issues one-time view-token codes. Nil → NewPairing.
 	Pairing *auth.Pairing
+	// Channels is optional live health (SPEC 084).
+	Channels *channel.Manager
 }
 
 func (o *Options) defaults() {
@@ -98,6 +101,8 @@ func NewRouter(opt Options) http.Handler {
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux)
 	registerPairingRoutes(mux, opt.Pairing)
+	registerChannelPairingRoutes(mux, opt.Store)
+	registerZaloPersonalQR(mux, opt.Store)
 	return mux
 }
 
@@ -105,7 +110,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version, "ws_up": WSMounted()})
 	})
 	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
@@ -663,16 +668,60 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 			mux.HandleFunc(r.path, r.h)
 		}
 	}
-	aliasAPI(mux, "GET /api/channels", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"channels": channel.Catalog(),
-			"lite":     store.LiteEnabled(),
-		})
-	})
-	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel())
+	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
+	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
+	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store))
 }
 
-func handlePatchChannel() http.HandlerFunc {
+func handleListChannels(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"channels": overlayChannelRows(st, channel.CatalogWith(st, mgr)),
+			"lite":     store.LiteEnabled(),
+		})
+	}
+}
+
+func handleChannelHealth(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		if !channel.Known(name) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		for _, row := range overlayChannelRows(st, channel.CatalogWith(st, mgr)) {
+			if row.Name == name {
+				writeJSON(w, http.StatusOK, row)
+				return
+			}
+		}
+		writeErr(w, http.StatusNotFound, "not found")
+	}
+}
+
+func overlayChannelRows(st store.StoreIface, rows []channel.Info) []channel.Info {
+	out := make([]channel.Info, len(rows))
+	copy(out, rows)
+	if st == nil {
+		return out
+	}
+	for i := range out {
+		cfg, err := st.GetChannelConfig(out[i].Name)
+		if err != nil {
+			continue
+		}
+		out[i].BoundAgentID = cfg.AgentID
+		out[i].DMPolicy = cfg.DMPolicy
+		out[i].GroupPolicy = cfg.GroupPolicy
+		out[i].RequireMention = cfg.RequireMention
+		out[i].AllowFrom = append([]string(nil), cfg.AllowFrom...)
+		out[i].AllowFromCount = len(cfg.AllowFrom)
+		out[i].Enabled = cfg.Enabled
+	}
+	return out
+}
+
+func handlePatchChannel(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSpace(r.PathValue("name"))
 		if !channel.Known(name) {
@@ -692,7 +741,67 @@ func handlePatchChannel() http.HandlerFunc {
 				return
 			}
 		}
-		writeErr(w, http.StatusBadRequest, "channel tokens are env-only")
+		cfg := store.ChannelConfig{Name: name, Enabled: true}
+		if st != nil {
+			if prev, err := st.GetChannelConfig(name); err == nil && prev != nil {
+				cfg = *prev
+				cfg.Name = name
+			}
+		}
+		if v, ok := body["enabled"]; ok {
+			b, ok := v.(bool)
+			if !ok {
+				writeErr(w, http.StatusBadRequest, "enabled must be bool")
+				return
+			}
+			cfg.Enabled = b
+		}
+		if v, ok := body["dm_policy"]; ok {
+			s, _ := v.(string)
+			cfg.DMPolicy = strings.TrimSpace(s)
+		}
+		if v, ok := body["group_policy"]; ok {
+			s, _ := v.(string)
+			cfg.GroupPolicy = strings.TrimSpace(s)
+		}
+		if v, ok := body["require_mention"]; ok {
+			b, ok := v.(bool)
+			if !ok {
+				writeErr(w, http.StatusBadRequest, "require_mention must be bool")
+				return
+			}
+			cfg.RequireMention = b
+		}
+		if v, ok := body["allow_from"]; ok {
+			arr, ok := v.([]any)
+			if !ok {
+				writeErr(w, http.StatusBadRequest, "allow_from must be array")
+				return
+			}
+			ids := make([]string, 0, len(arr))
+			for _, item := range arr {
+				ids = append(ids, strings.TrimSpace(fmt.Sprint(item)))
+			}
+			cfg.AllowFrom = ids
+		}
+		if v, ok := body["agent_id"]; ok {
+			s, _ := v.(string)
+			s = strings.TrimSpace(s)
+			if s != "" && st != nil {
+				if _, err := st.GetAgent(s); err != nil {
+					writeErr(w, http.StatusNotFound, "agent not found")
+					return
+				}
+			}
+			cfg.AgentID = s
+		}
+		if st != nil {
+			if err := st.PutChannelConfig(cfg); err != nil {
+				writeErr(w, http.StatusInternalServerError, "save failed")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name})
 	}
 }
 
