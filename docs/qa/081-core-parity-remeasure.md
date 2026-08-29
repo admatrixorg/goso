@@ -331,3 +331,30 @@ No goso product code in this SPEC. No goclaw Go. No secrets.
 ## Non-goals
 
 Copying goclaw source. Changing gateway behavior. Unparking DI. Binding/killing demo ports. Merge of product branches.
+
+---
+
+## 7. Delta after SPEC 082 + 083 (not a remeasure of all 115)
+
+Date: 2026-08-29. HEAD after **`22df00e`** (Merge 083) on **`4ea28fd`** (Merge 082). Only K1 and K3 flipped vs §4. Arithmetic from 081 table + two CÓ upgrades. Demos `:8082` `:8091` not bound/killed.
+
+| ID | 081 | now | Evidence |
+|----|-----|-----|----------|
+| K1 | PARTIAL | **CÓ** | `search` + `glob` jail `GOSO_WORKSPACE`. QA `docs/qa/082-fs-search-glob.md`. `edit` name unchanged. |
+| K3 | PARTIAL | **CÓ** | `web_fetch` + `CheckURL`/`GuardClient`. QA `docs/qa/083-web-fetch.md`. |
+
+**O2 not flipped:** `cache_read_tokens` already on traces/spans/OTLP (`observe/trace.go`, `span.go`). No CP chart — chrome leftover, not a new SPEC (no scope bloat). **B3 not flipped:** Vite CP stays separate (product choice).
+
+| Stat | 081 | after 082/083 |
+|------|----:|--------------:|
+| N_CÓ | 74 | **76** |
+| N_PARTIAL | 27 | **25** |
+| N_THIẾU | 2 | **2** |
+| N_CẮT | 12 | **12** |
+| N_unverified | 0 | **0** |
+| den | 103 | **103** |
+| Weighted | 87.5/103 = 84.95% | **88.5/103 = 177/206 = 85.92%** |
+| Unweighted | 74/103 = 71.84% | **76/103 = 73.79%** |
+| tools axis weighted | 8.5/11 = 77.27% | **9.5/11 = 86.36%** |
+
+Parked unchanged: C1–C7 / DI-01..07; N1/V2/DI-09; K2/K5/S3/S5 + DI-12/13/21; R11–R13; O3/DI-10; N6/N7 CRM; X4; other DI-08..19.
