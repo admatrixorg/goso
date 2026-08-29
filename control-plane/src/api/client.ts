@@ -263,10 +263,17 @@ export type Connector = {
   env_set?: boolean;
 };
 export type GatewayEvent = {
+  seq?: number;
   trace_id: string;
-  connector: string;
-  tool: string;
+  type?: string;
   kind: string;
+  action?: string;
+  actor?: string;
+  agent_id?: string;
+  team_id?: string;
+  entity?: string;
+  connector?: string;
+  tool?: string;
   ts: string;
   summary: string;
 };
@@ -336,10 +343,12 @@ export const api = {
     }),
   listAgentConnectors: (agentId: string) =>
     jsonFetch<{ agent_id: string; connectors: string[] }>(`/api/agents/${agentId}/connectors`),
-  listEvents: (q?: { kind?: string; connector?: string; limit?: number }) => {
+  listEvents: (q?: { kind?: string; connector?: string; type?: string; actor?: string; limit?: number }) => {
     const p = new URLSearchParams();
     if (q?.kind) p.set("kind", q.kind);
     if (q?.connector) p.set("connector", q.connector);
+    if (q?.type) p.set("type", q.type);
+    if (q?.actor) p.set("actor", q.actor);
     if (q?.limit) p.set("limit", String(q.limit));
     const qs = p.toString();
     return jsonFetch<{ events: GatewayEvent[] }>(`/api/events${qs ? `?${qs}` : ""}`);

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,7 +35,6 @@ func registerConnectorRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("PATCH /api/agents/{id}/tools/{name}", handlePatchAgentTool(opt))
 	mux.HandleFunc("POST /api/approvals/{id}/decision", handleApprovalDecision(opt))
 	mux.HandleFunc("GET /api/approvals/{id}", handleGetApproval(opt))
-	mux.HandleFunc("GET /api/events", handleListEvents(opt))
 	mux.HandleFunc("POST /api/tools/invoke", handleToolInvoke(opt))
 }
 
@@ -445,18 +443,6 @@ func handleGetApproval(opt Options) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, req)
-	}
-}
-
-func handleListEvents(opt Options) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		limit, _ := strconv.Atoi(q.Get("limit"))
-		list := opt.Events.Filter(q.Get("kind"), q.Get("connector"), limit)
-		if list == nil {
-			list = nil
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"events": list})
 	}
 }
 

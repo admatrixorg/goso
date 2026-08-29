@@ -56,6 +56,29 @@ func (s *sseWriter) event(name, payload string) {
 	}
 }
 
+func (s *sseWriter) comment(text string) {
+	s.start()
+	fmt.Fprintf(s.w, ": %s\n\n", text)
+	if s.f != nil {
+		s.f.Flush()
+	}
+}
+
+func (s *sseWriter) idEvent(id, name, payload string) {
+	s.start()
+	if id != "" {
+		fmt.Fprintf(s.w, "id: %s\n", id)
+	}
+	if name != "" {
+		fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, payload)
+	} else {
+		fmt.Fprintf(s.w, "data: %s\n\n", payload)
+	}
+	if s.f != nil {
+		s.f.Flush()
+	}
+}
+
 func (s *sseWriter) delta(text string) {
 	if text == "" {
 		return

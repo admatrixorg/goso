@@ -104,7 +104,7 @@ func Router(st store.StoreIface, version string) http.Handler {
 // NewRouter builds the mux with optional connector/approval/event/billing deps.
 func NewRouter(opt Options) http.Handler {
 	opt.defaults()
-	mux := routerBase(opt.Store, opt.Version)
+	mux := routerBase(opt)
 	registerChannels(mux, opt)
 	registerWebhookRoutes(mux, opt)
 	registerProviderRoutes(mux, opt)
@@ -131,10 +131,14 @@ func NewRouter(opt Options) http.Handler {
 	registerNodeRoutes(mux, opt)
 	registerWorkstationRoutes(mux, opt)
 	registerStorageRoutes(mux, opt)
+	registerEventRoutes(mux, opt)
 	return mux
 }
 
-func routerBase(st store.StoreIface, version string) *http.ServeMux {
+func routerBase(opt Options) *http.ServeMux {
+	st := opt.Store
+	ev := opt.Events
+	version := opt.Version
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -143,11 +147,11 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
 	// Agents
-	mux.HandleFunc("POST /api/agents", handleCreateAgent(st))
+	mux.HandleFunc("POST /api/agents", handleCreateAgent(st, ev))
 	aliasAPI(mux, "GET /api/agents", handleListAgents(st))
 	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
-	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st))
-	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st))
+	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st, ev))
+	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st, ev))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
@@ -185,7 +189,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	aliasAPI(mux, "POST /api/skills", handleCreateSkill())
 	aliasAPI(mux, "DELETE /api/skills/{name}", handleDeleteSkill())
 
-	registerTeamRoutes(mux, st)
+	registerTeamRoutes(mux, opt)
 
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.
 	return mux
@@ -203,7 +207,7 @@ func rejectUnknownProvider(w http.ResponseWriter, st store.StoreIface, name, mod
 	return false
 }
 
-func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
+func handleCreateAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			AgentKey          string `json:"agent_key"`
@@ -264,6 +268,15 @@ func handleCreateAgent(st store.StoreIface) http.HandlerFunc {
 			}
 			a = disabled
 		}
+		recordEvent(ev, eventstore.Event{
+			Type:    eventstore.TypeAgent,
+			Kind:    eventstore.KindSuccess,
+			Action:  "create",
+			Actor:   operatorActor(r),
+			AgentID: a.ID,
+			Entity:  a.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "create", "agent_id": a.ID, "agent_key": a.AgentKey}),
+		})
 		writeJSON(w, http.StatusCreated, a)
 	}
 }
@@ -303,7 +316,7 @@ func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
+func handlePatchAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		cur, err := agentVisible(st, id, requestTenant(r))
@@ -379,11 +392,20 @@ func handlePatchAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type:    eventstore.TypeAgent,
+			Kind:    eventstore.KindSuccess,
+			Action:  "update",
+			Actor:   operatorActor(r),
+			AgentID: a.ID,
+			Entity:  a.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "update", "agent_id": a.ID, "enabled": a.Enabled}),
+		})
 		writeJSON(w, http.StatusOK, a)
 	}
 }
 
-func handleDeleteAgent(st store.StoreIface) http.HandlerFunc {
+func handleDeleteAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
@@ -402,6 +424,15 @@ func handleDeleteAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type:    eventstore.TypeAgent,
+			Kind:    eventstore.KindSuccess,
+			Action:  "delete",
+			Actor:   operatorActor(r),
+			AgentID: id,
+			Entity:  id,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "delete", "agent_id": id}),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }

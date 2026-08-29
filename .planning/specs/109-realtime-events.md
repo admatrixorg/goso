@@ -10,9 +10,9 @@ Extend EventsPage with an **optional live stream** across agents/teams while ret
 
 ## AC
 
-- [ ] Live Events page: optional live stream plus historical list. Pause/resume/clear-local-view. Filters. Loading/empty/error/reconnect.
-- [ ] Bounded retention. Schema-safe detail. GET/stream never returns message/tool payload secrets.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/109-realtime-events.md`.
+- [x] Live Events page: optional live stream plus historical list. Pause/resume/clear-local-view. Filters. Loading/empty/error/reconnect.
+- [x] Bounded retention. Schema-safe detail. GET/stream never returns message/tool payload secrets.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/109-realtime-events.md`.
 
 ## Out of scope
 

@@ -244,6 +244,30 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view GET storage preview 200, got %d", w.Code)
 	}
 
+	evList := httptest.NewRequest("GET", "/api/events", nil)
+	evList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, evList)
+	if w.Code != 200 {
+		t.Fatalf("view GET events 200, got %d", w.Code)
+	}
+
+	evStream := httptest.NewRequest("GET", "/api/events/stream", nil)
+	evStream.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, evStream)
+	if w.Code != 200 {
+		t.Fatalf("view GET events stream 200, got %d", w.Code)
+	}
+
+	v1ev := httptest.NewRequest("GET", "/v1/events", nil)
+	v1ev.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1ev)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/events 200, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()

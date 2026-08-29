@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
 )
@@ -16,31 +17,33 @@ func parseOrchMode(s string) (string, error) {
 	return team.ParseMode(s)
 }
 
-func registerTeamRoutes(mux *http.ServeMux, st store.StoreIface) {
-	mux.HandleFunc("POST /api/teams", handleCreateTeam(st))
+func registerTeamRoutes(mux *http.ServeMux, opt Options) {
+	st := opt.Store
+	ev := opt.Events
+	mux.HandleFunc("POST /api/teams", handleCreateTeam(st, ev))
 	aliasAPI(mux, "GET /api/teams", handleListTeams(st))
 	mux.HandleFunc("GET /api/teams/{id}/members", handleListMembers(st))
-	mux.HandleFunc("POST /api/teams/{id}/members", handleAddMember(st))
-	mux.HandleFunc("DELETE /api/teams/{id}/members/{agent_id}", handleRemoveMember(st))
+	mux.HandleFunc("POST /api/teams/{id}/members", handleAddMember(st, ev))
+	mux.HandleFunc("DELETE /api/teams/{id}/members/{agent_id}", handleRemoveMember(st, ev))
 	mux.HandleFunc("GET /api/teams/{id}/tasks", handleListTasks(st))
-	mux.HandleFunc("POST /api/teams/{id}/tasks", handleCreateTask(st))
-	mux.HandleFunc("PATCH /api/teams/{id}/tasks/{tid}", handleUpdateTask(st))
+	mux.HandleFunc("POST /api/teams/{id}/tasks", handleCreateTask(st, ev))
+	mux.HandleFunc("PATCH /api/teams/{id}/tasks/{tid}", handleUpdateTask(st, ev))
 	mux.HandleFunc("GET /api/teams/{id}/messages", handleListMessagesTeam(st))
-	mux.HandleFunc("POST /api/teams/{id}/messages", handleCreateMessageTeam(st))
+	mux.HandleFunc("POST /api/teams/{id}/messages", handleCreateMessageTeam(st, ev))
 	mux.HandleFunc("GET /api/teams/{id}", handleGetTeam(st))
-	mux.HandleFunc("PUT /api/teams/{id}", handleUpdateTeam(st))
-	mux.HandleFunc("DELETE /api/teams/{id}", handleDeleteTeam(st))
+	mux.HandleFunc("PUT /api/teams/{id}", handleUpdateTeam(st, ev))
+	mux.HandleFunc("DELETE /api/teams/{id}", handleDeleteTeam(st, ev))
 
 	aliasAPI(mux, "GET /api/agents/{id}/links", handleListLinks(st))
-	aliasAPI(mux, "POST /api/agents/{id}/links", handleAddLink(st))
-	aliasAPI(mux, "DELETE /api/agents/{id}/links/{to_id}", handleRemoveLink(st))
+	aliasAPI(mux, "POST /api/agents/{id}/links", handleAddLink(st, ev))
+	aliasAPI(mux, "DELETE /api/agents/{id}/links/{to_id}", handleRemoveLink(st, ev))
 	mux.HandleFunc("GET /api/agents/{id}/evolution", handleEvolution(st))
 	mux.HandleFunc("PATCH /api/agents/{id}/evolution", handleEvolutionGuardrails(st))
 	mux.HandleFunc("POST /api/agents/{id}/evolution/tick", handleEvolutionTick(st))
 	mux.HandleFunc("POST /api/agents/{id}/evolution/{sid}/apply", handleEvolutionApply(st))
 }
 
-func handleCreateTeam(st store.StoreIface) http.HandlerFunc {
+func handleCreateTeam(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name        string `json:"name"`
@@ -67,6 +70,11 @@ func handleCreateTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTeam, Kind: eventstore.KindSuccess, Action: "create",
+			Actor: operatorActor(r), TeamID: t.ID, AgentID: t.LeadAgentID, Entity: t.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "create", "team_id": t.ID, "name": t.Name}),
+		})
 		writeJSON(w, http.StatusCreated, t)
 	}
 }
@@ -99,7 +107,7 @@ func handleGetTeam(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleUpdateTeam(st store.StoreIface) http.HandlerFunc {
+func handleUpdateTeam(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		if _, err := teamVisible(st, id, requestTenant(r)); err != nil {
@@ -123,11 +131,16 @@ func handleUpdateTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTeam, Kind: eventstore.KindSuccess, Action: "update",
+			Actor: operatorActor(r), TeamID: t.ID, AgentID: t.LeadAgentID, Entity: t.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "update", "team_id": t.ID, "name": t.Name}),
+		})
 		writeJSON(w, http.StatusOK, t)
 	}
 }
 
-func handleDeleteTeam(st store.StoreIface) http.HandlerFunc {
+func handleDeleteTeam(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		if _, err := teamVisible(st, id, requestTenant(r)); err != nil {
@@ -138,6 +151,11 @@ func handleDeleteTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "team not found")
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTeam, Kind: eventstore.KindSuccess, Action: "delete",
+			Actor: operatorActor(r), TeamID: id, Entity: id,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "delete", "team_id": id}),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
@@ -157,7 +175,7 @@ func handleListMembers(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleAddMember(st store.StoreIface) http.HandlerFunc {
+func handleAddMember(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
 		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
@@ -181,21 +199,33 @@ func handleAddMember(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTeam, Kind: eventstore.KindSuccess, Action: "add_member",
+			Actor: operatorActor(r), TeamID: teamID, AgentID: m.AgentID, Entity: m.AgentID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "add_member", "team_id": teamID, "agent_id": m.AgentID, "role": m.Role}),
+		})
 		writeJSON(w, http.StatusCreated, m)
 	}
 }
 
-func handleRemoveMember(st store.StoreIface) http.HandlerFunc {
+func handleRemoveMember(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, err := teamVisible(st, strings.TrimSpace(r.PathValue("id")), requestTenant(r)); err != nil {
 			writeErr(w, http.StatusNotFound, "member not found")
 			return
 		}
-		err := st.RemoveTeamMember(strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(r.PathValue("agent_id")))
+		teamID := strings.TrimSpace(r.PathValue("id"))
+		agentID := strings.TrimSpace(r.PathValue("agent_id"))
+		err := st.RemoveTeamMember(teamID, agentID)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "member not found")
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTeam, Kind: eventstore.KindSuccess, Action: "remove_member",
+			Actor: operatorActor(r), TeamID: teamID, AgentID: agentID, Entity: agentID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "remove_member", "team_id": teamID, "agent_id": agentID}),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
@@ -215,7 +245,7 @@ func handleListTasks(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleCreateTask(st store.StoreIface) http.HandlerFunc {
+func handleCreateTask(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
 		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
@@ -244,11 +274,16 @@ func handleCreateTask(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTask, Kind: eventstore.KindSuccess, Action: "create",
+			Actor: operatorActor(r), TeamID: teamID, AgentID: task.AssigneeAgentID, Entity: task.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "create", "task_id": task.ID, "team_id": teamID, "status": task.Status}),
+		})
 		writeJSON(w, http.StatusCreated, task)
 	}
 }
 
-func handleUpdateTask(st store.StoreIface) http.HandlerFunc {
+func handleUpdateTask(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tid := strings.TrimSpace(r.PathValue("tid"))
 		var body struct {
@@ -271,6 +306,11 @@ func handleUpdateTask(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeTask, Kind: eventstore.KindSuccess, Action: "update",
+			Actor: operatorActor(r), TeamID: task.TeamID, AgentID: task.AssigneeAgentID, Entity: task.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "update", "task_id": task.ID, "team_id": task.TeamID, "status": task.Status}),
+		})
 		writeJSON(w, http.StatusOK, task)
 	}
 }
@@ -290,7 +330,7 @@ func handleListMessagesTeam(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleCreateMessageTeam(st store.StoreIface) http.HandlerFunc {
+func handleCreateMessageTeam(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		teamID := strings.TrimSpace(r.PathValue("id"))
 		if _, err := teamVisible(st, teamID, requestTenant(r)); err != nil {
@@ -312,6 +352,15 @@ func handleCreateMessageTeam(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		actor := strings.TrimSpace(m.FromAgentID)
+		if actor == "" {
+			actor = operatorActor(r)
+		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeMessage, Kind: eventstore.KindSuccess, Action: "create",
+			Actor: actor, TeamID: teamID, AgentID: m.FromAgentID, Entity: m.ID,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "create", "message_id": m.ID, "team_id": teamID, "from_agent_id": m.FromAgentID, "bytes": len(m.Body)}),
+		})
 		writeJSON(w, http.StatusCreated, m)
 	}
 }
@@ -331,7 +380,7 @@ func handleListLinks(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleAddLink(st store.StoreIface) http.HandlerFunc {
+func handleAddLink(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		from := strings.TrimSpace(r.PathValue("id"))
 		tid := requestTenant(r)
@@ -359,6 +408,11 @@ func handleAddLink(st store.StoreIface) http.HandlerFunc {
 		if body.Bidirectional {
 			_ = st.AddAgentLink(strings.TrimSpace(body.ToAgentID), from)
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeAgentLink, Kind: eventstore.KindSuccess, Action: "add",
+			Actor: operatorActor(r), AgentID: from, Entity: to,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "add", "from_agent_id": from, "to_agent_id": to, "bidirectional": body.Bidirectional}),
+		})
 		writeJSON(w, http.StatusCreated, map[string]any{"links": publicAgentLinks(st, from)})
 	}
 }
@@ -379,7 +433,7 @@ func publicAgentLinks(st store.StoreIface, from string) []map[string]any {
 	return out
 }
 
-func handleRemoveLink(st store.StoreIface) http.HandlerFunc {
+func handleRemoveLink(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		from := strings.TrimSpace(r.PathValue("id"))
 		to := strings.TrimSpace(r.PathValue("to_id"))
@@ -400,6 +454,11 @@ func handleRemoveLink(st store.StoreIface) http.HandlerFunc {
 		if pair {
 			_ = st.RemoveAgentLink(to, from)
 		}
+		recordEvent(ev, eventstore.Event{
+			Type: eventstore.TypeAgentLink, Kind: eventstore.KindSuccess, Action: "remove",
+			Actor: operatorActor(r), AgentID: from, Entity: to,
+			Summary: eventstore.SummarizeArgs(map[string]any{"action": "remove", "from_agent_id": from, "to_agent_id": to, "pair": pair}),
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": publicAgentLinks(st, from)})
 	}
 }
