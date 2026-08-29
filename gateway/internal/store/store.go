@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -172,11 +173,42 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Memory kinds for L1 episodic notes and FTS-backed message hits.
+// Memory kinds for L1 episodic notes, durable agent notes, and FTS message hits.
 const (
 	KindEpisodic = "episodic"
 	KindMessage  = "message"
+	KindDurable  = "durable"
 )
+
+// MemoryQueryCap is the operator list ceiling (lexical; not an embedding page).
+const MemoryQueryCap = 500
+
+// MemoryQuery filters L1 notes. Empty fields are ignored.
+type MemoryQuery struct {
+	SessionID string
+	AgentID   string
+	Kind      string
+	Limit     int
+}
+
+// NormalizeMemoryKind maps empty/document aliases onto episodic/durable.
+func NormalizeMemoryKind(kind string) string {
+	k := strings.ToLower(strings.TrimSpace(kind))
+	switch k {
+	case "", KindEpisodic:
+		return KindEpisodic
+	case "document", KindDurable:
+		return KindDurable
+	default:
+		return k
+	}
+}
+
+// MemoryIsEpisodic reports session notes (including FTS message hits).
+func MemoryIsEpisodic(kind string) bool {
+	k := NormalizeMemoryKind(kind)
+	return k == KindEpisodic || k == KindMessage
+}
 
 // Memory is an L1 episodic (or caller-supplied) note.
 type Memory struct {
@@ -379,6 +411,11 @@ type StoreIface interface {
 	ListAgentConnectors(agentID string) ([]string, error)
 	PutMemory(Memory) (*Memory, error)
 	ListMemories(string) ([]*Memory, error)
+	GetMemory(string) (*Memory, error)
+	UpdateMemory(Memory) (*Memory, error)
+	DeleteMemory(string) error
+	QueryMemories(MemoryQuery) ([]*Memory, error)
+	HasMemoryFTS() bool
 	SaveSummary(sessionID, body string) (*Memory, error)
 	LatestSummary(sessionID string) (*Memory, error)
 	SearchMemory(q string) ([]SearchHit, error)
@@ -1088,9 +1125,7 @@ func (s *Store) PutMemory(m Memory) (*Memory, error) {
 	if strings.TrimSpace(m.Body) == "" {
 		return nil, errors.New("body is required")
 	}
-	if m.Kind == "" {
-		m.Kind = KindEpisodic
-	}
+	m.Kind = NormalizeMemoryKind(m.Kind)
 	m.TenantID = NormalizeTenant(m.TenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1119,6 +1154,122 @@ func (s *Store) ListMemories(sessionID string) ([]*Memory, error) {
 	for i, m := range list {
 		cp := *m
 		out[i] = &cp
+	}
+	if out == nil {
+		out = []*Memory{}
+	}
+	return out, nil
+}
+
+func (s *Store) HasMemoryFTS() bool { return false }
+
+func (s *Store) GetMemory(id string) (*Memory, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, ErrNotFound
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, list := range s.memories {
+		for _, m := range list {
+			if m != nil && m.ID == id {
+				cp := *m
+				return &cp, nil
+			}
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) UpdateMemory(m Memory) (*Memory, error) {
+	id := strings.TrimSpace(m.ID)
+	if id == "" {
+		return nil, errors.New("id is required")
+	}
+	body := strings.TrimSpace(m.Body)
+	if body == "" {
+		return nil, errors.New("body is required")
+	}
+	kind := NormalizeMemoryKind(m.Kind)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, list := range s.memories {
+		for _, cur := range list {
+			if cur == nil || cur.ID != id {
+				continue
+			}
+			cur.Body = body
+			cur.Kind = kind
+			cp := *cur
+			return &cp, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) DeleteMemory(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for sid, list := range s.memories {
+		for i, cur := range list {
+			if cur == nil || cur.ID != id {
+				continue
+			}
+			s.memories[sid] = append(list[:i], list[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *Store) QueryMemories(q MemoryQuery) ([]*Memory, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = MemoryQueryCap
+	}
+	sid := strings.TrimSpace(q.SessionID)
+	aid := strings.TrimSpace(q.AgentID)
+	kind := strings.TrimSpace(q.Kind)
+	if kind != "" {
+		kind = NormalizeMemoryKind(kind)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*Memory
+	for sessID, list := range s.memories {
+		if sid != "" && sessID != sid {
+			continue
+		}
+		agentID := ""
+		if sess, ok := s.sessions[sessID]; ok && sess != nil {
+			agentID = sess.AgentID
+		}
+		if aid != "" && agentID != aid {
+			continue
+		}
+		for _, m := range list {
+			if m == nil {
+				continue
+			}
+			if kind != "" && NormalizeMemoryKind(m.Kind) != kind {
+				continue
+			}
+			cp := *m
+			out = append(out, &cp)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	if out == nil {
 		out = []*Memory{}

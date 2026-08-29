@@ -1064,9 +1064,7 @@ func (s *SQLiteStore) PutMemory(m Memory) (*Memory, error) {
 	if strings.TrimSpace(m.Body) == "" {
 		return nil, errors.New("body is required")
 	}
-	if m.Kind == "" {
-		m.Kind = KindEpisodic
-	}
+	m.Kind = NormalizeMemoryKind(m.Kind)
 	m.TenantID = NormalizeTenant(m.TenantID)
 	sess, err := s.GetSession(m.SessionID)
 	if err != nil {
@@ -1095,6 +1093,99 @@ func (s *SQLiteStore) ListMemories(sessionID string) ([]*Memory, error) {
 		return nil, ErrNotFound
 	}
 	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Memory
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	if out == nil {
+		out = []*Memory{}
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) HasMemoryFTS() bool { return s.fts }
+
+func (s *SQLiteStore) GetMemory(id string) (*Memory, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, ErrNotFound
+	}
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE id=?`, id)
+	m, err := scanMemory(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (s *SQLiteStore) UpdateMemory(m Memory) (*Memory, error) {
+	id := strings.TrimSpace(m.ID)
+	if id == "" {
+		return nil, errors.New("id is required")
+	}
+	body := strings.TrimSpace(m.Body)
+	if body == "" {
+		return nil, errors.New("body is required")
+	}
+	kind := NormalizeMemoryKind(m.Kind)
+	cur, err := s.GetMemory(id)
+	if err != nil {
+		return nil, err
+	}
+	cur.Body = body
+	cur.Kind = kind
+	_, err = s.db.Exec(`UPDATE memories SET body=?, kind=? WHERE id=?`, cur.Body, cur.Kind, cur.ID)
+	if err != nil {
+		return nil, err
+	}
+	return cur, nil
+}
+
+func (s *SQLiteStore) DeleteMemory(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	res, err := s.db.Exec(`DELETE FROM memories WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) QueryMemories(q MemoryQuery) ([]*Memory, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = MemoryQueryCap
+	}
+	sid := strings.TrimSpace(q.SessionID)
+	aid := strings.TrimSpace(q.AgentID)
+	kind := strings.TrimSpace(q.Kind)
+	if kind != "" {
+		kind = NormalizeMemoryKind(kind)
+	}
+	rows, err := s.db.Query(`SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id
+		FROM memories m INNER JOIN sessions s ON s.id = m.session_id
+		WHERE (? = '' OR m.session_id = ?)
+		AND (? = '' OR s.agent_id = ?)
+		AND (? = '' OR m.kind = ?)
+		ORDER BY m.created_at DESC
+		LIMIT ?`, sid, sid, aid, aid, kind, kind, limit)
 	if err != nil {
 		return nil, err
 	}
