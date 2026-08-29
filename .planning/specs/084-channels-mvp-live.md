@@ -1,7 +1,6 @@
 # SPEC 084 — Channels MVP Live (Telegram + WebSocket + Zalo OA + Zalo Personal QR/sidecar)
 
-> DRAFT: 2026-08-29 — Advisor soạn. **Không LOCK** trừ khi operator (Dat) xác nhận.
-> Proposed LOCK answers: §10 (Recommended). STATUS vẫn DRAFT.
+> LOCKED: 2026-08-29 — Scope: Channels MVP Live (Telegram poll/webhook + WS internal + Zalo OA webhook + Zalo Personal QR/sidecar); secrets-box optional; Phase-2 Discord/Slack/Feishu/WhatsApp parked.
 > Clean-room. Không copy GoClaw / ZaloCRM / zca-js. Không invent production tokens.
 > Số **002 đã dùng** (`002-gateway-http-session.md`) — SPEC này là **084**.
 > Không bind/kill `:8082` `:8091` `:3000` `:18080` `:18088`.
@@ -60,7 +59,7 @@ Kết thúc 084, `docs/qa/084-channels-mvp-live.md` ghi evidence; unit fake vẫ
 
 ## 3. Acceptance Criteria
 
-Checkbox đo được. Implementation sau **human LOCK**; dưới đây khớp Proposed LOCK answers §10 (Recommended, chưa LOCK).
+Checkbox đo được. Implementation sau LOCK; dưới đây khớp LOCK answers §10 (approved 2026-08-29).
 
 ### 3.1 Framework / runtime readiness
 
@@ -359,11 +358,11 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 
 ---
 
-## 10. Proposed LOCK answers (Recommended — chưa LOCK)
+## 10. LOCK answers (approved 2026-08-29)
 
-Bảng này **áp vào AC** ở trên. **Chưa** phải human LOCK. Dat approve nguyên bộ (hoặc sửa) rồi mới đổi STATUS.
+Human **approved** nguyên bộ Recommended (17 answers + 2 extras). Không sửa thêm scope. Bảng này **áp vào AC**.
 
-| # | Câu hỏi gốc | Proposed answer (Recommended) |
+| # | Câu hỏi gốc | LOCK answer (approved) |
 |---|----------------|-------------------------------|
 | 1 | Telegram default transport | `GOSO_TELEGRAM_MODE=poll\|webhook`, **default `poll`**. Giữ webhook route 003. Mode `webhook` **không** public URL → `health=failed`, error rõ, **không silent**. |
 | 2 | `GOSO_PUBLIC_URL` | **Optional.** Dùng `setWebhook` khi `mode=webhook`. **Không** bắt buộc poll-only. |
@@ -385,23 +384,21 @@ Bảng này **áp vào AC** ở trên. **Chưa** phải human LOCK. Dat approve 
 
 **Chốt thêm (AC, không đánh số 1–17):**
 
-| Extra | Proposed |
+| Extra | LOCK answer (approved) |
 |-------|----------|
 | Telegram webhook secret header | Goso-shaped **`X-Goso-Telegram-Secret`** (hoặc `?secret=` nếu configured). **Không** copy tên header GoClaw. |
 | OA verify khi thiếu secret | Secret set → fail-closed. Secret **missing** → **demo accept + warn**; **production fail-closed**. |
 
 ---
 
-## 11. Open questions (resolved by Proposed LOCK answers / still awaiting human)
+## 11. Open questions (LOCKED)
 
-Mọi mục [NEEDS CLARIFICATION] bản draft trước **đã có Proposed answer ở §10**. Không còn câu hỏi SPEC tự đoán.
+Mọi mục [NEEDS CLARIFICATION] bản draft trước **đã LOCK** theo §10. Không còn awaiting.
 
 | # | Status |
 |---|--------|
-| 1–17 + 2 extra | **Proposed LOCK (Recommended)** — chờ Dat **approved** / sửa. |
-| Human LOCK | **Chưa.** STATUS dưới. Không cook cho đến khi Dat LOCK. |
-
-Nếu Dat LOCK khác Recommended: sửa AC cho khớp câu Dat, không giữ Proposed im lặng.
+| 1–17 + 2 extra | **LOCKED** 2026-08-29 — human approved nguyên bộ Recommended. |
+| Human LOCK | **LOCKED.** Cook được theo AC. |
 
 ---
 
@@ -416,7 +413,7 @@ Cùng một dòng `.planning/backlog.md`.
 
 ---
 
-## 13. Implementation notes (sau human LOCK — không code lúc draft)
+## 13. Implementation notes (cook theo AC — không làm trong commit LOCK này)
 
 - `gateway/internal/channel` + manager self-written. Personal: webhook 004 + QR surface; **không** protocol in-process.
 - Secrets box key `channel:<name>:<kind>`; env thắng.
@@ -428,4 +425,4 @@ Cùng một dòng `.planning/backlog.md`.
 
 ---
 
-STATUS: DRAFT — awaiting human LOCK
+LOCKED: 2026-08-29 — approved Recommended §10 (17 answers + 2 extras). Cook được theo AC.
