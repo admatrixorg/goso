@@ -25,6 +25,7 @@ import { TracesPage } from "./pages/TracesPage";
 import { PendingPage } from "./pages/PendingPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { NodesPage } from "./pages/NodesPage";
+import { WorkstationsPage } from "./pages/WorkstationsPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -62,6 +63,7 @@ export type Tab =
   | "pending"
   | "contacts"
   | "nodes"
+  | "workstations"
   | "settings";
 
 function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
@@ -122,6 +124,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "channels", label: t("nav.channels"), ic: "device" },
         { id: "nodes", label: t("nav.nodes"), ic: "device" },
+        { id: "workstations", label: t("nav.workstations"), ic: "cloud" },
         { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
         { id: "traces", label: t("nav.traces"), ic: "history" },
       ],
@@ -531,6 +534,7 @@ export default function App() {
           {tab === "providers" && <ProvidersPage />}
           {tab === "channels" && <ChannelsPage />}
           {tab === "nodes" && <NodesPage />}
+          {tab === "workstations" && <WorkstationsPage />}
           {tab === "webhooks" && <WebhooksPage />}
           {tab === "traces" && <TracesPage />}
           {tab === "pending" && <PendingPage />}

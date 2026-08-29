@@ -188,6 +188,46 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST revoke 403, got %d", w.Code)
 	}
 
+	ws := httptest.NewRequest("GET", "/api/workstations", nil)
+	ws.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, ws)
+	if w.Code != 200 {
+		t.Fatalf("view GET workstations 200, got %d", w.Code)
+	}
+
+	wsOne := httptest.NewRequest("GET", "/api/workstations/ws_1", nil)
+	wsOne.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, wsOne)
+	if w.Code != 200 {
+		t.Fatalf("view GET workstation id 200, got %d", w.Code)
+	}
+
+	wsCreate := httptest.NewRequest("POST", "/api/workstations", nil)
+	wsCreate.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, wsCreate)
+	if w.Code != 403 {
+		t.Fatalf("view POST workstations 403, got %d", w.Code)
+	}
+
+	wsTest := httptest.NewRequest("POST", "/api/workstations/ws_1/test", nil)
+	wsTest.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, wsTest)
+	if w.Code != 403 {
+		t.Fatalf("view POST test 403, got %d", w.Code)
+	}
+
+	wsDel := httptest.NewRequest("POST", "/api/workstations/ws_1/delete", nil)
+	wsDel.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, wsDel)
+	if w.Code != 403 {
+		t.Fatalf("view POST delete 403, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -256,6 +296,11 @@ func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
 		"/api/nodes/nd_1/deny",
 		"/api/nodes/nd_1/revoke",
 		"/v1/nodes/nd_1/approve",
+		"/api/workstations",
+		"/api/workstations/ws_1/test",
+		"/api/workstations/ws_1/disconnect",
+		"/api/workstations/ws_1/delete",
+		"/v1/workstations/ws_1/delete",
 	}
 	for _, path := range paths {
 		req := httptest.NewRequest("POST", path, nil)

@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 106: Workstations THIẾU page. Live `workstations` tab. `GET /api/workstations` lists SSH/Docker targets (identity path/ref, never keys). Create/edit/test; disconnect/delete require `confirm`. Test is local config validation (no SSH). View-token GET-only. i18n vi+en. QA `docs/qa/106-workstations.md`.
 - SPEC 105: Nodes THIẾU page. Live `nodes` tab. `GET /api/nodes` lists pending vs paired devices (no pairing codes/tokens). `POST /api/nodes/request` is unauthenticated. Approve/deny/revoke require `confirm`. View-token GET-only. i18n vi+en. QA `docs/qa/105-nodes.md`.
 - SPEC 104: Contacts THIẾU page. Live `contacts` tab. `GET /api/contacts` lists identities + channel ids (no tokens). Merge/undo require `confirm` and keep identifiers. View-token GET-only; lite 403. i18n vi+en. QA `docs/qa/104-contacts.md`.
 - SPEC 103: Pending Messages THIẾU page. Live `pending` tab. `GET /api/pending-messages` lists count/age/channel/agent only (no payloads). Compact/clear require matching `confirm`. View-token GET-only; lite 403. i18n vi+en. QA `docs/qa/103-pending-messages.md`.

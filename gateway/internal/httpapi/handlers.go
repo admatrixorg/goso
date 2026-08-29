@@ -26,6 +26,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
+	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
 
 // Options wires SPEC 014 deps into the HTTP mux. All fields except Store are optional.
@@ -58,6 +59,8 @@ type Options struct {
 	Contacts *channel.Contacts
 	// Nodes is the dashboard device registry. Nil → node.Default.
 	Nodes *node.Nodes
+	// Workstations is the SSH/Docker execution-target registry. Nil → workstation.Default.
+	Workstations *workstation.Workstations
 }
 
 func (o *Options) defaults() {
@@ -87,6 +90,9 @@ func (o *Options) defaults() {
 	}
 	if o.Nodes == nil {
 		o.Nodes = node.Default()
+	}
+	if o.Workstations == nil {
+		o.Workstations = workstation.Default()
 	}
 }
 
@@ -123,6 +129,7 @@ func NewRouter(opt Options) http.Handler {
 	registerPendingRoutes(mux, opt)
 	registerContactsRoutes(mux, opt)
 	registerNodeRoutes(mux, opt)
+	registerWorkstationRoutes(mux, opt)
 	return mux
 }
 
