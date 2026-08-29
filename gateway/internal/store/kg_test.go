@@ -4,6 +4,7 @@ package store
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -149,6 +150,132 @@ func TestSQLiteStore_ProgressiveKeepsL2AndTenant(t *testing.T) {
 	other, err := s.SearchProgressive("shared", "acme")
 	if err != nil || !hasKGHit(other, hidden.ID, TierL2) || hasKGHit(other, ent.ID, TierL2) {
 		t.Fatalf("acme search %v %#v", err, other)
+	}
+}
+
+func TestStore_KGGraphAgentScopeCapAndSecrets(t *testing.T) {
+	s := New()
+	a, err := s.CreateAgent(Agent{AgentKey: "kg-explorer"})
+	if err != nil || a == nil {
+		t.Fatalf("agent %v", err)
+	}
+	other, err := s.CreateAgent(Agent{AgentKey: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha, err := s.PutKGEntity(KGEntity{Name: "Acme Billing", Kind: "org", Body: "invoices", AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeta, err := s.PutKGEntity(KGEntity{Name: "Zeta Warehouse", Kind: "place", Body: "stock", AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := s.PutKGEntity(KGEntity{Name: "Safe Name", Kind: "org", Body: "sk-live-abcdefghijk", AgentID: a.ID, Source: KGSourceExtracted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.PutKGEntity(KGEntity{Name: "Other Co", Kind: "org", Body: "hidden", AgentID: other.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.PutKGRelation(KGRelation{FromID: alpha.ID, ToID: zeta.ID, Rel: "ships_to"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.PutKGRelation(KGRelation{FromID: alpha.ID, ToID: secret.ID, Rel: "mentions", Source: KGSourceExtracted})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := s.ListKGGraph(KGGraphQuery{AgentID: a.ID, Tenant: DefaultTenant})
+	if err != nil || g == nil {
+		t.Fatalf("graph %v %#v", err, g)
+	}
+	if !g.InferredAreNotFacts {
+		t.Fatal("must flag inferred_are_not_facts")
+	}
+	if g.TotalNodes != 3 || len(g.Nodes) != 3 {
+		t.Fatalf("nodes %#v", g)
+	}
+	if g.TotalEdges != 2 || len(g.Edges) != 2 {
+		t.Fatalf("edges %#v", g)
+	}
+	var sawSecret, sawInferred bool
+	for _, n := range g.Nodes {
+		if strings.Contains(n.Snippet, "sk-") || strings.Contains(n.Name, "sk-") {
+			t.Fatalf("snippet leaked secret %#v", n)
+		}
+		if n.ID == secret.ID {
+			sawSecret = true
+			if !n.Inferred || n.Source != KGSourceExtracted {
+				t.Fatalf("extracted provenance %#v", n)
+			}
+		}
+	}
+	if !sawSecret {
+		t.Fatal("missing extracted node")
+	}
+	for _, e := range g.Edges {
+		if e.Rel == "mentions" {
+			sawInferred = true
+			if !e.Inferred {
+				t.Fatalf("extracted edge not inferred %#v", e)
+			}
+		}
+	}
+	if !sawInferred {
+		t.Fatal("missing extracted edge")
+	}
+
+	posted, err := s.ListKGGraph(KGGraphQuery{AgentID: a.ID, Scope: KGSourcePosted, Tenant: DefaultTenant})
+	if err != nil || posted.TotalNodes != 2 {
+		t.Fatalf("posted scope %v %#v", err, posted)
+	}
+	capped, err := s.ListKGGraph(KGGraphQuery{AgentID: a.ID, Tenant: DefaultTenant, Limit: 1})
+	if err != nil || !capped.Truncated || len(capped.Nodes) != 1 || capped.NodeCap != 1 {
+		t.Fatalf("cap %v %#v", err, capped)
+	}
+	empty, err := s.ListKGGraph(KGGraphQuery{AgentID: other.ID, Q: "Acme", Tenant: DefaultTenant})
+	if err != nil || empty.TotalNodes != 0 {
+		t.Fatalf("other agent q %v %#v", err, empty)
+	}
+	byBody, err := s.ListKGGraph(KGGraphQuery{AgentID: a.ID, Q: "invoices", Tenant: DefaultTenant})
+	if err != nil || byBody.TotalNodes != 1 || byBody.Nodes[0].ID != alpha.ID {
+		t.Fatalf("body search %v %#v", err, byBody)
+	}
+}
+
+func TestSQLiteStore_KGGraph(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenSQLite(filepath.Join(dir, "kg-graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	a, err := s.CreateAgent(Agent{AgentKey: "kg-sql"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n1, err := s.PutKGEntity(KGEntity{Name: "Alpha", Kind: "org", AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, err := s.PutKGEntity(KGEntity{Name: "Beta", Kind: "org", AgentID: a.ID, Source: KGSourceExtracted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.PutKGRelation(KGRelation{FromID: n1.ID, ToID: n2.ID, Rel: "knows", Source: KGSourceExtracted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := s.ListKGGraph(KGGraphQuery{AgentID: a.ID, Tenant: DefaultTenant})
+	if err != nil || g.TotalNodes != 2 || g.TotalEdges != 1 {
+		t.Fatalf("sqlite graph %v %#v", err, g)
+	}
+	got, err := s.GetKGEntity(n2.ID)
+	if err != nil || got.Source != KGSourceExtracted || got.AgentID != a.ID {
+		t.Fatalf("roundtrip %#v %v", got, err)
 	}
 }
 

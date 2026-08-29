@@ -241,6 +241,8 @@ type KGEntity struct {
 	Name       string     `json:"name"`
 	Kind       string     `json:"kind"`
 	Body       string     `json:"body,omitempty"`
+	AgentID    string     `json:"agent_id,omitempty"`
+	Source     string     `json:"source,omitempty"`
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -254,6 +256,7 @@ type KGRelation struct {
 	ToID       string     `json:"to_id"`
 	Rel        string     `json:"rel"`
 	Body       string     `json:"body,omitempty"`
+	Source     string     `json:"source,omitempty"`
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
@@ -425,6 +428,7 @@ type StoreIface interface {
 	GetKGEntity(string) (*KGEntity, error)
 	PutKGRelation(KGRelation) (*KGRelation, error)
 	ListKGRelations(entityID string) ([]*KGRelation, error)
+	ListKGGraph(KGGraphQuery) (*KGGraph, error)
 	ExpandKG(id string) (*KGExpand, error)
 	SearchProgressive(q, tenant string) ([]KGSearchHit, error)
 	PutVaultDoc(VaultDoc) (*VaultDoc, error)

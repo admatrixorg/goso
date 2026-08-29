@@ -36,10 +36,10 @@ func stampKGTimes(from time.Time, until *time.Time) (time.Time, *time.Time) {
 	return from, until
 }
 
-func (s *Store) PutKGEntity(e KGEntity) (*KGEntity, error) {
+func prepareKGEntity(e *KGEntity) error {
 	e.Name = strings.TrimSpace(e.Name)
 	if e.Name == "" {
-		return nil, errors.New("name is required")
+		return errors.New("name is required")
 	}
 	e.Kind = strings.TrimSpace(e.Kind)
 	if e.Kind == "" {
@@ -47,7 +47,33 @@ func (s *Store) PutKGEntity(e KGEntity) (*KGEntity, error) {
 	}
 	e.Body = strings.TrimSpace(e.Body)
 	e.TenantID = NormalizeTenant(e.TenantID)
+	e.AgentID = strings.TrimSpace(e.AgentID)
+	e.Source = resolveKGSource(e.Source, e.Kind)
 	e.ValidFrom, e.ValidUntil = stampKGTimes(e.ValidFrom, e.ValidUntil)
+	return nil
+}
+
+func prepareKGRelation(rel *KGRelation) error {
+	rel.FromID = strings.TrimSpace(rel.FromID)
+	rel.ToID = strings.TrimSpace(rel.ToID)
+	rel.Rel = strings.TrimSpace(rel.Rel)
+	if rel.FromID == "" || rel.ToID == "" {
+		return errors.New("from_id and to_id are required")
+	}
+	if rel.Rel == "" {
+		return errors.New("rel is required")
+	}
+	rel.Body = strings.TrimSpace(rel.Body)
+	rel.TenantID = NormalizeTenant(rel.TenantID)
+	rel.Source = resolveKGSource(rel.Source, "")
+	rel.ValidFrom, rel.ValidUntil = stampKGTimes(rel.ValidFrom, rel.ValidUntil)
+	return nil
+}
+
+func (s *Store) PutKGEntity(e KGEntity) (*KGEntity, error) {
+	if err := prepareKGEntity(&e); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e.ID = s.nextID()
@@ -71,18 +97,9 @@ func (s *Store) GetKGEntity(id string) (*KGEntity, error) {
 }
 
 func (s *Store) PutKGRelation(rel KGRelation) (*KGRelation, error) {
-	rel.FromID = strings.TrimSpace(rel.FromID)
-	rel.ToID = strings.TrimSpace(rel.ToID)
-	rel.Rel = strings.TrimSpace(rel.Rel)
-	if rel.FromID == "" || rel.ToID == "" {
-		return nil, errors.New("from_id and to_id are required")
+	if err := prepareKGRelation(&rel); err != nil {
+		return nil, err
 	}
-	if rel.Rel == "" {
-		return nil, errors.New("rel is required")
-	}
-	rel.Body = strings.TrimSpace(rel.Body)
-	rel.TenantID = NormalizeTenant(rel.TenantID)
-	rel.ValidFrom, rel.ValidUntil = stampKGTimes(rel.ValidFrom, rel.ValidUntil)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	from, ok := s.kgEntities[rel.FromID]
@@ -124,6 +141,28 @@ func (s *Store) ListKGRelations(entityID string) ([]*KGRelation, error) {
 		out = []*KGRelation{}
 	}
 	return out, nil
+}
+
+func (s *Store) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
+	s.mu.RLock()
+	ents := make([]*KGEntity, 0, len(s.kgEntities))
+	for _, e := range s.kgEntities {
+		if e == nil {
+			continue
+		}
+		cp := *e
+		ents = append(ents, &cp)
+	}
+	rels := make([]*KGRelation, 0, len(s.kgRelations))
+	for _, r := range s.kgRelations {
+		if r == nil {
+			continue
+		}
+		cp := *r
+		rels = append(rels, &cp)
+	}
+	s.mu.RUnlock()
+	return BuildKGGraph(ents, rels, q), nil
 }
 
 func (s *Store) ExpandKG(id string) (*KGExpand, error) {

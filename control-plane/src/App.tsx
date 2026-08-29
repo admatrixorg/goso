@@ -26,6 +26,7 @@ import { PendingPage } from "./pages/PendingPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { NodesPage } from "./pages/NodesPage";
 import { WorkstationsPage } from "./pages/WorkstationsPage";
+import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -56,6 +57,7 @@ export type Tab =
   | "teams"
   | "vault"
   | "memory"
+  | "kg"
   | "providers"
   | "channels"
   | "webhooks"
@@ -113,6 +115,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "teams", label: t("nav.teams"), ic: "layers" },
         { id: "vault", label: t("nav.vault"), ic: "doc" },
         { id: "memory", label: t("nav.memory"), ic: "inbox" },
+        { id: "kg", label: t("nav.kg"), ic: "sitemap" },
       ],
     },
     {
@@ -188,6 +191,7 @@ export default function App() {
             { id: "teams" as const, label: t("nav.teams"), ic: "layers" as const },
             { id: "vault" as const, label: t("nav.vault"), ic: "doc" as const },
             { id: "memory" as const, label: t("nav.memory"), ic: "inbox" as const },
+            { id: "kg" as const, label: t("nav.kg"), ic: "sitemap" as const },
             ...demoWorkExtra(locale),
           ],
         },
@@ -531,6 +535,7 @@ export default function App() {
           {tab === "teams" && <TeamsPage />}
           {tab === "vault" && <VaultPage />}
           {tab === "memory" && <MemoryPage />}
+          {tab === "kg" && <KnowledgeGraphPage />}
           {tab === "providers" && <ProvidersPage />}
           {tab === "channels" && <ChannelsPage />}
           {tab === "nodes" && <NodesPage />}

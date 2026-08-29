@@ -64,6 +64,10 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE kg_relations ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`)
 	s.tryVector()
 	return nil
 }
@@ -296,9 +300,12 @@ var postgresSchema = []string{
 		body TEXT,
 		valid_from TEXT NOT NULL,
 		valid_until TEXT,
-		created_at TEXT NOT NULL
+		created_at TEXT NOT NULL,
+		agent_id TEXT NOT NULL DEFAULT '',
+		provenance TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`,
 	`CREATE TABLE IF NOT EXISTS kg_relations (
 		id TEXT PRIMARY KEY,
 		tenant_id TEXT NOT NULL DEFAULT 'default',
@@ -307,7 +314,8 @@ var postgresSchema = []string{
 		rel TEXT NOT NULL,
 		body TEXT,
 		valid_from TEXT NOT NULL,
-		valid_until TEXT
+		valid_until TEXT,
+		provenance TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,

@@ -10,9 +10,9 @@ Add an **agent-scoped entity/relationship explorer** after Memory/Vault: agent/s
 
 ## AC
 
-- [ ] Live nav tab + page. Agent/scope required empty state. List usable without canvas. Loading/empty/error/not-configured.
-- [ ] Bounded node/edge counts. Provenance visible. Reuse existing KG APIs if present (`/api/kg/...`). GET never returns secrets.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/107-knowledge-graph.md`.
+- [x] Live nav tab + page. Agent/scope required empty state. List usable without canvas. Loading/empty/error/not-configured.
+- [x] Bounded node/edge counts. Provenance visible. Reuse existing KG APIs if present (`/api/kg/...`). GET never returns secrets.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/107-knowledge-graph.md`.
 
 ## Out of scope
 

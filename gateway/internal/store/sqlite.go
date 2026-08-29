@@ -265,9 +265,12 @@ func (s *SQLiteStore) migrate() error {
 			body TEXT,
 			valid_from TEXT NOT NULL,
 			valid_until TEXT,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			agent_id TEXT NOT NULL DEFAULT '',
+			provenance TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`,
 		`CREATE TABLE IF NOT EXISTS kg_relations (
 			id TEXT PRIMARY KEY,
 			tenant_id TEXT NOT NULL DEFAULT 'default',
@@ -276,7 +279,8 @@ func (s *SQLiteStore) migrate() error {
 			rel TEXT NOT NULL,
 			body TEXT,
 			valid_from TEXT NOT NULL,
-			valid_until TEXT
+			valid_until TEXT,
+			provenance TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,
@@ -329,6 +333,10 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE llm_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN last_error TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE webhooks ADD COLUMN endpoint TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE kg_entities ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE kg_entities ADD COLUMN provenance TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE kg_relations ADD COLUMN provenance TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`)
 	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
