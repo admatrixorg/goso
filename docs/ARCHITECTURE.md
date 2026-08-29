@@ -29,7 +29,7 @@ Giai đoạn B (3–5 tháng): Thay dần Gateway bằng GOSO Gateway Go
 - **DDD**: domain (config, health, session...) tách khỏi infra (HTTP, DB, channel).
 - **Harness trước**: Makefile/CI/hooks/pre-commit khóa trước khi thêm nghiệp vụ.
 - **Security (SPEC 041)**: Bearer `crypto/subtle.ConstantTimeCompare`; `/api` 1MiB; WS 512KiB; injection scan; optional SSRF + workspace jail; AES-256-GCM `secrets` table. SQLite tenant-lite (`tenant_id` DEFAULT `default`, SPEC 071). Optional local Postgres 16 + pgvector via `GOSO_DATABASE_URL` (SPEC 085); SQLite remains default. Hybrid vector search still later.
-- **Observability (SPEC 042)**: JSON access log + `/metrics` (SPEC 008). Nested in-memory spans (`agent` / `llm` / `tool`) on `ChatResult` and `GET /api/traces`. OTLP only if `GOSO_OTEL_ENDPOINT` is set (noop otherwise). Grafana SaaS keys = DI-18 (not in git).
+- **Observability (SPEC 042/087)**: JSON access log + `/metrics` (SPEC 008). Nested in-memory spans (`agent` / `llm` / `tool`) on `ChatResult` and `GET /api/traces`. OTLP only if `GOSO_OTEL_ENDPOINT` is set (noop otherwise). Local Jaeger is compose profile `otel` (OTLP HTTP 4318 / UI 16686). Grafana SaaS keys = DI-18 (not in git).
 
 ## Cấu trúc repo (SPEC 001)
 

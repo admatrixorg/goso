@@ -74,6 +74,10 @@ docker compose up --build
 # Default stays SQLite. Optional local Postgres 16 + pgvector (host 5433, not demo ports):
 docker compose --profile postgres up -d postgres
 export GOSO_DATABASE_URL='postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable'
+# Optional local Jaeger (OTLP HTTP 4318, UI 16686 — not 8082/8091/18080/3000):
+docker compose --profile otel up -d jaeger
+export GOSO_OTEL_ENDPOINT=http://127.0.0.1:4318/v1/traces
+# Compose-network gateway: GOSO_OTEL_ENDPOINT=http://jaeger:4318/v1/traces
 ```
 
 Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080` to Postgres.
@@ -123,7 +127,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080`
 | GOSO_GATEWAY_URL | — | URL gateway cho `goso-mcp` (bắt buộc khi chạy MCP) |
 | GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |
 | GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |
-| GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042). Empty = no export. Do **not** put Grafana Cloud keys here (DI-18). |
+| GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042/087). Empty = no export. Local Jaeger: `docker compose --profile otel up -d jaeger` then host `http://127.0.0.1:4318/v1/traces` or compose-network `http://jaeger:4318/v1/traces`. Do **not** put Grafana Cloud keys here (DI-18). |
 
 Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute ticker. `GET/POST/DELETE /api/cron` (aliased at `/v1/cron`). Specs: `every:Nm|Nh` or optional 5-field (`*`, decimal, `*/n`) evaluated in **UTC**. Cap 20 jobs. Empty list is a no-op. Failed fires are retried next tick. No OS crontab and no extra env.
 

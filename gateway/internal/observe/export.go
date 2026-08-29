@@ -99,6 +99,7 @@ func (e *HTTPExporter) Export(ctx context.Context, spans []Span) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "goso-otel/1")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

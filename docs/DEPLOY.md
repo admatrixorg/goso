@@ -59,7 +59,7 @@ docker build -t goso-control-plane ./control-plane
 
 ## Overlay ý tưởng (tối giản so với GoClaw)
 
-GoClaw gốc có 8 overlay. GOSO chỉ ship **core + prod** ở SPEC 012; các overlay còn lại để sau (gateway hiện SQLite, rate-limit in-memory, chưa OTel).
+GoClaw gốc có 8 overlay. GOSO chỉ ship **core + prod** ở SPEC 012; optional Postgres / Jaeger are compose profiles, not extra overlay files.
 
 | Overlay GoClaw | GOSO |
 |----------------|------|
@@ -67,7 +67,7 @@ GoClaw gốc có 8 overlay. GOSO chỉ ship **core + prod** ở SPEC 012; các o
 | `docker-compose.postgres.yml` | Profile `postgres` in `compose.yml` (SPEC 085) — `pgvector/pgvector:pg16` host **5433**; default `up` stays SQLite |
 | selfservice (UI :3000) | Gộp vào `compose.yml` (control-plane :3000) |
 | redis | Chưa — rate-limit in-memory (SPEC 006) |
-| otel / jaeger | Chưa — SPEC 008 để overlay sau |
+| otel / jaeger | Profile `otel` in `compose.yml` (SPEC 087) — Jaeger all-in-one OTLP HTTP **4318** / UI **16686**; default `up` stays noop. No Grafana Cloud keys (DI-18). |
 | tailscale | Ngoài scope |
 | sandbox | Opt-in `GOSO_SANDBOX_IMAGE` + `docker` on PATH (SPEC 086). No compose overlay. Missing → `not_configured`. |
 | browser | Opt-in `GOSO_BROWSER_BIN` / `CHROME_PATH` existing file (SPEC 086). No Chrome service. Missing → `not_configured`. |
@@ -89,7 +89,7 @@ Xem `.env.example` và `docs/SETUP.md`. Trong Docker:
 | `GOSO_ADMIN_TOKEN` | rỗng | Rỗng = dev mode |
 | `GATEWAY_URL` | `http://gateway:8080` | Control-plane proxy (nội bộ Docker network) |
 | `BACKUP_INTERVAL_SECONDS` | `3600` | Chỉ overlay prod |
-| `GOSO_OTEL_ENDPOINT` | (unset) | Optional OTLP HTTP JSON URL. Unset = noop. No Grafana Cloud keys (DI-18). |
+| `GOSO_OTEL_ENDPOINT` | (unset) | Optional OTLP HTTP JSON URL. Unset = noop. Profile `otel`: compose-network `http://jaeger:4318/v1/traces`; host `http://127.0.0.1:4318/v1/traces`. No Grafana Cloud keys (DI-18). |
 
 ## Không nằm trong SPEC này
 
