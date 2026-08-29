@@ -183,7 +183,12 @@ export function ChatPage({
       });
       await new Promise((r) => setTimeout(r, streamReconnectDelayMs(0)));
       if (!stillCurrent(forSession, gen)) return;
-      await load(forSession, gen);
+      try {
+        await api.listMessages(forSession);
+      } catch (probe) {
+        if (!stillCurrent(forSession, gen)) return;
+        if (isGoneStatus(probe)) onGone?.(forSession);
+      }
       if (!stillCurrent(forSession, gen)) return;
       setErr(msg);
       setStream("error");

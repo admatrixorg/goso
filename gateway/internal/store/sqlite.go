@@ -603,9 +603,23 @@ func (s *SQLiteStore) DeleteSession(id string) error {
 	if id == "" {
 		return errors.New("id is required")
 	}
-	_, _ = s.db.Exec(`DELETE FROM messages WHERE session_id=?`, id)
-	_, _ = s.db.Exec(`DELETE FROM memories WHERE session_id=?`, id)
-	res, err := s.db.Exec(`DELETE FROM sessions WHERE id=?`, id)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM memories WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	if s.fts {
+		if _, err := tx.Exec(`DELETE FROM memory_fts WHERE session_id=?`, id); err != nil {
+			return err
+		}
+	}
+	res, err := tx.Exec(`DELETE FROM sessions WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -613,7 +627,7 @@ func (s *SQLiteStore) DeleteSession(id string) error {
 	if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 type sessionScanner interface {

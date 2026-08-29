@@ -93,6 +93,9 @@ func TestStore_SessionAndMessage(t *testing.T) {
 	if _, err := s.UpdateSession(Session{ID: "nope", PromptMode: "full"}); err != ErrNotFound {
 		t.Fatalf("UpdateSession missing: %v", err)
 	}
+	if _, err := s.PutMemory(Memory{SessionID: sess.ID, Body: "note"}); err != nil {
+		t.Fatalf("PutMemory: %v", err)
+	}
 	if err := s.DeleteSession(sess.ID); err != nil {
 		t.Fatalf("DeleteSession: %v", err)
 	}
@@ -101,6 +104,9 @@ func TestStore_SessionAndMessage(t *testing.T) {
 	}
 	if _, err := s.ListMessages(sess.ID); err != ErrNotFound {
 		t.Fatalf("ListMessages after delete: %v", err)
+	}
+	if _, err := s.ListMemories(sess.ID); err != ErrNotFound {
+		t.Fatalf("ListMemories after delete: %v", err)
 	}
 	if err := s.DeleteSession(sess.ID); err != ErrNotFound {
 		t.Fatalf("DeleteSession missing: %v", err)
