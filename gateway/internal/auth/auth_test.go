@@ -228,6 +228,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST delete 403, got %d", w.Code)
 	}
 
+	stList := httptest.NewRequest("GET", "/api/storage", nil)
+	stList.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, stList)
+	if w.Code != 200 {
+		t.Fatalf("view GET storage 200, got %d", w.Code)
+	}
+
+	stPrev := httptest.NewRequest("GET", "/api/storage/preview", nil)
+	stPrev.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, stPrev)
+	if w.Code != 200 {
+		t.Fatalf("view GET storage preview 200, got %d", w.Code)
+	}
+
+	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
+	stDel.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, stDel)
+	if w.Code != 403 {
+		t.Fatalf("view POST storage delete 403, got %d", w.Code)
+	}
+
+	stUp := httptest.NewRequest("POST", "/api/storage/upload", nil)
+	stUp.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, stUp)
+	if w.Code != 403 {
+		t.Fatalf("view POST storage upload 403, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -301,6 +333,9 @@ func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
 		"/api/workstations/ws_1/disconnect",
 		"/api/workstations/ws_1/delete",
 		"/v1/workstations/ws_1/delete",
+		"/api/storage/upload",
+		"/api/storage/delete",
+		"/v1/storage/delete",
 	}
 	for _, path := range paths {
 		req := httptest.NewRequest("POST", path, nil)

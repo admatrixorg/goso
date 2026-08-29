@@ -10,9 +10,9 @@ Add a **permission-scoped workspace file browser** with path breadcrumbs, size/t
 
 ## AC
 
-- [ ] Live nav tab + page. Breadcrumbs, list metadata, loading/empty/error.
-- [ ] Upload/download/preview. Guarded delete with confirm. Path jail. Listing is metadata; preview is bounded. Never list internal runtime/secret paths by default. GET never returns credential values.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/108-storage.md`.
+- [x] Live nav tab + page. Breadcrumbs, list metadata, loading/empty/error.
+- [x] Upload/download/preview. Guarded delete with confirm. Path jail. Listing is metadata; preview is bounded. Never list internal runtime/secret paths by default. GET never returns credential values.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/108-storage.md`.
 
 ## Out of scope
 
