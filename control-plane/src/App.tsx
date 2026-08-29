@@ -22,6 +22,7 @@ import { ProvidersPage } from "./pages/ProvidersPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { WebhooksPage } from "./pages/WebhooksPage";
 import { TracesPage } from "./pages/TracesPage";
+import { PendingPage } from "./pages/PendingPage";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -56,6 +57,7 @@ export type Tab =
   | "channels"
   | "webhooks"
   | "traces"
+  | "pending"
   | "settings";
 
 function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
@@ -99,6 +101,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "agents", label: t("nav.agents"), ic: "bolt" },
         { id: "sessions", label: t("nav.sessions"), ic: "list" },
         { id: "chat", label: t("nav.chat"), ic: "msg" },
+        { id: "pending", label: t("nav.pending"), ic: "hourglass" },
         { id: "marketing", label: t("nav.marketing"), ic: "mega" },
         { id: "teams", label: t("nav.teams"), ic: "layers" },
         { id: "vault", label: t("nav.vault"), ic: "doc" },
@@ -170,6 +173,7 @@ export default function App() {
             { id: "agents" as const, label: t("nav.agents"), ic: "bolt" as const },
             { id: "sessions" as const, label: t("nav.sessions"), ic: "list" as const },
             { id: "chat" as const, label: t("nav.chat"), ic: "msg" as const },
+            { id: "pending" as const, label: t("nav.pending"), ic: "hourglass" as const },
             { id: "marketing" as const, label: t("nav.marketing"), ic: "mega" as const },
             { id: "teams" as const, label: t("nav.teams"), ic: "layers" as const },
             { id: "vault" as const, label: t("nav.vault"), ic: "doc" as const },
@@ -521,6 +525,7 @@ export default function App() {
           {tab === "channels" && <ChannelsPage />}
           {tab === "webhooks" && <WebhooksPage />}
           {tab === "traces" && <TracesPage />}
+          {tab === "pending" && <PendingPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "functions" && <FunctionsPage />}
           {tab === "events" && <EventsPage />}

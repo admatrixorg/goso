@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -122,5 +124,64 @@ func TestTelegram_HandleUpdate_BadJSON(t *testing.T) {
 	tg.HandleUpdate(w, req)
 	if w.Code != 400 {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestTelegram_DisabledAgentBuffers(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	prev := DefaultPending()
+	buf := NewPending()
+	SetDefaultPending(buf)
+	t.Cleanup(func() { SetDefaultPending(prev) })
+
+	st := store.New()
+	a, err := st.CreateAgent(store.Agent{AgentKey: "telegram", DisplayName: "Telegram Bot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := *a
+	off.Enabled = false
+	off.UpdatedAt = a.Stamp()
+	if _, err := st.UpdateAgent(off); err != nil {
+		t.Fatal(err)
+	}
+	sent := 0
+	tg := &Telegram{
+		Store: st,
+		LLM:   llm.Echo{},
+		Sender: func(_ context.Context, _ int64, _ string) error {
+			sent++
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 777},
+			"text":       "bot_token=12345:AA hold this",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	if sent != 0 {
+		t.Fatalf("must not send while buffered, sent %d", sent)
+	}
+	if len(st.ListSessions()) != 0 {
+		t.Fatalf("must not persist session while buffered")
+	}
+	list := buf.List("", time.Time{})
+	if len(list) != 1 || list[0].Count != 1 || list[0].Dest != "777" {
+		t.Fatalf("buffer %#v", list)
+	}
+	raw, _ := json.Marshal(list)
+	if strings.Contains(string(raw), "bot_token") || strings.Contains(string(raw), "12345:AA") {
+		t.Fatalf("payload in listing %s", raw)
 	}
 }

@@ -10,10 +10,10 @@ Add a **channel-buffer operations page**: explain buffering/compaction, list gro
 
 ## AC
 
-- [ ] Live nav tab + page binding in `App.tsx` (not demo-only). Loading/empty (“no pending”) / error / in-progress.
-- [ ] List groups: count, age, channel, agent (or explicit n/a). Refresh. No token/code fields on GET.
-- [ ] Compact and clear require named/preview confirmation. Destructive actions audit-friendly. 403 if view-token / lite if applicable.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/103-pending-messages.md`.
+- [x] Live nav tab + page binding in `App.tsx` (not demo-only). Loading/empty (“no pending”) / error / in-progress.
+- [x] List groups: count, age, channel, agent (or explicit n/a). Refresh. No token/code fields on GET.
+- [x] Compact and clear require named/preview confirmation. Destructive actions audit-friendly. 403 if view-token / lite if applicable.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/103-pending-messages.md`.
 
 ## Out of scope
 

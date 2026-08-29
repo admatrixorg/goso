@@ -108,6 +108,30 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view GET /v1/sessions 200, got %d", w.Code)
 	}
 
+	pending := httptest.NewRequest("GET", "/api/pending-messages", nil)
+	pending.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, pending)
+	if w.Code != 200 {
+		t.Fatalf("view GET pending 200, got %d", w.Code)
+	}
+
+	compact := httptest.NewRequest("POST", "/api/pending-messages/pg_1/compact", nil)
+	compact.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, compact)
+	if w.Code != 403 {
+		t.Fatalf("view POST compact 403, got %d", w.Code)
+	}
+
+	clear := httptest.NewRequest("POST", "/api/pending-messages/pg_1/clear", nil)
+	clear.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, clear)
+	if w.Code != 403 {
+		t.Fatalf("view POST clear 403, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
