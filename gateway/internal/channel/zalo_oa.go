@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
@@ -40,7 +41,27 @@ type ZaloOAUpdate struct {
 	} `json:"message"`
 }
 
+func oaWebhookAuthorized(r *http.Request) bool {
+	sec := strings.TrimSpace(os.Getenv("GOSO_ZALO_OA_SECRET"))
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_ENV")))
+	if sec == "" {
+		if env == "production" {
+			return false
+		}
+		return true
+	}
+	got := r.Header.Get("X-Goso-OA-Secret")
+	if got == "" {
+		got = r.URL.Query().Get("secret")
+	}
+	return got == sec
+}
+
 func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
+	if !oaWebhookAuthorized(r) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
 	var upd ZaloOAUpdate
 	if err := json.NewDecoder(r.Body).Decode(&upd); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
@@ -55,6 +76,24 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		text = upd.Message.Text
 	}
 	if userID == "" || text == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		return
+	}
+
+	var cfg *store.ChannelConfig
+	if z.Store != nil {
+		cfg, _ = z.Store.GetChannelConfig("zalo-oa")
+	}
+	pol := MergePolicy("zalo-oa", cfg)
+	paired := false
+	if z.Store != nil {
+		paired = SenderPaired(z.Store, "zalo-oa", userID, time.Time{})
+	}
+	in := Inbound{Channel: "zalo-oa", SenderID: userID, ChatID: userID, PeerKind: "direct", Text: text}
+	switch CheckPolicy("zalo-oa", pol, in, paired) {
+	case PolicyReject, PolicyNeedMention, PolicyNeedPairing:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
