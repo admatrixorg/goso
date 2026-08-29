@@ -757,6 +757,49 @@ func TestAgentLifecycleHTTP(t *testing.T) {
 	if w.Code != 404 {
 		t.Fatalf("second delete want 404 got %d %s", w.Code, w.Body.String())
 	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"lead","display_name":"Lead"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("lead create %d %s", w.Code, w.Body.String())
+	}
+	var lead store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &lead); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/teams", bytes.NewBufferString(`{"name":"Ops","lead_agent_id":"`+lead.ID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("team create %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/agents/"+lead.ID, nil))
+	if w.Code != 409 {
+		t.Fatalf("lead delete want 409 got %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"lw","display_name":"LW"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("lw create %d %s", w.Code, w.Body.String())
+	}
+	var lw store.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &lw); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/agents/"+lw.ID, bytes.NewBufferString(`{"instructions":"first"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("last-write %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestProvidersAPI_ConfiguredNamesOnly(t *testing.T) {

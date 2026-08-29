@@ -536,15 +536,28 @@ func (s *SQLiteStore) UpdateAgent(a Agent) (*Agent, error) {
 	}
 	cur.LLMProvider = a.LLMProvider
 	cur.Enabled = a.Enabled
+	prev := formatTime(cur.Stamp())
+	created := formatTime(cur.CreatedAt)
 	cur.UpdatedAt = nextStamp(cur.Stamp())
 	en := 0
 	if cur.Enabled {
 		en = 1
 	}
-	_, err = s.db.Exec(`UPDATE agents SET instructions=?, orchestration_mode=?, model=?, llm_provider=?, enabled=?, updated_at=? WHERE id=?`,
-		cur.Instructions, cur.OrchestrationMode, cur.Model, cur.LLMProvider, en, formatTime(cur.UpdatedAt), cur.ID)
+	q := `UPDATE agents SET instructions=?, orchestration_mode=?, model=?, llm_provider=?, enabled=?, updated_at=? WHERE id=?`
+	args := []any{cur.Instructions, cur.OrchestrationMode, cur.Model, cur.LLMProvider, en, formatTime(cur.UpdatedAt), cur.ID}
+	if !a.UpdatedAt.IsZero() {
+		q += ` AND (updated_at=? OR ((updated_at='' OR updated_at IS NULL) AND created_at=?))`
+		args = append(args, prev, created)
+	}
+	res, err := s.db.Exec(q, args...)
 	if err != nil {
 		return nil, err
+	}
+	if !a.UpdatedAt.IsZero() {
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return nil, ErrConflict
+		}
 	}
 	return cur, nil
 }
