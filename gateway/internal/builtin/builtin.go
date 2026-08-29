@@ -61,6 +61,12 @@ var catalog = []Spec{
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}`),
 	},
 	{
+		Name:             ToolWebFetch,
+		Description:      "HTTP GET a URL. Body capped at 1MiB as a string (no HTML-to-Markdown). SSRF via GOSO_SSRF is the only network policy.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}`),
+	},
+	{
 		Name:             ToolSandbox,
 		Description:      "Code sandbox stub. Never spawns processes.",
 		RequiresApproval: true,
@@ -172,6 +178,8 @@ func Configured(name string) bool {
 		return workspaceConfigured()
 	case ToolWebSearch:
 		return WebSearchNetworkAllowed() && strings.TrimSpace(InstantAnswerBase) != ""
+	case ToolWebFetch:
+		return true
 	case ToolUseSkill, ToolSkillSearch:
 		return skill.Configured()
 	case ToolMedia, ToolImageGen, ToolTTS:
@@ -243,6 +251,7 @@ func notConfigured(name string) *connector.InvokeResult {
 
 // Invoke runs a builtin tool. sandbox/browser never spawn (DI-12/13).
 // web_search networks only when the UI flag is on and GOSO_WEB_SEARCH=ddg|1.
+// web_fetch always runs; SSRF (security.CheckURL + GuardClient) is the only network policy.
 // Filesystem tools fail-closed unless GOSO_WORKSPACE is set; they never exec.
 // Media stays not_configured unless GOSO_MEDIA*=1 and MediaInvoke is set.
 func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled bool) (*connector.InvokeResult, error) {
@@ -256,6 +265,8 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 			return notConfigured(name), nil
 		}
 		return webSearch(ctx, args)
+	case ToolWebFetch:
+		return webFetch(ctx, args)
 	case ToolUseSkill:
 		return useSkill(args)
 	case ToolSkillSearch:

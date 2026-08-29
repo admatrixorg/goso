@@ -17,7 +17,7 @@ import (
 
 func TestCatalog_Tools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 15 {
+	if len(got) != 16 {
 		t.Fatalf("len %d", len(got))
 	}
 	byName := map[string]Spec{}
@@ -25,7 +25,7 @@ func TestCatalog_Tools(t *testing.T) {
 		byName[s.Name] = s
 	}
 	want := []string{
-		ToolWebSearch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
+		ToolWebSearch, ToolWebFetch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
 		ToolUseSkill, ToolSkillSearch, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
 		ToolSearch, ToolGlob,
 	}
@@ -37,8 +37,8 @@ func TestCatalog_Tools(t *testing.T) {
 			t.Fatalf("missing %s", n)
 		}
 	}
-	if byName[ToolWebSearch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolSkillSearch].RequiresApproval || byName[ToolReadFile].RequiresApproval {
-		t.Fatal("web_search/use_skill/skill_search/read_file must not require approval")
+	if byName[ToolWebSearch].RequiresApproval || byName[ToolWebFetch].RequiresApproval || byName[ToolUseSkill].RequiresApproval || byName[ToolSkillSearch].RequiresApproval || byName[ToolReadFile].RequiresApproval {
+		t.Fatal("web_search/web_fetch/use_skill/skill_search/read_file must not require approval")
 	}
 	if byName[ToolListFiles].RequiresApproval || byName[ToolSendFile].RequiresApproval || byName[ToolSearch].RequiresApproval || byName[ToolGlob].RequiresApproval {
 		t.Fatal("list_files/send_file/search/glob must not require approval")
