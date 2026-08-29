@@ -77,8 +77,8 @@ export function deriveOverviewKind(input: {
   if (input.health === "degraded") return "degraded";
   const listsMissing = input.agents == null && input.sessions == null && input.channels == null;
   if (listsMissing && isUnauthorizedStatus(input.statsStatus)) return "unauthorized";
+  if (input.statsStatus !== 200) return "degraded";
   if (input.agents == null || input.sessions == null || input.channels == null || input.errors.length) return "degraded";
-  if (isUnauthorizedStatus(input.statsStatus)) return "degraded";
   return "connected";
 }
 

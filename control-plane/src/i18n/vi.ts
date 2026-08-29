@@ -100,6 +100,7 @@ export const vi = {
   "overview.channels.missing": "missing {n}",
   "overview.channels.failed": "failed {n}",
   "overview.channels.parked": "parked {n}",
+  "overview.channels.stopped": "stopped {n}",
   "overview.heartbeat": "Heartbeat gần nhất",
   "overview.heartbeat.at": "{at}",
   "overview.heartbeat.none": "Chưa có heartbeat.",

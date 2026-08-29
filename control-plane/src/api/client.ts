@@ -117,7 +117,7 @@ export async function probeStats(signal?: AbortSignal): Promise<GatewayStatsProb
     try {
       return parseStatsBody(await res.json(), res.status);
     } catch {
-      return emptyGatewayStats(res.status);
+      return emptyGatewayStats(0);
     }
   } catch {
     return emptyGatewayStats(0);
