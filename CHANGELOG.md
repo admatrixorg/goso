@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 101: Traces operator surface. Search/filter by agent/channel/status, time range, pagination, error groups. Detail spans with redacted prompt/tool/result attrs. Hash `#traces/{id}`. i18n vi+en. QA `docs/qa/101-traces.md`.
 - SPEC 100: Webhooks operator surface. HTTP delivery (not lifecycle hooks): list status/endpoint/last delivery, one-time secret on create/rotate, GET never returns token/hmac_key, test/replay signed `{event}` without payloads. i18n vi+en. QA `docs/qa/100-webhooks.md`.
 - SPEC 099: Memory operator surface. Agent/session/scope filters, lexical search, episodic vs durable lists, detail + L2 relation expand, `GET /api/memory/index` (FTS vs substring; embedding always `not_configured`), GET/PATCH/DELETE by id. List rows return `snippet` only (no body). Named delete confirm. i18n vi+en. QA `docs/qa/099-memory.md`.
 - SPEC 098: Vault operator surface. Search plus type/agent/team filters, document metadata, inbound/outbound wikilinks, disk sync health (`GET /api/vault/health`) with stale warning, and a bounded relationship **list** (`GET /api/vault/graph`, cap 40 nodes — no canvas). Untrusted body is plain text. i18n vi+en. QA `docs/qa/098-vault.md`.

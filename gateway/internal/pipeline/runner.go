@@ -49,6 +49,7 @@ type StageFunc func(ctx context.Context, st *State) error
 type State struct {
 	SessionID      string
 	AgentID        string
+	TenantID       string
 	Mode           Mode
 	DisplayName    string
 	Instructions   string
@@ -139,6 +140,14 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	if err != nil {
 		return nil, err
 	}
+	if st.AgentID != "" {
+		agentSpan.SetAttr("agent_id", st.AgentID)
+		ctx = observe.WithAgent(ctx, st.AgentID)
+	}
+	if st.TenantID != "" {
+		agentSpan.SetAttr("tenant_id", st.TenantID)
+		ctx = observe.WithTenant(ctx, st.TenantID)
+	}
 	st.ForceSummarize = r.ForceSummarize
 	st.Provider = r.LLM
 	if isFirstUserTurn(r.Store, sessionID) {
@@ -215,7 +224,7 @@ func (r *Runner) loadContext(sessionID string, mode Mode) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	st := &State{SessionID: sessionID, AgentID: sess.AgentID, Mode: mode}
+	st := &State{SessionID: sessionID, AgentID: sess.AgentID, TenantID: sess.TenantID, Mode: mode}
 	if a, err := r.Store.GetAgent(sess.AgentID); err == nil && a != nil {
 		st.DisplayName = a.DisplayName
 		st.Instructions = a.Instructions
@@ -280,6 +289,7 @@ func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err err
 		reply = llm.Reply{Text: text, Usage: usage}
 	}
 	span.SetCacheReadTokens(reply.Usage.CacheReadTokens)
+	span.SetTokens(reply.Usage.PromptTokens, reply.Usage.CompletionTokens)
 	return reply, err
 }
 
