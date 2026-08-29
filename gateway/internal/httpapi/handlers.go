@@ -671,6 +671,8 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
 	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
 	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store))
+	aliasAPI(mux, "PUT /api/channels/{name}/secrets", handlePutChannelSecrets(opt.Store))
+	aliasAPI(mux, "POST /api/channels/{name}/test", handleTestChannel(opt.Store, opt.Channels))
 }
 
 func handleListChannels(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {

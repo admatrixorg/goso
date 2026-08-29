@@ -41,8 +41,7 @@ type ZaloOAUpdate struct {
 	} `json:"message"`
 }
 
-func oaWebhookAuthorized(r *http.Request) bool {
-	sec := strings.TrimSpace(os.Getenv("GOSO_ZALO_OA_SECRET"))
+func oaWebhookAuthorized(r *http.Request, sec string) bool {
 	env := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_ENV")))
 	if sec == "" {
 		if env == "production" {
@@ -57,8 +56,33 @@ func oaWebhookAuthorized(r *http.Request) bool {
 	return got == sec
 }
 
+func (z *ZaloOA) resolveAccess() string {
+	if z == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(z.AccessToken); v != "" {
+		return v
+	}
+	v, _, set := Credential(z.Store, "zalo-oa", KindAccess, []string{"GOSO_ZALO_OA_ACCESS_TOKEN"})
+	if set {
+		return v
+	}
+	return ""
+}
+
+func (z *ZaloOA) resolveSecret() string {
+	if z == nil {
+		return ""
+	}
+	v, _, set := Credential(z.Store, "zalo-oa", KindAppSecret, []string{"GOSO_ZALO_OA_SECRET"})
+	if set {
+		return v
+	}
+	return ""
+}
+
 func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	if !oaWebhookAuthorized(r) {
+	if !oaWebhookAuthorized(r, z.resolveSecret()) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
@@ -171,10 +195,7 @@ func (z *ZaloOA) ensureSession(agentID, userID string) *store.Session {
 }
 
 func (z *ZaloOA) sendMessage(ctx context.Context, userID, text string) error {
-	token := z.AccessToken
-	if token == "" {
-		token = os.Getenv("GOSO_ZALO_OA_ACCESS_TOKEN")
-	}
+	token := z.resolveAccess()
 	if token == "" {
 		return fmt.Errorf("zalo-oa: missing access token")
 	}

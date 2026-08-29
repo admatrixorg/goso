@@ -20,10 +20,7 @@ func (t *Telegram) startLive(ctx context.Context, mgr *Manager) {
 	if store.LiteEnabled() {
 		return
 	}
-	token := strings.TrimSpace(t.BotToken)
-	if token == "" {
-		token = os.Getenv("GOSO_TELEGRAM_BOT_TOKEN")
-	}
+	token := t.resolveToken()
 	if token == "" {
 		return
 	}

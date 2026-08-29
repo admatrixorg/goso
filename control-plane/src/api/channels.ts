@@ -9,6 +9,8 @@ export type ChannelRow = {
   health?: string;
   transport?: string;
   secret_set?: boolean;
+  from_env?: boolean;
+  writable?: string[];
   bound_agent_id?: string;
   dm_policy?: string;
   group_policy?: string;
@@ -28,8 +30,34 @@ export type ChannelPairingItem = {
   expires_at?: string;
 };
 
+export type ChannelSecretPut = {
+  ok: boolean;
+  name: string;
+  secret_set?: boolean;
+  from_env?: boolean;
+  written?: string[];
+};
+
+export type ChannelTestResult = {
+  ok: boolean;
+  name: string;
+  health?: string;
+  error?: string;
+  secret_set?: boolean;
+};
+
 export const channelsApi = {
   list: () => jsonFetch<{ channels: ChannelRow[]; lite?: boolean }>("/api/channels"),
+  putSecrets: (name: string, body: Record<string, string>) =>
+    jsonFetch<ChannelSecretPut>(`/api/channels/${encodeURIComponent(name)}/secrets`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  test: (name: string) =>
+    jsonFetch<ChannelTestResult>(`/api/channels/${encodeURIComponent(name)}/test`, {
+      method: "POST",
+      body: "{}",
+    }),
   patch: (name: string, body: Record<string, unknown>) =>
     jsonFetch<{ ok: boolean; name: string }>(`/api/channels/${encodeURIComponent(name)}`, {
       method: "PATCH",
