@@ -497,6 +497,14 @@ type StoreIface interface {
 	LatestWebhookJob(webhookID string) (*WebhookJob, error)
 	UpdateWebhookJob(WebhookJob) (*WebhookJob, error)
 	ClaimWebhookJob(now time.Time, lease string) (*WebhookJob, error)
+	GetGatewaySettings() (*GatewaySettings, error)
+	PutGatewaySettings(GatewaySettings) (*GatewaySettings, error)
+}
+
+// GatewaySettings is the persisted overlay for GET/PUT /api/config.
+type GatewaySettings struct {
+	Values    map[string]string `json:"values"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 var (
@@ -535,35 +543,36 @@ func LiteEnabled() bool {
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
-	mu             sync.RWMutex
-	agents         map[string]*Agent
-	sessions       map[string]*Session
-	messages       map[string][]*Message // session_id -> messages
-	memories       map[string][]*Memory  // session_id -> memories
-	connectors     map[string]*ConnectorRecord
-	agentConns     map[string]map[string]struct{} // agent_id -> connector names
-	vaultDocs      map[string]*VaultDoc
-	vaultLinks     map[string][]VaultLink // from_id -> outbound
-	teams          map[string]*Team
-	teamMembers    map[string][]*TeamMember  // team_id
-	teamTasks      map[string]*TeamTask      // task id
-	teamMsgs       map[string][]*TeamMessage // team_id
-	agentLinks     map[string][]string       // from -> to ids
-	metrics        map[string]*AgentMetrics
-	evoApplied     map[string]map[string]bool // agent_id -> suggestion_id
-	evoGuard       map[string]EvolutionGuardrails
-	secrets        map[string]SecretRow
-	toolFlags      map[string]bool
-	agentToolFlags map[string]map[string]bool // agent_id -> tool name -> enabled
-	cronJobs       map[string]*CronJob
-	llmProviders   map[string]*LLMProvider
-	webhooks       map[string]*Webhook
-	webhookJobs    map[string]*WebhookJob
-	kgEntities     map[string]*KGEntity
-	kgRelations    map[string]*KGRelation
-	channelConfig  map[string]*ChannelConfig
-	channelPairing map[string]*ChannelPairing
-	seq            int64
+	mu              sync.RWMutex
+	agents          map[string]*Agent
+	sessions        map[string]*Session
+	messages        map[string][]*Message // session_id -> messages
+	memories        map[string][]*Memory  // session_id -> memories
+	connectors      map[string]*ConnectorRecord
+	agentConns      map[string]map[string]struct{} // agent_id -> connector names
+	vaultDocs       map[string]*VaultDoc
+	vaultLinks      map[string][]VaultLink // from_id -> outbound
+	teams           map[string]*Team
+	teamMembers     map[string][]*TeamMember  // team_id
+	teamTasks       map[string]*TeamTask      // task id
+	teamMsgs        map[string][]*TeamMessage // team_id
+	agentLinks      map[string][]string       // from -> to ids
+	metrics         map[string]*AgentMetrics
+	evoApplied      map[string]map[string]bool // agent_id -> suggestion_id
+	evoGuard        map[string]EvolutionGuardrails
+	secrets         map[string]SecretRow
+	toolFlags       map[string]bool
+	agentToolFlags  map[string]map[string]bool // agent_id -> tool name -> enabled
+	cronJobs        map[string]*CronJob
+	llmProviders    map[string]*LLMProvider
+	webhooks        map[string]*Webhook
+	webhookJobs     map[string]*WebhookJob
+	kgEntities      map[string]*KGEntity
+	kgRelations     map[string]*KGRelation
+	channelConfig   map[string]*ChannelConfig
+	channelPairing  map[string]*ChannelPairing
+	gatewaySettings *GatewaySettings
+	seq             int64
 }
 
 var _ StoreIface = (*Store)(nil)

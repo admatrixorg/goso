@@ -5,9 +5,9 @@ package pipeline
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -108,7 +108,7 @@ func jsonQuote(s string) string {
 
 // KGExtractEnabled reports GOSO_KG_EXTRACT=1/true/yes/on. Default off.
 func KGExtractEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_KG_EXTRACT"))) {
+	switch strings.ToLower(strings.TrimSpace(config.Lookup("GOSO_KG_EXTRACT"))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

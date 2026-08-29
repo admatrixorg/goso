@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 )
 
@@ -23,7 +24,7 @@ const (
 
 // Enabled reports GOSO_HEARTBEAT=1/true/yes/on. Default off.
 func Enabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_HEARTBEAT"))) {
+	switch strings.ToLower(strings.TrimSpace(config.Lookup("GOSO_HEARTBEAT"))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

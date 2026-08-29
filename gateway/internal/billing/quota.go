@@ -3,10 +3,11 @@
 package billing
 
 import (
-	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/config"
 )
 
 // QuotaWindow is the daily used/limit pair on GET /api/quota.
@@ -26,7 +27,7 @@ type QuotaStatus struct {
 
 // DayLimit reads GOSO_QUOTA_DAY. 0, empty, unset, or invalid = unlimited.
 func DayLimit() int {
-	v := strings.TrimSpace(os.Getenv("GOSO_QUOTA_DAY"))
+	v := strings.TrimSpace(config.Lookup("GOSO_QUOTA_DAY"))
 	if v == "" {
 		return 0
 	}

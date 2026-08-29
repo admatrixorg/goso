@@ -7,8 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
+
+	"github.com/mqglobal/goso/gateway/internal/config"
 )
 
 // lookupIP is net.LookupIP; tests replace it so hostname checks stay offline.
@@ -19,7 +20,7 @@ var metadataIPv4 = net.IPv4(169, 254, 169, 254)
 // SSRFEnabled is GOSO_SSRF=1, or production when GOSO_SSRF is unset.
 // Explicit 0/false/off keeps demo loopback (router9) working even if GOSO_ENV is production.
 func SSRFEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_SSRF")))
+	v := strings.ToLower(strings.TrimSpace(config.Lookup("GOSO_SSRF")))
 	if v == "0" || v == "false" || v == "off" || v == "no" {
 		return false
 	}

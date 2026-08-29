@@ -10,10 +10,10 @@ Reorganize **SettingsPage** into account/team/messaging/system sections. Add mis
 
 ## AC
 
-- [ ] Sections: account / team / messaging / system (or equivalent grouping of existing cards). Loading/error/save feedback.
-- [ ] Env-owned fields marked read-only. GET never returns gateway auth tokens.
-- [ ] Keep backup, pairing, theme. Validation + conflict (409) if APIs support it.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/102-settings.md`.
+- [x] Sections: account / team / messaging / system (or equivalent grouping of existing cards). Loading/error/save feedback.
+- [x] Env-owned fields marked read-only. GET never returns gateway auth tokens.
+- [x] Keep backup, pairing, theme. Validation + conflict (409) if APIs support it.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/102-settings.md`.
 
 ## Out of scope
 

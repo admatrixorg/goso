@@ -3,8 +3,9 @@
 package security
 
 import (
-	"os"
 	"strings"
+
+	"github.com/mqglobal/goso/gateway/internal/config"
 )
 
 // Documented injection substrings scanned in user chat text (case-insensitive).
@@ -28,7 +29,7 @@ const (
 // InjectionMode is GOSO_INJECTION: log or block.
 // Production default is block when unset. Dev/demo default is log.
 func InjectionMode() string {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_INJECTION")))
+	v := strings.ToLower(strings.TrimSpace(config.Lookup("GOSO_INJECTION")))
 	if v == InjectionBlock {
 		return InjectionBlock
 	}

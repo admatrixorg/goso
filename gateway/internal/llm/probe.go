@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mqglobal/goso/gateway/internal/config"
 )
 
 const probeTimeout = 20 * time.Second
@@ -58,7 +60,7 @@ func Build(name, typ, baseURL, model, apiKey string) (Provider, error) {
 	case TypeEcho:
 		return Echo{}, nil
 	case TypeAnthropic:
-		cache := strings.TrimSpace(os.Getenv("GOSO_ANTHROPIC_CACHE_MODE"))
+		cache := strings.TrimSpace(config.Lookup("GOSO_ANTHROPIC_CACHE_MODE"))
 		if cache == "" {
 			cache = strings.TrimSpace(os.Getenv("GOSO_PROMPT_CACHE"))
 		}
