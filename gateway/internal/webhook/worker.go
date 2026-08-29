@@ -160,9 +160,6 @@ func (r *Registry) scheduleRetry(job *store.WebhookJob, override time.Duration) 
 }
 
 func (r *Registry) postCallback(job *store.WebhookJob, status string) (int, error) {
-	if err := r.CheckCallbackURL(job.CallbackURL); err != nil {
-		return http.StatusForbidden, err
-	}
 	payload := map[string]any{
 		"id":     job.ID,
 		"status": status,
@@ -173,14 +170,21 @@ func (r *Registry) postCallback(job *store.WebhookJob, status string) (int, erro
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequest(http.MethodPost, job.CallbackURL, bytes.NewReader(body))
+	return r.postSigned(job.CallbackURL, job.ID, job.WebhookID, body)
+}
+
+func (r *Registry) postSigned(rawURL, deliveryID, webhookID string, body []byte) (int, error) {
+	if err := r.CheckCallbackURL(rawURL); err != nil {
+		return http.StatusForbidden, err
+	}
+	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goso-Delivery-Id", job.ID)
+	req.Header.Set("X-Goso-Delivery-Id", deliveryID)
 	req.Header.Set("User-Agent", "goso-webhook/1")
-	wh, _ := r.st.GetWebhook(job.WebhookID)
+	wh, _ := r.st.GetWebhook(webhookID)
 	if key := r.hmacKeyOf(wh); key != "" {
 		req.Header.Set("X-Goso-Signature", Sign(key, r.clock(), body))
 	}

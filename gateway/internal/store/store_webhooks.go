@@ -102,7 +102,41 @@ func (s *Store) UpdateWebhook(w Webhook) (*Webhook, error) {
 	cur.HMACEnc = w.HMACEnc
 	cur.RequireHMAC = w.RequireHMAC
 	cur.Revoked = w.Revoked
+	cur.Endpoint = strings.TrimSpace(w.Endpoint)
 	return cloneWebhook(cur), nil
+}
+
+func (s *Store) LatestWebhookJob(webhookID string) (*WebhookJob, error) {
+	webhookID = strings.TrimSpace(webhookID)
+	if webhookID == "" {
+		return nil, ErrNotFound
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var best *WebhookJob
+	for _, v := range s.webhookJobs {
+		if v == nil || v.WebhookID != webhookID {
+			continue
+		}
+		if best == nil {
+			best = v
+			continue
+		}
+		bt, vt := best.UpdatedAt, v.UpdatedAt
+		if bt.IsZero() {
+			bt = best.CreatedAt
+		}
+		if vt.IsZero() {
+			vt = v.CreatedAt
+		}
+		if vt.After(bt) {
+			best = v
+		}
+	}
+	if best == nil {
+		return nil, ErrNotFound
+	}
+	return cloneWebhookJob(best), nil
 }
 
 func (s *Store) CreateWebhookJob(j WebhookJob) (*WebhookJob, error) {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -23,13 +24,18 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrNotFound     = errors.New("not found")
-	ErrConflict     = errors.New("idempotency conflict")
-	ErrStaleHMAC    = errors.New("hmac expired")
-	ErrReplay       = errors.New("hmac replay")
-	ErrNoMasterKey  = errors.New("master key required")
+	ErrUnauthorized    = errors.New("unauthorized")
+	ErrNotFound        = errors.New("not found")
+	ErrConflict        = errors.New("idempotency conflict")
+	ErrStaleHMAC       = errors.New("hmac expired")
+	ErrReplay          = errors.New("hmac replay")
+	ErrNoMasterKey     = errors.New("master key required")
+	ErrInvalidEndpoint = errors.New("invalid endpoint")
+	ErrNoEndpoint      = errors.New("endpoint required")
 )
+
+// InboundPath is the HTTP receive URL for LLM webhooks (not a lifecycle hook).
+const InboundPath = "/api/webhooks/llm"
 
 const (
 	hmacSkew       = 300 * time.Second
@@ -43,22 +49,35 @@ type Created struct {
 	Name        string `json:"name,omitempty"`
 	Kind        string `json:"kind,omitempty"`
 	AgentID     string `json:"agent_id,omitempty"`
+	Endpoint    string `json:"endpoint,omitempty"`
 	Token       string `json:"token"`
 	TokenPrefix string `json:"token_prefix"`
 	HMACKey     string `json:"hmac_key"`
 	RequireHMAC bool   `json:"require_hmac"`
 }
 
-// Public is the hashed-at-rest view (no secrets).
+// Public is the hashed-at-rest view (no secrets). GET never returns token or hmac_key.
 type Public struct {
-	ID          string `json:"id"`
-	TenantID    string `json:"tenant_id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Kind        string `json:"kind,omitempty"`
-	AgentID     string `json:"agent_id,omitempty"`
-	TokenPrefix string `json:"token_prefix"`
-	RequireHMAC bool   `json:"require_hmac"`
-	Revoked     bool   `json:"revoked"`
+	ID           string          `json:"id"`
+	TenantID     string          `json:"tenant_id,omitempty"`
+	Name         string          `json:"name,omitempty"`
+	Kind         string          `json:"kind,omitempty"`
+	AgentID      string          `json:"agent_id,omitempty"`
+	Endpoint     string          `json:"endpoint"`
+	Status       string          `json:"status"`
+	TokenPrefix  string          `json:"token_prefix"`
+	RequireHMAC  bool            `json:"require_hmac"`
+	Revoked      bool            `json:"revoked"`
+	SecretSet    bool            `json:"secret_set"`
+	LastDelivery *DeliveryPublic `json:"last_delivery,omitempty"`
+}
+
+// DeliveryPublic is last/test/replay metadata. Input, reply, and secrets are omitted.
+type DeliveryPublic struct {
+	ID         string `json:"id,omitempty"`
+	Status     string `json:"status,omitempty"`
+	At         string `json:"at,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
 }
 
 // CreateOpts is the optional POST /api/webhooks JSON body.
@@ -67,6 +86,7 @@ type CreateOpts struct {
 	Kind        string
 	AgentID     string
 	TenantID    string
+	Endpoint    string
 	RequireHMAC bool
 }
 
@@ -164,6 +184,15 @@ func (r *Registry) CreateOpts(opts CreateOpts) (*Created, error) {
 	if kind == "" {
 		kind = "llm"
 	}
+	endpoint, err := NormalizeEndpoint(opts.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	if endpoint != "" {
+		if err := r.CheckCallbackURL(endpoint); err != nil {
+			return nil, err
+		}
+	}
 	enc, err := sealHMAC(hmacKey)
 	if err != nil {
 		return nil, err
@@ -179,6 +208,7 @@ func (r *Registry) CreateOpts(opts CreateOpts) (*Created, error) {
 		Name:        strings.TrimSpace(opts.Name),
 		Kind:        kind,
 		AgentID:     strings.TrimSpace(opts.AgentID),
+		Endpoint:    endpoint,
 		TokenPrefix: prefix,
 		TokenHash:   hex.EncodeToString(sum[:]),
 		HMACEnc:     enc,
@@ -196,6 +226,7 @@ func (r *Registry) CreateOpts(opts CreateOpts) (*Created, error) {
 		Name:        row.Name,
 		Kind:        row.Kind,
 		AgentID:     row.AgentID,
+		Endpoint:    row.Endpoint,
 		Token:       token,
 		TokenPrefix: prefix,
 		HMACKey:     hmacKey,
@@ -272,6 +303,7 @@ func (r *Registry) Rotate(id string) (*Created, error) {
 		Name:        rec.Name,
 		Kind:        rec.Kind,
 		AgentID:     rec.AgentID,
+		Endpoint:    rec.Endpoint,
 		Token:       token,
 		TokenPrefix: prefix,
 		HMACKey:     hmacKey,
@@ -492,6 +524,11 @@ func (r *Registry) Enqueue(auth *Auth, input, callbackURL, idemKey, bodyHash str
 	input = strings.TrimSpace(input)
 	callbackURL = strings.TrimSpace(callbackURL)
 	idemKey = strings.TrimSpace(idemKey)
+	if callbackURL == "" {
+		if rec, gerr := r.st.GetWebhook(auth.ID); gerr == nil && rec != nil {
+			callbackURL = strings.TrimSpace(rec.Endpoint)
+		}
+	}
 	if callbackURL != "" {
 		if err := r.CheckCallbackURL(callbackURL); err != nil {
 			return nil, err
@@ -574,16 +611,49 @@ func publicOf(rec *store.Webhook) Public {
 	if rec == nil {
 		return Public{}
 	}
+	status := "active"
+	if rec.Revoked {
+		status = "revoked"
+	}
+	endpoint := strings.TrimSpace(rec.Endpoint)
+	if endpoint == "" {
+		endpoint = InboundPath
+	}
 	return Public{
 		ID:          rec.ID,
 		TenantID:    store.NormalizeTenant(rec.TenantID),
 		Name:        rec.Name,
 		Kind:        rec.Kind,
 		AgentID:     rec.AgentID,
+		Endpoint:    endpoint,
+		Status:      status,
 		TokenPrefix: rec.TokenPrefix,
 		RequireHMAC: rec.RequireHMAC,
 		Revoked:     rec.Revoked,
+		SecretSet:   strings.TrimSpace(rec.TokenHash) != "",
 	}
+}
+
+// NormalizeEndpoint accepts empty or an http(s) URL with userinfo stripped.
+func NormalizeEndpoint(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "", ErrInvalidEndpoint
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", ErrInvalidEndpoint
+	}
+	u.User = nil
+	out := u.String()
+	if strings.TrimSpace(out) == "" {
+		return "", ErrInvalidEndpoint
+	}
+	return out, nil
 }
 
 func jobOf(j *store.WebhookJob) *Job {

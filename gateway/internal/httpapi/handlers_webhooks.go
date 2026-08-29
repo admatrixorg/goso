@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
@@ -23,6 +24,7 @@ func registerWebhookRoutes(mux *http.ServeMux, opt Options) {
 	}
 	st := opt.Store
 	provider := opt.Provider
+	ev := opt.Events
 	reg.SetRunner(func(job webhook.Job) (string, error) {
 		agentID := ""
 		tid := store.DefaultTenant
@@ -41,20 +43,22 @@ func registerWebhookRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("POST /api/webhooks", handleCreateWebhook(reg, st))
 	aliasAPI(mux, "GET /api/webhooks/jobs/{id}", handleGetWebhookJob(reg))
 	aliasAPI(mux, "GET /api/webhooks/{id}", handleGetWebhook(reg))
-	mux.HandleFunc("POST /api/webhooks/{id}/rotate", handleRotateWebhook(reg))
-	mux.HandleFunc("DELETE /api/webhooks/{id}", handleRevokeWebhook(reg))
+	mux.HandleFunc("POST /api/webhooks/{id}/rotate", handleRotateWebhook(reg, ev))
+	mux.HandleFunc("POST /api/webhooks/{id}/test", handleTestWebhook(reg, ev))
+	mux.HandleFunc("POST /api/webhooks/{id}/replay", handleReplayWebhook(reg, ev))
+	mux.HandleFunc("DELETE /api/webhooks/{id}", handleRevokeWebhook(reg, ev))
 	mux.HandleFunc("POST /api/webhooks/llm", handleWebhookLLM(reg, st, provider))
 }
 
 func handleListWebhooks(reg *webhook.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"webhooks": webhooksInTenant(reg.List(), requestTenant(r))})
+		writeJSON(w, http.StatusOK, map[string]any{"webhooks": webhooksInTenant(reg.ListOperator(), requestTenant(r))})
 	}
 }
 
 func handleGetWebhook(reg *webhook.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, err := reg.Get(r.PathValue("id"))
+		p, err := reg.GetOperator(r.PathValue("id"))
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
@@ -79,13 +83,14 @@ func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface) http.Handle
 				Name        string `json:"name"`
 				Kind        string `json:"kind"`
 				AgentID     string `json:"agent_id"`
+				Endpoint    string `json:"endpoint"`
 				RequireHMAC bool   `json:"require_hmac"`
 			}
 			if err := json.Unmarshal(raw, &body); err != nil {
 				writeErr(w, http.StatusBadRequest, "invalid json")
 				return
 			}
-			opts = webhook.CreateOpts{Name: body.Name, Kind: body.Kind, AgentID: body.AgentID, RequireHMAC: body.RequireHMAC}
+			opts = webhook.CreateOpts{Name: body.Name, Kind: body.Kind, AgentID: body.AgentID, Endpoint: body.Endpoint, RequireHMAC: body.RequireHMAC}
 		}
 		opts.TenantID = requestTenant(r)
 		if aid := strings.TrimSpace(opts.AgentID); aid != "" {
@@ -96,6 +101,14 @@ func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface) http.Handle
 		}
 		c, err := reg.CreateOpts(opts)
 		if err != nil {
+			if errors.Is(err, webhook.ErrInvalidEndpoint) {
+				writeErr(w, http.StatusBadRequest, "invalid endpoint")
+				return
+			}
+			if strings.Contains(err.Error(), "ssrf") {
+				writeErr(w, http.StatusBadRequest, "endpoint blocked")
+				return
+			}
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -103,9 +116,10 @@ func handleCreateWebhook(reg *webhook.Registry, st store.StoreIface) http.Handle
 	}
 }
 
-func handleRotateWebhook(reg *webhook.Registry) http.HandlerFunc {
+func handleRotateWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, err := reg.Get(r.PathValue("id"))
+		id := r.PathValue("id")
+		p, err := reg.Get(id)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
@@ -113,22 +127,25 @@ func handleRotateWebhook(reg *webhook.Registry) http.HandlerFunc {
 		if hideWrongTenant(w, p.TenantID, requestTenant(r)) {
 			return
 		}
-		c, err := reg.Rotate(r.PathValue("id"))
+		c, err := reg.Rotate(id)
 		if err != nil {
 			if errors.Is(err, webhook.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
 				return
 			}
+			auditWebhook(ev, "rotate", id, false)
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		auditWebhook(ev, "rotate", id, true)
 		writeJSON(w, http.StatusOK, c)
 	}
 }
 
-func handleRevokeWebhook(reg *webhook.Registry) http.HandlerFunc {
+func handleRevokeWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, err := reg.Get(r.PathValue("id"))
+		id := r.PathValue("id")
+		p, err := reg.Get(id)
 		if err != nil {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
@@ -136,16 +153,110 @@ func handleRevokeWebhook(reg *webhook.Registry) http.HandlerFunc {
 		if hideWrongTenant(w, p.TenantID, requestTenant(r)) {
 			return
 		}
-		if err := reg.Revoke(r.PathValue("id")); err != nil {
+		if err := reg.Revoke(id); err != nil {
 			if errors.Is(err, webhook.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
 				return
 			}
+			auditWebhook(ev, "revoke", id, false)
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		auditWebhook(ev, "revoke", id, true)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
+}
+
+func handleTestWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		p, err := reg.Get(id)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		if hideWrongTenant(w, p.TenantID, requestTenant(r)) {
+			return
+		}
+		d, err := reg.Test(id)
+		if err != nil {
+			auditWebhook(ev, "test", id, false)
+			writeWebhookDeliverErr(w, err)
+			return
+		}
+		auditWebhook(ev, "test", id, true)
+		writeJSON(w, http.StatusOK, d)
+	}
+}
+
+func handleReplayWebhook(reg *webhook.Registry, ev *eventstore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		p, err := reg.Get(id)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		if hideWrongTenant(w, p.TenantID, requestTenant(r)) {
+			return
+		}
+		jobID := ""
+		raw, _ := io.ReadAll(r.Body)
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			var body struct {
+				JobID string `json:"job_id"`
+			}
+			if err := json.Unmarshal(raw, &body); err != nil {
+				writeErr(w, http.StatusBadRequest, "invalid json")
+				return
+			}
+			jobID = body.JobID
+		}
+		d, err := reg.Replay(id, jobID)
+		if err != nil {
+			auditWebhook(ev, "replay", id, false)
+			writeWebhookDeliverErr(w, err)
+			return
+		}
+		auditWebhook(ev, "replay", id, true)
+		writeJSON(w, http.StatusOK, d)
+	}
+}
+
+func writeWebhookDeliverErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, webhook.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if errors.Is(err, webhook.ErrNoEndpoint) {
+		writeErr(w, http.StatusBadRequest, "endpoint required")
+		return
+	}
+	if errors.Is(err, webhook.ErrInvalidEndpoint) {
+		writeErr(w, http.StatusBadRequest, "invalid endpoint")
+		return
+	}
+	if strings.Contains(err.Error(), "ssrf") {
+		writeErr(w, http.StatusBadRequest, "endpoint blocked")
+		return
+	}
+	writeErr(w, http.StatusBadGateway, "delivery failed")
+}
+
+func auditWebhook(ev *eventstore.Store, tool, id string, ok bool) {
+	if ev == nil {
+		return
+	}
+	kind := eventstore.KindSuccess
+	if !ok {
+		kind = eventstore.KindError
+	}
+	ev.Append(eventstore.Event{
+		Connector: "webhooks",
+		Tool:      tool,
+		Kind:      kind,
+		Summary:   tool + " webhook " + strings.TrimSpace(id),
+	})
 }
 
 func handleGetWebhookJob(reg *webhook.Registry) http.HandlerFunc {

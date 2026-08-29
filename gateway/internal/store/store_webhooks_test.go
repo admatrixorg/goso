@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,4 +58,51 @@ func TestSQLiteStore_WebhookPersist(t *testing.T) {
 	if err != nil || j.BodyHash != "h" {
 		t.Fatalf("persist job %#v %v", j, err)
 	}
+}
+
+func TestStore_WebhookEndpointAndLatestJob(t *testing.T) {
+	for _, s := range []StoreIface{New(), mustSQLiteWebhooks(t)} {
+		w, err := s.CreateWebhook(Webhook{TokenPrefix: "wh_end", TokenHash: "hash-end", Endpoint: "http://127.0.0.1:9/hooks"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.GetWebhook(w.ID)
+		if err != nil || got.Endpoint != "http://127.0.0.1:9/hooks" {
+			t.Fatalf("endpoint %#v %v", got, err)
+		}
+		if _, err := s.LatestWebhookJob(w.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("latest empty %v", err)
+		}
+		first, err := s.CreateWebhookJob(WebhookJob{WebhookID: w.ID, Status: WebhookDone, CallbackURL: "http://127.0.0.1:9/hooks"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+		second, err := s.CreateWebhookJob(WebhookJob{WebhookID: w.ID, Status: WebhookFailed, CallbackURL: "http://127.0.0.1:9/hooks"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		latest, err := s.LatestWebhookJob(w.ID)
+		if err != nil || latest.ID != second.ID {
+			t.Fatalf("latest %#v want %s %v", latest, second.ID, err)
+		}
+		if latest.ID == first.ID {
+			t.Fatal("stale job")
+		}
+		got.Endpoint = "http://127.0.0.1:9/rotated"
+		upd, err := s.UpdateWebhook(*got)
+		if err != nil || upd.Endpoint != "http://127.0.0.1:9/rotated" {
+			t.Fatalf("update endpoint %#v %v", upd, err)
+		}
+	}
+}
+
+func mustSQLiteWebhooks(t *testing.T) StoreIface {
+	t.Helper()
+	s, err := OpenSQLite(filepath.Join(t.TempDir(), "wh-ops.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
 }

@@ -341,14 +341,16 @@ type LLMProvider struct {
 	Enabled  bool   `json:"enabled"`
 }
 
-// Webhook is a persisted inbound webhook row. HMACEnc is ciphertext (or empty
-// when GOSO_MASTER_KEY is unset — hashed-only / in-process HMAC).
+// Webhook is a persisted HTTP webhook row. HMACEnc is ciphertext (or empty
+// when GOSO_MASTER_KEY is unset — hashed-only / in-process HMAC). Endpoint is
+// the optional outbound delivery URL. TokenHash and HMACEnc are never JSON.
 type Webhook struct {
 	ID          string    `json:"id"`
 	TenantID    string    `json:"tenant_id"`
 	Name        string    `json:"name,omitempty"`
 	Kind        string    `json:"kind,omitempty"`
 	AgentID     string    `json:"agent_id,omitempty"`
+	Endpoint    string    `json:"endpoint,omitempty"`
 	TokenPrefix string    `json:"token_prefix"`
 	TokenHash   string    `json:"-"`
 	HMACEnc     string    `json:"-"`
@@ -492,6 +494,7 @@ type StoreIface interface {
 	CreateWebhookJob(WebhookJob) (*WebhookJob, error)
 	GetWebhookJob(string) (*WebhookJob, error)
 	GetWebhookJobByIdempotency(webhookID, key string) (*WebhookJob, error)
+	LatestWebhookJob(webhookID string) (*WebhookJob, error)
 	UpdateWebhookJob(WebhookJob) (*WebhookJob, error)
 	ClaimWebhookJob(now time.Time, lease string) (*WebhookJob, error)
 }

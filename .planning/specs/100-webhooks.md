@@ -10,10 +10,10 @@ Harden **WebhooksPage** as goso's outbound HTTP delivery surface: create/rotate/
 
 ## AC
 
-- [ ] List: status, endpoint, last delivery. Empty/loading/error. Create + one-time secret reveal (never returned later).
-- [ ] Rotate/revoke. GET never returns full signing secret. Replay/test without dumping secret-bearing payloads.
-- [ ] Clarify copy: these are HTTP webhooks, not lifecycle hooks.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/100-webhooks.md`.
+- [x] List: status, endpoint, last delivery. Empty/loading/error. Create + one-time secret reveal (never returned later).
+- [x] Rotate/revoke. GET never returns full signing secret. Replay/test without dumping secret-bearing payloads.
+- [x] Clarify copy: these are HTTP webhooks, not lifecycle hooks.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/100-webhooks.md`.
 
 ## Out of scope
 
