@@ -19,7 +19,8 @@ Out of scope: full usage charts, cost accounting, request tables with bodies, ne
 - Control-plane Overview: KPIs for gateway state, uptime, requests, LLM calls, `ws_up`; cards for agent count, session count, channel health (running/missing/failed/parked), last heartbeat.
 - `CrmMetricsPage` kept; title is CRM metrics; rendered as `embedded` drill-down on Overview. Not deleted.
 - i18n vi+en (`overview.*`, `crm.title` retitled). Loading / empty / error / degraded / unauthorized. Channel GET is counted by `health`/`missing` only — env names and secret-shaped extra keys are dropped.
-- `probeStats` now parses the existing stats JSON fields (chrome still uses `lastHeartbeat`).
+- `probeStats` now parses the existing stats JSON fields (chrome still uses `lastHeartbeat`). Non-JSON 200 bodies do not look like live zeros.
+- Overview `kind` is degraded when `/api/stats` is not 200 (timeout/5xx), not only when `/healthz` is degraded. List GETs use a 5s abort and are skipped when healthz is already offline/unauthorized.
 - No Go public API change. Existing `observe.Stats` fields cover the KPIs.
 
 ## Commands
@@ -40,6 +41,7 @@ Do not bind or kill demo ports `:8082` `:8091` `:18080` `:18791`. Do not merge.
 - Channel catalog GET still returns env **names**, never token values (`Catalog` / existing channel secret tests). Overview counts `health` only.
 - `agpl-check` and `agpl-check-docs` exit 0.
 - Live tab remains `tab=crm` → OverviewPage; heatmap still `tab=heatmap`. CRM card `data-overview-crm`.
+- Browser (this worktree Vite on `:3191`, then stopped): Overview heading + degraded KPIs (uptime/requests/LLM/ws as `—` when stats JSON missing), agents/sessions/channels/heartbeat cards, CRM metrics drill-down still present. EN i18n switches Overview strings. Heatmap nav still opens its own page. HTML error bodies are shown as `non-JSON response`, not dumped. Existing demo `:3000` was not restarted.
 
 ## Non-goals
 

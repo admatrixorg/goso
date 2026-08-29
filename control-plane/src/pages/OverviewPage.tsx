@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { loadOverview } from "../api/overview-load";
 import {
   OVERVIEW_POLL_MS,
@@ -56,6 +56,7 @@ function ChannelBreakdown({ counts, t }: { counts: ChannelHealthCounts; t: (k: M
     { key: "missing", tone: "warning", label: "overview.channels.missing" },
     { key: "failed", tone: "critical", label: "overview.channels.failed" },
     { key: "parked", tone: "warning", label: "overview.channels.parked" },
+    { key: "stopped", tone: "neutral", label: "overview.channels.stopped" },
   ];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -72,52 +73,47 @@ export function OverviewPage() {
   const { t, locale } = useI18n();
   const [snap, setSnap] = useState<OverviewSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const seqRef = useRef(0);
+  const acRef = useRef<AbortController | null>(null);
+
+  const pull = async (): Promise<void> => {
+    acRef.current?.abort();
+    const ac = new AbortController();
+    acRef.current = ac;
+    const seq = ++seqRef.current;
+    try {
+      const next = await loadOverview(ac.signal);
+      if (seq === seqRef.current && !ac.signal.aborted) setSnap(next);
+    } catch {
+      if (seq === seqRef.current && !ac.signal.aborted) {
+        setSnap((prev) => {
+          const fallback = prev ?? emptySnap();
+          return { ...fallback, kind: healthKind(0, false), health: "offline", errors: [t("overview.offline")] };
+        });
+      }
+    } finally {
+      if (seq === seqRef.current && !ac.signal.aborted) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let inFlight = false;
-    const ac = new AbortController();
-
     const run = async () => {
-      if (inFlight) {
-        timer = setTimeout(run, OVERVIEW_POLL_MS);
-        return;
-      }
-      inFlight = true;
-      try {
-        const next = await loadOverview(ac.signal);
-        if (!cancelled) setSnap(next);
-      } catch {
-        if (!cancelled) {
-          setSnap((prev) => {
-            const fallback = prev ?? emptySnap();
-            return { ...fallback, kind: healthKind(0, false), health: "offline", errors: [t("overview.offline")] };
-          });
-        }
-      } finally {
-        inFlight = false;
-        if (!cancelled) {
-          setLoading(false);
-          timer = setTimeout(run, OVERVIEW_POLL_MS);
-        }
-      }
+      await pull();
+      if (!cancelled) timer = setTimeout(run, OVERVIEW_POLL_MS);
     };
     void run();
     return () => {
       cancelled = true;
-      ac.abort();
+      acRef.current?.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [t]);
+  }, []);
 
   async function refresh() {
     setLoading(true);
-    try {
-      setSnap(await loadOverview());
-    } finally {
-      setLoading(false);
-    }
+    await pull();
   }
 
   const kind = snap?.kind ?? null;

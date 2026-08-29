@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { formatPublicError } from "./public-error.ts";
 import { parseStatsBody } from "./stats.ts";
 import {
   countChannelHealth,
@@ -108,4 +109,18 @@ test("deriveOverviewKind maps gateway and list failures", () => {
     }),
     "degraded",
   );
+  assert.equal(
+    deriveOverviewKind({ health: "connected", statsStatus: 0, agents: 1, sessions: 2, channels: countChannelHealth([]), errors: [] }),
+    "degraded",
+  );
+  assert.equal(
+    deriveOverviewKind({ health: "connected", statsStatus: 500, agents: 1, sessions: 2, channels: countChannelHealth([]), errors: [] }),
+    "degraded",
+  );
+});
+
+test("formatPublicError redacts tokens and HTML bodies", () => {
+  assert.equal(formatPublicError('401 {"token":"sk-live-abc"}').includes("sk-live-abc"), false);
+  assert.match(formatPublicError("Bearer secret-value boom"), /Bearer \[redacted\]/);
+  assert.equal(formatPublicError("500 <!doctype html>"), "non-JSON response");
 });

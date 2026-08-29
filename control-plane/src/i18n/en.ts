@@ -102,6 +102,7 @@ export const en: Record<MsgKey, string> = {
   "overview.channels.missing": "missing {n}",
   "overview.channels.failed": "failed {n}",
   "overview.channels.parked": "parked {n}",
+  "overview.channels.stopped": "stopped {n}",
   "overview.heartbeat": "Last heartbeat",
   "overview.heartbeat.at": "{at}",
   "overview.heartbeat.none": "No heartbeat yet.",
