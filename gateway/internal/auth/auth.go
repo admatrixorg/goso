@@ -15,9 +15,11 @@ var viewPrefixes = []string{
 	"/api/agents",
 	"/api/sessions",
 	"/api/pending-messages",
+	"/api/contacts",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
+	"/v1/contacts",
 }
 
 // Config is admin/view Bearer enforcement plus optional pairing grants.

@@ -53,6 +53,8 @@ type Options struct {
 	Channels *channel.Manager
 	// Pending is the channel-buffer used by GET/compact/clear. Nil → DefaultPending.
 	Pending *channel.Pending
+	// Contacts is the inbound identity directory. Nil → DefaultContacts.
+	Contacts *channel.Contacts
 }
 
 func (o *Options) defaults() {
@@ -76,6 +78,9 @@ func (o *Options) defaults() {
 	}
 	if o.Pending == nil {
 		o.Pending = channel.DefaultPending()
+	}
+	if o.Contacts == nil {
+		o.Contacts = channel.DefaultContacts()
 	}
 }
 
@@ -110,6 +115,7 @@ func NewRouter(opt Options) http.Handler {
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)
 	registerPendingRoutes(mux, opt)
+	registerContactsRoutes(mux, opt)
 	return mux
 }
 

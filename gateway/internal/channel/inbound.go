@@ -38,6 +38,12 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		return
 	}
 	agent := ensureNamedAgent(d.Store, agentKey, displayName)
+	sight := Sighting{Channel: agentKey, Dest: dest, Kind: normalizeKind(dest, "")}
+	if agent != nil {
+		sight.AgentID = agent.ID
+		sight.TenantID = agent.TenantID
+	}
+	ObserveDefault(sight)
 	if BufferIfNeeded(nil, agent, agentKey, dest) {
 		writeOK(w)
 		return

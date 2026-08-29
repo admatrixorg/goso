@@ -132,6 +132,30 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST clear 403, got %d", w.Code)
 	}
 
+	contacts := httptest.NewRequest("GET", "/api/contacts", nil)
+	contacts.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, contacts)
+	if w.Code != 200 {
+		t.Fatalf("view GET contacts 200, got %d", w.Code)
+	}
+
+	merge := httptest.NewRequest("POST", "/api/contacts/ct_1/merge", nil)
+	merge.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, merge)
+	if w.Code != 403 {
+		t.Fatalf("view POST merge 403, got %d", w.Code)
+	}
+
+	undo := httptest.NewRequest("POST", "/api/contacts/ct_1/undo", nil)
+	undo.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, undo)
+	if w.Code != 403 {
+		t.Fatalf("view POST undo 403, got %d", w.Code)
+	}
+
 	post := httptest.NewRequest("POST", "/api/chat", nil)
 	post.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
