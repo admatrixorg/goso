@@ -3,6 +3,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -286,4 +287,43 @@ func hasKGHit(hits []KGSearchHit, id, tier string) bool {
 		}
 	}
 	return false
+}
+
+func TestSQLiteStore_MigrateKGAgentID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "old-kg.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE kg_entities (
+		id TEXT PRIMARY KEY,
+		tenant_id TEXT NOT NULL DEFAULT 'default',
+		name TEXT NOT NULL,
+		kind TEXT,
+		body TEXT,
+		valid_from TEXT NOT NULL,
+		valid_until TEXT,
+		created_at TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, created_at) VALUES('e1','default','Acme','org','x','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatalf("migrate old kg_entities: %v", err)
+	}
+	defer s.Close()
+	e, err := s.GetKGEntity("e1")
+	if err != nil || e == nil || e.Name != "Acme" {
+		t.Fatalf("get after migrate %v %+v", err, e)
+	}
+	if e.AgentID != "" {
+		t.Fatalf("agent_id default %q", e.AgentID)
+	}
 }

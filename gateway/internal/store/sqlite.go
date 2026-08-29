@@ -270,7 +270,6 @@ func (s *SQLiteStore) migrate() error {
 			provenance TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`,
 		`CREATE TABLE IF NOT EXISTS kg_relations (
 			id TEXT PRIMARY KEY,
 			tenant_id TEXT NOT NULL DEFAULT 'default',
