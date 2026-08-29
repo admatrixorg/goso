@@ -37,6 +37,7 @@ type Observer struct {
 	reqs      atomic.Int64
 	llms      atomic.Int64
 	lastHB    atomic.Value // string RFC3339 UTC; empty until first stamp
+	wsUp      atomic.Bool
 }
 
 // New returns an Observer that logs JSON to stdout and keeps 200 LLM traces.
@@ -131,6 +132,22 @@ func (o *Observer) LastHeartbeat() string {
 	}
 	v, _ := o.lastHB.Load().(string)
 	return v
+}
+
+// SetWsUp records that GET /ws is mounted.
+func (o *Observer) SetWsUp(v bool) {
+	if o == nil {
+		return
+	}
+	o.wsUp.Store(v)
+}
+
+// WsUp reports WebSocket route readiness (not a connected client).
+func (o *Observer) WsUp() bool {
+	if o == nil {
+		return false
+	}
+	return o.wsUp.Load()
 }
 
 // Register mounts GET /api/traces (and /v1/traces), GET /api/stats, and GET /metrics.

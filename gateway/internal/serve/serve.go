@@ -124,6 +124,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
+	obs.SetWsUp(true)
 	obs.Register(mux)
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())

@@ -102,6 +102,7 @@ func NewRouter(opt Options) http.Handler {
 	registerBackupRoutes(mux)
 	registerPairingRoutes(mux, opt.Pairing)
 	registerChannelPairingRoutes(mux, opt.Store)
+	registerZaloPersonalQR(mux, opt.Store)
 	return mux
 }
 
@@ -109,7 +110,7 @@ func routerBase(st store.StoreIface, version string) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version, "ws_up": WSMounted()})
 	})
 	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
