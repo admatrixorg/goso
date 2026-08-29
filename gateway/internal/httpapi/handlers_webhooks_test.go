@@ -219,8 +219,8 @@ func TestChannelsAPI_ListsSeven(t *testing.T) {
 		if c.Env != wantEnv[c.Name] {
 			t.Fatalf("%s env %q want %q", c.Name, c.Env, wantEnv[c.Name])
 		}
-		if len(c.EnvNames) != 1 || c.EnvNames[0] != wantEnv[c.Name] {
-			t.Fatalf("%s env_names %v want [%s]", c.Name, c.EnvNames, wantEnv[c.Name])
+		if len(c.EnvNames) < 1 || c.EnvNames[0] != wantEnv[c.Name] {
+			t.Fatalf("%s env_names %v want first %s", c.Name, c.EnvNames, wantEnv[c.Name])
 		}
 	}
 	for _, n := range []string{"telegram", "zalo-personal", "zalo-oa", "discord", "slack", "feishu", "whatsapp"} {

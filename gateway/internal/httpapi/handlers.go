@@ -49,6 +49,8 @@ type Options struct {
 	LLM *llm.Registry
 	// Pairing issues one-time view-token codes. Nil → NewPairing.
 	Pairing *auth.Pairing
+	// Channels is optional live health (SPEC 084).
+	Channels *channel.Manager
 }
 
 func (o *Options) defaults() {
@@ -665,28 +667,28 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 			mux.HandleFunc(r.path, r.h)
 		}
 	}
-	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store))
-	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store))
+	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
+	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
 	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store))
 }
 
-func handleListChannels(st store.StoreIface) http.HandlerFunc {
+func handleListChannels(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"channels": overlayChannelRows(st, channel.Catalog()),
+			"channels": overlayChannelRows(st, channel.CatalogWith(st, mgr)),
 			"lite":     store.LiteEnabled(),
 		})
 	}
 }
 
-func handleChannelHealth(st store.StoreIface) http.HandlerFunc {
+func handleChannelHealth(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSpace(r.PathValue("name"))
 		if !channel.Known(name) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
-		for _, row := range overlayChannelRows(st, channel.Catalog()) {
+		for _, row := range overlayChannelRows(st, channel.CatalogWith(st, mgr)) {
 			if row.Name == name {
 				writeJSON(w, http.StatusOK, row)
 				return
