@@ -14,9 +14,10 @@ const DefaultTenant = "default"
 
 const maxTenantLen = 64
 
-// ErrPostgresUnsupported is returned when a postgres DSN is supplied. StoreIface
-// stays SQLite; do not half-open a broken PG driver.
-var ErrPostgresUnsupported = errors.New("postgres is not supported in this build: SQLite only (see docs/qa/071-pgvector-path.md)")
+// ErrPostgresUnsupported is returned when OpenSQLite is given a postgres DSN
+// (or GOSO_DATABASE_URL is postgres). Open routes that DSN to OpenPostgres;
+// connect failure is the driver error, never a sqlite fallback.
+var ErrPostgresUnsupported = errors.New("postgres DSN cannot open SQLite (no sqlite fallback; use OpenPostgres)")
 
 // NormalizeTenant maps empty or invalid ids to DefaultTenant.
 func NormalizeTenant(id string) string {
@@ -59,7 +60,8 @@ func IsPostgresDSN(s string) bool {
 }
 
 // RefusePostgres returns ErrPostgresUnsupported when GOSO_DATABASE_URL or path
-// looks like Postgres. Fail closed; never open sqlite as a silent fallback.
+// looks like Postgres. Used by OpenSQLite so a postgres DSN never becomes a
+// silent sqlite database. Open() routes to OpenPostgres instead.
 func RefusePostgres(path string) error {
 	if IsPostgresDSN(os.Getenv("GOSO_DATABASE_URL")) || IsPostgresDSN(path) {
 		return ErrPostgresUnsupported

@@ -11,6 +11,9 @@ import (
 
 func (s *SQLiteStore) initKGFTS() {
 	s.kgFTS = false
+	if s.pg {
+		return
+	}
 	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS kg_fts USING fts5(
 		id UNINDEXED,
 		source UNINDEXED,
@@ -210,7 +213,7 @@ func (s *SQLiteStore) searchProgressiveL1(q, tenant string) ([]KGSearchHit, erro
 			SELECT m.id, m.session_id, 'message', m.content, s.tenant_id FROM messages m
 			JOIN sessions s ON s.id = m.session_id
 			WHERE s.tenant_id=? AND instr(lower(m.content), lower(?)) > 0
-		) LIMIT ?`, tenant, q, tenant, q, progressivePerTier)
+		) AS hits LIMIT ?`, tenant, q, tenant, q, progressivePerTier)
 	if err != nil {
 		return nil, err
 	}

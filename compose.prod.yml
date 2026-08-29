@@ -4,8 +4,8 @@
 # Minimized vs GoClaw's 8 overlays (postgres, redis, jaeger/otel, tailscale,
 # sandbox, browser, selfservice, upgrade). This file adds restart policy,
 # production env, auth token, log rotation, and a SQLite backup sidecar.
-# Future overlays (postgres, redis, jaeger, tailscale) are documented in
-# docs/DEPLOY.md and are not enabled here — gateway persists to SQLite today.
+# Optional local Postgres is compose profile `postgres` in compose.yml (SPEC 085),
+# not this overlay — default and demo stay SQLite. Redis/jaeger/tailscale stay docs.
 
 services:
   gateway:

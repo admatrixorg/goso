@@ -92,8 +92,8 @@ Environment:
   GOSO_WHATSAPP_ACCESS_TOKEN WhatsApp Cloud API token (optional; native vs Business = DI-01)
   GOSO_WS_ORIGINS          WS Origin allowlist, comma-separated (empty = allow all; required when GOSO_ENV=production)
   GOSO_ENV                 Environment (default development; production = injection default block, no query token, WS origins required)
-  GOSO_DB_PATH             SQLite path (default :memory:)
-  GOSO_DATABASE_URL        If postgres://…, gateway refuses to start (SQLite only; see docs/qa/071-pgvector-path.md)
+  GOSO_DB_PATH             SQLite path (default :memory:) when GOSO_DATABASE_URL is unset
+  GOSO_DATABASE_URL        postgres://… opens pgx (fail-closed on connect; no sqlite fallback). Unset = SQLite. See docs/qa/085-postgres-local.md
   GOSO_MULTI_TENANT        1 = honor X-Goso-Tenant (admin token for non-default). Unset/demo = always default
   GOSO_KG_EXTRACT          1 = after chat, insert L2 entity from Name:/Entity: lines. Default off
   GOSO_EVOLUTION_AUTO      1 = in-process auto-adapt ticker (per-agent auto_adapt still required). Default off
@@ -195,7 +195,7 @@ func runGateway(args []string) {
 	dbPath := os.Getenv("GOSO_DB_PATH")
 	st, closeDB, err := store.Open(dbPath)
 	if err != nil {
-		log.Fatalf("open store %q: %v", dbPath, err)
+		log.Fatalf("open store: %v", err)
 	}
 	if closeDB != nil {
 		defer closeDB()
@@ -203,9 +203,12 @@ func runGateway(args []string) {
 	if err := security.CheckProduction(); err != nil {
 		log.Fatalf("%v", err)
 	}
-	if dbPath == "" || dbPath == ":memory:" {
+	switch {
+	case store.IsPostgresDSN(os.Getenv("GOSO_DATABASE_URL")) || store.IsPostgresDSN(dbPath):
+		fmt.Println("store: postgres")
+	case dbPath == "" || dbPath == ":memory:":
 		fmt.Println("store: memory")
-	} else {
+	default:
 		fmt.Printf("store: sqlite %s\n", dbPath)
 	}
 	handler, status := serve.New(st, version)

@@ -2,6 +2,7 @@
 # Usage: docker compose up --build
 # Gateway:        http://localhost:8080
 # Control Plane:  http://localhost:3000
+# Optional PG16:  docker compose --profile postgres up -d postgres  (host 5433)
 
 name: goso
 
@@ -47,6 +48,7 @@ services:
       GOSO_SSRF: ${GOSO_SSRF:-}
       GOSO_INJECTION: ${GOSO_INJECTION:-}
       GOSO_DEV_MODE: ${GOSO_DEV_MODE:-}
+      GOSO_DATABASE_URL: ${GOSO_DATABASE_URL:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -67,5 +69,25 @@ services:
       gateway:
         condition: service_healthy
 
+  postgres:
+    profiles:
+      - postgres
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-goso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-goso}
+      POSTGRES_DB: ${POSTGRES_DB:-goso}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
 volumes:
   data:
+  pgdata:

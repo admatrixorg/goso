@@ -72,7 +72,7 @@ func handleRestoreBackup() http.HandlerFunc {
 
 func writeBackupErr(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, backup.ErrNoFile):
+	case errors.Is(err, backup.ErrNoFile), errors.Is(err, backup.ErrPostgres):
 		writeErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, backup.ErrCorrupt):
 		writeErr(w, http.StatusBadRequest, err.Error())

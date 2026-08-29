@@ -4,6 +4,7 @@ package backup
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,9 +178,20 @@ func TestConcurrentSnapshotsKeepWinners(t *testing.T) {
 }
 
 func TestMemoryRejected(t *testing.T) {
+	t.Setenv("GOSO_DATABASE_URL", "")
 	t.Setenv("GOSO_DB_PATH", "")
 	t.Setenv("GOSO_BACKUP_DIR", t.TempDir())
 	if _, err := Snapshot(); err != ErrNoFile {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestSnapshotRefusesPostgresDSN(t *testing.T) {
+	t.Setenv("GOSO_DATABASE_URL", "postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable")
+	t.Setenv("GOSO_DB_PATH", filepath.Join(t.TempDir(), "idle.db"))
+	t.Setenv("GOSO_BACKUP_DIR", t.TempDir())
+	_, err := Snapshot()
+	if !errors.Is(err, ErrPostgres) {
 		t.Fatalf("got %v", err)
 	}
 }

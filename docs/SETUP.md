@@ -71,9 +71,12 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit  # nếu goso là repo 
 ```bash
 docker compose up --build
 # http://localhost:8080 (gateway) + http://localhost:3000 (control-plane)
+# Default stays SQLite. Optional local Postgres 16 + pgvector (host 5433, not demo ports):
+docker compose --profile postgres up -d postgres
+export GOSO_DATABASE_URL='postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable'
 ```
 
-Chi tiết overlay production: `docs/DEPLOY.md`.
+Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080` to Postgres.
 
 ## Biến môi trường
 
@@ -90,7 +93,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`.
 | GOSO_MASTER_KEY | (rỗng) | 32-byte hex AES-256-GCM key for `secrets(name, nonce, ct)`. Empty → refuse persist; env provider keys still work. |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
-| GOSO_DATABASE_URL | (unset) | Postgres DSN is **refused** (fail closed, SQLite only). See `docs/qa/071-pgvector-path.md`. |
+| GOSO_DATABASE_URL | (unset) | `postgres://…` opens pgx (connect fail = error, **no** SQLite fallback). Unset = SQLite `GOSO_DB_PATH`. Local: `docker compose --profile postgres up -d postgres` then `postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable`. See `docs/qa/085-postgres-local.md`. |
 | GOSO_MULTI_TENANT | (off) | `1` honors `X-Goso-Tenant` (admin token required for non-default). Unset/demo = always `default`. |
 | GOSO_KG_EXTRACT | (off) | `1` may insert an L2 entity from assistant lines `Name:` / `Entity:` after chat. Default off so demo chat is unchanged. Tests use `POST /api/kg/entities`. |
 | GOSO_EVOLUTION_AUTO | (off) | `1` starts an in-process 1-minute ticker that calls `POST`-equivalent tick per agent. Each agent still needs `auto_adapt=true` (default false). Default off so demo is unchanged. Name/key never auto-change. |

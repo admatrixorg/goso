@@ -348,7 +348,7 @@ type WebhookJob struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// StoreIface is satisfied by both Store (memory) and SQLiteStore.
+// StoreIface is satisfied by Store (memory), SQLiteStore, and PostgresStore.
 type StoreIface interface {
 	CreateAgent(Agent) (*Agent, error)
 	ListAgents() []*Agent
@@ -496,8 +496,20 @@ type Store struct {
 var _ StoreIface = (*Store)(nil)
 
 func Open(path string) (StoreIface, func() error, error) {
-	if err := RefusePostgres(path); err != nil {
-		return nil, nil, err
+	env := strings.TrimSpace(os.Getenv("GOSO_DATABASE_URL"))
+	if IsPostgresDSN(env) {
+		s, err := OpenPostgres(env)
+		if err != nil {
+			return nil, nil, err
+		}
+		return s, s.Close, nil
+	}
+	if IsPostgresDSN(path) {
+		s, err := OpenPostgres(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		return s, s.Close, nil
 	}
 	if path == "" || path == ":memory:" {
 		s := New()
