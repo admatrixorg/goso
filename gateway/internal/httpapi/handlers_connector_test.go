@@ -111,7 +111,7 @@ func TestConnector_CRUDAndApproval(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/api/approvals/"+apprID+"/decision", bytes.NewBufferString(`{"decision":"reject"}`))
+	req = httptest.NewRequest("POST", "/api/approvals/"+apprID+"/decision", bytes.NewBufferString(`{"decision":"reject","reason":"not now"}`))
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(w, req)
 	if w.Code != 200 {

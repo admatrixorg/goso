@@ -165,6 +165,7 @@ func NewRouter(opt Options) http.Handler {
 	registerTenantRoutes(mux, opt)
 	registerAPIKeyRoutes(mux, opt)
 	registerPackageRoutes(mux, opt)
+	registerApprovalRoutes(mux, opt)
 	return mux
 }
 

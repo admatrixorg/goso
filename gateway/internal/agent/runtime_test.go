@@ -85,8 +85,8 @@ func TestCallTool_BuiltinNotConfigured(t *testing.T) {
 		t.Fatalf("%+v", cr)
 	}
 	cr, err = rt.CallTool(context.Background(), "builtin", "sandbox", map[string]any{"cmd": "true"})
-	if err != nil || cr.Result.Status != "not_configured" {
-		t.Fatalf("sandbox %v %+v", err, cr)
+	if err != nil || !cr.Pending || cr.Result == nil || cr.Result.Status != "pending_approval" {
+		t.Fatalf("sandbox gated %v %+v", err, cr)
 	}
 }
 

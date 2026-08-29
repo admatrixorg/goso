@@ -170,6 +170,17 @@ func IsName(name string) bool {
 	return false
 }
 
+// RequiresApproval reports whether the builtin catalog gates this tool.
+func RequiresApproval(name string) bool {
+	name = strings.TrimSpace(name)
+	for _, s := range catalog {
+		if s.Name == name {
+			return s.RequiresApproval
+		}
+	}
+	return false
+}
+
 // Configured reports whether a builtin is actually runnable (env + hooks),
 // independent of the UI enabled flag.
 func Configured(name string) bool {

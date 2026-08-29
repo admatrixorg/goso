@@ -10,9 +10,9 @@ Add a **realtime execution-approval inbox** distinct from channel pairing, showi
 
 ## AC
 
-- [ ] Live nav tab + page. Inbox list/detail, loading/empty/error/stale.
-- [ ] Approve/Deny once. Distinct from channel pairing. GET never returns secrets. Audit resolution.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/115-approvals.md`.
+- [x] Live nav tab + page. Inbox list/detail, loading/empty/error/stale.
+- [x] Approve/Deny once. Distinct from channel pairing. GET never returns secrets. Audit resolution.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/115-approvals.md`.
 
 ## Out of scope
 
