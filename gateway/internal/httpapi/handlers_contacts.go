@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -26,8 +27,8 @@ func registerContactsRoutes(mux *http.ServeMux, opt Options) {
 	}
 	aliasAPI(mux, "GET /api/contacts", handleListContacts(dir, opt.Store))
 	aliasAPI(mux, "GET /api/contacts/{id}", handleGetContact(dir, opt.Store))
-	aliasAPI(mux, "POST /api/contacts/{id}/merge", handleMergeContact(dir, opt.Store, opt.Events))
-	aliasAPI(mux, "POST /api/contacts/{id}/undo", handleUndoContact(dir, opt.Store, opt.Events))
+	aliasAPI(mux, "POST /api/contacts/{id}/merge", handleMergeContact(dir, opt.Store, opt.Events, opt.Audit))
+	aliasAPI(mux, "POST /api/contacts/{id}/undo", handleUndoContact(dir, opt.Store, opt.Events, opt.Audit))
 }
 
 func contactsForbidden(w http.ResponseWriter) bool {
@@ -75,7 +76,7 @@ func handleGetContact(dir *channel.Contacts, st store.StoreIface) http.HandlerFu
 	}
 }
 
-func handleMergeContact(dir *channel.Contacts, st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handleMergeContact(dir *channel.Contacts, st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if contactsForbidden(w) {
 			return
@@ -90,11 +91,15 @@ func handleMergeContact(dir *channel.Contacts, st store.StoreIface, ev *eventsto
 			return
 		}
 		auditContact(ev, "merge", row.ID+" "+strings.TrimSpace(body.SourceID), true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "merge", Entity: "contact", EntityID: row.ID,
+			After: auditMeta(true, map[string]any{"source_id": strings.TrimSpace(body.SourceID)}),
+		})
 		writeJSON(w, http.StatusOK, decorateContact(st, row))
 	}
 }
 
-func handleUndoContact(dir *channel.Contacts, st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handleUndoContact(dir *channel.Contacts, st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if contactsForbidden(w) {
 			return
@@ -109,6 +114,10 @@ func handleUndoContact(dir *channel.Contacts, st store.StoreIface, ev *eventstor
 			return
 		}
 		auditContact(ev, "undo", row.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "undo", Entity: "contact", EntityID: row.ID,
+			After: auditMeta(true, nil),
+		})
 		writeJSON(w, http.StatusOK, decorateContact(st, row))
 	}
 }

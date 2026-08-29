@@ -15,6 +15,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
@@ -37,6 +38,7 @@ type Options struct {
 	Registry *connector.Registry
 	Gate     *approval.Gate
 	Events   *eventstore.Store
+	Audit    *auditlog.Store
 	Runtime  *agent.Runtime
 	Meter    *billing.Store
 	TG       http.HandlerFunc
@@ -72,6 +74,9 @@ func (o *Options) defaults() {
 	}
 	if o.Events == nil {
 		o.Events = eventstore.New(256)
+	}
+	if o.Audit == nil {
+		o.Audit = auditlog.New(auditlog.DefaultCapacity)
 	}
 	if o.Runtime == nil {
 		o.Runtime = agent.New(o.Store, o.Registry, o.Gate, o.Events, o.Provider)
@@ -119,7 +124,7 @@ func NewRouter(opt Options) http.Handler {
 	aliasAPI(mux, "POST /api/chat", chat)
 	mux.HandleFunc("GET /api/usage", handleUsage(opt.Meter))
 	mux.HandleFunc("GET /api/quota", handleQuota(opt.Meter))
-	registerConfigRoutes(mux, opt.Store)
+	registerConfigRoutes(mux, opt)
 	registerConnectorRoutes(mux, opt)
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux)
@@ -132,12 +137,14 @@ func NewRouter(opt Options) http.Handler {
 	registerWorkstationRoutes(mux, opt)
 	registerStorageRoutes(mux, opt)
 	registerEventRoutes(mux, opt)
+	registerActivityRoutes(mux, opt)
 	return mux
 }
 
 func routerBase(opt Options) *http.ServeMux {
 	st := opt.Store
 	ev := opt.Events
+	al := opt.Audit
 	version := opt.Version
 	mux := http.NewServeMux()
 
@@ -147,11 +154,11 @@ func routerBase(opt Options) *http.ServeMux {
 	aliasAPI(mux, "GET /api/tenant", handleTenant)
 
 	// Agents
-	mux.HandleFunc("POST /api/agents", handleCreateAgent(st, ev))
+	mux.HandleFunc("POST /api/agents", handleCreateAgent(st, ev, al))
 	aliasAPI(mux, "GET /api/agents", handleListAgents(st))
 	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
-	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st, ev))
-	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st, ev))
+	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st, ev, al))
+	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st, ev, al))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
@@ -207,7 +214,7 @@ func rejectUnknownProvider(w http.ResponseWriter, st store.StoreIface, name, mod
 	return false
 }
 
-func handleCreateAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handleCreateAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			AgentKey          string `json:"agent_key"`
@@ -277,6 +284,10 @@ func handleCreateAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFu
 			Entity:  a.ID,
 			Summary: eventstore.SummarizeArgs(map[string]any{"action": "create", "agent_id": a.ID, "agent_key": a.AgentKey}),
 		})
+		recordAudit(al, r, auditlog.Record{
+			Action: "create", Entity: "agent", EntityID: a.ID,
+			After: auditMeta(true, map[string]any{"agent_key": a.AgentKey, "enabled": a.Enabled}),
+		})
 		writeJSON(w, http.StatusCreated, a)
 	}
 }
@@ -316,7 +327,7 @@ func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handlePatchAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handlePatchAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		cur, err := agentVisible(st, id, requestTenant(r))
@@ -401,11 +412,16 @@ func handlePatchAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFun
 			Entity:  a.ID,
 			Summary: eventstore.SummarizeArgs(map[string]any{"action": "update", "agent_id": a.ID, "enabled": a.Enabled}),
 		})
+		recordAudit(al, r, auditlog.Record{
+			Action: "update", Entity: "agent", EntityID: a.ID,
+			Before: auditMeta(true, map[string]any{"enabled": cur.Enabled}),
+			After:  auditMeta(true, map[string]any{"enabled": a.Enabled}),
+		})
 		writeJSON(w, http.StatusOK, a)
 	}
 }
 
-func handleDeleteAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
+func handleDeleteAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
@@ -432,6 +448,10 @@ func handleDeleteAgent(st store.StoreIface, ev *eventstore.Store) http.HandlerFu
 			AgentID: id,
 			Entity:  id,
 			Summary: eventstore.SummarizeArgs(map[string]any{"action": "delete", "agent_id": id}),
+		})
+		recordAudit(al, r, auditlog.Record{
+			Action: "delete", Entity: "agent", EntityID: id,
+			After: auditMeta(true, nil),
 		})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}

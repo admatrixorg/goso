@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
@@ -20,12 +21,12 @@ func registerWorkstationRoutes(mux *http.ServeMux, opt Options) {
 		reg = workstation.Default()
 	}
 	aliasAPI(mux, "GET /api/workstations", handleListWorkstations(reg))
-	aliasAPI(mux, "POST /api/workstations", handleCreateWorkstation(reg, opt.Events))
+	aliasAPI(mux, "POST /api/workstations", handleCreateWorkstation(reg, opt.Events, opt.Audit))
 	aliasAPI(mux, "GET /api/workstations/{id}", handleGetWorkstation(reg))
-	aliasAPI(mux, "PATCH /api/workstations/{id}", handlePatchWorkstation(reg, opt.Events))
+	aliasAPI(mux, "PATCH /api/workstations/{id}", handlePatchWorkstation(reg, opt.Events, opt.Audit))
 	aliasAPI(mux, "POST /api/workstations/{id}/test", handleTestWorkstation(reg, opt.Events))
-	aliasAPI(mux, "POST /api/workstations/{id}/disconnect", handleWorkstationConfirm(reg, opt.Events, "disconnect"))
-	aliasAPI(mux, "POST /api/workstations/{id}/delete", handleWorkstationConfirm(reg, opt.Events, "delete"))
+	aliasAPI(mux, "POST /api/workstations/{id}/disconnect", handleWorkstationConfirm(reg, opt.Events, opt.Audit, "disconnect"))
+	aliasAPI(mux, "POST /api/workstations/{id}/delete", handleWorkstationConfirm(reg, opt.Events, opt.Audit, "delete"))
 }
 
 type workstationBody struct {
@@ -58,7 +59,7 @@ func handleGetWorkstation(reg *workstation.Workstations) http.HandlerFunc {
 	}
 }
 
-func handleCreateWorkstation(reg *workstation.Workstations, ev *eventstore.Store) http.HandlerFunc {
+func handleCreateWorkstation(reg *workstation.Workstations, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, _, ok := readWorkstationBody(w, r)
 		if !ok {
@@ -78,11 +79,15 @@ func handleCreateWorkstation(reg *workstation.Workstations, ev *eventstore.Store
 			return
 		}
 		auditWorkstation(ev, "create", row.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "create", Entity: "workstation", EntityID: row.ID,
+			After: auditMeta(true, map[string]any{"backend": row.Backend, "host": row.Host}),
+		})
 		writeJSON(w, http.StatusCreated, row)
 	}
 }
 
-func handlePatchWorkstation(reg *workstation.Workstations, ev *eventstore.Store) http.HandlerFunc {
+func handlePatchWorkstation(reg *workstation.Workstations, ev *eventstore.Store, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, raw, ok := readWorkstationBody(w, r)
 		if !ok {
@@ -103,6 +108,10 @@ func handlePatchWorkstation(reg *workstation.Workstations, ev *eventstore.Store)
 			return
 		}
 		auditWorkstation(ev, "update", row.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: "update", Entity: "workstation", EntityID: row.ID,
+			After: auditMeta(true, map[string]any{"backend": row.Backend, "host": row.Host}),
+		})
 		writeJSON(w, http.StatusOK, row)
 	}
 }
@@ -118,7 +127,7 @@ func handleTestWorkstation(reg *workstation.Workstations, ev *eventstore.Store) 
 	}
 }
 
-func handleWorkstationConfirm(reg *workstation.Workstations, ev *eventstore.Store, action string) http.HandlerFunc {
+func handleWorkstationConfirm(reg *workstation.Workstations, ev *eventstore.Store, al *auditlog.Store, action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		confirm, ok := readWorkstationConfirm(w, r)
@@ -143,6 +152,10 @@ func handleWorkstationConfirm(reg *workstation.Workstations, ev *eventstore.Stor
 			return
 		}
 		auditWorkstation(ev, action, row.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: action, Entity: "workstation", EntityID: row.ID,
+			After: auditMeta(true, map[string]any{"health": row.Health}),
+		})
 		writeJSON(w, http.StatusOK, row)
 	}
 }

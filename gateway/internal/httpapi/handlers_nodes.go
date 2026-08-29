@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/node"
 )
@@ -21,9 +22,9 @@ func registerNodeRoutes(mux *http.ServeMux, opt Options) {
 	}
 	aliasAPI(mux, "GET /api/nodes", handleListNodes(reg))
 	aliasAPI(mux, "POST /api/nodes/request", handleRequestNode(reg, opt.Events))
-	aliasAPI(mux, "POST /api/nodes/{id}/approve", handleNodeAction(reg, opt.Events, "approve"))
-	aliasAPI(mux, "POST /api/nodes/{id}/deny", handleNodeAction(reg, opt.Events, "deny"))
-	aliasAPI(mux, "POST /api/nodes/{id}/revoke", handleNodeAction(reg, opt.Events, "revoke"))
+	aliasAPI(mux, "POST /api/nodes/{id}/approve", handleNodeAction(reg, opt.Events, opt.Audit, "approve"))
+	aliasAPI(mux, "POST /api/nodes/{id}/deny", handleNodeAction(reg, opt.Events, opt.Audit, "deny"))
+	aliasAPI(mux, "POST /api/nodes/{id}/revoke", handleNodeAction(reg, opt.Events, opt.Audit, "revoke"))
 }
 
 func handleListNodes(reg *node.Nodes) http.HandlerFunc {
@@ -66,7 +67,7 @@ func handleRequestNode(reg *node.Nodes, ev *eventstore.Store) http.HandlerFunc {
 	}
 }
 
-func handleNodeAction(reg *node.Nodes, ev *eventstore.Store, action string) http.HandlerFunc {
+func handleNodeAction(reg *node.Nodes, ev *eventstore.Store, al *auditlog.Store, action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
 		confirm, ok := readNodeConfirm(w, r)
@@ -94,6 +95,10 @@ func handleNodeAction(reg *node.Nodes, ev *eventstore.Store, action string) http
 			return
 		}
 		auditNode(ev, action, row.ID, true)
+		recordAudit(al, r, auditlog.Record{
+			Action: action, Entity: "node", EntityID: row.ID,
+			After: auditMeta(true, map[string]any{"status": row.Status}),
+		})
 		writeJSON(w, http.StatusOK, row)
 	}
 }

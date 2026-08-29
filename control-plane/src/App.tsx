@@ -5,6 +5,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { ConnectorsPage } from "./pages/Connectors";
 import { FunctionsPage } from "./pages/FunctionsPage";
 import { EventsPage } from "./pages/Events";
+import { ActivityPage } from "./pages/ActivityPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { HomePage } from "./pages/HomePage";
 import { MeetingsPage } from "./pages/MeetingsPage";
@@ -55,6 +56,7 @@ export type Tab =
   | "connectors"
   | "functions"
   | "events"
+  | "activity"
   | "teams"
   | "vault"
   | "memory"
@@ -127,6 +129,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "connectors", label: t("nav.connectors"), ic: "hook" },
         { id: "functions", label: t("nav.functions"), ic: "build" },
         { id: "events", label: t("nav.events"), ic: "history" },
+        { id: "activity", label: t("nav.activity"), ic: "shield" },
         { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "channels", label: t("nav.channels"), ic: "device" },
         { id: "nodes", label: t("nav.nodes"), ic: "device" },
@@ -552,6 +555,7 @@ export default function App() {
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "functions" && <FunctionsPage />}
           {tab === "events" && <EventsPage />}
+          {tab === "activity" && <ActivityPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
