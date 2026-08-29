@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Agent, type Connector, type Session } from "../api/client";
 import { cronApi, type CronJob } from "../api/cron";
+import {
+  connectorWriteBody,
+  formatConnectorTest,
+  isConnectorEnvOwned,
+  type ConnectorTestView,
+} from "../api/function-ops";
 import { skillsApi, type SkillInfo } from "../api/skills";
 import { toolsApi, type AgentTool } from "../api/tools";
 import { useI18n } from "../i18n";
@@ -9,7 +15,9 @@ import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { SectionHeader } from "../ui/SectionHeader";
-import { StatusLine, formatPublicError } from "../ui/StatusLine";
+import { StatusLine, formatPublicError, redactPublicText } from "../ui/StatusLine";
+
+const emptyConnForm = { name: "", transport: "mcp-http", endpoint: "", token: "", credential_ref: "", enabled: true };
 
 export function FunctionsPage() {
   const { t } = useI18n();
@@ -21,9 +29,13 @@ export function FunctionsPage() {
   const [loading, setLoading] = useState(true);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [connErr, setConnErr] = useState("");
+  const [connForm, setConnForm] = useState(emptyConnForm);
   const [connName, setConnName] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testView, setTestView] = useState<ConnectorTestView | null>(null);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsErr, setSkillsErr] = useState("");
@@ -41,6 +53,7 @@ export function FunctionsPage() {
   const [cronMessage, setCronMessage] = useState("");
 
   const selected = connectors.find((c) => c.name === connName);
+  const envLocked = selected ? isConnectorEnvOwned(selected) : false;
 
   async function loadAgents() {
     try {
@@ -48,8 +61,10 @@ export function FunctionsPage() {
       setAgents(a.agents ?? []);
       setConnectors(c.connectors ?? []);
       setErr("");
+      setConnErr("");
     } catch (e) {
       setErr(formatPublicError(e));
+      setConnErr(formatPublicError(e));
     } finally {
       setLoading(false);
     }
@@ -117,7 +132,7 @@ export function FunctionsPage() {
     }
   }
 
-  async function deleteSkill(name: string) {
+  async function archiveSkill(name: string) {
     if (!window.confirm(t("functions.skills.confirmDelete"))) return;
     try {
       await skillsApi.remove(name);
@@ -161,10 +176,12 @@ export function FunctionsPage() {
     if (!selected) {
       setEndpoint("");
       setToken("");
+      setTestView(null);
       return;
     }
     setEndpoint(selected.endpoint ?? "");
     setToken("");
+    setTestView(null);
   }, [connName, selected?.endpoint]);
 
   async function toggle(tool: AgentTool) {
@@ -172,26 +189,79 @@ export function FunctionsPage() {
     try {
       await toolsApi.setEnabled(agentId, tool.name, !tool.enabled);
       await loadTools(agentId);
-      await loadAgents();
     } catch (e) {
       setErr(formatPublicError(e));
     }
   }
 
-  async function saveConnector() {
-    setErr("");
-    if (!connName.trim()) {
-      setErr(t("functions.needConnector"));
+  async function addConnector() {
+    setConnErr("");
+    setTestView(null);
+    const body = connectorWriteBody(connForm);
+    if (!body.name) {
+      setConnErr(t("functions.mcp.needName"));
+      return;
+    }
+    if (!body.endpoint) {
+      setConnErr(t("functions.mcp.needEndpoint"));
       return;
     }
     try {
-      const body: { endpoint?: string; token?: string } = { endpoint };
-      if (token.trim()) body.token = token.trim();
+      const created = await toolsApi.createConnector(body);
+      setConnForm(emptyConnForm);
+      setConnName(created.name);
+      setToken("");
+      await loadAgents();
+    } catch (e) {
+      setConnErr(formatPublicError(e));
+    }
+  }
+
+  async function saveConnector() {
+    setConnErr("");
+    if (!connName.trim()) {
+      setConnErr(t("functions.needConnector"));
+      return;
+    }
+    if (envLocked) {
+      setConnErr(t("functions.mcp.envLocked"));
+      return;
+    }
+    try {
+      const body = connectorWriteBody({ endpoint, token, enabled: selected?.enabled });
       await toolsApi.patchConnector(connName, body);
       setToken("");
       await loadAgents();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setConnErr(formatPublicError(e));
+    }
+  }
+
+  async function toggleConnector(c: Connector) {
+    setConnErr("");
+    try {
+      await toolsApi.patchConnector(c.name, { enabled: !c.enabled });
+      await loadAgents();
+    } catch (e) {
+      setConnErr(formatPublicError(e));
+    }
+  }
+
+  async function testConnector(name: string) {
+    if (!name.trim()) {
+      setConnErr(t("functions.needConnector"));
+      return;
+    }
+    setTesting(true);
+    setConnErr("");
+    try {
+      const result = await toolsApi.testConnector(name);
+      setTestView(formatConnectorTest(result));
+    } catch (e) {
+      setTestView(null);
+      setConnErr(formatPublicError(e));
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -216,6 +286,16 @@ export function FunctionsPage() {
     try {
       await cronApi.create({ spec: cronSpec.trim(), session_id: cronSession.trim(), message: cronMessage.trim() });
       setCronMessage("");
+      setCronErr("");
+      await loadCron();
+    } catch (e) {
+      setCronErr(formatPublicError(e));
+    }
+  }
+
+  async function toggleCron(job: CronJob) {
+    try {
+      await cronApi.setEnabled(job.id, !(job.enabled !== false));
       setCronErr("");
       await loadCron();
     } catch (e) {
@@ -255,7 +335,7 @@ export function FunctionsPage() {
           </Button>
         }
       />
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("functions.mcp.noSecrets")}</p>
       <Card style={{ padding: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <select className="z-field" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
           <option value="">{t("functions.pickAgent")}</option>
@@ -268,6 +348,7 @@ export function FunctionsPage() {
       </Card>
       <Card>
         <CardHeader icon="build" title={t("functions.tools")} meta={t("functions.meta", { n: tools.length })} />
+        {err ? <StatusLine kind="error">{err}</StatusLine> : null}
         <p style={{ margin: 0, padding: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("functions.workspace.note")}</p>
         <TableScroll>
         <div
@@ -284,7 +365,8 @@ export function FunctionsPage() {
           <span style={{ flex: 1.5 }}>{t("functions.col.name")}</span>
           <span style={{ flex: 1.1 }}>{t("functions.col.connector")}</span>
           <span style={{ flex: 0.9 }}>{t("functions.col.approval")}</span>
-          <span style={{ flex: 0.9 }}>{t("functions.col.configured")}</span>
+          <span style={{ flex: 1 }}>{t("functions.col.configured")}</span>
+          <span style={{ flex: 0.9 }}>{t("functions.col.granted")}</span>
           <span style={{ flex: 0.8, textAlign: "right" }}>{t("functions.col.on")}</span>
         </div>
         {tools.map((tool) => (
@@ -299,9 +381,14 @@ export function FunctionsPage() {
                 {tool.requires_approval ? t("functions.approvalYes") : t("functions.approvalNo")}
               </Badge>
             </span>
-            <span style={{ flex: 0.9 }}>
+            <span style={{ flex: 1 }}>
               <Badge tone={tool.configured ? "positive" : "neutral"}>
-                {tool.configured ? t("common.yes") : t("common.no")}
+                {tool.configured ? t("functions.configured") : t("functions.notConfigured")}
+              </Badge>
+            </span>
+            <span style={{ flex: 0.9 }}>
+              <Badge tone={tool.granted !== false ? "positive" : "neutral"}>
+                {tool.granted !== false ? t("functions.granted") : t("functions.ungranted")}
               </Badge>
             </span>
             <span style={{ flex: 0.8, textAlign: "right" }}>
@@ -318,55 +405,118 @@ export function FunctionsPage() {
         </TableScroll>
       </Card>
       <Card>
-        <CardHeader icon="hook" title={t("functions.connectors")} />
+        <CardHeader icon="hook" title={t("functions.connectors")} meta={t("functions.mcp.meta", { n: connectors.length })} />
+        {connErr ? <StatusLine kind="error">{connErr}</StatusLine> : null}
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <select className="z-field" value={connName} onChange={(e) => setConnName(e.target.value)}>
-              <option value="">{t("functions.pickConnector")}</option>
-              {connectors.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            {selected ? (
-              <Badge tone={selected.token_set ? "positive" : "neutral"}>
-                {t("functions.tokenSet")}: {selected.token_set ? t("common.yes") : t("common.no")}
-              </Badge>
-            ) : null}
-          </div>
-          {connName ? (
-            <>
-              <label style={{ fontSize: 12, color: "var(--text-2)" }}>
-                {t("functions.endpoint")}
-                <input
-                  className="z-field"
-                  style={{ display: "block", width: "100%", marginTop: 4 }}
-                  value={endpoint}
-                  onChange={(e) => setEndpoint(e.target.value)}
-                />
-              </label>
-              <label style={{ fontSize: 12, color: "var(--text-2)" }}>
-                {t("functions.token")}
-                <input
-                  className="z-field"
-                  type="password"
-                  autoComplete="off"
-                  style={{ display: "block", width: "100%", marginTop: 4 }}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                />
-              </label>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("functions.tokenHint")}</p>
-            </>
-          ) : null}
-          <div>
-            <Button variant="primary" onClick={() => void saveConnector()}>
-              {t("functions.saveConnector")}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 140px" }}>
+              {t("functions.mcp.name")}
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={connForm.name} onChange={(e) => setConnForm((f) => ({ ...f, name: e.target.value }))} />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "0 1 160px" }}>
+              {t("functions.mcp.transport")}
+              <select className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={connForm.transport} onChange={(e) => setConnForm((f) => ({ ...f, transport: e.target.value }))}>
+                <option value="http">{t("functions.mcp.http")}</option>
+                <option value="mcp-http">{t("functions.mcp.sse")}</option>
+                <option value="mcp-stdio">{t("functions.mcp.stdio")}</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "2 1 220px" }}>
+              {t("functions.endpoint")}
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={connForm.endpoint} onChange={(e) => setConnForm((f) => ({ ...f, endpoint: e.target.value }))} />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
+              {t("functions.token")}
+              <input className="z-field" type="password" autoComplete="off" style={{ display: "block", width: "100%", marginTop: 4 }} value={connForm.token} onChange={(e) => setConnForm((f) => ({ ...f, token: e.target.value }))} />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
+              {t("functions.mcp.envName")}
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={connForm.credential_ref} onChange={(e) => setConnForm((f) => ({ ...f, credential_ref: e.target.value }))} />
+            </label>
+            <Button variant="primary" onClick={() => void addConnector()}>
+              {t("functions.mcp.add")}
             </Button>
           </div>
-          {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
+          <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("functions.mcp.envHint")}</p>
         </div>
+        <TableScroll>
+        <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
+          <span style={{ flex: 1.2 }}>{t("functions.col.name")}</span>
+          <span style={{ flex: 1 }}>{t("functions.mcp.transport")}</span>
+          <span style={{ flex: 1.6 }}>{t("functions.endpoint")}</span>
+          <span style={{ flex: 1 }}>{t("functions.tokenSet")}</span>
+          <span style={{ flex: 0.9 }}>{t("functions.col.on")}</span>
+          <span style={{ flex: 0.8 }} />
+        </div>
+        {connectors.map((c) => (
+          <div
+            key={c.name}
+            role="button"
+            tabIndex={0}
+            onClick={() => setConnName(c.name)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setConnName(c.name);
+            }}
+            style={{
+              display: "flex",
+              width: "100%",
+              textAlign: "left",
+              alignItems: "center",
+              padding: "11px 16px",
+              fontSize: 12.5,
+              borderBottom: "1px solid var(--border-soft)",
+              background: connName === c.name ? "var(--bg-2)" : "transparent",
+              cursor: "pointer",
+              gap: 8,
+            }}
+          >
+            <span style={{ flex: 1.2, fontWeight: 600 }}>{c.name}</span>
+            <span style={{ flex: 1, color: "var(--text-2)" }}>{c.transport}</span>
+            <span style={{ flex: 1.6, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.endpoint}</span>
+            <span style={{ flex: 1, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <Badge tone={c.token_set ? "positive" : "neutral"}>{c.token_set ? t("common.yes") : t("common.no")}</Badge>
+              {isConnectorEnvOwned(c) ? <Badge tone="warning">{t("functions.mcp.envOwned")}</Badge> : <Badge tone="neutral">{t("functions.mcp.source.sqlite")}</Badge>}
+              {!c.enabled ? <Badge tone="neutral">{t("functions.mcp.disabled")}</Badge> : null}
+            </span>
+            <span style={{ flex: 0.9 }}>
+              <Badge tone={c.enabled ? "positive" : "neutral"}>{c.enabled ? t("common.enabled") : t("common.disabled")}</Badge>
+            </span>
+            <span style={{ flex: 0.8, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" onClick={() => void toggleConnector(c)}>
+                {c.enabled ? t("common.disabled") : t("functions.cron.enable")}
+              </Button>
+            </span>
+          </div>
+        ))}
+        {loading ? <StatusLine kind="loading" /> : connectors.length === 0 ? <EmptyState>{t("functions.emptyConnectors")}</EmptyState> : null}
+        </TableScroll>
+        {connName ? (
+          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {envLocked ? <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("functions.mcp.envLocked")}</p> : null}
+            <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+              {t("functions.endpoint")}
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={endpoint} onChange={(e) => setEndpoint(e.target.value)} disabled={envLocked} />
+            </label>
+            <label style={{ fontSize: 12, color: "var(--text-2)" }}>
+              {t("functions.token")}
+              <input className="z-field" type="password" autoComplete="off" style={{ display: "block", width: "100%", marginTop: 4 }} value={token} onChange={(e) => setToken(e.target.value)} disabled={envLocked} />
+            </label>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>{t("functions.tokenHint")}</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button variant="primary" onClick={() => void saveConnector()} disabled={envLocked}>
+                {t("functions.saveConnector")}
+              </Button>
+              <Button onClick={() => void testConnector(connName)} disabled={testing}>
+                {testing ? t("functions.mcp.testing") : t("functions.mcp.test")}
+              </Button>
+            </div>
+            {testView ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: testView.ok ? "var(--green)" : "var(--red)" }}>
+                {testView.health} · {testView.latency_ms}ms{testView.error ? ` · ${redactPublicText(testView.error)}` : ""}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </Card>
       <Card>
         <CardHeader icon="doc" title={t("functions.skills")} meta={t("functions.skills.meta", { n: skills.length })} />
@@ -388,21 +538,11 @@ export function FunctionsPage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
               {t("functions.skills.name")}
-              <input
-                className="z-field"
-                style={{ display: "block", width: "100%", marginTop: 4 }}
-                value={skillName}
-                onChange={(e) => setSkillName(e.target.value)}
-              />
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={skillName} onChange={(e) => setSkillName(e.target.value)} />
             </label>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "2 1 240px" }}>
               {t("functions.skills.body")}
-              <textarea
-                className="z-field"
-                style={{ display: "block", width: "100%", marginTop: 4, minHeight: 64, fontFamily: "var(--font-mono, monospace)" }}
-                value={skillBody}
-                onChange={(e) => setSkillBody(e.target.value)}
-              />
+              <textarea className="z-field" style={{ display: "block", width: "100%", marginTop: 4, minHeight: 64, fontFamily: "var(--font-mono, monospace)" }} value={skillBody} onChange={(e) => setSkillBody(e.target.value)} />
             </label>
             <Button variant="primary" onClick={() => void createSkill()}>
               {t("functions.skills.create")}
@@ -433,8 +573,8 @@ export function FunctionsPage() {
             <span style={{ flex: 1.2, fontWeight: 600 }}>{s.name}</span>
             <span style={{ flex: 1.6, color: "var(--text-2)" }}>{skillQuery.trim() ? s.snippet ?? "" : s.path ?? ""}</span>
             <span style={{ flex: 0.6, textAlign: "right" }}>
-              <Button variant="ghost" onClick={() => void deleteSkill(s.name)}>
-                {t("common.delete")}
+              <Button variant="ghost" onClick={() => void archiveSkill(s.name)}>
+                {t("functions.skills.archive")}
               </Button>
             </span>
           </div>
@@ -451,12 +591,7 @@ export function FunctionsPage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
               {t("functions.cron.spec")}
-              <input
-                className="z-field"
-                style={{ display: "block", width: "100%", marginTop: 4 }}
-                value={cronSpec}
-                onChange={(e) => setCronSpec(e.target.value)}
-              />
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={cronSpec} onChange={(e) => setCronSpec(e.target.value)} />
             </label>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "1 1 160px" }}>
               {t("functions.cron.session")}
@@ -471,12 +606,7 @@ export function FunctionsPage() {
             </label>
             <label style={{ fontSize: 12, color: "var(--text-2)", flex: "2 1 220px" }}>
               {t("functions.cron.message")}
-              <input
-                className="z-field"
-                style={{ display: "block", width: "100%", marginTop: 4 }}
-                value={cronMessage}
-                onChange={(e) => setCronMessage(e.target.value)}
-              />
+              <input className="z-field" style={{ display: "block", width: "100%", marginTop: 4 }} value={cronMessage} onChange={(e) => setCronMessage(e.target.value)} />
             </label>
             <Button variant="primary" onClick={() => void createCron()}>
               {t("functions.cron.create")}
@@ -495,10 +625,11 @@ export function FunctionsPage() {
             color: "var(--text-3)",
           }}
         >
-          <span style={{ flex: 1.2 }}>{t("functions.cron.col.spec")}</span>
-          <span style={{ flex: 1.2 }}>{t("functions.cron.col.session")}</span>
-          <span style={{ flex: 1.6 }}>{t("functions.cron.col.message")}</span>
-          <span style={{ flex: 1 }}>{t("functions.cron.col.last")}</span>
+          <span style={{ flex: 1.1 }}>{t("functions.cron.col.spec")}</span>
+          <span style={{ flex: 1.1 }}>{t("functions.cron.col.session")}</span>
+          <span style={{ flex: 1.3 }}>{t("functions.cron.col.message")}</span>
+          <span style={{ flex: 0.9 }}>{t("functions.cron.col.last")}</span>
+          <span style={{ flex: 1.1 }}>{t("functions.cron.col.error")}</span>
           <span style={{ flex: 0.7 }}>{t("functions.cron.col.enabled")}</span>
           <span style={{ flex: 0.6 }} />
         </div>
@@ -507,16 +638,15 @@ export function FunctionsPage() {
             key={job.id}
             style={{ display: "flex", alignItems: "center", padding: "11px 16px", fontSize: 12.5, borderBottom: "1px solid var(--border-soft)", gap: 8 }}
           >
-            <span style={{ flex: 1.2, fontWeight: 600 }}>{job.spec}</span>
-            <span style={{ flex: 1.2, color: "var(--text-2)" }}>{job.session_id}</span>
-            <span style={{ flex: 1.6, color: "var(--text-2)" }}>{job.message}</span>
-            <span style={{ flex: 1, color: "var(--text-3)" }}>{job.last_run || "—"}</span>
+            <span style={{ flex: 1.1, fontWeight: 600 }}>{job.spec}</span>
+            <span style={{ flex: 1.1, color: "var(--text-2)" }}>{job.session_id}</span>
+            <span style={{ flex: 1.3, color: "var(--text-2)" }}>{job.message}</span>
+            <span style={{ flex: 0.9, color: "var(--text-3)" }}>{job.last_run || "—"}</span>
+            <span style={{ flex: 1.1, color: "var(--red)", fontSize: 11 }}>{job.last_error ? redactPublicText(job.last_error) : "—"}</span>
             <span style={{ flex: 0.7 }}>
-              {typeof job.enabled === "boolean" ? (
-                <Badge tone={job.enabled ? "positive" : "neutral"}>{job.enabled ? t("common.enabled") : t("common.disabled")}</Badge>
-              ) : (
-                "—"
-              )}
+              <Button variant={job.enabled !== false ? "primary" : "ghost"} onClick={() => void toggleCron(job)}>
+                {job.enabled !== false ? t("common.enabled") : t("common.disabled")}
+              </Button>
             </span>
             <span style={{ flex: 0.6, textAlign: "right" }}>
               <Button variant="ghost" onClick={() => void deleteCron(job.id)}>

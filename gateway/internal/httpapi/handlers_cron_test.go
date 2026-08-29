@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,51 @@ func TestCron_Cap20(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 400 {
 		t.Fatalf("cap %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCron_PatchEnableAndLastError(t *testing.T) {
+	st, h := newTestServer()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "en", DisplayName: "E"})
+	sess, _ := st.CreateSession(store.Session{AgentID: a.ID})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/cron", bytes.NewBufferString(
+		`{"spec":"every:1h","session_id":"`+sess.ID+`","message":"m"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	var created store.CronJob
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/cron/"+created.ID, bytes.NewBufferString(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable %d %s", w.Code, w.Body.String())
+	}
+	got, _ := st.GetCronJob(created.ID)
+	if got.Enabled {
+		t.Fatal("still enabled")
+	}
+	_ = st.MarkCronError(created.ID, `401 Bearer secret-token {"token":"secret-token"}`)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/cron", nil))
+	body := w.Body.String()
+	if !strings.Contains(body, `"last_error"`) {
+		t.Fatalf("missing last_error %s", body)
+	}
+	if strings.Contains(body, "secret-token") {
+		t.Fatalf("leaked last_error %s", body)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/cron/missing", bytes.NewBufferString(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("missing %d %s", w.Code, w.Body.String())
 	}
 }

@@ -22,6 +22,7 @@ import (
 func registerCronRoutes(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "GET /api/cron", handleListCron(opt.Store))
 	aliasAPI(mux, "POST /api/cron", handleCreateCron(opt.Store))
+	aliasAPI(mux, "PATCH /api/cron/{id}", handlePatchCron(opt.Store))
 	aliasAPI(mux, "DELETE /api/cron/{id}", handleDeleteCron(opt.Store))
 }
 
@@ -33,7 +34,11 @@ func handleListCron(st store.StoreIface) http.HandlerFunc {
 				list = got
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"jobs": list})
+		out := make([]map[string]any, 0, len(list))
+		for _, j := range list {
+			out = append(out, publicCron(j))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"jobs": out})
 	}
 }
 
@@ -79,7 +84,46 @@ func handleCreateCron(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, job)
+		writeJSON(w, http.StatusCreated, publicCron(job))
+	}
+}
+
+func handlePatchCron(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if st == nil {
+			writeErr(w, http.StatusInternalServerError, "store required")
+			return
+		}
+		id := strings.TrimSpace(r.PathValue("id"))
+		if id == "" {
+			writeErr(w, http.StatusBadRequest, "id is required")
+			return
+		}
+		var body struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if body.Enabled == nil {
+			writeErr(w, http.StatusBadRequest, "enabled is required")
+			return
+		}
+		if err := st.SetCronEnabled(id, *body.Enabled); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		job, err := st.GetCronJob(id)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, publicCron(job))
 	}
 }
 
@@ -104,6 +148,26 @@ func handleDeleteCron(st store.StoreIface) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
+}
+
+func publicCron(j *store.CronJob) map[string]any {
+	if j == nil {
+		return map[string]any{}
+	}
+	out := map[string]any{
+		"id":         j.ID,
+		"spec":       j.Spec,
+		"session_id": j.SessionID,
+		"message":    j.Message,
+		"enabled":    j.Enabled,
+	}
+	if j.LastRun != nil {
+		out["last_run"] = j.LastRun.UTC().Format(time.RFC3339)
+	}
+	if errMsg := strings.TrimSpace(j.LastError); errMsg != "" {
+		out["last_error"] = redactConnectorError(errMsg, "")
+	}
+	return out
 }
 
 // FireSessionChat is the POST /api/chat equivalent used by the in-process ticker.

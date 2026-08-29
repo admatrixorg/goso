@@ -258,6 +258,9 @@ export type Connector = {
   health_error?: string;
   created_at?: string;
   token_set?: boolean;
+  source?: string;
+  env_owned?: boolean;
+  env_set?: boolean;
 };
 export type GatewayEvent = {
   trace_id: string;

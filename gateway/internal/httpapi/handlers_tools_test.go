@@ -284,8 +284,11 @@ func TestAgentTools_PatchConnectorBoundTool(t *testing.T) {
 		t.Fatalf("patch tool %d %s", w.Code, w.Body.String())
 	}
 	got, _ := st.GetConnector("zalocrm")
-	if got.Enabled {
-		t.Fatal("connector should be disabled")
+	if !got.Enabled {
+		t.Fatal("agent grant must not disable global connector")
+	}
+	if en, ok := st.GetAgentToolFlag(id, "contact_search"); !ok || en {
+		t.Fatalf("per-agent flag %+v %v", en, ok)
 	}
 
 	w = httptest.NewRecorder()
@@ -295,6 +298,9 @@ func TestAgentTools_PatchConnectorBoundTool(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"enabled":false`) {
 		t.Fatalf("expected enabled false %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "super-secret") || strings.Contains(w.Body.String(), `"token":`) {
+		t.Fatalf("tool list leaked token %s", w.Body.String())
 	}
 }
 
@@ -350,5 +356,105 @@ func TestPatchAgentTool_EnabledRequired(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 400 {
 		t.Fatalf("omitted enabled %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnector_EnvOwnedNeverReturnsToken(t *testing.T) {
+	t.Setenv("GOSO_MCP_TOKEN", "live-env-secret-value")
+	st := store.New()
+	h := NewRouter(Options{Store: st, Version: "0.1.0"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/connectors", bytes.NewBufferString(
+		`{"name":"envmcp","transport":"sse","endpoint":"http://127.0.0.1:9","credential_ref":"GOSO_MCP_TOKEN","enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "live-env-secret-value") || strings.Contains(body, `"token":`) {
+		t.Fatalf("leaked token %s", body)
+	}
+	var rec map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &rec)
+	if rec["transport"] != "mcp-http" {
+		t.Fatalf("sse alias %v", rec["transport"])
+	}
+	if rec["env_owned"] != true || rec["source"] != "env" || rec["token_set"] != true {
+		t.Fatalf("env public %+v", rec)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/connectors/envmcp", bytes.NewBufferString(`{"token":"another-secret-token-value"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "env overlay") {
+		t.Fatalf("env overlay %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/connectors/envmcp", nil))
+	if strings.Contains(w.Body.String(), "live-env-secret-value") || strings.Contains(w.Body.String(), "another-secret") {
+		t.Fatalf("GET leaked %s", w.Body.String())
+	}
+}
+
+func TestConnector_TestConnectionDisabledAndHealth(t *testing.T) {
+	st := store.New()
+	h := NewRouter(Options{Store: st, Version: "0.1.0"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/connectors", bytes.NewBufferString(
+		`{"name":"off","transport":"http","endpoint":"http://127.0.0.1:9","enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/connectors/off/test", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"health":"disabled"`) {
+		t.Fatalf("disabled test %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/api/connectors/missing/test", bytes.NewBufferString(`{}`)))
+	if w.Code != 404 {
+		t.Fatalf("missing %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAgentTools_PerAgentFlagsIndependent(t *testing.T) {
+	st := store.New()
+	h := NewRouter(Options{Store: st, Version: "0.1.0"})
+	mk := func(key string) string {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/agents", bytes.NewBufferString(`{"agent_key":"`+key+`","display_name":"`+key+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(w, req)
+		var agent map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &agent)
+		return agent["id"].(string)
+	}
+	a := mk("aa")
+	b := mk("bb")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("PATCH", "/api/agents/"+a+"/tools/web_search", bytes.NewBufferString(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("patch a %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/agents/"+a+"/tools", nil))
+	if !strings.Contains(w.Body.String(), `"name":"web_search"`) {
+		t.Fatalf("a list %s", w.Body.String())
+	}
+	enA, okA := st.GetAgentToolFlag(a, "web_search")
+	enB, okB := st.GetAgentToolFlag(b, "web_search")
+	if !okA || !enA {
+		t.Fatalf("agent a flag %v %v", enA, okA)
+	}
+	if okB && enB {
+		t.Fatal("agent b should not inherit a grant")
 	}
 }

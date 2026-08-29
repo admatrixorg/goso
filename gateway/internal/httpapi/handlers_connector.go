@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +29,7 @@ func registerConnectorRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /api/connectors", handleListConnectors(opt))
 	mux.HandleFunc("GET /api/connectors/{name}", handleGetConnector(opt))
 	mux.HandleFunc("PATCH /api/connectors/{name}", handlePatchConnector(opt))
+	mux.HandleFunc("POST /api/connectors/{name}/test", handleTestConnector(opt))
 	mux.HandleFunc("POST /api/agents/{id}/connectors", handleLinkAgentConnector(opt))
 	mux.HandleFunc("GET /api/agents/{id}/connectors", handleListAgentConnectors(opt))
 	mux.HandleFunc("GET /api/agents/{id}/tools", handleListAgentTools(opt))
@@ -37,26 +40,72 @@ func registerConnectorRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("POST /api/tools/invoke", handleToolInvoke(opt))
 }
 
+type connectorWrite struct {
+	Name          string `json:"name"`
+	Transport     string `json:"transport"`
+	Endpoint      string `json:"endpoint"`
+	Token         string `json:"token"`
+	CredentialRef string `json:"credential_ref"`
+	Enabled       *bool  `json:"enabled"`
+	ManifestURL   string `json:"manifest_url"`
+	TimeoutMS     int    `json:"timeout_ms"`
+	Retries       int    `json:"retries"`
+}
+
 func handleCreateConnector(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body store.ConnectorRecord
+		var body connectorWrite
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		body.Name = strings.TrimSpace(body.Name)
-		if body.Name == "" {
+		name := strings.TrimSpace(body.Name)
+		if name == "" {
 			writeErr(w, http.StatusBadRequest, "name is required")
 			return
 		}
-		if body.Transport == "" {
-			body.Transport = connector.TransportHTTP
-		}
-		if err := mountConnector(opt, &body); err != nil {
+		transport, err := connector.NormalizeTransport(body.Transport)
+		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		rec, err := opt.Store.CreateConnector(body)
+		enabled := true
+		if body.Enabled != nil {
+			enabled = *body.Enabled
+		}
+		cred := strings.TrimSpace(body.CredentialRef)
+		tok := strings.TrimSpace(body.Token)
+		if isEnvName(cred) && tok != "" {
+			writeErr(w, http.StatusBadRequest, "env overlay")
+			return
+		}
+		if tok != "" {
+			secName := connector.TokenSecretName(name)
+			if err := secrets.Put(opt.Store, secName, []byte(tok)); err != nil {
+				if errors.Is(err, secrets.ErrNoMasterKey) {
+					writeErr(w, http.StatusBadRequest, "master key required to store token")
+					return
+				}
+				writeErr(w, http.StatusBadRequest, "token store failed")
+				return
+			}
+			cred = "secret:" + secName
+		}
+		rec := store.ConnectorRecord{
+			Name:          name,
+			Transport:     transport,
+			Endpoint:      strings.TrimSpace(body.Endpoint),
+			CredentialRef: cred,
+			Enabled:       enabled,
+			ManifestURL:   strings.TrimSpace(body.ManifestURL),
+			TimeoutMS:     body.TimeoutMS,
+			Retries:       body.Retries,
+		}
+		if err := mountConnector(opt, &rec); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		saved, err := opt.Store.CreateConnector(rec)
 		if err != nil {
 			if errors.Is(err, store.ErrExists) {
 				writeErr(w, http.StatusConflict, "connector already exists")
@@ -65,10 +114,10 @@ func handleCreateConnector(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if !rec.Enabled {
-			_ = opt.Registry.SetEnabled(rec.Name, false)
+		if !saved.Enabled {
+			_ = opt.Registry.SetEnabled(saved.Name, false)
 		}
-		writeJSON(w, http.StatusCreated, connectorPublic(opt.Store, rec))
+		writeJSON(w, http.StatusCreated, connectorPublic(opt.Store, saved))
 	}
 }
 
@@ -116,6 +165,11 @@ func handleGetConnector(opt Options) http.HandlerFunc {
 func handlePatchConnector(opt Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
+		cur, err := opt.Store.GetConnector(name)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "connector not found")
+			return
+		}
 		var body struct {
 			Enabled  *bool   `json:"enabled"`
 			Endpoint *string `json:"endpoint"`
@@ -123,6 +177,10 @@ func handlePatchConnector(opt Options) http.HandlerFunc {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if connectorEnvOwned(cur) && body.Token != nil && strings.TrimSpace(*body.Token) != "" {
+			writeErr(w, http.StatusBadRequest, "env overlay")
 			return
 		}
 		var cred *string
@@ -181,18 +239,28 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
+		linked := map[string]bool{}
+		if opt.Store != nil {
+			if names, err := opt.Store.ListAgentConnectors(id); err == nil {
+				for _, n := range names {
+					linked[n] = true
+				}
+			}
+		}
 		out := make([]map[string]any, 0, len(tools))
 		seenBuiltin := map[string]bool{}
 		for _, bt := range tools {
-			enabled := toolEnabled(opt, bt)
-			out = append(out, map[string]any{
+			enabled := toolEnabledForAgent(opt, id, bt)
+			item := map[string]any{
 				"name":              bt.Tool.Name,
 				"connector":         bt.Connector,
 				"description":       bt.Tool.Description,
 				"requires_approval": bt.Tool.RequiresApproval,
 				"enabled":           enabled,
 				"configured":        toolConfigured(bt.Connector, bt.Tool.Name),
-			})
+				"granted":           bt.Connector == builtin.ConnectorName || linked[bt.Connector],
+			}
+			out = append(out, item)
 			if bt.Connector == builtin.ConnectorName {
 				seenBuiltin[bt.Tool.Name] = true
 			}
@@ -201,13 +269,22 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 			if seenBuiltin[spec.Name] {
 				continue
 			}
+			enabled := false
+			if opt.Store != nil {
+				if en, ok := opt.Store.GetAgentToolFlag(id, spec.Name); ok {
+					enabled = en
+				} else {
+					enabled = opt.Store.GetToolFlag(spec.Name)
+				}
+			}
 			out = append(out, map[string]any{
 				"name":              spec.Name,
 				"connector":         builtin.ConnectorName,
 				"description":       spec.Description,
 				"requires_approval": spec.RequiresApproval,
-				"enabled":           opt.Store.GetToolFlag(spec.Name),
+				"enabled":           enabled,
 				"configured":        builtin.Configured(spec.Name),
+				"granted":           true,
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"tools": out})
@@ -235,6 +312,10 @@ func handlePatchAgentTool(opt Options) http.HandlerFunc {
 		}
 		enabled := *body.Enabled
 		if builtin.IsName(name) {
+			if err := opt.Store.SetAgentToolFlag(id, name, enabled); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			if err := opt.Store.SetToolFlag(name, enabled); err != nil {
 				writeErr(w, http.StatusBadRequest, err.Error())
 				return
@@ -243,6 +324,7 @@ func handlePatchAgentTool(opt Options) http.HandlerFunc {
 				"name":      name,
 				"connector": builtin.ConnectorName,
 				"enabled":   enabled,
+				"granted":   true,
 			})
 			return
 		}
@@ -262,15 +344,18 @@ func handlePatchAgentTool(opt Options) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "tool not found")
 			return
 		}
-		if err := opt.Store.SetConnectorEnabled(connName, enabled); err != nil {
+		if err := opt.Store.SetAgentToolFlag(id, name, enabled); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		_ = opt.Registry.SetEnabled(connName, enabled)
+		if enabled {
+			_ = opt.Store.LinkAgentConnector(id, connName)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":      name,
 			"connector": connName,
 			"enabled":   enabled,
+			"granted":   true,
 		})
 	}
 }
@@ -532,9 +617,22 @@ func isEnvName(s string) bool {
 	return true
 }
 
+func connectorEnvOwned(rec *store.ConnectorRecord) bool {
+	if rec == nil {
+		return false
+	}
+	return isEnvName(strings.TrimSpace(rec.CredentialRef))
+}
+
 func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string]any {
 	cred := rec.CredentialRef
-	if looksLikeSecret(cred) {
+	envOwned := isEnvName(strings.TrimSpace(cred))
+	source := "sqlite"
+	envSet := false
+	if envOwned {
+		source = "env"
+		envSet = strings.TrimSpace(os.Getenv(strings.TrimSpace(cred))) != ""
+	} else if looksLikeSecret(cred) {
 		cred = "***"
 	}
 	tokenSet := false
@@ -543,7 +641,9 @@ func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string
 			tokenSet = true
 		}
 	}
-	if !tokenSet && rec.CredentialRef != "" {
+	if envOwned {
+		tokenSet = envSet
+	} else if !tokenSet && rec.CredentialRef != "" {
 		tokenSet = true
 	}
 	return map[string]any{
@@ -558,6 +658,9 @@ func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string
 		"retries":        rec.Retries,
 		"created_at":     rec.CreatedAt,
 		"token_set":      tokenSet,
+		"source":         source,
+		"env_owned":      envOwned,
+		"env_set":        envSet,
 	}
 }
 
@@ -584,6 +687,89 @@ func toolEnabled(opt Options, bt agent.BoundTool) bool {
 		return opt.Registry.Enabled(bt.Connector)
 	}
 	return false
+}
+
+func toolEnabledForAgent(opt Options, agentID string, bt agent.BoundTool) bool {
+	if opt.Store != nil {
+		if en, ok := opt.Store.GetAgentToolFlag(agentID, bt.Tool.Name); ok {
+			return en
+		}
+	}
+	return toolEnabled(opt, bt)
+}
+
+func handleTestConnector(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		rec, err := opt.Store.GetConnector(name)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, "connector not found")
+			return
+		}
+		start := time.Now()
+		if !rec.Enabled {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":         false,
+				"latency_ms": time.Since(start).Milliseconds(),
+				"health":     "disabled",
+				"error":      "disabled",
+			})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		c, lerr := opt.Registry.Lookup(name)
+		if lerr != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":         false,
+				"latency_ms": time.Since(start).Milliseconds(),
+				"health":     "unregistered",
+				"error":      redactConnectorError(lerr.Error(), ""),
+			})
+			return
+		}
+		herr := c.Health(ctx)
+		ms := time.Since(start).Milliseconds()
+		if herr != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":         false,
+				"latency_ms": ms,
+				"health":     "unavailable",
+				"error":      redactConnectorError(herr.Error(), ""),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":         true,
+			"latency_ms": ms,
+			"health":     "ok",
+		})
+	}
+}
+
+var (
+	reConnBearer = regexp.MustCompile(`(?i)Bearer\s+\S+`)
+	reConnAuth   = regexp.MustCompile(`(?i)(authorization|api[_-]?key|secret|token|password)\s*[:=]\s*\S+`)
+	reConnJSON   = regexp.MustCompile(`(?i)"(authorization|api[_-]?key|secret|token|password)"\s*:\s*"(?:\\.|[^"\\])*"`)
+	reConnSk     = regexp.MustCompile(`\bsk-[A-Za-z0-9_-]+`)
+)
+
+func redactConnectorError(s, secret string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	if secret != "" {
+		s = strings.ReplaceAll(s, secret, "[redacted]")
+	}
+	s = reConnBearer.ReplaceAllString(s, "Bearer [redacted]")
+	s = reConnAuth.ReplaceAllString(s, "$1=[redacted]")
+	s = reConnJSON.ReplaceAllString(s, `"$1":"[redacted]"`)
+	s = reConnSk.ReplaceAllString(s, "sk-[redacted]")
+	if len(s) > 400 {
+		s = s[:400] + "…"
+	}
+	return s
 }
 
 func mountConnector(opt Options, rec *store.ConnectorRecord) error {
