@@ -105,7 +105,7 @@ Environment:
   Pairing                  Admin POST /api/pairing → one-time code (10 min); POST /api/pairing/exchange → view grant
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
   GOSO_INJECTION           log or block prompt-injection matches on /api/chat (production default block)
-  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector and LLM HTTP
+  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, and web_fetch
   GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = filesystem tools fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
   GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.

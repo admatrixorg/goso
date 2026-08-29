@@ -205,7 +205,7 @@ export const vi = {
   "functions.skills.needName": "Cần tên ([a-z0-9_-]{1,64}).",
   "functions.skills.needBody": "Cần nội dung.",
   "functions.skills.confirmDelete": "Xóa skill này? Thư mục SKILL.md sẽ bị xóa.",
-  "functions.workspace.note": "Tool filesystem (read_file, write_file, list_files, edit, send_file, search, glob) bị giam trong GOSO_WORKSPACE. Env trống → not_configured, không đụng FS. write_file và edit cần duyệt. search và glob chỉ đọc. send_file chỉ metadata (không upload ra ngoài). sandbox/browser luôn not_configured (DI-12/13). media/image_gen/tts luôn not_configured trừ khi inject test double.",
+  "functions.workspace.note": "Tool filesystem (read_file, write_file, list_files, edit, send_file, search, glob) bị giam trong GOSO_WORKSPACE. Env trống → not_configured, không đụng FS. write_file và edit cần duyệt. search và glob chỉ đọc. send_file chỉ metadata (không upload ra ngoài). web_fetch luôn được liệt kê; GOSO_SSRF là policy mạng duy nhất (không env thêm, không HTML-to-Markdown). sandbox/browser luôn not_configured (DI-12/13). media/image_gen/tts luôn not_configured trừ khi inject test double.",
   "functions.cron": "Cron",
   "functions.cron.meta": "{n} jobs",
   "functions.cron.empty": "Chưa có job. Ticker 1 phút in-process; danh sách trống = no-op. Tối đa 20. 5-field theo UTC. Không dùng OS crontab.",
