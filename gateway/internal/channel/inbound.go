@@ -38,6 +38,10 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		return
 	}
 	agent := ensureNamedAgent(d.Store, agentKey, displayName)
+	if BufferIfNeeded(nil, agent, agentKey, dest) {
+		writeOK(w)
+		return
+	}
 	sess := ensureLabeledSession(d.Store, agent.ID, agentKey+":"+dest)
 
 	_, _ = d.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})

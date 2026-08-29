@@ -252,6 +252,23 @@ func TestViewToken_GETOnly(t *testing.T) {
 		t.Fatalf("view POST chat %d %s", rr.Code, rr.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/api/pending-messages", nil)
+	req.Header.Set("Authorization", "Bearer view-041")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("view GET pending %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/pending-messages/pg_1/compact", strings.NewReader(`{"confirm":"x"}`))
+	req.Header.Set("Authorization", "Bearer view-041")
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("view POST compact %d %s", rr.Code, rr.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/api/system/backup", nil)
 	req.Header.Set("Authorization", "Bearer view-041")
 	rr = httptest.NewRecorder()

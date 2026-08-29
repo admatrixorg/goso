@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 103: Pending Messages THIẾU page. Live `pending` tab. `GET /api/pending-messages` lists count/age/channel/agent only (no payloads). Compact/clear require matching `confirm`. View-token GET-only; lite 403. i18n vi+en. QA `docs/qa/103-pending-messages.md`.
 - SPEC 102: Settings operator surface. Account/team/messaging/system groups; Gateway page via `GET`/`PUT /api/config`. Auth fields are `token_set` booleans only. Env-owned keys read-only; PUT 409 on stale stamp or env overlay. Backup/pairing/theme kept. i18n vi+en. QA `docs/qa/102-settings.md`.
 - SPEC 101: Traces operator surface. Search/filter by agent/channel/status, time range, pagination, error groups. Detail spans with redacted prompt/tool/result attrs. Hash `#traces/{id}`. i18n vi+en. QA `docs/qa/101-traces.md`.
 - SPEC 100: Webhooks operator surface. HTTP delivery (not lifecycle hooks): list status/endpoint/last delivery, one-time secret on create/rotate, GET never returns token/hmac_key, test/replay signed `{event}` without payloads. i18n vi+en. QA `docs/qa/100-webhooks.md`.

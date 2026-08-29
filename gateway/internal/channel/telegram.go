@@ -146,6 +146,9 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 			agent = a
 		}
 	}
+	if BufferIfNeeded(nil, agent, "telegram", fmt.Sprintf("%d", chatID)) {
+		return ""
+	}
 	sess := t.ensureSession(agent.ID, chatID)
 	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 	provider := t.LLM

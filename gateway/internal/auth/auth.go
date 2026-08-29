@@ -10,7 +10,15 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 )
 
-var viewPrefixes = []string{"/healthz", "/api/agents", "/api/sessions", "/v1/agents", "/v1/sessions"}
+var viewPrefixes = []string{
+	"/healthz",
+	"/api/agents",
+	"/api/sessions",
+	"/api/pending-messages",
+	"/v1/agents",
+	"/v1/sessions",
+	"/v1/pending-messages",
+}
 
 // Config is admin/view Bearer enforcement plus optional pairing grants.
 type Config struct {

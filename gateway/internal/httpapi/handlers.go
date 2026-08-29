@@ -51,6 +51,8 @@ type Options struct {
 	Pairing *auth.Pairing
 	// Channels is optional live health (SPEC 084).
 	Channels *channel.Manager
+	// Pending is the channel-buffer used by GET/compact/clear. Nil → DefaultPending.
+	Pending *channel.Pending
 }
 
 func (o *Options) defaults() {
@@ -71,6 +73,9 @@ func (o *Options) defaults() {
 	}
 	if o.Webhooks == nil {
 		o.Webhooks = webhook.NewWithStore(o.Store)
+	}
+	if o.Pending == nil {
+		o.Pending = channel.DefaultPending()
 	}
 }
 
@@ -104,6 +109,7 @@ func NewRouter(opt Options) http.Handler {
 	registerPairingRoutes(mux, opt.Pairing)
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)
+	registerPendingRoutes(mux, opt)
 	return mux
 }
 
