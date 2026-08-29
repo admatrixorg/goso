@@ -31,6 +31,9 @@
 | **Overlay** | Lớp Docker Compose phủ lên gateway (postgres, redis, jaeger...) | 8 overlay gốc |
 | **Zalo Personal** | Kênh Zalo cá nhân (profile) | Ưu tiên MVP |
 | **Zalo OA** | Kênh Zalo Official Account | Ưu tiên MVP |
+| **InboundMessage** | Bản tin đã chuẩn hoá sau adapter: `channel`, `sender_id`, `chat_id`, `peer_kind` (`direct`\|`group`), `text`, `mention`, `session_label` | SPEC 084 |
+| **ChannelBinding** | Liên kết `channel_name` → `agent_id` (một instance / catalog name) | SPEC 084 |
+| **Channel Pairing** | Approve sender trên Channel khi `dm_policy=pairing`. **Không** phải 077 view-token pairing | SPEC 084 |
 
 | **Observability** | Khả năng quan sát hệ thống: log, trace, metrics | SPEC 008 |
 
@@ -42,4 +45,4 @@
 
 | **Hardening** | Cứng hóa: secret scan, semgrep, E2E, runbook | SPEC 013 |
 
-*30+ thuật ngữ, mở rộng khi SPEC mới bổ sung.*
+*33+ thuật ngữ, mở rộng khi SPEC mới bổ sung.*
