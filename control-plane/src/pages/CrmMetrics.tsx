@@ -23,7 +23,7 @@ function fmt(n: number | undefined, locale: string): string {
   return n.toLocaleString(locale === "en" ? "en-US" : "vi-VN");
 }
 
-export function CrmMetricsPage() {
+export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
   const { t, locale } = useI18n();
   const [org, setOrg] = useState(crmOrgId);
   const [online, setOnline] = useState<boolean | null>(null);
@@ -83,18 +83,8 @@ export function CrmMetricsPage() {
       ]
     : [];
 
-  return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="gauge"
-        title={t("crm.title")}
-        description={t("crm.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+  const body = (
+    <>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Badge tone={online ? "positive" : online === false ? "critical" : "neutral"}>
           {online == null ? t("crm.checking") : online ? t("crm.online") : t("crm.offline")}
@@ -142,6 +132,42 @@ export function CrmMetricsPage() {
         {advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
         </TableScroll>
       </Card>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <Card data-overview-crm="">
+        <CardHeader
+          icon="gauge"
+          title={t("crm.title")}
+          meta={
+            <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading}>
+              {t("common.refresh")}
+            </Button>
+          }
+        />
+        <div style={{ padding: "12px 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 12, color: "var(--text-3)", margin: 0 }}>{t("crm.desc")}</p>
+          {body}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <SectionHeader
+        icon="gauge"
+        title={t("crm.title")}
+        description={t("crm.desc")}
+        actions={
+          <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading}>
+            {t("common.refresh")}
+          </Button>
+        }
+      />
+      {body}
     </div>
   );
 }
