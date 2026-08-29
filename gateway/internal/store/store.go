@@ -419,6 +419,15 @@ type StoreIface interface {
 	PutEvolutionGuardrails(agentID string, g EvolutionGuardrails) error
 	PutSecret(SecretRow) error
 	GetSecret(name string) (*SecretRow, error)
+	DeleteSecret(name string) error
+	PutChannelConfig(ChannelConfig) error
+	GetChannelConfig(name string) (*ChannelConfig, error)
+	ListChannelConfigs() []*ChannelConfig
+	CreateChannelPairing(ChannelPairing) (*ChannelPairing, error)
+	GetChannelPairing(id string) (*ChannelPairing, error)
+	ListChannelPairings() []*ChannelPairing
+	UpdateChannelPairing(ChannelPairing) (*ChannelPairing, error)
+	CountPendingChannelPairings(channel, sender string, now time.Time) int
 	CreateCronJob(CronJob) (*CronJob, error)
 	ListCronJobs() []*CronJob
 	GetCronJob(string) (*CronJob, error)
@@ -477,9 +486,11 @@ type Store struct {
 	llmProviders map[string]*LLMProvider
 	webhooks     map[string]*Webhook
 	webhookJobs  map[string]*WebhookJob
-	kgEntities   map[string]*KGEntity
-	kgRelations  map[string]*KGRelation
-	seq          int64
+	kgEntities     map[string]*KGEntity
+	kgRelations    map[string]*KGRelation
+	channelConfig  map[string]*ChannelConfig
+	channelPairing map[string]*ChannelPairing
+	seq            int64
 }
 
 var _ StoreIface = (*Store)(nil)
@@ -523,8 +534,10 @@ func New() *Store {
 		llmProviders: make(map[string]*LLMProvider),
 		webhooks:     make(map[string]*Webhook),
 		webhookJobs:  make(map[string]*WebhookJob),
-		kgEntities:   make(map[string]*KGEntity),
-		kgRelations:  make(map[string]*KGRelation),
+		kgEntities:     make(map[string]*KGEntity),
+		kgRelations:    make(map[string]*KGRelation),
+		channelConfig:  make(map[string]*ChannelConfig),
+		channelPairing: make(map[string]*ChannelPairing),
 	}
 }
 

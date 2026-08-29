@@ -267,6 +267,27 @@ func (s *SQLiteStore) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_to ON kg_relations(to_id)`,
+		`CREATE TABLE IF NOT EXISTS channel_config (
+			name TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			agent_id TEXT NOT NULL DEFAULT '',
+			dm_policy TEXT NOT NULL DEFAULT '',
+			group_policy TEXT NOT NULL DEFAULT '',
+			require_mention INTEGER NOT NULL DEFAULT 0,
+			allow_from TEXT NOT NULL DEFAULT '[]',
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS channel_pairing (
+			id TEXT PRIMARY KEY,
+			channel TEXT NOT NULL,
+			sender_id TEXT NOT NULL,
+			code_hash TEXT NOT NULL,
+			status TEXT NOT NULL,
+			expires_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			approved_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_channel_pairing_sender ON channel_pairing(channel, sender_id, status)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
