@@ -80,7 +80,10 @@ Environment:
   GOSO_ROUTER9_BASE_URL    Construct named provider router9 when set (key optional)
   GOSO_LLM_PROVIDER        Force Preferred() name when that provider exists
   GOSO_WEB_SEARCH          ddg or 1 = DuckDuckGo Instant Answer for builtin web_search (empty = not_configured)
-  GOSO_MEDIA / GOSO_MEDIA_* 1 = media stubs may run only with an injected test double (never a paid API)
+  GOSO_SANDBOX_IMAGE       docker image for builtin sandbox; also needs docker on PATH (empty = not_configured)
+  GOSO_BROWSER_BIN         existing Chrome/Chromium file (or CHROME_PATH); empty = browser not_configured
+  GOSO_FFMPEG              existing ffmpeg file for builtin media (or PATH ffmpeg + GOSO_MEDIA=1)
+  GOSO_MEDIA / GOSO_MEDIA_* 1 = PATH ffmpeg for media, and image_gen/tts only with an injected test double (never a paid API)
   GOSO_SKILLS_DIR          One-level SKILL.md folders for use_skill / skill_search / POST-DELETE /api/skills; empty = fail-closed
   GOSO_CONTEXT_DIR         Direct children SOUL.md IDENTITY.md AGENTS.md (optional USER.md); empty = no inject
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
@@ -105,7 +108,7 @@ Environment:
   Pairing                  Admin POST /api/pairing → one-time code (10 min); POST /api/pairing/exchange → view grant
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
   GOSO_INJECTION           log or block prompt-injection matches on /api/chat (production default block)
-  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, and web_fetch
+  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, web_fetch, and browser
   GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = filesystem tools fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
   GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). No Grafana Cloud keys.

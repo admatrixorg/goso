@@ -17,6 +17,11 @@ import (
 func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 	t.Setenv("GOSO_WEB_SEARCH", "")
 	t.Setenv("GOSO_WORKSPACE", "")
+	t.Setenv("GOSO_SANDBOX_IMAGE", "")
+	t.Setenv("GOSO_BROWSER_BIN", "")
+	t.Setenv("CHROME_PATH", "")
+	t.Setenv("GOSO_FFMPEG", "")
+	t.Setenv("GOSO_MEDIA", "")
 	st := store.New()
 	h := NewRouter(Options{Store: st, Version: "0.1.0"})
 
