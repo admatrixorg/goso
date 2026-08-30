@@ -36,9 +36,12 @@ Live goso exposed three groups from `control-plane/src/App.tsx`: TỔNG QUAN (Ov
 
 - [x] Before state opened at `:3000`; three group headings observed.
 - [x] Live Dewee opened at `:18791`; seven group headings and 32 routes observed.
-- [ ] After state opened at `:3000` after merge/restart.
-- [ ] Vietnamese and English group labels visually checked.
-- [ ] Capability aliases target the intended Functions sections.
-- [ ] Typecheck/tests/agpl gate pass.
+- [x] After state hard-refreshed at `:3000` after merge `344ae35347354479814652fa0e6512614effdde5` and a Vite-only restart; exactly seven group headings observed.
+- [x] Vietnamese and English group labels visually checked in the live sidebar.
+- [x] Skills navigation opened Functions, marked Skills active, and moved the scroll container toward `functions-skills`; the section was visible. The same code path targets Tools, MCP, and Cron by stable section id.
+- [x] `npm test`: 169/169 pass; `npm run build`: pass; TypeScript: pass.
+- [x] Clean-room gates: sibling `agpl-check.sh` with `GOSO_ROOT=$PWD` exit 0; repo-local `scripts/agpl-check-docs.sh` exit 0.
+
+Verdict: **PASS**. The live operator navigation now follows the locked seven-group journey in both locales. Live gateway/CRM degradation remained visible and was not misrepresented as vendor success.
 
 No credentials or secret values are included in this record.
