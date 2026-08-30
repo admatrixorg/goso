@@ -10,9 +10,9 @@ Add staged export/import for selected teams, agents, skills, and MCP metadata wi
 
 ## AC
 
-- [ ] Live nav tab + page. Staged export/import, loading/empty/error/progress.
-- [ ] Manifest preview, schema/version validation, conflict strategy, dry run, rollback/reporting. Secrets excluded by default; re-enter credentials after import. GET/archive never returns tokens.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/116-import-export.md`.
+- [x] Live nav tab + page. Staged export/import, loading/empty/error/progress.
+- [x] Manifest preview, schema/version validation, conflict strategy, dry run, rollback/reporting. Secrets excluded by default; re-enter credentials after import. GET/archive never returns tokens.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/116-import-export.md`.
 
 ## Out of scope
 
