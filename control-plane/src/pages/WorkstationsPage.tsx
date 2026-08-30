@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { api, type Agent } from "../api/client";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { workstationsApi, type Workstation, type WorkstationTest } from "../api/workstations";
 import {
   asPublic,
   asPublicTest,
   formatWhen,
-  identityError,
   publicHasSecrets,
+  testOutcome,
   writeBody,
   wsConfirmMatch,
+  wsFormError,
   wsLabel,
 } from "../api/workstations-ops";
 import { useI18n } from "../i18n";
@@ -16,18 +18,23 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type ActionKind = "disconnect" | "delete";
 const emptyForm = { display: "", backend: "ssh", host: "", port: "22", user: "", identity_ref: "", agent_id: "" };
 
 export function WorkstationsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState<Workstation[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsErr, setAgentsErr] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [selected, setSelected] = useState("");
@@ -38,33 +45,47 @@ export function WorkstationsPage() {
   const [confirm, setConfirm] = useState<{ kind: ActionKind; row: Workstation } | null>(null);
   const [typed, setTyped] = useState("");
   const na = t("ws.na");
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: rows.length,
+    keepStale: loaded && rows.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const formVisible = !blocked && showForm;
+  const identErr = wsFormError(form);
+  const matched = confirm ? wsConfirmMatch(typed, confirm.row) : false;
+  const metaN = listMetaCount(state.kind, rows.length);
+  const current = rows.find((r) => r.id === selected) || null;
+  const outcome = testOutcome(testView);
 
   async function load() {
     setLoading(true);
-    try {
-      const [j, ag] = await Promise.all([
-        workstationsApi.list(),
-        api.listAgents().catch(() => ({ agents: [] as Agent[] })),
-      ]);
-      const next = asPublic(j.workstations);
+    const [wsRes, agRes] = await Promise.allSettled([workstationsApi.list(), api.listAgents()]);
+    if (wsRes.status === "fulfilled") {
+      const next = asPublic(wsRes.value.workstations);
       setRows(next);
-      setAgents(ag.agents || []);
-      const leak = next.some((row) => publicHasSecrets(row)) || (j.workstations || []).some((row) => publicHasSecrets(row));
-      setErr(leak ? t("ws.leak") : "");
-    } catch (e) {
-      setErr(formatPublicError(e));
-    } finally {
-      setLoading(false);
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      const leak = next.some((row) => publicHasSecrets(row)) || (wsRes.value.workstations || []).some((row) => publicHasSecrets(row));
+      setActionErr(leak ? t("ws.leak") : "");
+      setErr(null);
+    } else {
+      setErr(wsRes.reason);
     }
+    if (agRes.status === "fulfilled") {
+      setAgents(agRes.value.agents || []);
+      setAgentsErr(null);
+    } else {
+      setAgentsErr(agRes.reason);
+    }
+    setLoading(false);
   }
 
   useEffect(() => {
     void load();
   }, []);
-
-  const current = rows.find((r) => r.id === selected) || null;
-  const identErr = identityError(form.identity_ref);
-  const matched = confirm ? wsConfirmMatch(typed, confirm.row) : false;
 
   function healthTone(h: string): "neutral" | "accent" | "positive" | "warning" | "critical" {
     if (h === "ok") return "positive";
@@ -89,6 +110,7 @@ export function WorkstationsPage() {
   }
 
   function openCreate() {
+    if (blocked) return;
     setSelected("");
     setEditing(false);
     setShowForm(true);
@@ -96,10 +118,11 @@ export function WorkstationsPage() {
     setTestView(null);
     setConfirm(null);
     setOk("");
-    setErr("");
+    setActionErr("");
   }
 
   function pick(row: Workstation) {
+    if (blocked) return;
     setSelected(row.id);
     setEditing(true);
     setShowForm(true);
@@ -115,19 +138,21 @@ export function WorkstationsPage() {
     setTestView(null);
     setConfirm(null);
     setOk("");
-    setErr("");
+    setActionErr("");
   }
 
   function openConfirm(kind: ActionKind, row: Workstation) {
+    if (blocked) return;
     setConfirm({ kind, row });
     setTyped("");
     setOk("");
-    setErr("");
+    setActionErr("");
   }
 
   async function save() {
+    if (blocked) return;
     if (identErr) {
-      setErr(t(identErr));
+      setActionErr(t(identErr));
       return;
     }
     setBusy("save");
@@ -142,40 +167,41 @@ export function WorkstationsPage() {
         setEditing(true);
         setOk(t("ws.createOk"));
       }
-      setErr("");
+      setActionErr("");
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function runTest(id: string) {
+    if (blocked) return;
     setBusy("test:" + id);
     try {
       const raw = await workstationsApi.test(id);
       const next = asPublicTest(raw);
       if (!next) {
-        setErr(t("ws.leak"));
+        setActionErr(t("ws.leak"));
         setTestView(null);
         return;
       }
       setTestView(next);
       setOk(next.ok ? t("ws.testOk") : t("ws.testFail"));
-      setErr("");
+      setActionErr("");
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function submitConfirm() {
-    if (!confirm) return;
+    if (!confirm || blocked) return;
     if (!wsConfirmMatch(typed, confirm.row)) {
-      setErr(t("ws.mismatch"));
+      setActionErr(t("ws.mismatch"));
       return;
     }
     const name = typed.trim();
@@ -185,7 +211,7 @@ export function WorkstationsPage() {
       if (kind === "disconnect") await workstationsApi.disconnect(confirm.row.id, name);
       else await workstationsApi.remove(confirm.row.id, name);
       setOk(kind === "disconnect" ? t("ws.disconnectOk") : t("ws.deleteOk"));
-      setErr("");
+      setActionErr("");
       setConfirm(null);
       setTyped("");
       if (kind === "delete" && selected === confirm.row.id) {
@@ -197,7 +223,7 @@ export function WorkstationsPage() {
       setTestView(null);
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -206,36 +232,38 @@ export function WorkstationsPage() {
   const fieldStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12.5, color: "var(--text-2)" };
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="cloud"
-        title={t("ws.title")}
-        description={t("ws.desc")}
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button icon="plus" onClick={openCreate} disabled={loading || Boolean(busy)}>
-              {t("ws.add")}
-            </Button>
-            <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
-              {t("common.refresh")}
-            </Button>
-          </div>
-        }
-      />
+    <PageChrome
+      icon="cloud"
+      title={t("ws.title")}
+      description={t("ws.desc")}
+      primary={
+        <Button icon="plus" variant="primary" onClick={openCreate} disabled={blocked || loading || Boolean(busy)}>
+          {t("ws.add")}
+        </Button>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+    >
       <Card>
         <CardHeader icon="lock" title={t("ws.how")} />
         <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>
           {t("ws.howBody")}
         </p>
+        <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>
+          {t("ws.field.keyNote")}
+        </p>
       </Card>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? (
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {ok && !actionErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
       ) : null}
-      {confirm ? (
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="lock" title={confirm.kind === "disconnect" ? t("ws.confirmDisconnectTitle") : t("ws.confirmDeleteTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -255,7 +283,12 @@ export function WorkstationsPage() {
               spellCheck={false}
             />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button variant="accent" disabled={!matched || Boolean(busy)} onClick={() => void submitConfirm()}>
+              <Button
+                variant="primary"
+                disabled={!matched || Boolean(busy)}
+                onClick={() => void submitConfirm()}
+                style={{ background: "var(--red)", borderColor: "transparent" }}
+              >
                 {confirm.kind === "disconnect" ? t("ws.confirmDisconnect") : t("ws.confirmDelete")}
               </Button>
               <Button
@@ -272,13 +305,13 @@ export function WorkstationsPage() {
           </div>
         </Card>
       ) : null}
-      {showForm ? (
+      {formVisible ? (
         <Card>
           <CardHeader icon="build" title={editing ? t("ws.edit") : t("ws.create")} />
           <div style={{ padding: "0 16px 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <label style={fieldStyle}>
               {t("ws.field.display")}
-              <input className="z-field" value={form.display} onChange={(e) => setForm((f) => ({ ...f, display: e.target.value }))} />
+              <input className="z-field" value={form.display} onChange={(e) => setForm((f) => ({ ...f, display: e.target.value }))} autoComplete="off" />
             </label>
             <label style={fieldStyle}>
               {t("ws.field.backend")}
@@ -333,8 +366,18 @@ export function WorkstationsPage() {
               </select>
             </label>
           </div>
+          {identErr ? (
+            <p role="status" style={{ margin: 0, padding: "0 16px 8px", fontSize: 12.5, color: "var(--orange)" }}>
+              {t(identErr)}
+            </p>
+          ) : (
+            <p style={{ margin: 0, padding: "0 16px 8px", fontSize: 12.5, color: "var(--text-3)" }}>{t("ws.testValidation")}</p>
+          )}
+          {agentsErr ? (
+            <p style={{ margin: 0, padding: "0 16px 12px", fontSize: 12.5, color: "var(--text-3)" }}>{t("ws.agentsUnavailable")}</p>
+          ) : null}
           <div style={{ padding: "0 16px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button variant="accent" disabled={Boolean(busy) || Boolean(identErr)} onClick={() => void save()}>
+            <Button variant="accent" disabled={Boolean(busy)} onClick={() => void save()}>
               {editing ? t("common.save") : t("common.create")}
             </Button>
             {editing && selected ? (
@@ -355,15 +398,16 @@ export function WorkstationsPage() {
           </div>
         </Card>
       ) : null}
-      {testView ? (
+      {testView && !blocked ? (
         <Card>
-          <CardHeader icon="pulse" title={t("ws.testResult")} />
-          <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-2)" }}>
+          <CardHeader icon="pulse" title={t("ws.testResult")} meta={outcome === "valid" ? t("ws.testOk") : t("ws.testFail")} />
+          <p style={{ margin: 0, padding: "0 16px 8px", fontSize: 12.5, color: "var(--text-2)" }}>
             {testView.summary} · {testView.backend} {testView.host}:{testView.port} · {testView.identity_set ? t("ws.identitySet") : t("ws.identityUnset")}
           </p>
+          <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)" }}>{t("ws.testValidation")}</p>
         </Card>
       ) : null}
-      {current && !showForm ? (
+      {current && !showForm && state.showItems ? (
         <Card>
           <CardHeader icon="cloud" title={wsLabel(current)} meta={healthLabel(current.health)} />
           <div style={{ padding: "0 16px 16px", display: "grid", gap: 6, fontSize: 12.5, color: "var(--text-2)" }}>
@@ -384,7 +428,7 @@ export function WorkstationsPage() {
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="cloud" title={t("ws.list")} meta={t("ws.list.meta", { n: rows.length })} />
+        <CardHeader icon="cloud" title={t("ws.list")} meta={metaN == null ? "—" : t("ws.list.meta", { n: metaN })} />
         <TableScroll>
           <div
             style={{
@@ -404,65 +448,68 @@ export function WorkstationsPage() {
             <span style={{ flex: 1 }}>{t("ws.col.health")}</span>
             <span style={{ flex: 1.8 }} />
           </div>
-          {!loading && rows.length === 0 ? <EmptyState>{t("ws.empty")}</EmptyState> : null}
-          {rows.map((row) => {
-            const rowBusy = busy.endsWith(":" + row.id);
-            return (
-              <div
-                key={row.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "11px 16px",
-                  fontSize: 12.5,
-                  borderBottom: "1px solid var(--border-soft)",
-                  gap: 8,
-                  background: selected === row.id ? "var(--bg-2)" : undefined,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => pick(row)}
-                  style={{
-                    flex: 1.4,
-                    fontWeight: 600,
-                    textAlign: "left",
-                    background: "none",
-                    border: 0,
-                    color: "inherit",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  {wsLabel(row)}
-                </button>
-                <span style={{ flex: 1, color: "var(--text-2)" }}>{row.backend || na}</span>
-                <span style={{ flex: 1.6, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                  {row.host}:{row.port}
-                </span>
-                <span style={{ flex: 1.2, color: "var(--text-2)" }}>{agentLabel(row.agent_id)}</span>
-                <span style={{ flex: 1 }}>
-                  <Badge tone={healthTone(row.health)}>{healthLabel(row.health)}</Badge>
-                </span>
-                <span style={{ flex: 1.8, display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  <Button variant="quiet" disabled={rowBusy} onClick={() => pick(row)}>
-                    {t("ws.edit")}
-                  </Button>
-                  <Button variant="quiet" disabled={rowBusy} onClick={() => void runTest(row.id)}>
-                    {t("ws.test")}
-                  </Button>
-                  <Button variant="quiet" disabled={rowBusy || row.health === "disconnected"} onClick={() => openConfirm("disconnect", row)}>
-                    {t("common.disconnect")}
-                  </Button>
-                  <Button variant="quiet" disabled={rowBusy} onClick={() => openConfirm("delete", row)}>
-                    {t("common.delete")}
-                  </Button>
-                </span>
-              </div>
-            );
-          })}
+          {state.showEmpty ? <EmptyState>{t("ws.empty")}</EmptyState> : null}
+          {state.showItems
+            ? rows.map((row) => {
+                const rowBusy = busy.endsWith(":" + row.id);
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "11px 16px",
+                      fontSize: 12.5,
+                      borderBottom: "1px solid var(--border-soft)",
+                      gap: 8,
+                      background: selected === row.id ? "var(--bg-2)" : undefined,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => pick(row)}
+                      disabled={blocked}
+                      style={{
+                        flex: 1.4,
+                        fontWeight: 600,
+                        textAlign: "left",
+                        background: "none",
+                        border: 0,
+                        color: "inherit",
+                        cursor: blocked ? "default" : "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {wsLabel(row)}
+                    </button>
+                    <span style={{ flex: 1, color: "var(--text-2)" }}>{row.backend || na}</span>
+                    <span style={{ flex: 1.6, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                      {row.host}:{row.port}
+                    </span>
+                    <span style={{ flex: 1.2, color: "var(--text-2)" }}>{agentLabel(row.agent_id)}</span>
+                    <span style={{ flex: 1 }}>
+                      <Badge tone={healthTone(row.health)}>{healthLabel(row.health)}</Badge>
+                    </span>
+                    <span style={{ flex: 1.8, display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <Button variant="quiet" disabled={blocked || rowBusy} onClick={() => pick(row)}>
+                        {t("ws.edit")}
+                      </Button>
+                      <Button variant="quiet" disabled={blocked || rowBusy} onClick={() => void runTest(row.id)}>
+                        {t("ws.test")}
+                      </Button>
+                      <Button variant="quiet" disabled={blocked || rowBusy || row.health === "disconnected"} onClick={() => openConfirm("disconnect", row)}>
+                        {t("common.disconnect")}
+                      </Button>
+                      <Button variant="quiet" disabled={blocked || rowBusy} onClick={() => openConfirm("delete", row)}>
+                        {t("common.delete")}
+                      </Button>
+                    </span>
+                  </div>
+                );
+              })
+            : null}
         </TableScroll>
       </Card>
-    </div>
+    </PageChrome>
   );
 }
