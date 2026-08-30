@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation } from "./page-state.ts";
 import {
   agentLabel,
   EVOLUTION_TEXT_CAP,
@@ -10,6 +11,7 @@ import {
   lockedFields,
   namedConfirmTarget,
   mergeAgentLinks,
+  resolveAgentLinkLoad,
   filterLinks,
   safeEvolutionText,
   teamDisplayName,
@@ -82,6 +84,78 @@ test("mergeAgentLinks dedupes per-agent lists and drops blanks", () => {
   assert.equal(merged.length, 2);
   assert.equal(merged[0]?.to_agent_id, "b");
   assert.equal(merged[1]?.to_agent_id, "c");
+});
+
+test("failed agent inventory does not become a successful empty link list", () => {
+  const inventoryErr = new Error("non-JSON response");
+  const resolved = resolveAgentLinkLoad({
+    agentInventoryError: inventoryErr,
+    agentInventoryLoaded: false,
+    groups: [],
+  });
+  assert.equal(resolved.loaded, false);
+  assert.equal(resolved.error, inventoryErr);
+  assert.equal(resolved.links.length, 0);
+  const page = classifyPageState({
+    loading: false,
+    loaded: resolved.loaded,
+    error: resolved.error,
+    itemCount: resolved.links.length,
+  });
+  assert.equal(page.kind, "error");
+  assert.equal(page.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(page.kind), true);
+});
+
+test("permission on agent inventory blocks link create and is not empty", () => {
+  const resolved = resolveAgentLinkLoad({
+    agentInventoryError: new Error('401 {"error":"unauthorized"}'),
+    agentInventoryLoaded: false,
+    groups: [],
+  });
+  const page = classifyPageState({
+    loading: false,
+    loaded: resolved.loaded,
+    error: resolved.error,
+    itemCount: resolved.links.length,
+  });
+  assert.equal(page.kind, "permission");
+  assert.equal(page.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(page.kind), true);
+});
+
+test("successful empty agent inventory is true-empty links", () => {
+  const resolved = resolveAgentLinkLoad({
+    agentInventoryError: null,
+    agentInventoryLoaded: true,
+    groups: [],
+  });
+  assert.equal(resolved.loaded, true);
+  assert.equal(resolved.error, null);
+  const page = classifyPageState({
+    loading: false,
+    loaded: resolved.loaded,
+    error: resolved.error,
+    itemCount: resolved.links.length,
+  });
+  assert.equal(page.kind, "empty");
+  assert.equal(page.showEmpty, true);
+  assert.equal(inventoryBlocksMutation(page.kind), false);
+});
+
+test("partial link fetch failure keeps the upstream error", () => {
+  const boom = new Error("502 upstream");
+  const resolved = resolveAgentLinkLoad({
+    agentInventoryError: null,
+    agentInventoryLoaded: true,
+    groups: [
+      { status: "fulfilled", value: [{ from_agent_id: "a", to_agent_id: "b" }] },
+      { status: "rejected", reason: boom },
+    ],
+  });
+  assert.equal(resolved.loaded, true);
+  assert.equal(resolved.error, boom);
+  assert.equal(resolved.links.length, 1);
 });
 
 test("filterLinks matches source/target labels", () => {

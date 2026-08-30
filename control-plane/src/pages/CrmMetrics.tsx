@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   asCrmError,
+  crmAdvisorChrome,
   crmBase,
   crmHealth,
   crmOrgId,
@@ -33,6 +34,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
   const [advice, setAdvice] = useState<CrmAdvice[]>([]);
   const [err, setErr] = useState("");
   const [perm, setPerm] = useState(false);
+  const [advisorLoaded, setAdvisorLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function load() {
@@ -44,6 +46,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
       setAdvice([]);
       setErr("");
       setPerm(false);
+      setAdvisorLoaded(false);
       setLoading(false);
       return;
     }
@@ -57,9 +60,12 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
       denied = denied || isPermissionError(m.reason);
       parts.push(`metrics: ${asCrmError(m.reason)}`);
     }
-    if (a.status === "fulfilled") setAdvice(a.value);
-    else {
+    if (a.status === "fulfilled") {
+      setAdvice(a.value);
+      setAdvisorLoaded(true);
+    } else {
       setAdvice([]);
+      setAdvisorLoaded(false);
       denied = denied || isPermissionError(a.reason);
       parts.push(`advisor: ${asCrmError(a.reason)}`);
     }
@@ -90,6 +96,13 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
         { label: t("crm.revenue"), value: fmt(metrics.revenueMonth, locale), icon: "trend" as const, tint: "var(--green)", tintBg: "var(--green-bg)" },
       ]
     : [];
+
+  const advisor = crmAdvisorChrome({
+    online,
+    permission: perm,
+    advisorLoaded,
+    adviceCount: advice.length,
+  });
 
   const body = (
     <>
@@ -124,7 +137,8 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
         </p>
       ) : null}
       <Card>
-        <CardHeader icon="eye" title={t("crm.advisor")} meta={perm ? "—" : t("crm.adviceMeta", { n: advice.length })} />
+        <CardHeader icon="eye" title={t("crm.advisor")} meta={advisor.metaDash ? "—" : t("crm.adviceMeta", { n: advice.length })} />
+        {advisor.metaDash ? null : (
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.2 }}>{t("crm.col.kind")}</span>
@@ -140,8 +154,9 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
             <span style={{ flex: 0.8, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{a.confidence}</span>
           </div>
         ))}
-        {!perm && !err && advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
+        {advisor.showEmpty ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
         </TableScroll>
+        )}
       </Card>
     </>
   );

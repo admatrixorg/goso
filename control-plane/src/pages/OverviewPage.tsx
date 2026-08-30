@@ -169,9 +169,6 @@ export function OverviewPage() {
           {t("overview.degraded")}
         </p>
       ) : null}
-      {kind === "unauthorized" ? (
-        <StatusLine kind="error">{t("overview.unauthorized")}</StatusLine>
-      ) : null}
       {snap?.errors.length && kind !== "unauthorized" ? <StatusLine kind="error">{snap.errors.join(" · ")}</StatusLine> : null}
 
       {snap || !loading ? (

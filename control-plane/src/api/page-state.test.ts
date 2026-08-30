@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyPageState, formatStaleAt, isPermissionError } from "./page-state.ts";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, isPermissionError } from "./page-state.ts";
 
 test("loading first fetch is loading, never empty", () => {
   const s = classifyPageState({ loading: true, loaded: false, error: null, itemCount: 0 });
@@ -84,4 +84,13 @@ test("formatStaleAt returns empty for missing timestamps", () => {
   assert.equal(formatStaleAt(""), "");
   assert.equal(formatStaleAt(undefined), "");
   assert.match(formatStaleAt("2026-08-30T03:04:05Z", "en"), /2026/);
+});
+
+test("inventoryBlocksMutation only for error and permission", () => {
+  assert.equal(inventoryBlocksMutation("error"), true);
+  assert.equal(inventoryBlocksMutation("permission"), true);
+  assert.equal(inventoryBlocksMutation("loading"), false);
+  assert.equal(inventoryBlocksMutation("empty"), false);
+  assert.equal(inventoryBlocksMutation("ready"), false);
+  assert.equal(inventoryBlocksMutation("stale"), false);
 });

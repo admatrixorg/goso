@@ -20,6 +20,11 @@ export function isPermissionError(err: unknown): boolean {
   return isUnauthorizedStatus(errorStatus(err));
 }
 
+/** Create/mutate entry points stay closed while required inventory is blocking. */
+export function inventoryBlocksMutation(kind: PageLoadKind): boolean {
+  return kind === "error" || kind === "permission";
+}
+
 /**
  * Classify a list/page load. Empty is only true after a successful load with
  * zero items and no error. Permission/error never claim emptiness. Stale keeps
