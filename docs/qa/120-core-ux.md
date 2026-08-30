@@ -54,3 +54,26 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Heatmap except shared chrome compatibility (unchanged tab). Merge and Vite `:3000` restart belong to Codex CTO. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Codex CTO post-merge live QC
+
+Merge: `33e7c78` (`Merge SPEC 120 CORE operator UX`, `--no-ff`)
+
+The CTO independently reran `npm test` (186/186), `npm run typecheck`, `npm run build`, the source AGPL check, and the QA-doc AGPL check; all passed. Only Vite `:3000` was restarted, using the run-specific proxy to gateway `:18080`; CRM `:8082`, sidecar `:8091`, and Dewee `:18791` were not restarted or killed. Live QC then hard-refreshed goso and opened Overview, Chat, Agents, Teams, and the Agent Links peer view, followed by a fresh behavior comparison with live Dewee Teams and Agent Links.
+
+### Acceptance verdict
+
+| Acceptance area | Verdict | Live evidence |
+| --- | --- | --- |
+| Stable first-class CORE chrome | PASS | Overview, Agents, Teams, and the Teams/Links peer views have clear titles, refresh, filters, and primary-action locations; Chat preserves the session-list/chat split. |
+| Gateway/auth consistency | PASS with minor defect | Chrome and Overview both reported `unauthorized`; all unsupported overview figures were `No figure`/unavailable. Overview rendered the same authorization message twice. |
+| Loading/empty/error/permission/stale exclusivity | FAIL | Agents and Teams correctly avoided a zero-count/empty claim during the live `non-JSON response`, but Agent Links converted the failed agent inventory into a successful-looking `No agent links yet` state. |
+| Mutation gating during blocking failures | FAIL | `Create agent`, `Create team`, and `Create Link` remained enabled during blocking live errors. Chat's `New Chat` was correctly disabled. |
+| Honest unsupported behavior | PASS | Agent Transfer, Overview usage/cost/clients/runtimes/recent requests, Chat attachment/voice, and Agent Link status/description remain explicitly unavailable rather than fake-live. |
+| CRM extra state provenance | FAIL | With goso-crm offline, the block correctly said metrics were unavailable but still displayed `0 tips` and `No advice yet`, a false-empty claim. |
+| Destructive/write-only contracts | PASS by code/test; live blocked | Named/typed confirmations and credential non-hydration tests pass. No destructive action or secret flow was exercised against unavailable live APIs. |
+| Vietnamese/English and gates | PASS | i18n typecheck/build and both AGPL checks pass. |
+
+### CTO verdict: FAIL — follow-up required
+
+The follow-up must preserve the upstream agent/team dependency error in Agent Links, prevent `Promise.all([])` from becoming a true-empty result after the agent inventory failed, and disable or hide all create/mutation entry points while their required inventory is in blocking error or permission state. It must also make the offline/permission/error CRM advisor meta `—` (or hide the empty table) instead of `0 tips`/`No advice yet`, and remove the duplicate Overview authorization alert. After the fix merges, the CTO must repeat the same hard-refresh/browser checks before SPEC 120 can close.
