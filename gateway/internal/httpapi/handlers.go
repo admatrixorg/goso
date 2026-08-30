@@ -22,6 +22,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
+	"github.com/mqglobal/goso/gateway/internal/impexp"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/node"
@@ -74,6 +75,8 @@ type Options struct {
 	APIKeys *apikey.Registry
 	// Packages is the runtime/package manager. Nil → pkgmgr.Default.
 	Packages *pkgmgr.Manager
+	// Portable is staged import/export. Nil → impexp.New(Store).
+	Portable *impexp.Service
 }
 
 func (o *Options) defaults() {
@@ -122,6 +125,9 @@ func (o *Options) defaults() {
 	if o.Packages == nil {
 		o.Packages = pkgmgr.Default()
 	}
+	if o.Portable == nil {
+		o.Portable = impexp.New(o.Store)
+	}
 }
 
 // Router builds the HTTP mux.
@@ -166,6 +172,7 @@ func NewRouter(opt Options) http.Handler {
 	registerAPIKeyRoutes(mux, opt)
 	registerPackageRoutes(mux, opt)
 	registerApprovalRoutes(mux, opt)
+	registerImportExportRoutes(mux, opt)
 	return mux
 }
 

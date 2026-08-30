@@ -11,6 +11,7 @@ import { TenantsPage } from "./pages/TenantsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { PackagesPage } from "./pages/PackagesPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { ImportExportPage } from "./pages/ImportExportPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { HomePage } from "./pages/HomePage";
 import { MeetingsPage } from "./pages/MeetingsPage";
@@ -67,6 +68,7 @@ export type Tab =
   | "apikeys"
   | "packages"
   | "approvals"
+  | "impexp"
   | "teams"
   | "vault"
   | "memory"
@@ -145,6 +147,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "apikeys", label: t("nav.apikeys"), ic: "lock" },
         { id: "packages", label: t("nav.packages"), ic: "build" },
         { id: "approvals", label: t("nav.approvals"), ic: "shield" },
+        { id: "impexp", label: t("nav.impexp"), ic: "download" },
         { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "channels", label: t("nav.channels"), ic: "device" },
         { id: "nodes", label: t("nav.nodes"), ic: "device" },
@@ -576,6 +579,7 @@ export default function App() {
           {tab === "apikeys" && <ApiKeysPage />}
           {tab === "packages" && <PackagesPage />}
           {tab === "approvals" && <ApprovalsPage />}
+          {tab === "impexp" && <ImportExportPage />}
           {tab === "settings" && <SettingsPage dark={dark} onToggleTheme={toggle} />}
         </div>
       </div>
