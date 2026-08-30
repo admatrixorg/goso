@@ -70,8 +70,55 @@ func TestEnvOwnedRefusesKeyPut(t *testing.T) {
 	if err != ErrEnvOwned {
 		t.Fatalf("want env overlay, got %v", err)
 	}
+	pub, err = s.Put(Write{Provider: ProviderOpenAI, Endpoint: "http://127.0.0.1:9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub.Endpoint != "" {
+		t.Fatalf("env key must ignore memory endpoint %+v", pub)
+	}
 	if _, err := s.Clear("tts"); err != ErrEnvOwned {
 		t.Fatalf("clear %v", err)
+	}
+}
+
+func TestEnvKeyIgnoresMemoryEndpoint(t *testing.T) {
+	clearTTSEnv(t)
+	var hit int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit++
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	s := New()
+	s.Client = srv.Client()
+	on := true
+	if _, err := s.Put(Write{Provider: ProviderOpenAI, Enabled: &on, APIKey: "sk-memKEY0001", Endpoint: srv.URL}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_TTS_API_KEY", "sk-envKEY0001")
+	res := s.Test()
+	if !res.OK || res.Kind != "local" {
+		t.Fatalf("env key must not probe memory endpoint %+v", res)
+	}
+	if hit != 0 {
+		t.Fatalf("probed %d", hit)
+	}
+}
+
+func TestEnabledEnvAlone(t *testing.T) {
+	clearTTSEnv(t)
+	t.Setenv("GOSO_TTS_ENABLED", "0")
+	s := New()
+	pub := s.Public()
+	if pub.Enabled || pub.Source != "env" {
+		t.Fatalf("enabled overlay %+v", pub)
+	}
+	t.Setenv("GOSO_TTS_ENABLED", "")
+	t.Setenv("GOSO_TTS_PROVIDER", "edge")
+	pub = s.Public()
+	if pub.Source != "env" || !pub.Configured {
+		t.Fatalf("provider overlay %+v", pub)
 	}
 }
 

@@ -183,6 +183,10 @@ func TestTTS_EnvOwnedConflict(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("put env %d %s", w.Code, w.Body.String())
 	}
+	w = ttsJSON(t, h, "PUT", "/api/tts", `{"provider":"openai","endpoint":"http://127.0.0.1:9"}`, "")
+	if w.Code != 200 || strings.Contains(w.Body.String(), "127.0.0.1:9") {
+		t.Fatalf("put endpoint ignored %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestTTS_ViewTokenGETOnly(t *testing.T) {

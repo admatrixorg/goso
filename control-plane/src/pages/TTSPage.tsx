@@ -295,7 +295,7 @@ export function TTSPage() {
                   className="z-field"
                   placeholder={t("tts.endpoint")}
                   value={form.endpoint}
-                  disabled={Boolean(busy)}
+                  disabled={envLocked || Boolean(busy)}
                   onChange={(e) => patch("endpoint", e.target.value)}
                 />
               ) : null}

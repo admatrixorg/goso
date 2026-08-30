@@ -119,7 +119,7 @@ Environment:
   Storage                  GET /api/storage list/preview/download; POST upload/delete. Jailed to GOSO_WORKSPACE; GET never returns credential values
   GOSO_DEV_MODE            1 = explicit passthrough when token is empty (default: refuse 401)
   GOSO_INJECTION           log or block prompt-injection matches on /api/chat (production default block)
-  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, web_fetch, and browser
+  GOSO_SSRF                1 = DNS-aware block of localhost/private IPs on connector, LLM HTTP, web_fetch, browser, and TTS test
   GOSO_WORKSPACE           Write jail; tools/vault cannot write outside. Empty = filesystem tools fail-closed
   GOSO_MASTER_KEY          32-byte hex AES-256-GCM key for secrets table (empty = refuse store)
   GOSO_OTEL_ENDPOINT       Optional OTLP HTTP JSON URL. Empty = no export (noop). Local Jaeger: docker compose --profile otel up -d jaeger then http://127.0.0.1:4318/v1/traces (compose-network http://jaeger:4318/v1/traces). No Grafana Cloud keys.

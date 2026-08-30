@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/mqglobal/goso/gateway/internal/security"
 )
 
 const (
@@ -176,7 +178,54 @@ func atoiEnv(name string) int {
 	return n
 }
 
-func (s *Service) merged() (mem, bool) {
+func envEnabledSet() bool {
+	return strings.TrimSpace(os.Getenv("GOSO_TTS_ENABLED")) != ""
+}
+
+func applyEnv(base mem, env mem) mem {
+	out := base
+	if env.provider != "" {
+		out.provider = env.provider
+	}
+	if envEnabledSet() {
+		out.enabled = env.enabled
+	}
+	if env.apiKey != "" {
+		out.apiKey = env.apiKey
+		// Env key never rides a memory endpoint.
+		out.endpoint = env.endpoint
+	} else if env.endpoint != "" {
+		out.endpoint = env.endpoint
+	}
+	if env.voice != "" {
+		out.voice = env.voice
+	}
+	if env.model != "" {
+		out.model = env.model
+	}
+	if env.language != "" {
+		out.language = env.language
+	}
+	if env.region != "" {
+		out.region = env.region
+	}
+	if env.autoApply != "" {
+		out.autoApply = env.autoApply
+	}
+	if env.maxChars > 0 {
+		out.maxChars = env.maxChars
+	}
+	if env.timeoutMS > 0 {
+		out.timeoutMS = env.timeoutMS
+	}
+	out.provider = NormalizeProvider(out.provider)
+	out.autoApply = NormalizeApply(out.autoApply)
+	out.maxChars = ClampMaxChars(out.maxChars)
+	out.timeoutMS = ClampTimeout(out.timeoutMS)
+	return out
+}
+
+func (s *Service) merged() (mem, bool, bool) {
 	env := envMem()
 	m := mem{provider: ProviderNone, enabled: true, autoApply: ApplyOff, maxChars: DefaultMaxChars, timeoutMS: DefaultTimeoutMS}
 	if s != nil {
@@ -187,57 +236,20 @@ func (s *Service) merged() (mem, bool) {
 			m = stored
 		}
 	}
-	envOwned := env.apiKey != ""
-	if env.provider != "" {
-		m.provider = env.provider
-	}
-	if env.set && strings.TrimSpace(os.Getenv("GOSO_TTS_ENABLED")) != "" {
-		m.enabled = env.enabled
-	}
-	if env.apiKey != "" {
-		m.apiKey = env.apiKey
-	}
-	if env.voice != "" {
-		m.voice = env.voice
-	}
-	if env.model != "" {
-		m.model = env.model
-	}
-	if env.language != "" {
-		m.language = env.language
-	}
-	if env.region != "" {
-		m.region = env.region
-	}
-	if env.endpoint != "" {
-		m.endpoint = env.endpoint
-	}
-	if env.autoApply != "" {
-		m.autoApply = env.autoApply
-	}
-	if env.maxChars > 0 {
-		m.maxChars = env.maxChars
-	}
-	if env.timeoutMS > 0 {
-		m.timeoutMS = env.timeoutMS
-	}
-	m.provider = NormalizeProvider(m.provider)
-	m.autoApply = NormalizeApply(m.autoApply)
-	m.maxChars = ClampMaxChars(m.maxChars)
-	m.timeoutMS = ClampTimeout(m.timeoutMS)
-	return m, envOwned
+	out := applyEnv(m, env)
+	return out, env.apiKey != "", env.set || envEnabledSet()
 }
 
 // Public returns non-secret TTS status.
 func (s *Service) Public() Public {
-	cfg, envOwned := s.merged()
-	return publicOf(cfg, envOwned)
+	cfg, envOwned, overlay := s.merged()
+	return publicOf(cfg, envOwned, overlay)
 }
 
-func publicOf(cfg mem, envOwned bool) Public {
+func publicOf(cfg mem, envOwned, overlay bool) Public {
 	keySet := cfg.apiKey != ""
 	src := "none"
-	if envOwned {
+	if overlay {
 		src = "env"
 	} else if cfg.set {
 		src = "memory"
@@ -342,7 +354,7 @@ func (s *Service) Put(in Write) (Public, error) {
 	if s == nil {
 		return Public{}, ErrNotConfigured
 	}
-	_, envOwned := s.merged()
+	_, envOwned, _ := s.merged()
 	key := strings.TrimSpace(in.APIKey)
 	if envOwned && key != "" {
 		return s.Public(), ErrEnvOwned
@@ -375,7 +387,11 @@ func (s *Service) Put(in Write) (Public, error) {
 	s.mem.model = strings.TrimSpace(in.Model)
 	s.mem.language = strings.TrimSpace(in.Language)
 	s.mem.region = strings.TrimSpace(in.Region)
-	s.mem.endpoint = strings.TrimSpace(in.Endpoint)
+	if envOwned {
+		s.mem.endpoint = ""
+	} else {
+		s.mem.endpoint = strings.TrimSpace(in.Endpoint)
+	}
 	if in.AutoApply != "" {
 		s.mem.autoApply = NormalizeApply(in.AutoApply)
 	}
@@ -386,51 +402,7 @@ func (s *Service) Put(in Write) (Public, error) {
 		s.mem.timeoutMS = ClampTimeout(in.TimeoutMS)
 	}
 	s.mem.set = true
-	cfg := s.mem
-	return publicOf(mergeLocked(cfg), envOwned), nil
-}
-
-func mergeLocked(stored mem) mem {
-	env := envMem()
-	out := stored
-	if env.provider != "" {
-		out.provider = NormalizeProvider(env.provider)
-	}
-	if env.apiKey != "" {
-		out.apiKey = env.apiKey
-	}
-	if env.voice != "" {
-		out.voice = env.voice
-	}
-	if env.model != "" {
-		out.model = env.model
-	}
-	if env.language != "" {
-		out.language = env.language
-	}
-	if env.region != "" {
-		out.region = env.region
-	}
-	if env.endpoint != "" {
-		out.endpoint = env.endpoint
-	}
-	if env.autoApply != "" {
-		out.autoApply = NormalizeApply(env.autoApply)
-	}
-	if env.maxChars > 0 {
-		out.maxChars = ClampMaxChars(env.maxChars)
-	}
-	if env.timeoutMS > 0 {
-		out.timeoutMS = ClampTimeout(env.timeoutMS)
-	}
-	if strings.TrimSpace(os.Getenv("GOSO_TTS_ENABLED")) != "" {
-		out.enabled = env.enabled
-	}
-	out.provider = NormalizeProvider(out.provider)
-	out.autoApply = NormalizeApply(out.autoApply)
-	out.maxChars = ClampMaxChars(out.maxChars)
-	out.timeoutMS = ClampTimeout(out.timeoutMS)
-	return out
+	return publicOf(applyEnv(s.mem, envMem()), envOwned, envMem().set || envEnabledSet()), nil
 }
 
 // ConfirmMatch accepts the current provider id or the literal "tts".
@@ -454,7 +426,7 @@ func (s *Service) Clear(confirm string) (Public, error) {
 	if !ConfirmMatch(confirm, pub.Provider) {
 		return pub, ErrConfirm
 	}
-	_, envOwned := s.merged()
+	_, envOwned, _ := s.merged()
 	if envOwned {
 		return pub, ErrEnvOwned
 	}
@@ -466,7 +438,7 @@ func (s *Service) Clear(confirm string) (Public, error) {
 
 // Test validates local config and optionally probes endpoint. Failures are redacted.
 func (s *Service) Test() TestResult {
-	cfg, _ := s.merged()
+	cfg, _, _ := s.merged()
 	start := time.Now()
 	out := TestResult{Provider: cfg.provider, Configured: isConfigured(cfg)}
 	if NormalizeProvider(cfg.provider) == ProviderNone {
@@ -502,6 +474,9 @@ func (s *Service) Test() TestResult {
 }
 
 func (s *Service) probe(cfg mem) error {
+	if err := security.CheckURL(cfg.endpoint); err != nil {
+		return errors.New("probe failed")
+	}
 	req, err := http.NewRequest(http.MethodGet, cfg.endpoint, nil)
 	if err != nil {
 		return errors.New("invalid endpoint")
@@ -516,13 +491,15 @@ func (s *Service) probe(cfg mem) error {
 			req.Header.Set("Authorization", "Bearer "+cfg.apiKey)
 		}
 	}
-	res, err := s.client(time.Duration(cfg.timeoutMS) * time.Millisecond).Do(req)
+	c := s.client(time.Duration(cfg.timeoutMS) * time.Millisecond)
+	security.GuardClient(c)
+	res, err := c.Do(req)
 	if err != nil {
 		return fmt.Errorf("probe failed")
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-	if res.StatusCode >= 400 {
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		msg := strings.TrimSpace(string(body))
 		if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
 			return errors.New("unauthorized")

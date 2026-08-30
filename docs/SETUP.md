@@ -92,7 +92,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080`
 | GOSO_ADMIN_TOKEN | (rỗng → 401) | Bearer `/api/*` và `/ws`. Passthrough chỉ khi `GOSO_DEV_MODE=1`. |
 | GOSO_VIEW_TOKEN | (rỗng) | Optional GET-only Bearer for `/healthz` `/api/agents` `/api/sessions`. POST `/api/chat` → 403. Admin `POST /api/pairing` issues a 10-minute one-time code that `POST /api/pairing/exchange` swaps once for this token (or a minted `gv_` grant if unset). |
 | GOSO_INJECTION | log | `log` (default) or `block`. Scan user chat for documented injection patterns; block → 400 on `/api/chat`. |
-| GOSO_SSRF | off | `1` blocks literal localhost/private IPs (DNS-aware) on connector HTTP, LLM HTTP, builtin `web_fetch`, and builtin `browser` `{url}`. Default off so local fake e2e / httptest still works. `web_fetch` has no extra env; SSRF is its only network policy. |
+| GOSO_SSRF | off | `1` blocks literal localhost/private IPs (DNS-aware) on connector HTTP, LLM HTTP, builtin `web_fetch`, builtin `browser` `{url}`, and TTS test probes. Default off so local fake e2e / httptest still works. `web_fetch` has no extra env; SSRF is its only network policy. |
 | GOSO_WORKSPACE | (rỗng) | Write jail. Tools/vault cannot write outside this directory. Empty = builtin filesystem tools (`read_file` `write_file` `list_files` `edit` `send_file` `search` `glob`) fail-closed (`not_configured`, no FS access). Cap read/edit 1MiB. `search` skips files over 1MiB. `send_file` returns metadata only. |
 | GOSO_MASTER_KEY | (rỗng) | 32-byte hex AES-256-GCM key for `secrets(name, nonce, ct)`. Empty → refuse persist; env provider keys still work. |
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
