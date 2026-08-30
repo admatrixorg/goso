@@ -20,9 +20,12 @@ export {
   boundNeighborhood,
   capRows,
   classifyDoc,
+  classifyVaultDocs,
+  classifyVaultHealth,
   filterVaultDocs,
   formatMtime,
   GRAPH_NODE_CAP,
+  inventoryOptionsFromDocs,
   isStaleHealth,
   LIST_CAP,
   normalizeGraph,
@@ -30,8 +33,11 @@ export {
   plainVaultBody,
   shortHash,
   uniqueField,
+  vaultFilteredEmpty,
+  vaultMutationsBlocked,
+  vaultPutIsOverwrite,
 } from "./vault-ops";
-export type { VaultClass, VaultGraphEdge, VaultGraphNode } from "./vault-ops";
+export type { VaultClass, VaultGraphEdge, VaultGraphNode, VaultHealthKind } from "./vault-ops";
 
 function asHits(j: unknown): VaultSearchHit[] {
   if (Array.isArray(j)) return j as VaultSearchHit[];

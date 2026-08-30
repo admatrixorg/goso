@@ -59,13 +59,17 @@ export {
   BODY_CAP,
   EDGE_CAP,
   NODE_CAP,
+  classifyKgView,
   formatWhen,
+  inferredLabel,
   isEmbeddingConfigured,
   isInferred,
+  kgBlocksFetch,
   kgSnippet,
+  kgViewPageKind,
   normalizeGraph,
   normalizeScope,
   plainKgBody,
   publicHasSecrets,
 } from "./kg-ops";
-export type { KgEdgeLite, KgGraphLite, KgIndexLite, KgNodeLite, KgScope } from "./kg-ops";
+export type { KgEdgeLite, KgGraphLite, KgIndexLite, KgNodeLite, KgScope, KgViewKind } from "./kg-ops";

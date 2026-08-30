@@ -3,11 +3,14 @@ import { api, type Agent } from "../api/client";
 import {
   EDGE_CAP,
   NODE_CAP,
+  classifyKgView,
   formatWhen,
+  inferredLabel,
   isEmbeddingConfigured,
   isInferred,
   kgApi,
   kgSnippet,
+  kgViewPageKind,
   normalizeScope,
   plainKgBody,
   publicHasSecrets,
@@ -16,37 +19,61 @@ import {
   type KgIndex,
   type KgNodeLite,
 } from "../api/kg";
+import { formatStaleAt } from "../api/page-state";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type ViewMode = "list" | "graph";
 
 export function KnowledgeGraphPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState("");
   const [scope, setScope] = useState("");
   const [q, setQ] = useState("");
+  const [appliedQ, setAppliedQ] = useState("");
   const [mode, setMode] = useState<ViewMode>("list");
   const [graph, setGraph] = useState<KgGraph | null>(null);
   const [index, setIndex] = useState<KgIndex | null>(null);
   const [expand, setExpand] = useState<KgExpand | null>(null);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(false);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [graphLoadedAt, setGraphLoadedAt] = useState<string | null>(null);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [agentsLoadedAt, setAgentsLoadedAt] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [agentsErr, setAgentsErr] = useState<unknown>(null);
+  const [graphErr, setGraphErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const na = t("kg.na");
-  const ready = Boolean(agentId && normalizeScope(scope));
+  const nodes = graph?.nodes ?? [];
+  const edges = graph?.edges ?? [];
+  const kind = classifyKgView({
+    agentsLoading,
+    agentsLoaded,
+    agentsError: agentsErr,
+    agentCount: agents.length,
+    agentId,
+    scope,
+    graphLoading: loading,
+    graphLoaded,
+    graphError: graphErr,
+    nodeCount: nodes.length,
+    query: appliedQ,
+  });
+  const pageKind = kgViewPageKind(kind);
   const embedOn = isEmbeddingConfigured(index || graph);
-  const leak = Boolean(
-    graph && (graph.nodes.some((n) => publicHasSecrets(n)) || graph.edges.some((e) => publicHasSecrets(e))),
-  );
+  const leak = Boolean(graph && (graph.nodes.some((n) => publicHasSecrets(n)) || graph.edges.some((e) => publicHasSecrets(e))));
+  const metaN = kind === "ready" || kind === "filtered_empty" || kind === "stale" ? nodes.length : kind === "empty" ? 0 : null;
+  const staleAt = formatStaleAt(graphLoadedAt || agentsLoadedAt, locale);
 
   function agentLabel(id: string): string {
     const a = agents.find((x) => x.id === id || x.agent_key === id);
@@ -55,8 +82,7 @@ export function KnowledgeGraphPage() {
   }
 
   function sourceLabel(row: { source?: string; inferred?: boolean }): string {
-    if (isInferred(row)) return t("kg.source.extracted");
-    return t("kg.source.posted");
+    return inferredLabel(row) === "extracted" ? t("kg.source.extracted") : t("kg.source.posted");
   }
 
   async function loadAgents() {
@@ -64,9 +90,11 @@ export function KnowledgeGraphPage() {
     try {
       const ag = await api.listAgents();
       setAgents(ag.agents ?? []);
-      setErr("");
+      setAgentsLoaded(true);
+      setAgentsLoadedAt(new Date().toISOString());
+      setAgentsErr(null);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setAgentsErr(e);
     } finally {
       setAgentsLoading(false);
     }
@@ -82,6 +110,9 @@ export function KnowledgeGraphPage() {
       setGraph(null);
       setExpand(null);
       setSelected("");
+      setGraphLoaded(false);
+      setGraphErr(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -93,10 +124,14 @@ export function KnowledgeGraphPage() {
         limit: NODE_CAP,
       });
       setGraph(g);
-      setErr(g.nodes.some((n) => publicHasSecrets(n)) ? t("kg.leak") : "");
+      setGraphLoaded(true);
+      setGraphLoadedAt(new Date().toISOString());
+      setGraphErr(null);
+      setAppliedQ(q.trim());
+      if (g.nodes.some((n) => publicHasSecrets(n))) setActionErr(t("kg.leak"));
+      else setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
-      setGraph(null);
+      setGraphErr(e);
     } finally {
       setLoading(false);
     }
@@ -107,9 +142,9 @@ export function KnowledgeGraphPage() {
     setDetailLoading(true);
     try {
       setExpand(await kgApi.expand(id));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setDetailLoading(false);
     }
@@ -120,98 +155,144 @@ export function KnowledgeGraphPage() {
   }, []);
 
   useEffect(() => {
-    if (!ready) {
+    if (!agentId || !normalizeScope(scope)) {
       setGraph(null);
       setExpand(null);
       setSelected("");
+      setGraphLoaded(false);
+      setGraphErr(null);
       setLoading(false);
+      setAppliedQ("");
       return;
     }
     void loadGraph();
   }, [agentId, scope]);
 
-  const nodes = graph?.nodes ?? [];
-  const edges = graph?.edges ?? [];
   const selectedNode: KgNodeLite | undefined = nodes.find((n) => n.id === selected);
   const bodyText = expand?.entity ? plainKgBody(expand.entity.body) : "";
+  const pageErr = graphErr || (kind === "permission" || kind === "error" ? agentsErr : null);
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="sitemap"
-        title={t("kg.title")}
-        description={t("kg.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => (ready ? void loadGraph() : void loadAgents())}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {leak ? <StatusLine kind="error">{t("kg.leak")}</StatusLine> : null}
+    <PageChrome
+      icon="sitemap"
+      title={t("kg.title")}
+      description={t("kg.desc")}
+      primary={
+        <Button
+          icon="refresh"
+          iconGesture
+          variant="primary"
+          onClick={() => {
+            void loadAgents();
+            if (agentId && normalizeScope(scope)) void loadGraph();
+          }}
+          disabled={agentsLoading || loading}
+        >
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        <>
+          <select
+            className="z-field"
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+            aria-label={t("kg.agent")}
+            style={{ minWidth: 160 }}
+            disabled={Boolean(agentsErr) || !agentsLoaded}
+          >
+            <option value="">{t("kg.pickAgent")}</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {agentLabel(a.id)}
+              </option>
+            ))}
+          </select>
+          <select
+            className="z-field"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            aria-label={t("kg.scope")}
+            style={{ minWidth: 160 }}
+            disabled={Boolean(agentsErr) || !agentsLoaded}
+          >
+            <option value="">{t("kg.pickScope")}</option>
+            <option value="all">{t("kg.scope.all")}</option>
+            <option value="posted">{t("kg.scope.posted")}</option>
+            <option value="extracted">{t("kg.scope.extracted")}</option>
+          </select>
+          {kind === "ready" || kind === "filtered_empty" || kind === "empty" || kind === "stale" ? (
+            <>
+              <input
+                className="z-field"
+                style={{ flex: 1, minWidth: 160 }}
+                placeholder={t("kg.search")}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void loadGraph();
+                }}
+                aria-label={t("kg.search")}
+                autoComplete="off"
+              />
+              <Button icon="search" onClick={() => void loadGraph()}>
+                {t("common.search")}
+              </Button>
+              <select className="z-field" value={mode} onChange={(e) => setMode(e.target.value as ViewMode)} aria-label={t("kg.view")} style={{ minWidth: 140 }}>
+                <option value="list">{t("kg.view.list")}</option>
+                <option value="graph">{t("kg.view.graph")}</option>
+              </select>
+            </>
+          ) : null}
+        </>
+      }
+    >
       <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>
         {index?.fts || graph?.fts ? t("kg.index.fts") : t("kg.index.substring")}{" "}
-        {!embedOn ? (
-          <>
-            <Badge tone="warning">{t("kg.index.embedOff")}</Badge> {t("kg.index.embedGuide")}
-          </>
-        ) : null}
+        {embedOn ? <Badge tone="neutral">{t("kg.index.embedOn")}</Badge> : <Badge tone="warning">{t("kg.index.embedOff")}</Badge>}{" "}
+        {!embedOn ? t("kg.index.embedGuide") : null}
       </p>
       <p role="note" style={{ margin: 0, fontSize: 12.5, color: "var(--text-2)" }}>
         {t("kg.notFacts")}
       </p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <select className="z-field" value={agentId} onChange={(e) => setAgentId(e.target.value)} aria-label={t("kg.agent")} style={{ minWidth: 160 }}>
-          <option value="">{t("kg.pickAgent")}</option>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {agentLabel(a.id)}
-            </option>
-          ))}
-        </select>
-        <select className="z-field" value={scope} onChange={(e) => setScope(e.target.value)} aria-label={t("kg.scope")} style={{ minWidth: 160 }}>
-          <option value="">{t("kg.pickScope")}</option>
-          <option value="all">{t("kg.scope.all")}</option>
-          <option value="posted">{t("kg.scope.posted")}</option>
-          <option value="extracted">{t("kg.scope.extracted")}</option>
-        </select>
-        <input
-          className="z-field"
-          style={{ flex: 1, minWidth: 160 }}
-          placeholder={t("kg.search")}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && ready) void loadGraph();
+      <p role="note" style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>
+        {t("kg.noWrite")}
+      </p>
+      {pageKind ? (
+        <PageStatus
+          kind={pageKind}
+          errorText={pageErr ? formatPublicError(pageErr) : ""}
+          staleAt={staleAt}
+          onReload={() => {
+            void loadAgents();
+            if (agentId && normalizeScope(scope)) void loadGraph();
           }}
-          aria-label={t("kg.search")}
-          autoComplete="off"
-          disabled={!ready}
         />
-        <Button icon="search" onClick={() => void loadGraph()} disabled={!ready}>
-          {t("common.search")}
-        </Button>
-        <select className="z-field" value={mode} onChange={(e) => setMode(e.target.value as ViewMode)} aria-label={t("kg.view")} style={{ minWidth: 140 }} disabled={!ready}>
-          <option value="list">{t("kg.view.list")}</option>
-          <option value="graph">{t("kg.view.graph")}</option>
-        </select>
-      </div>
-      {agentsLoading ? <StatusLine kind="loading" /> : null}
-      {!agentsLoading && agents.length === 0 ? <EmptyState>{t("kg.emptyAgents")}</EmptyState> : null}
-      {!agentsLoading && agents.length > 0 && !ready ? <EmptyState>{t("kg.needSelect")}</EmptyState> : null}
-      {ready && loading ? <StatusLine kind="loading" /> : null}
-      {ready && !loading && graph && nodes.length === 0 ? <EmptyState>{t("kg.empty")}</EmptyState> : null}
-      {ready && graph ? (
+      ) : null}
+      {kind === "no_agent" ? <EmptyState data-page-state="dependency">{t("kg.emptyAgents")}</EmptyState> : null}
+      {kind === "no_selection" ? <EmptyState data-page-state="no_selection">{t("kg.needSelect")}</EmptyState> : null}
+      {kind === "error" && agentsErr && !graphErr ? (
+        <div data-page-state="dependency">
+          <StatusLine kind="error">
+            {t("kg.agentsUnavailable")} · {formatPublicError(agentsErr)}
+          </StatusLine>
+        </div>
+      ) : null}
+      {leak ? <StatusLine kind="error">{t("kg.leak")}</StatusLine> : null}
+      {actionErr && !leak ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {kind === "empty" ? <EmptyState data-page-state="empty">{t("kg.empty")}</EmptyState> : null}
+      {kind === "filtered_empty" ? <EmptyState data-page-state="filtered_empty">{t("kg.filterEmpty")}</EmptyState> : null}
+      {kind === "ready" || kind === "stale" ? (
         <div className="z-two-col">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Card>
               <CardHeader
                 icon="sitemap"
                 title={mode === "graph" ? t("kg.graph") : t("kg.list")}
-                meta={t("kg.meta", { nodes: String(graph.total_nodes ?? nodes.length), edges: String(graph.total_edges ?? edges.length) })}
+                meta={metaN == null ? "—" : t("kg.meta", { nodes: String(graph?.total_nodes ?? nodes.length), edges: String(graph?.total_edges ?? edges.length) })}
               />
               <div style={{ padding: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("kg.noCanvas")}</div>
-              {graph.truncated ? (
+              {graph?.truncated ? (
                 <p style={{ margin: "8px 16px 0", fontSize: 12, color: "var(--orange)" }}>{t("kg.truncated", { n: String(graph.node_cap || NODE_CAP) })}</p>
               ) : null}
               <TableScroll>
@@ -257,7 +338,7 @@ export function KnowledgeGraphPage() {
             </Card>
             {mode === "graph" ? (
               <Card>
-                <CardHeader icon="hook" title={t("kg.edges")} meta={t("kg.edgeMeta", { n: String(edges.length), cap: String(graph.edge_cap || EDGE_CAP) })} />
+                <CardHeader icon="hook" title={t("kg.edges")} meta={t("kg.edgeMeta", { n: String(edges.length), cap: String(graph?.edge_cap || EDGE_CAP) })} />
                 <TableScroll>
                   <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
                     <span style={{ flex: 2 }}>{t("kg.col.from")}</span>
@@ -323,6 +404,6 @@ export function KnowledgeGraphPage() {
           </Card>
         </div>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }

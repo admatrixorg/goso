@@ -5,9 +5,12 @@ import {
   boundNeighborhood,
   capRows,
   classifyDoc,
+  classifyVaultDocs,
+  classifyVaultHealth,
   filterVaultDocs,
   formatMtime,
   GRAPH_NODE_CAP,
+  inventoryOptionsFromDocs,
   isStaleHealth,
   LIST_CAP,
   normalizeGraph,
@@ -15,6 +18,9 @@ import {
   plainVaultBody,
   shortHash,
   uniqueField,
+  vaultFilteredEmpty,
+  vaultMutationsBlocked,
+  vaultPutIsOverwrite,
 } from "./vault-ops.ts";
 
 const docs = [
@@ -137,4 +143,63 @@ test("shortHash and formatMtime are operator-safe", () => {
   assert.equal(formatMtime(""), "—");
   assert.equal(formatMtime("not-a-date"), "not-a-date");
   assert.equal(formatMtime("2026-08-30T12:00:00.000Z"), "2026-08-30 12:00:00 UTC");
+});
+
+test("vault docs permission is not true-empty and blocks put", () => {
+  const perm = classifyVaultDocs({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.equal(perm.showEmpty, false);
+  assert.equal(vaultMutationsBlocked(perm), true);
+  const empty = classifyVaultDocs({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(empty.kind, "empty");
+  assert.equal(vaultMutationsBlocked(empty), false);
+});
+
+test("agent/team inventory failure is not true-empty docs", () => {
+  const docsReady = classifyVaultDocs({ loading: false, loaded: true, error: null, itemCount: 4 });
+  assert.equal(docsReady.kind, "ready");
+  assert.equal(docsReady.showEmpty, false);
+  const fallback = inventoryOptionsFromDocs(docs, "agent", ["desk-extra"], false);
+  assert.equal(fallback.fallbackOnly, true);
+  assert.ok(fallback.options.includes("sales"));
+  assert.equal(fallback.options.includes("desk-extra"), false);
+  const merged = inventoryOptionsFromDocs(docs, "agent", ["desk-extra"], true);
+  assert.equal(merged.fallbackOnly, false);
+  assert.ok(merged.options.includes("desk-extra"));
+});
+
+test("filtered empty is distinct from docs error", () => {
+  const ready = classifyVaultDocs({ loading: false, loaded: true, error: null, itemCount: 4 });
+  const boom = classifyVaultDocs({
+    loading: false,
+    loaded: false,
+    error: new Error("non-JSON response"),
+    itemCount: 0,
+  });
+  assert.equal(vaultFilteredEmpty(ready, 4, 0), true);
+  assert.equal(vaultFilteredEmpty(boom, 0, 0), false);
+  assert.equal(boom.showEmpty, false);
+});
+
+test("health stale is independent of docs inventory", () => {
+  assert.equal(classifyVaultHealth({ loading: false, loaded: true, error: null, health: { stale: true } }), "stale");
+  assert.equal(classifyVaultHealth({ loading: false, loaded: true, error: null, health: { unindexed: 1 } }), "stale");
+  assert.equal(classifyVaultHealth({ loading: false, loaded: true, error: null, health: { docs: 2 } }), "ok");
+  assert.equal(
+    classifyVaultHealth({ loading: false, loaded: false, error: new Error("502"), health: null }),
+    "error",
+  );
+  const docsOk = classifyVaultDocs({ loading: false, loaded: true, error: null, itemCount: 2 });
+  assert.equal(docsOk.kind, "ready");
+});
+
+test("put overwrite names an existing title", () => {
+  assert.equal(vaultPutIsOverwrite(docs, "Playbook"), true);
+  assert.equal(vaultPutIsOverwrite(docs, "brand new"), false);
+  assert.equal(vaultPutIsOverwrite(docs, ""), false);
 });

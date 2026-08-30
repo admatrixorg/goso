@@ -1,3 +1,10 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  isFilteredEmpty,
+  type PageState,
+} from "./page-state.ts";
+
 export const LIST_CAP = 200;
 export const BODY_CAP = 20_000;
 export const GRAPH_NODE_CAP = 40;
@@ -270,4 +277,67 @@ export function formatMtime(mtime?: string): string {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
   return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+}
+
+export type VaultHealthKind = "loading" | "error" | "stale" | "ok" | "missing";
+
+export function classifyVaultDocs(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function vaultMutationsBlocked(docs: PageState): boolean {
+  return inventoryBlocksMutation(docs.kind) || (docs.kind === "loading" && !docs.showItems);
+}
+
+export function vaultFilteredEmpty(state: PageState, unfilteredCount: number, visibleCount: number): boolean {
+  return isFilteredEmpty(state, unfilteredCount, visibleCount);
+}
+
+export function vaultPutIsOverwrite(docs: Array<{ title?: string }>, title: string): boolean {
+  const want = (title || "").trim().toLowerCase();
+  if (!want) return false;
+  return docs.some((d) => (d.title || "").trim().toLowerCase() === want);
+}
+
+export function classifyVaultHealth(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  health?: VaultHealthLite | null;
+}): VaultHealthKind {
+  if (input.error) return "error";
+  if (!input.loaded) return input.loading ? "loading" : "missing";
+  if (!input.health) return "missing";
+  if (isStaleHealth(input.health)) return "stale";
+  return "ok";
+}
+
+export function inventoryOptionsFromDocs<T extends VaultDocLite>(
+  docs: T[],
+  field: keyof VaultClass,
+  extra: string[],
+  inventoryOk: boolean,
+): { options: string[]; fallbackOnly: boolean } {
+  const fromDocs = uniqueField(docs, field);
+  if (!inventoryOk) return { options: fromDocs, fallbackOnly: true };
+  const seen = new Set(fromDocs.map((x) => x.toLowerCase()));
+  const out = [...fromDocs];
+  for (const raw of extra) {
+    const v = (raw || "").trim();
+    if (!v || seen.has(v.toLowerCase())) continue;
+    seen.add(v.toLowerCase());
+    out.push(v);
+  }
+  return { options: out, fallbackOnly: false };
 }
