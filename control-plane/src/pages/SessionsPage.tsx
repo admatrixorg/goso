@@ -1,8 +1,18 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { api, PROMPT_MODES, type Agent, type Session } from "../api/client";
 import { confirmNamed } from "../api/confirm";
-import { classifyPageState, formatStaleAt } from "../api/page-state";
 import {
+  classifyPageState,
+  clampPageOffset,
+  formatStaleAt,
+  inventoryBlocksMutation,
+  isFilteredEmpty,
+  listMetaCount,
+  pageSlice,
+} from "../api/page-state";
+import {
+  SESSION_PAGE_SIZE,
+  SESSION_PAGE_SIZES,
   agentLabel,
   filterSessions,
   normalizePromptMode,
@@ -43,6 +53,7 @@ export const SessionsPage = forwardRef<
   const [err, setErr] = useState<unknown>(null);
   const [formErr, setFormErr] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState("");
@@ -51,6 +62,8 @@ export const SessionsPage = forwardRef<
   const [query, setQuery] = useState("");
   const [filterAgent, setFilterAgent] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(SESSION_PAGE_SIZE);
   const createBoxRef = useRef<HTMLDivElement>(null);
   const agentSelectRef = useRef<HTMLSelectElement>(null);
   const busy = creating || Boolean(deletingId);
@@ -61,9 +74,12 @@ export const SessionsPage = forwardRef<
     itemCount: sessions.length,
     keepStale: loaded && sessions.length > 0,
   });
+  const createBlocked = inventoryBlocksMutation(state.kind);
+  const formVisible = !createBlocked && createOpen;
 
   useImperativeHandle(ref, () => ({
     focusCreate() {
+      if (createBlocked) return;
       setCreateOpen(true);
       createBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       agentSelectRef.current?.focus();
@@ -76,12 +92,14 @@ export const SessionsPage = forwardRef<
     if (sessRes.status === "fulfilled") {
       setSessions(sessRes.value.sessions ?? []);
       setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+    } else {
+      setErr(sessRes.reason);
     }
     if (agRes.status === "fulfilled") {
       setAgents(agRes.value.agents ?? []);
     }
-    const fail = sessRes.status === "rejected" ? sessRes.reason : agRes.status === "rejected" ? agRes.reason : null;
-    setErr(fail);
     setFormErr("");
     setLoading(false);
   }
@@ -94,10 +112,18 @@ export const SessionsPage = forwardRef<
     () => filterSessions(sessions, { query, agentId: filterAgent }),
     [sessions, query, filterAgent],
   );
+  const safeOffset = clampPageOffset(visible.length, offset, pageSize);
+  const page = useMemo(() => pageSlice(visible, safeOffset, pageSize), [visible, safeOffset, pageSize]);
+  const filteredEmpty = isFilteredEmpty(state, sessions.length, visible.length);
+  const noAgents = !createBlocked && state.kind !== "loading" && agents.length === 0;
+  const errText = err ? formatPublicError(err) : "";
+  const metaN = listMetaCount(state.kind, visible.length);
+  const pages = Math.max(1, Math.ceil(visible.length / pageSize) || 1);
+  const pageNo = visible.length === 0 ? 1 : Math.floor(safeOffset / pageSize) + 1;
+  const last = Math.max(0, safeOffset + page.length);
 
   async function create() {
-    if (busy || loading) return;
-    setErr(null);
+    if (busy || loading || createBlocked) return;
     setFormErr("");
     if (agents.length === 0) {
       setFormErr(t("sessions.noAgents"));
@@ -116,6 +142,8 @@ export const SessionsPage = forwardRef<
       setCreateOpen(false);
       setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
       setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
       setFormErr("");
       onPick(created.id, sessionDisplayName(created));
     } catch (e) {
@@ -130,32 +158,28 @@ export const SessionsPage = forwardRef<
     try {
       const updated = await api.updateSession(id, { prompt_mode: mode });
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, prompt_mode: updated.prompt_mode || mode } : s)));
-      setErr(null);
+      setFormErr("");
     } catch (e) {
-      setErr(e);
+      setFormErr(formatPublicError(e));
     }
   }
 
   async function remove(s: Session) {
-    if (busy) return;
+    if (busy || createBlocked) return;
     const named = sessionDisplayName(s);
     if (!confirmNamed(t("sessions.confirmDelete", { name: named }), (m) => window.confirm(m))) return;
     setDeletingId(s.id);
     try {
       await api.deleteSession(s.id);
       setSessions((prev) => prev.filter((row) => row.id !== s.id));
-      setErr(null);
+      setFormErr("");
       onDeleted?.(s.id);
     } catch (e) {
-      setErr(e);
+      setFormErr(formatPublicError(e));
     } finally {
       setDeletingId("");
     }
   }
-
-  const noAgents = state.kind !== "loading" && !err && agents.length === 0;
-  const filteredEmpty = state.showItems && sessions.length > 0 && visible.length === 0;
-  const errText = err ? formatPublicError(err) : "";
 
   function filterBar() {
     return (
@@ -164,7 +188,10 @@ export const SessionsPage = forwardRef<
           className="z-field"
           style={{ flex: 1, minWidth: compact ? 0 : 160 }}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOffset(0);
+          }}
           placeholder={t("sessions.search")}
           aria-label={t("sessions.search")}
           autoComplete="off"
@@ -173,7 +200,10 @@ export const SessionsPage = forwardRef<
           className="z-field"
           aria-label={t("sessions.filterAgent")}
           value={filterAgent}
-          onChange={(e) => setFilterAgent(e.target.value)}
+          onChange={(e) => {
+            setFilterAgent(e.target.value);
+            setOffset(0);
+          }}
           style={{ minWidth: compact ? 0 : 160, flex: compact ? 1 : undefined }}
         >
           <option value="">{t("sessions.filterAgentAll")}</option>
@@ -201,7 +231,7 @@ export const SessionsPage = forwardRef<
             aria-label={t("sessions.col.agent")}
             style={{ display: "block", width: "100%", marginTop: 4 }}
             value={agentId}
-            disabled={busy || agents.length === 0 || Boolean(err) && agents.length === 0}
+            disabled={busy || agents.length === 0}
             onChange={(e) => setAgentId(e.target.value)}
           >
             <option value="">{t("sessions.pickAgent")}</option>
@@ -224,9 +254,58 @@ export const SessionsPage = forwardRef<
             onChange={(e) => setLabel(e.target.value)}
           />
         </label>
-        <Button variant="primary" disabled={busy || loading || agents.length === 0} onClick={() => void create()}>
-          {t("sessions.create")}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="primary" disabled={busy || loading || agents.length === 0} onClick={() => void create()}>
+            {t("sessions.create")}
+          </Button>
+          <Button
+            variant="quiet"
+            disabled={busy}
+            onClick={() => {
+              setCreateOpen(false);
+              setFormErr("");
+            }}
+          >
+            {t("sessions.cancelCreate")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  function pager() {
+    if (!state.showItems || visible.length <= pageSize) return null;
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 16px", fontSize: 12.5, flexWrap: "wrap" }}>
+        <Button variant="quiet" disabled={safeOffset === 0} onClick={() => setOffset(Math.max(0, safeOffset - pageSize))}>
+          {t("common.prev")}
         </Button>
+        <span style={{ color: "var(--text-3)" }}>
+          {t("common.page", { from: visible.length ? safeOffset + 1 : 0, to: last, n: visible.length })}
+          {" · "}
+          {t("common.pageOf", { page: pageNo, pages })}
+        </span>
+        <Button variant="quiet" disabled={last >= visible.length} onClick={() => setOffset(safeOffset + pageSize)}>
+          {t("common.next")}
+        </Button>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--text-3)", fontSize: 12 }}>
+          {t("common.rows")}
+          <select
+            className="z-field"
+            aria-label={t("common.rows")}
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value) || SESSION_PAGE_SIZE);
+              setOffset(0);
+            }}
+          >
+            {SESSION_PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     );
   }
@@ -236,16 +315,25 @@ export const SessionsPage = forwardRef<
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-chat-list="">
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 4px 8px", flexWrap: "wrap" }}>
           <b style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>{t("sessions.title")}</b>
-          <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)} disabled={Boolean(err) && agents.length === 0} style={{ padding: "4px 10px" }}>
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => {
+              if (createBlocked) return;
+              setCreateOpen(true);
+            }}
+            disabled={createBlocked}
+            style={{ padding: "4px 10px" }}
+          >
             {t("sessions.newChat")}
           </Button>
           <Button icon="refresh" iconGesture variant="ghost" onClick={() => void load()} style={{ padding: "4px 8px" }}>
             {t("common.refresh")}
           </Button>
         </div>
-        {createOpen ? <div style={{ padding: "0 4px 4px" }}>{createFields()}</div> : null}
+        {formVisible ? <div style={{ padding: "0 4px 4px" }}>{createFields()}</div> : null}
         <div style={{ padding: "0 4px 4px" }}>{filterBar()}</div>
-        <PageStatus kind={state.kind} errorText={errText} onReload={() => void load()} />
+        <PageStatus kind={state.kind} errorText={errText} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
         {formErr ? <StatusLine kind="error">{formErr}</StatusLine> : null}
         {state.showItems
           ? visible.map((s) => {
@@ -281,7 +369,7 @@ export const SessionsPage = forwardRef<
                   </button>
                   <Button
                     variant="ghost"
-                    disabled={busy}
+                    disabled={busy || createBlocked}
                     aria-label={t("sessions.deleteNamed", { name: named })}
                     onClick={() => void remove(s)}
                     style={{ padding: "4px 8px", alignSelf: "center" }}
@@ -304,7 +392,16 @@ export const SessionsPage = forwardRef<
       title={t("sessions.title")}
       description={t("sessions.desc")}
       primary={
-        <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+        <Button
+          variant="primary"
+          icon="plus"
+          disabled={createBlocked}
+          onClick={() => {
+            if (createBlocked) return;
+            setCreateOpen(true);
+            setFormErr("");
+          }}
+        >
           {t("sessions.newChat")}
         </Button>
       }
@@ -315,9 +412,9 @@ export const SessionsPage = forwardRef<
       }
       filters={filterBar()}
     >
-      <PageStatus kind={state.kind} errorText={errText} onReload={() => void load()} />
+      <PageStatus kind={state.kind} errorText={errText} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
       {formErr ? <StatusLine kind="error">{formErr}</StatusLine> : null}
-      {createOpen ? (
+      {formVisible ? (
         <Card>
           <CardHeader icon="plus" title={t("sessions.add")} />
           <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -327,17 +424,20 @@ export const SessionsPage = forwardRef<
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="msg" title={t("sessions.open")} meta={state.showItems ? t("sessions.meta", { n: visible.length }) : "—"} />
+        <CardHeader icon="msg" title={t("sessions.open")} meta={metaN == null ? "—" : t("sessions.meta", { n: metaN })} />
         <TableScroll>
-        <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-          <span style={{ flex: 2.4 }}>{t("sessions.col.session")}</span>
-          <span style={{ flex: 2 }}>{t("sessions.col.agent")}</span>
-          <span style={{ flex: 1.6 }}>{t("sessions.activity")}</span>
-          <span style={{ flex: 1.6 }}>{t("sessions.col.mode")}</span>
+        <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 6 }}>
+          <span style={{ flex: 2.2 }}>{t("sessions.col.session")}</span>
+          <span style={{ flex: 1.6 }}>{t("sessions.col.agent")}</span>
+          <span style={{ flex: 1.2 }}>{t("sessions.col.context")}</span>
+          <span style={{ flex: 1.2 }}>{t("sessions.col.messages")}</span>
+          <span style={{ flex: 1.4 }}>{t("sessions.col.created")}</span>
+          <span style={{ flex: 1.2 }}>{t("sessions.col.updated")}</span>
+          <span style={{ flex: 1.4 }}>{t("sessions.col.mode")}</span>
           <span style={{ flex: 1.6, textAlign: "right" }}>{t("sessions.col.actions")}</span>
         </div>
         {state.showItems
-          ? visible.map((s) => {
+          ? page.map((s) => {
               const named = sessionDisplayName(s);
               return (
                 <div
@@ -348,13 +448,14 @@ export const SessionsPage = forwardRef<
                     padding: "11px 16px",
                     fontSize: 12.5,
                     borderBottom: "1px solid var(--border-soft)",
+                    gap: 6,
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => onPick(s.id, named)}
                     style={{
-                      flex: 2.4,
+                      flex: 2.2,
                       fontWeight: 600,
                       textAlign: "left",
                       background: "transparent",
@@ -366,13 +467,17 @@ export const SessionsPage = forwardRef<
                   >
                     {named}
                   </button>
-                  <span style={{ flex: 2, color: "var(--text-2)" }}>{agentLabel(agents, s.agent_id)}</span>
-                  <span style={{ flex: 1.6, color: "var(--text-3)", fontSize: 12 }}>{formatStaleAt(sessionActivityAt(s), locale) || "—"}</span>
-                  <span style={{ flex: 1.6 }}>
+                  <span style={{ flex: 1.6, color: "var(--text-2)" }}>{agentLabel(agents, s.agent_id)}</span>
+                  <span style={{ flex: 1.2, color: "var(--text-4)", fontSize: 11.5 }}>{t("sessions.contextUnavailable")}</span>
+                  <span style={{ flex: 1.2, color: "var(--text-4)", fontSize: 11.5 }}>{t("sessions.messagesUnavailable")}</span>
+                  <span style={{ flex: 1.4, color: "var(--text-3)", fontSize: 12 }}>{formatStaleAt(sessionActivityAt(s), locale) || "—"}</span>
+                  <span style={{ flex: 1.2, color: "var(--text-4)", fontSize: 11.5 }}>{t("sessions.updatedUnavailable")}</span>
+                  <span style={{ flex: 1.4 }}>
                     <select
                       className="z-field"
                       aria-label={t("sessions.promptMode")}
                       value={normalizePromptMode(s.prompt_mode)}
+                      disabled={createBlocked}
                       onChange={(e) => void persistMode(s.id, e.target.value)}
                       style={{ width: "100%" }}
                     >
@@ -389,7 +494,7 @@ export const SessionsPage = forwardRef<
                     </Button>
                     <Button
                       variant="quiet"
-                      disabled={busy}
+                      disabled={busy || createBlocked}
                       aria-label={t("sessions.deleteNamed", { name: named })}
                       onClick={() => void remove(s)}
                       style={{ padding: "4px 8px" }}
@@ -404,6 +509,7 @@ export const SessionsPage = forwardRef<
         {state.showEmpty ? <EmptyState>{t("sessions.empty")}</EmptyState> : null}
         {filteredEmpty ? <EmptyState>{t("sessions.emptyFilter")}</EmptyState> : null}
         </TableScroll>
+        {pager()}
       </Card>
     </PageChrome>
   );

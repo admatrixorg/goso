@@ -1,4 +1,6 @@
 export const SELECTED_SESSION_KEY = "goso_selected_session";
+export const SESSION_PAGE_SIZE = 20;
+export const SESSION_PAGE_SIZES = [20, 50] as const;
 const PROMPT_MODES = ["full", "task", "minimal", "none"] as const;
 
 export type SessionLite = {

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { clampPageOffset, pageSlice } from "./page-state.ts";
 import {
   SELECTED_SESSION_KEY,
+  SESSION_PAGE_SIZE,
   agentLabel,
   clearSelectedSession,
   filterSessions,
@@ -43,6 +45,17 @@ test("filterSessions matches label, id, and agent", () => {
   assert.equal(filterSessions(rows, { agentId: "a1" }).length, 2);
   assert.equal(filterSessions(rows, { query: "s1", agentId: "a2" }).length, 0);
   assert.equal(filterSessions(rows, { query: "  ", agentId: "" }).length, 3);
+});
+
+test("session pagination recovers when the list shrinks after delete", () => {
+  const many = Array.from({ length: 45 }, (_, i) => ({ id: `s${i}`, agent_id: "a1" }));
+  assert.equal(SESSION_PAGE_SIZE, 20);
+  assert.equal(pageSlice(many, 40, SESSION_PAGE_SIZE).length, 5);
+  const afterDelete = many.slice(0, 21);
+  const off = clampPageOffset(afterDelete.length, 40, SESSION_PAGE_SIZE);
+  assert.equal(off, 20);
+  assert.equal(pageSlice(afterDelete, off, SESSION_PAGE_SIZE).map((s) => s.id).join(), "s20");
+  assert.equal(filterSessions(many, { query: "no-such" }).length, 0);
 });
 
 test("sessionDisplayName prefers label then id", () => {

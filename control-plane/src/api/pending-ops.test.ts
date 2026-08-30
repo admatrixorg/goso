@@ -3,9 +3,11 @@ import test from "node:test";
 import {
   agentLabel,
   asPublic,
+  compactBlocked,
   formatAge,
   groupLabel,
   pendingConfirmMatch,
+  pendingWriteKind,
   previewLine,
   publicHasSecrets,
 } from "./pending-ops.ts";
@@ -53,4 +55,16 @@ test("labels, age, and preview", () => {
   assert.match(line, /telegram:9/);
   assert.match(line, /n\/a/);
   assert.match(line, /4/);
+});
+
+test("pendingWriteKind classifies compact/clear API failures", () => {
+  assert.equal(pendingWriteKind(new Error("409 {\"error\":\"compact in progress\"}")), "busy");
+  assert.equal(pendingWriteKind(new Error("401 {\"error\":\"unauthorized\"}")), "permission");
+  assert.equal(pendingWriteKind(new Error("403 lite: channels off")), "permission");
+  assert.equal(pendingWriteKind(new Error("400 confirm does not match")), "mismatch");
+  assert.equal(pendingWriteKind(new Error("404 not found")), "missing");
+  assert.equal(pendingWriteKind(new Error("500 boom")), "error");
+  assert.equal(compactBlocked({ compacting: true }, false), true);
+  assert.equal(compactBlocked({ compacting: false }, true), true);
+  assert.equal(compactBlocked({ compacting: false }, false), false);
 });

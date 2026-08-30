@@ -85,3 +85,19 @@ export function formatAge(ageMs: number | undefined): string {
 export function previewLine(group: PendingGroup, na: string): string {
   return [groupLabel(group), agentLabel(group, na), String(group.count ?? 0), formatAge(group.age_ms)].join(" · ");
 }
+
+export type PendingWriteKind = "busy" | "permission" | "mismatch" | "missing" | "error";
+
+/** Compact/clear failures stay on the action, not the inventory empty/permission claim. */
+export function pendingWriteKind(err: unknown): PendingWriteKind {
+  const s = String(err);
+  if (/\b409\b/.test(s) || /compact in progress/i.test(s)) return "busy";
+  if (/\b401\b/.test(s) || /\b403\b/.test(s)) return "permission";
+  if (/confirm does not match/i.test(s) || /mismatch/i.test(s)) return "mismatch";
+  if (/\b404\b/.test(s)) return "missing";
+  return "error";
+}
+
+export function compactBlocked(group: Pick<PendingGroup, "compacting">, busy: boolean): boolean {
+  return Boolean(group.compacting) || busy;
+}
