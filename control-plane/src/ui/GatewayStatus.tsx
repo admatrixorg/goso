@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { probeHealthz, probeStats } from "../api/client";
-import { healthKind, type HealthKind } from "../api/health";
+import { combineGatewayKind, healthKind, type HealthKind } from "../api/health";
 import { useI18n, type MsgKey } from "../i18n";
 
 const MIN_MS = 2000;
@@ -34,7 +34,7 @@ export function GatewayStatus() {
     const run = async () => {
       const [{ status, ok }, stats] = await Promise.all([probeHealthz(ac.signal), probeStats(ac.signal)]);
       if (cancelled) return;
-      const next = healthKind(status, ok);
+      const next = combineGatewayKind(healthKind(status, ok), stats.status);
       setKind(next);
       setLastHeartbeat(stats.lastHeartbeat);
       const wait = next === "connected" ? MAX_MS : backoff;

@@ -62,7 +62,26 @@ export type OverviewSnapshot = {
   cronJobs: number | null;
   errors: string[];
   kind: HealthKind;
+  loadedAt: string | null;
+  stale: boolean;
 };
+
+export function markOverviewStale(prev: OverviewSnapshot, nowIso: string): OverviewSnapshot {
+  return {
+    ...prev,
+    stale: true,
+    kind: prev.kind === "connected" ? "degraded" : prev.kind,
+    loadedAt: prev.loadedAt || nowIso,
+  };
+}
+
+export function canKeepOverviewStale(prev: OverviewSnapshot | null): boolean {
+  if (!prev) return false;
+  if (prev.stale && prev.agents == null && prev.sessions == null && prev.channels == null && prev.stats.status !== 200) {
+    return false;
+  }
+  return Boolean(prev.loadedAt) || prev.stats.status === 200 || prev.agents != null || prev.sessions != null || prev.channels != null;
+}
 
 export function deriveOverviewKind(input: {
   health: HealthKind;

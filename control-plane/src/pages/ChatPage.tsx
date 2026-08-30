@@ -26,6 +26,7 @@ function streamKey(state: ChatStreamState): MsgKey | null {
   if (state === "connecting") return "chat.stream.connecting";
   if (state === "streaming") return "chat.stream.streaming";
   if (state === "reconnect") return "chat.stream.reconnect";
+  if (state === "error") return "chat.stream.error";
   return null;
 }
 
@@ -44,7 +45,7 @@ function localId(prefix: string): string {
 export function ChatPage({
   sessionId,
   sessionLabel,
-  onNew,
+  onNew: _onNew,
   onGone,
 }: {
   sessionId: string;
@@ -52,6 +53,7 @@ export function ChatPage({
   onNew?: () => void;
   onGone?: (id: string) => void;
 }) {
+  void _onNew;
   const { t } = useI18n();
   const named = sessionLabel?.trim() || sessionId;
   const [msgs, setMsgs] = useState<Message[]>([]);
@@ -202,16 +204,9 @@ export function ChatPage({
 
   if (!sessionId) {
     return (
-      <div style={{ padding: "14px 22px 40px" }}>
+      <div style={{ padding: "14px 22px 40px" }} data-chat-state="no-session">
         <SectionHeader icon="msg" title={t("chat.title")} description={t("chat.desc")} />
         <EmptyState>{t("chat.emptySession")}</EmptyState>
-        {onNew ? (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
-            <Button variant="primary" icon="plus" onClick={onNew}>
-              {t("chat.newSession")}
-            </Button>
-          </div>
-        ) : null}
       </div>
     );
   }
@@ -295,7 +290,7 @@ export function ChatPage({
               );
             })
           : null}
-        {!loading && msgs.length === 0 ? <EmptyState>{t("chat.empty")}</EmptyState> : null}
+        {!loading && !err && msgs.length === 0 ? <EmptyState>{t("chat.empty")}</EmptyState> : null}
       </div>
       <div className="z-chat-composer">
         <span
@@ -331,7 +326,7 @@ export function ChatPage({
         <button
           type="button"
           onClick={() => void send()}
-          disabled={sending || savingMode}
+          disabled={sending || savingMode || !input.trim()}
           aria-label={t("chat.send")}
           style={{
             width: 32,
@@ -348,6 +343,11 @@ export function ChatPage({
         >
           <Icon name="arrow-up" size={15} />
         </button>
+      </div>
+      <div style={{ padding: "0 22px 10px", display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "var(--text-3)" }}>
+        <span>{t("chat.attachUnavailable")}</span>
+        <span>{t("chat.voiceUnavailable")}</span>
+        <span>{t("chat.contextUnavailable")}</span>
       </div>
     </div>
   );

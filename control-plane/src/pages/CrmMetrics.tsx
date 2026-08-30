@@ -10,6 +10,7 @@ import {
   type CrmAdvice,
   type CrmMetrics,
 } from "../api/crm";
+import { isPermissionError } from "../api/page-state";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -17,6 +18,7 @@ import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { KpiCard } from "../ui/KpiCard";
 import { SectionHeader } from "../ui/SectionHeader";
+import { StatusLine } from "../ui/StatusLine";
 
 function fmt(n: number | undefined, locale: string): string {
   if (n == null) return "—";
@@ -30,6 +32,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
   const [metrics, setMetrics] = useState<CrmMetrics | null>(null);
   const [advice, setAdvice] = useState<CrmAdvice[]>([]);
   const [err, setErr] = useState("");
+  const [perm, setPerm] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function load() {
@@ -40,22 +43,27 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
       setMetrics(null);
       setAdvice([]);
       setErr("");
+      setPerm(false);
       setLoading(false);
       return;
     }
     const orgId = org.trim() || crmOrgId();
     const [m, a] = await Promise.allSettled([fetchCrmMetrics(orgId), fetchCrmAdvisor(orgId)]);
     const parts: string[] = [];
+    let denied = false;
     if (m.status === "fulfilled") setMetrics(m.value);
     else {
       setMetrics(null);
+      denied = denied || isPermissionError(m.reason);
       parts.push(`metrics: ${asCrmError(m.reason)}`);
     }
     if (a.status === "fulfilled") setAdvice(a.value);
     else {
       setAdvice([]);
+      denied = denied || isPermissionError(a.reason);
       parts.push(`advisor: ${asCrmError(a.reason)}`);
     }
+    setPerm(denied);
     setErr(parts.join(" · "));
     setLoading(false);
   }
@@ -96,9 +104,12 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
         </span>
         <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
       </div>
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {perm ? <StatusLine kind="error">{t("crm.permission")}</StatusLine> : null}
+      {err && !perm ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
       {online === false ? (
         <EmptyState>{t("crm.offlineEmpty")}</EmptyState>
+      ) : perm ? (
+        <EmptyState>{t("crm.permission")}</EmptyState>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, minWidth: 0 }}>
           {kpis.map((k) => (
@@ -113,7 +124,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
         </p>
       ) : null}
       <Card>
-        <CardHeader icon="eye" title={t("crm.advisor")} meta={t("crm.adviceMeta", { n: advice.length })} />
+        <CardHeader icon="eye" title={t("crm.advisor")} meta={perm ? "—" : t("crm.adviceMeta", { n: advice.length })} />
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
           <span style={{ flex: 1.2 }}>{t("crm.col.kind")}</span>
@@ -129,7 +140,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
             <span style={{ flex: 0.8, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{a.confidence}</span>
           </div>
         ))}
-        {advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
+        {!perm && !err && advice.length === 0 ? <EmptyState>{t("crm.emptyAdvice")}</EmptyState> : null}
         </TableScroll>
       </Card>
     </>
@@ -148,6 +159,7 @@ export function CrmMetricsPage({ embedded = false }: { embedded?: boolean }) {
           }
         />
         <div style={{ padding: "12px 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <Badge tone="neutral">{t("crm.extra")}</Badge>
           <p style={{ fontSize: 12, color: "var(--text-3)", margin: 0 }}>{t("crm.desc")}</p>
           {body}
         </div>

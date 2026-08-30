@@ -79,6 +79,11 @@ export function sessionDisplayName(s: { id: string; label?: string }): string {
   return label || s.id;
 }
 
+/** Last-activity field available on session list JSON. No message_count in this API. */
+export function sessionActivityAt(s: { created_at?: string }): string {
+  return (s.created_at || "").trim();
+}
+
 export function filterSessions<T extends SessionLite>(
   sessions: T[],
   opts: { query?: string; agentId?: string } = {},

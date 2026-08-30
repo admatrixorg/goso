@@ -43,6 +43,47 @@ export function namedConfirmTarget(expected: string, typed: string): boolean {
   return (typed || "").trim() === (expected || "").trim() && Boolean((expected || "").trim());
 }
 
+export type PublicAgentLink = { from_agent_id: string; to_agent_id: string; bidirectional?: boolean };
+
+export function linkIdentity(link: PublicAgentLink): string {
+  const a = (link.from_agent_id || "").trim();
+  const b = (link.to_agent_id || "").trim();
+  const dir = link.bidirectional ? "bi" : "dir";
+  return `${a}|${b}|${dir}`;
+}
+
+/** Flatten per-agent link lists. Drops blanks. Does not invent status/description. */
+export function mergeAgentLinks(groups: PublicAgentLink[][]): PublicAgentLink[] {
+  const seen = new Set<string>();
+  const out: PublicAgentLink[] = [];
+  for (const group of groups) {
+    for (const link of group) {
+      const from = (link.from_agent_id || "").trim();
+      const to = (link.to_agent_id || "").trim();
+      if (!from || !to) continue;
+      const row = { from_agent_id: from, to_agent_id: to, bidirectional: Boolean(link.bidirectional) };
+      const id = linkIdentity(row);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+export function filterLinks<T extends PublicAgentLink>(
+  links: T[],
+  query: string,
+  labelFor: (id: string) => string,
+): T[] {
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return links;
+  return links.filter((l) => {
+    const hay = `${labelFor(l.from_agent_id)} ${labelFor(l.to_agent_id)} ${l.from_agent_id} ${l.to_agent_id}`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
 /** Truncate suggestion copy. Never surface a full system prompt dump. */
 export function safeEvolutionText(text: string): string {
   const raw = (text || "").replace(/\s+/g, " ").trim();

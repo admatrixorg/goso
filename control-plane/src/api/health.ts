@@ -7,3 +7,14 @@ export function healthKind(status: number, ok: boolean): HealthKind {
   if (status === 200 && ok) return "connected";
   return "degraded";
 }
+
+/**
+ * Reconcile public /healthz with authenticated /api/stats.
+ * healthz 200 must not stay "connected" when stats is 401/403 or not JSON/200.
+ */
+export function combineGatewayKind(healthz: HealthKind, statsStatus: number): HealthKind {
+  if (healthz === "unauthorized" || statsStatus === 401 || statsStatus === 403) return "unauthorized";
+  if (healthz === "offline") return "offline";
+  if (healthz === "connected" && statsStatus === 200) return "connected";
+  return "degraded";
+}

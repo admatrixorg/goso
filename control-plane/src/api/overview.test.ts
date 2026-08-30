@@ -3,11 +3,14 @@ import test from "node:test";
 import { formatPublicError } from "./public-error.ts";
 import { parseStatsBody } from "./stats.ts";
 import {
+  canKeepOverviewStale,
   countChannelHealth,
   deriveOverviewKind,
   errorStatus,
   formatUptime,
   isUnauthorizedStatus,
+  markOverviewStale,
+  type OverviewSnapshot,
 } from "./overview.ts";
 
 test("parseStatsBody reads gateway counters and ignores extra keys", () => {
@@ -123,4 +126,39 @@ test("formatPublicError redacts tokens and HTML bodies", () => {
   assert.equal(formatPublicError('401 {"token":"sk-live-abc"}').includes("sk-live-abc"), false);
   assert.match(formatPublicError("Bearer secret-value boom"), /Bearer \[redacted\]/);
   assert.equal(formatPublicError("500 <!doctype html>"), "non-JSON response");
+});
+
+test("stale overview keeps last-known snapshot and never invents zeros", () => {
+  const prev: OverviewSnapshot = {
+    health: "connected",
+    healthStatus: 200,
+    stats: { status: 200, uptimeSeconds: 12, requestCount: 4, llmCallCount: 1, wsUp: true, lastHeartbeat: "t" },
+    agents: 2,
+    sessions: 3,
+    channels: countChannelHealth([{ health: "running" }]),
+    cronJobs: 0,
+    errors: [],
+    kind: "connected",
+    loadedAt: "2026-08-30T01:00:00Z",
+    stale: false,
+  };
+  const stale = markOverviewStale(prev, "2026-08-30T02:00:00Z");
+  assert.equal(stale.stale, true);
+  assert.equal(stale.kind, "degraded");
+  assert.equal(stale.agents, 2);
+  assert.equal(stale.sessions, 3);
+  assert.equal(canKeepOverviewStale(prev), true);
+  assert.equal(canKeepOverviewStale(null), false);
+  assert.equal(
+    canKeepOverviewStale({
+      ...prev,
+      loadedAt: null,
+      agents: null,
+      sessions: null,
+      channels: null,
+      stats: { ...prev.stats, status: 0 },
+      stale: true,
+    }),
+    false,
+  );
 });

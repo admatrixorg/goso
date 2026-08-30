@@ -2,18 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { loadOverview } from "../api/overview-load";
 import {
   OVERVIEW_POLL_MS,
+  canKeepOverviewStale,
   formatUptime,
+  markOverviewStale,
   type ChannelHealthCounts,
   type OverviewSnapshot,
 } from "../api/overview";
-import { healthKind, type HealthKind } from "../api/health";
+import { formatStaleAt } from "../api/page-state";
+import type { HealthKind } from "../api/health";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { KpiCard } from "../ui/KpiCard";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine } from "../ui/StatusLine";
 import { CrmMetricsPage } from "./CrmMetrics";
 
@@ -47,6 +51,8 @@ function emptySnap(): OverviewSnapshot {
     cronJobs: null,
     errors: [],
     kind: "offline",
+    loadedAt: null,
+    stale: false,
   };
 }
 
@@ -87,8 +93,9 @@ export function OverviewPage() {
     } catch {
       if (seq === seqRef.current && !ac.signal.aborted) {
         setSnap((prev) => {
-          const fallback = prev ?? emptySnap();
-          return { ...fallback, kind: healthKind(0, false), health: "offline", errors: [t("overview.offline")] };
+          if (canKeepOverviewStale(prev)) return markOverviewStale(prev as OverviewSnapshot, new Date().toISOString());
+          const fallback = emptySnap();
+          return { ...fallback, errors: [t("overview.offline")] };
         });
       }
     } finally {
@@ -118,51 +125,70 @@ export function OverviewPage() {
 
   const kind = snap?.kind ?? null;
   const stats = snap?.stats;
-  const empty =
-    kind === "connected" && snap?.agents === 0 && snap?.sessions === 0 && (snap.channels == null || snap.channels.running === 0);
+  const blocking = kind === "unauthorized" || kind === "offline";
+  const trueEmpty =
+    kind === "connected" &&
+    !snap?.stale &&
+    snap?.agents === 0 &&
+    snap?.sessions === 0 &&
+    (snap.channels == null || snap.channels.running === 0);
+  const pageKind = loading && !snap ? "loading" : snap?.stale ? "stale" : kind === "unauthorized" ? "permission" : kind === "offline" ? "error" : kind === "degraded" ? "error" : "ready";
+  const dash = t("overview.unavailable");
+  const statsOk = stats?.status === 200 && !blocking;
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }} data-overview={kind ?? "loading"}>
-      <SectionHeader
-        icon="gauge"
-        title={t("overview.title")}
-        description={t("overview.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void refresh()} disabled={loading}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="gauge"
+      title={t("overview.title")}
+      description={t("overview.desc")}
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void refresh()} disabled={loading}>
+          {t("common.refresh")}
+        </Button>
+      }
+      data-overview={kind ?? "loading"}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Badge tone={kindTone(kind)} data-overview-health={kind ?? "checking"}>
           {kind == null ? t("common.loading") : `${t("overview.gateway")} · ${t(KIND_KEY[kind])}`}
         </Badge>
+        {snap?.stale ? (
+          <Badge tone="warning" data-overview-stale="">
+            {t("common.staleAt", { at: formatStaleAt(snap.loadedAt, locale) || "—" })}
+          </Badge>
+        ) : null}
       </div>
-      {loading && !snap ? <StatusLine kind="loading" /> : null}
-      {kind === "unauthorized" ? <EmptyState>{t("overview.unauthorized")}</EmptyState> : null}
-      {kind === "offline" ? <EmptyState>{t("overview.offline")}</EmptyState> : null}
-      {kind === "degraded" ? (
+      <PageStatus
+        kind={pageKind === "stale" ? "stale" : pageKind === "permission" ? "permission" : pageKind === "loading" ? "loading" : pageKind === "error" && kind === "offline" ? "error" : "ready"}
+        errorText={kind === "offline" ? t("overview.offline") : kind === "unauthorized" ? t("overview.unauthorized") : undefined}
+        staleAt={formatStaleAt(snap?.loadedAt, locale)}
+        onReload={() => void refresh()}
+      />
+      {kind === "degraded" && !snap?.stale ? (
         <p role="status" style={{ color: "var(--orange)", fontSize: 12.5, margin: 0 }}>
           {t("overview.degraded")}
         </p>
       ) : null}
-      {snap?.errors.length ? <StatusLine kind="error">{snap.errors.join(" · ")}</StatusLine> : null}
+      {kind === "unauthorized" ? (
+        <StatusLine kind="error">{t("overview.unauthorized")}</StatusLine>
+      ) : null}
+      {snap?.errors.length && kind !== "unauthorized" ? <StatusLine kind="error">{snap.errors.join(" · ")}</StatusLine> : null}
 
-      {kind !== "unauthorized" && kind !== "offline" && snap ? (
+      {snap || !loading ? (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, minWidth: 0 }}>
             <KpiCard
               data-kpi="gateway"
               label={t("overview.gateway")}
-              value={t(KIND_KEY[kind ?? "degraded"])}
+              value={kind ? t(KIND_KEY[kind]) : dash}
               icon="pulse"
-              tint={kind === "connected" ? "var(--green)" : "var(--orange)"}
-              tintBg={kind === "connected" ? "var(--green-bg)" : "var(--warn-bg)"}
+              tint={kind === "connected" ? "var(--green)" : kind === "offline" ? "var(--red)" : "var(--orange)"}
+              tintBg={kind === "connected" ? "var(--green-bg)" : kind === "offline" ? "var(--red-bg)" : "var(--warn-bg)"}
             />
             <KpiCard
               data-kpi="uptime"
               label={t("overview.uptime")}
-              value={stats?.status === 200 ? formatUptime(stats.uptimeSeconds) : "—"}
+              value={statsOk ? formatUptime(stats.uptimeSeconds) : dash}
               icon="clock"
               tint="var(--accent)"
               tintBg="var(--accent-soft)"
@@ -170,7 +196,7 @@ export function OverviewPage() {
             <KpiCard
               data-kpi="requests"
               label={t("overview.requests")}
-              value={stats?.status === 200 ? fmt(stats.requestCount, locale) : "—"}
+              value={statsOk ? fmt(stats.requestCount, locale) : dash}
               icon="inbox"
               tint="var(--accent)"
               tintBg="var(--accent-soft)"
@@ -178,7 +204,7 @@ export function OverviewPage() {
             <KpiCard
               data-kpi="llm"
               label={t("overview.llm")}
-              value={stats?.status === 200 ? fmt(stats.llmCallCount, locale) : "—"}
+              value={statsOk ? fmt(stats.llmCallCount, locale) : dash}
               icon="bolt"
               tint="var(--accent)"
               tintBg="var(--accent-soft)"
@@ -186,29 +212,29 @@ export function OverviewPage() {
             <KpiCard
               data-kpi="ws"
               label={t("overview.ws")}
-              value={stats?.status === 200 ? (stats.wsUp ? t("overview.ws.up") : t("overview.ws.down")) : "—"}
+              value={statsOk ? (stats.wsUp ? t("overview.ws.up") : t("overview.ws.down")) : dash}
               icon="hook"
-              tint={stats?.status === 200 && stats.wsUp ? "var(--green)" : "var(--text-3)"}
-              tintBg={stats?.status === 200 && stats.wsUp ? "var(--green-bg)" : "var(--surface-2)"}
+              tint={statsOk && stats.wsUp ? "var(--green)" : "var(--text-3)"}
+              tintBg={statsOk && stats.wsUp ? "var(--green-bg)" : "var(--surface-2)"}
             />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, minWidth: 0 }}>
             <Card data-card="agents">
-              <CardHeader icon="bolt" title={t("overview.agents")} meta={fmt(snap.agents, locale)} />
+              <CardHeader icon="bolt" title={t("overview.agents")} meta={snap?.agents == null || blocking ? dash : fmt(snap.agents, locale)} />
               <div style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-2)" }}>
-                {snap.agents == null ? t("overview.partial") : t("overview.agents.meta", { n: snap.agents })}
+                {snap?.agents == null || blocking ? t("overview.partial") : t("overview.agents.meta", { n: snap.agents })}
               </div>
             </Card>
             <Card data-card="sessions">
-              <CardHeader icon="list" title={t("overview.sessions")} meta={fmt(snap.sessions, locale)} />
+              <CardHeader icon="list" title={t("overview.sessions")} meta={snap?.sessions == null || blocking ? dash : fmt(snap.sessions, locale)} />
               <div style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-2)" }}>
-                {snap.sessions == null ? t("overview.partial") : t("overview.sessions.meta", { n: snap.sessions })}
+                {snap?.sessions == null || blocking ? t("overview.partial") : t("overview.sessions.meta", { n: snap.sessions })}
               </div>
             </Card>
             <Card data-card="channels">
               <CardHeader icon="device" title={t("overview.channels")} />
               <div style={{ padding: "12px 16px" }}>
-                {snap.channels ? (
+                {snap?.channels && !blocking ? (
                   <ChannelBreakdown counts={snap.channels} t={t} />
                 ) : (
                   <span style={{ fontSize: 13, color: "var(--text-2)" }}>{t("overview.partial")}</span>
@@ -218,23 +244,40 @@ export function OverviewPage() {
             <Card data-card="heartbeat">
               <CardHeader icon="timer" title={t("overview.heartbeat")} />
               <div style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
-                {stats?.lastHeartbeat ? t("overview.heartbeat.at", { at: stats.lastHeartbeat }) : t("overview.heartbeat.none")}
+                {statsOk && stats.lastHeartbeat ? t("overview.heartbeat.at", { at: stats.lastHeartbeat }) : t("overview.heartbeat.none")}
               </div>
             </Card>
-            {snap.cronJobs != null ? (
-              <Card data-card="cron">
-                <CardHeader icon="clock" title={t("overview.cron")} meta={fmt(snap.cronJobs, locale)} />
-                <div style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-2)" }}>
-                  {t("overview.cron.meta", { n: snap.cronJobs })}
-                </div>
-              </Card>
-            ) : null}
+            <Card data-card="cron">
+              <CardHeader icon="clock" title={t("overview.cron")} meta={snap?.cronJobs == null || blocking ? dash : fmt(snap.cronJobs, locale)} />
+              <div style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-2)" }}>
+                {snap?.cronJobs == null || blocking
+                  ? t("overview.partial")
+                  : snap.cronJobs === 0
+                    ? t("overview.cron.meta", { n: 0 })
+                    : t("overview.cron.meta", { n: snap.cronJobs })}
+              </div>
+            </Card>
           </div>
-          {empty ? <EmptyState>{t("overview.empty")}</EmptyState> : null}
+          <Card data-card="unsupported">
+            <CardHeader icon="eye" title={t("overview.unsupported")} />
+            <ul style={{ margin: 0, padding: "12px 16px 16px 32px", fontSize: 13, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+              <li>{t("overview.usageUnavailable")}</li>
+              <li>{t("overview.clientsUnavailable")}</li>
+              <li>{t("overview.runtimesUnavailable")}</li>
+              <li>{t("overview.recentUnavailable")}</li>
+              <li>{t("overview.databaseUnavailable")}</li>
+              <li>{t("overview.providersCountUnavailable")}</li>
+              <li>{t("overview.toolsCountUnavailable")}</li>
+            </ul>
+          </Card>
+          {trueEmpty ? <EmptyState data-overview-empty="">{t("overview.empty")}</EmptyState> : null}
         </>
       ) : null}
 
-      <CrmMetricsPage embedded />
-    </div>
+      <div data-overview-crm-extra="">
+        <p style={{ fontSize: 12, color: "var(--text-3)", margin: 0 }}>{t("overview.crmExtra")}</p>
+        <CrmMetricsPage embedded />
+      </div>
+    </PageChrome>
   );
 }

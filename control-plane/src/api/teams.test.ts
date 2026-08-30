@@ -9,6 +9,8 @@ import {
   linkDirection,
   lockedFields,
   namedConfirmTarget,
+  mergeAgentLinks,
+  filterLinks,
   safeEvolutionText,
   teamDisplayName,
   validateTeamDraft,
@@ -64,6 +66,33 @@ test("namedConfirmTarget requires the exact name", () => {
   assert.equal(namedConfirmTarget("Ops", "ops"), false);
   assert.equal(namedConfirmTarget("Ops", "Support"), false);
   assert.equal(namedConfirmTarget("  ", "  "), false);
+});
+
+test("mergeAgentLinks dedupes per-agent lists and drops blanks", () => {
+  const merged = mergeAgentLinks([
+    [
+      { from_agent_id: "a", to_agent_id: "b", bidirectional: true },
+      { from_agent_id: "a", to_agent_id: "c" },
+    ],
+    [
+      { from_agent_id: "a", to_agent_id: "b", bidirectional: true },
+      { from_agent_id: " ", to_agent_id: "x" },
+    ],
+  ]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0]?.to_agent_id, "b");
+  assert.equal(merged[1]?.to_agent_id, "c");
+});
+
+test("filterLinks matches source/target labels", () => {
+  const links = [
+    { from_agent_id: "a1", to_agent_id: "a2", bidirectional: false },
+    { from_agent_id: "a3", to_agent_id: "a4", bidirectional: true },
+  ];
+  const label = (id: string) => (id === "a2" ? "Sales" : id);
+  assert.equal(filterLinks(links, "sales", label).length, 1);
+  assert.equal(filterLinks(links, "a3", label).length, 1);
+  assert.equal(filterLinks(links, "  ", label).length, 2);
 });
 
 test("safeEvolutionText never dumps a full system prompt", () => {

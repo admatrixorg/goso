@@ -9,6 +9,7 @@ import {
   normalizePromptMode,
   parseSelectedSession,
   readSelectedSession,
+  sessionActivityAt,
   sessionDisplayName,
   streamReconnectDelayMs,
   writeSelectedSession,
@@ -47,6 +48,11 @@ test("filterSessions matches label, id, and agent", () => {
 test("sessionDisplayName prefers label then id", () => {
   assert.equal(sessionDisplayName({ id: "s1", label: " Sales " }), "Sales");
   assert.equal(sessionDisplayName({ id: "s1", label: "  " }), "s1");
+});
+
+test("sessionActivityAt uses created_at only", () => {
+  assert.equal(sessionActivityAt({ created_at: " 2026-08-30T01:02:03Z " }), "2026-08-30T01:02:03Z");
+  assert.equal(sessionActivityAt({}), "");
 });
 
 test("agentLabel uses display name then key", () => {
