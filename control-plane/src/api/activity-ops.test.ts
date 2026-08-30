@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  activityActionsBlocked,
+  activityCursorMeta,
+  activityFilteredEmpty,
+  activityFiltersActive,
   activityQs,
   asPublicRecord,
+  classifyActivityList,
   localToRfc3339,
   parseDetail,
   publicHasSecrets,
   publicMeta,
   uniqueField,
+  type ActivityPage,
   type ActivityRecord,
 } from "./activity-ops.ts";
 
@@ -78,6 +84,52 @@ test("activityQs and uniqueField", () => {
   assert.equal(activityQs({ before: 12 }), "?before=12");
   const actors = uniqueField([row(), row({ actor: "alice", seq: 2 })], "actor");
   assert.deepEqual(actors, ["alice", "operator"]);
+});
+
+test("permission vs empty vs filtered empty", () => {
+  const perm = classifyActivityList({
+    loading: false,
+    loaded: false,
+    error: new Error("403 forbidden"),
+    itemCount: 0,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.equal(perm.showEmpty, false);
+  assert.equal(activityActionsBlocked(perm.kind), true);
+  assert.equal(activityFilteredEmpty(perm, true), false);
+  const empty = classifyActivityList({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(empty.kind, "empty");
+  assert.equal(activityFilteredEmpty(empty, false), false);
+  assert.equal(activityFilteredEmpty(empty, true), true);
+  assert.equal(activityFiltersActive({ action: "update", range: "all" }), true);
+  assert.equal(activityFiltersActive({ range: "all" }), false);
+});
+
+test("cursor pagination provenance", () => {
+  const page: ActivityPage = { records: [row()], total: 37, limit: 25, before: 12, next_before: 40 };
+  const meta = activityCursorMeta(page, 1);
+  assert.equal(meta.hasPrev, true);
+  assert.equal(meta.hasNext, true);
+  assert.equal(meta.shown, 1);
+  assert.equal(meta.total, 37);
+  assert.equal(meta.before, 12);
+  assert.equal(meta.nextBefore, 40);
+  const first = activityCursorMeta({ records: [], total: 0, limit: 25 }, 0);
+  assert.equal(first.hasPrev, false);
+  assert.equal(first.hasNext, false);
+});
+
+test("stale keeps records; leak flag is not permission", () => {
+  const stale = classifyActivityList({
+    loading: false,
+    loaded: true,
+    error: new Error("502"),
+    itemCount: 4,
+  });
+  assert.equal(stale.kind, "stale");
+  assert.equal(stale.showItems, true);
+  assert.equal(activityActionsBlocked(stale.kind), false);
+  assert.equal(publicHasSecrets({ after: { enabled: true } }), false);
   const iso = localToRfc3339("2026-08-30T12:00");
   assert.ok(iso.includes("2026-08-30"));
 });

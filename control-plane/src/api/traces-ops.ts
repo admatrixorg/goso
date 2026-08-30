@@ -1,8 +1,18 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  isPermissionError,
+  type PageLoadKind,
+  type PageState,
+} from "./page-state.ts";
+
 export const PAGE_SIZE = 20;
 export const ATTR_CAP = 120;
 export const ERROR_CAP = 400;
 
 export type TimeRange = "15m" | "1h" | "24h" | "7d" | "all";
+
+export type TraceDetailKind = "idle" | "loading" | "error" | "permission" | "ready" | "missing";
 
 export type TraceItem = {
   trace_id: string;
@@ -157,4 +167,56 @@ export function pageLabel(offset: number, limit: number, total: number): { from:
   const from = offset + 1;
   const to = Math.min(offset + limit, total);
   return { from, to, pages };
+}
+
+export function tracesFiltersActive(opts: {
+  q?: string;
+  agent?: string;
+  channel?: string;
+  status?: string;
+  range?: TimeRange;
+}): boolean {
+  return Boolean((opts.q || "").trim() || (opts.agent || "").trim() || (opts.channel || "").trim() || (opts.status || "").trim() || (opts.range && opts.range !== "all"));
+}
+
+/** List permission/error is never true-empty. Keep last-known rows only as stale. */
+export function classifyTracesList(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function tracesFilteredEmpty(state: PageState, filtersOn: boolean): boolean {
+  return state.kind === "empty" && filtersOn;
+}
+
+export function tracesTrueEmpty(state: PageState, filtersOn: boolean): boolean {
+  return state.kind === "empty" && !filtersOn;
+}
+
+export function tracesActionsBlocked(kind: PageLoadKind): boolean {
+  return inventoryBlocksMutation(kind);
+}
+
+/** Detail failure is independent of inventory empty. */
+export function classifyTraceDetail(input: {
+  selectedId: string;
+  loading: boolean;
+  error: unknown | null | undefined;
+  hasDetail: boolean;
+}): TraceDetailKind {
+  if (!(input.selectedId || "").trim()) return "idle";
+  if (input.loading) return "loading";
+  if (input.error) return isPermissionError(input.error) ? "permission" : "error";
+  if (input.hasDetail) return "ready";
+  return "missing";
 }

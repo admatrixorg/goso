@@ -2,17 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import { activityApi, type ActivityRecord } from "../api/activity";
 import {
   PAGE_SIZE,
+  activityActionsBlocked,
+  activityCursorMeta,
+  activityFilteredEmpty,
+  activityFiltersActive,
+  classifyActivityList,
   parseDetail,
   publicHasSecrets,
   uniqueField,
   type ActivityPage,
 } from "../api/activity-ops";
+import { formatStaleAt, listMetaCount } from "../api/page-state";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type TimeRange = "1h" | "24h" | "7d" | "all";
@@ -36,7 +43,7 @@ function actionTone(action: string): "positive" | "warning" | "critical" | "neut
 }
 
 export function ActivityPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [page, setPage] = useState<ActivityPage>({ records: [], total: 0, limit: PAGE_SIZE });
   const [action, setAction] = useState("");
   const [actor, setActor] = useState("");
@@ -45,16 +52,26 @@ export function ActivityPage() {
   const [range, setRange] = useState<TimeRange>("all");
   const [before, setBefore] = useState(0);
   const [stack, setStack] = useState<number[]>([]);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const [leak, setLeak] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [open, setOpen] = useState("");
   const na = "—";
 
-  const actions = useMemo(() => uniqueField(page.records, "action"), [page.records]);
-  const actors = useMemo(() => uniqueField(page.records, "actor"), [page.records]);
-  const entities = useMemo(() => uniqueField(page.records, "entity"), [page.records]);
-  const ips = useMemo(() => uniqueField(page.records, "ip"), [page.records]);
-  const filtered = Boolean(action || actor || entity || ip || range !== "all");
+  const state = classifyActivityList({ loading, loaded, error: err, itemCount: page.records.length });
+  const blocked = activityActionsBlocked(state.kind);
+  const filtersOn = activityFiltersActive({ action, actor, entity, ip, range });
+  const filterEmpty = activityFilteredEmpty(state, filtersOn);
+  const trueEmpty = state.kind === "empty" && !filtersOn;
+  const shown = state.showItems ? page.records : [];
+  const actions = useMemo(() => uniqueField(shown, "action"), [shown]);
+  const actors = useMemo(() => uniqueField(shown, "actor"), [shown]);
+  const entities = useMemo(() => uniqueField(shown, "entity"), [shown]);
+  const ips = useMemo(() => uniqueField(shown, "ip"), [shown]);
+  const cursor = activityCursorMeta({ ...page, records: shown }, stack.length);
+  const metaN = listMetaCount(state.kind, page.total);
 
   async function load(nextBefore = before) {
     setLoading(true);
@@ -69,11 +86,12 @@ export function ActivityPage() {
         before: nextBefore || undefined,
       });
       setPage(j);
-      const leak = (j.records || []).some((r) => publicHasSecrets(r));
-      setErr(leak ? t("activity.leak") : "");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+      setLeak((j.records || []).some((r) => publicHasSecrets(r)));
     } catch (e) {
-      setErr(formatPublicError(e));
-      setPage({ records: [], total: 0, limit: PAGE_SIZE });
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -87,14 +105,16 @@ export function ActivityPage() {
   }, [action, actor, entity, ip, range]);
 
   function goNext() {
-    const cursor = page.next_before || 0;
-    if (!cursor) return;
+    if (blocked) return;
+    const next = page.next_before || 0;
+    if (!next) return;
     setStack((s) => [...s, before]);
-    setBefore(cursor);
-    void load(cursor);
+    setBefore(next);
+    void load(next);
   }
 
   function goPrev() {
+    if (blocked) return;
     const prev = stack[stack.length - 1] || 0;
     setStack((s) => s.slice(0, -1));
     setBefore(prev);
@@ -102,84 +122,93 @@ export function ActivityPage() {
   }
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="shield"
-        title={t("activity.title")}
-        description={t("activity.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load(before)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input
-          className="z-field"
-          list="activity-actions"
-          placeholder={t("activity.filter.action")}
-          value={action}
-          onChange={(e) => setAction(e.target.value)}
-          aria-label={t("activity.filter.action")}
-          autoComplete="off"
-        />
-        <datalist id="activity-actions">
-          {actions.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-        <input
-          className="z-field"
-          list="activity-actors"
-          placeholder={t("activity.filter.actor")}
-          value={actor}
-          onChange={(e) => setActor(e.target.value)}
-          aria-label={t("activity.filter.actor")}
-          autoComplete="off"
-        />
-        <datalist id="activity-actors">
-          {actors.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-        <input
-          className="z-field"
-          list="activity-entities"
-          placeholder={t("activity.filter.entity")}
-          value={entity}
-          onChange={(e) => setEntity(e.target.value)}
-          aria-label={t("activity.filter.entity")}
-          autoComplete="off"
-        />
-        <datalist id="activity-entities">
-          {entities.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-        <input
-          className="z-field"
-          list="activity-ips"
-          placeholder={t("activity.filter.ip")}
-          value={ip}
-          onChange={(e) => setIp(e.target.value)}
-          aria-label={t("activity.filter.ip")}
-          autoComplete="off"
-        />
-        <datalist id="activity-ips">
-          {ips.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-        <select className="z-field" value={range} onChange={(e) => setRange(e.target.value as TimeRange)} aria-label={t("activity.filter.range")}>
-          <option value="all">{t("activity.range.all")}</option>
-          <option value="1h">{t("activity.range.1h")}</option>
-          <option value="24h">{t("activity.range.24h")}</option>
-          <option value="7d">{t("activity.range.7d")}</option>
-        </select>
-      </div>
+    <PageChrome
+      icon="shield"
+      title={t("activity.title")}
+      description={t("activity.desc")}
+      primary={
+        <Button icon="refresh" iconGesture variant="primary" onClick={() => void load(before)} disabled={loading}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        <>
+          <input
+            className="z-field"
+            list="activity-actions"
+            placeholder={t("activity.filter.action")}
+            value={action}
+            disabled={blocked}
+            onChange={(e) => setAction(e.target.value)}
+            aria-label={t("activity.filter.action")}
+            autoComplete="off"
+          />
+          <datalist id="activity-actions">
+            {actions.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+          <input
+            className="z-field"
+            list="activity-actors"
+            placeholder={t("activity.filter.actor")}
+            value={actor}
+            disabled={blocked}
+            onChange={(e) => setActor(e.target.value)}
+            aria-label={t("activity.filter.actor")}
+            autoComplete="off"
+          />
+          <datalist id="activity-actors">
+            {actors.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+          <input
+            className="z-field"
+            list="activity-entities"
+            placeholder={t("activity.filter.entity")}
+            value={entity}
+            disabled={blocked}
+            onChange={(e) => setEntity(e.target.value)}
+            aria-label={t("activity.filter.entity")}
+            autoComplete="off"
+          />
+          <datalist id="activity-entities">
+            {entities.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+          <input
+            className="z-field"
+            list="activity-ips"
+            placeholder={t("activity.filter.ip")}
+            value={ip}
+            disabled={blocked}
+            onChange={(e) => setIp(e.target.value)}
+            aria-label={t("activity.filter.ip")}
+            autoComplete="off"
+          />
+          <datalist id="activity-ips">
+            {ips.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+          <select className="z-field" value={range} disabled={blocked} onChange={(e) => setRange(e.target.value as TimeRange)} aria-label={t("activity.filter.range")}>
+            <option value="all">{t("activity.range.all")}</option>
+            <option value="1h">{t("activity.range.1h")}</option>
+            <option value="24h">{t("activity.range.24h")}</option>
+            <option value="7d">{t("activity.range.7d")}</option>
+          </select>
+        </>
+      }
+    >
+      <p role="note" style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>
+        {t("activity.noLive")} {t("activity.noExport")}
+      </p>
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load(before)} />
+      {leak ? <StatusLine kind="error">{t("activity.leak")}</StatusLine> : null}
       <Card>
-        <CardHeader icon="history" title={t("activity.list")} meta={t("activity.meta", { n: page.total })} />
+        <CardHeader icon="history" title={t("activity.list")} meta={metaN == null ? "—" : t("activity.meta", { n: metaN })} />
         <TableScroll>
           <div
             style={{
@@ -199,27 +228,32 @@ export function ActivityPage() {
             <span style={{ flex: 1.1 }}>{t("activity.col.entityId")}</span>
             <span style={{ flex: 1 }}>{t("activity.col.ip")}</span>
           </div>
-          {page.records.map((e) => (
-            <ActivityRow key={e.id || String(e.seq)} row={e} open={open} onOpen={setOpen} na={na} />
+          {shown.map((e) => (
+            <ActivityRow key={e.id || String(e.seq)} row={e} open={open} onOpen={blocked ? () => undefined : setOpen} na={na} />
           ))}
-          {loading ? <StatusLine kind="loading" /> : null}
-          {!loading && page.records.length === 0 ? (
-            <EmptyState>{filtered ? t("activity.filterEmpty") : t("activity.empty")}</EmptyState>
-          ) : null}
+          {trueEmpty ? <EmptyState data-page-state="empty">{t("activity.empty")}</EmptyState> : null}
+          {filterEmpty ? <EmptyState data-page-state="filtered_empty">{t("activity.filterEmpty")}</EmptyState> : null}
         </TableScroll>
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 16px", flexWrap: "wrap" }}>
-          <Button disabled={loading || stack.length === 0} onClick={goPrev}>
+          <Button disabled={blocked || loading || !cursor.hasPrev} onClick={goPrev}>
             {t("activity.prev")}
           </Button>
           <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            {t("activity.page", { n: page.records.length, total: page.total })}
+            {metaN == null
+              ? "—"
+              : t("activity.page", { n: cursor.shown, total: page.total })}
           </span>
-          <Button disabled={loading || !page.next_before} onClick={goNext}>
+          <Button disabled={blocked || loading || !cursor.hasNext} onClick={goNext}>
             {t("activity.next")}
           </Button>
+          {state.showItems && (cursor.before || cursor.nextBefore) ? (
+            <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+              {t("activity.cursor", { before: cursor.before ?? 0, next: cursor.nextBefore ?? "—" })}
+            </span>
+          ) : null}
         </div>
       </Card>
-    </div>
+    </PageChrome>
   );
 }
 

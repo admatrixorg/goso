@@ -1,3 +1,10 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  type PageLoadKind,
+  type PageState,
+} from "./page-state.ts";
+
 export const LIVE_CAP = 200;
 export const SUMMARY_CAP = 400;
 export const DETAIL_CAP = 200;
@@ -246,6 +253,63 @@ export function uniqueActors(rows: GatewayEvent[]): string[] {
 }
 
 export type StreamConn = "off" | "connecting" | "live" | "paused" | "reconnect" | "error";
+
+export function eventsFiltersActive(f: EventFilters): boolean {
+  return Boolean((f.type || "").trim() || (f.actor || "").trim() || (f.kind || "").trim() || (f.connector || "").trim());
+}
+
+export function classifyEventsHistory(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function eventsFilteredEmpty(state: PageState, filtersOn: boolean): boolean {
+  return state.kind === "empty" && filtersOn;
+}
+
+export function eventsLiveFilteredEmpty(unfilteredCount: number, visibleCount: number): boolean {
+  return unfilteredCount > 0 && visibleCount === 0;
+}
+
+export function streamStartBlocked(kind: PageLoadKind): boolean {
+  return inventoryBlocksMutation(kind);
+}
+
+/** Pause wins over connecting/live; off wins over everything. */
+export function classifyStreamConn(input: { live: boolean; paused: boolean; conn: StreamConn }): StreamConn {
+  if (!input.live) return "off";
+  if (input.paused) return "paused";
+  if (input.conn === "off") return "connecting";
+  return input.conn;
+}
+
+/** History 401/error is not an empty live tail. Stream failure is a separate provenance. */
+export function historyStreamProvenance(
+  historyKind: PageLoadKind,
+  streamConn: StreamConn,
+): "history" | "stream" | "both" | "none" {
+  const histFail = historyKind === "error" || historyKind === "permission";
+  const streamFail = streamConn === "error" || streamConn === "reconnect";
+  if (histFail && streamFail) return "both";
+  if (histFail) return "history";
+  if (streamFail) return "stream";
+  return "none";
+}
+
+/** Local view only — does not delete server history. */
+export function clearLocalRows<T>(_rows: T[]): T[] {
+  return [];
+}
 
 export function parseSseBlock(raw: string): { event: string; id: string; data: string } {
   let event = "";

@@ -4,13 +4,20 @@ import {
   applyFilters,
   asPublicEvent,
   backoffDelay,
+  classifyEventsHistory,
+  classifyStreamConn,
+  clearLocalRows,
   eventKey,
+  eventsFilteredEmpty,
+  eventsLiveFilteredEmpty,
+  historyStreamProvenance,
   LIVE_CAP,
   mergeLive,
   parseDetail,
   parseSseBlock,
   publicHasSecrets,
   publicSummary,
+  streamStartBlocked,
   uniqueActors,
   type GatewayEvent,
 } from "./events-ops.ts";
@@ -100,4 +107,48 @@ test("parseSseBlock and publicSummary cap", () => {
   const long = publicSummary("x".repeat(500));
   assert.ok(long.endsWith("…"));
   assert.ok(long.length <= 401);
+});
+
+test("history permission is not an empty live tail", () => {
+  const perm = classifyEventsHistory({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.equal(perm.showEmpty, false);
+  assert.equal(eventsFilteredEmpty(perm, true), false);
+  assert.equal(streamStartBlocked(perm.kind), true);
+  assert.equal(historyStreamProvenance(perm.kind, "off"), "history");
+});
+
+test("stream disconnect is distinct from history failure", () => {
+  const ready = classifyEventsHistory({ loading: false, loaded: true, error: null, itemCount: 2 });
+  assert.equal(historyStreamProvenance(ready.kind, "error"), "stream");
+  assert.equal(historyStreamProvenance(ready.kind, "reconnect"), "stream");
+  assert.equal(historyStreamProvenance("error", "error"), "both");
+  assert.equal(historyStreamProvenance(ready.kind, "live"), "none");
+});
+
+test("pause/resume/backoff and clear-local-view", () => {
+  assert.equal(classifyStreamConn({ live: false, paused: true, conn: "live" }), "off");
+  assert.equal(classifyStreamConn({ live: true, paused: true, conn: "live" }), "paused");
+  assert.equal(classifyStreamConn({ live: true, paused: false, conn: "off" }), "connecting");
+  assert.equal(classifyStreamConn({ live: true, paused: false, conn: "reconnect" }), "reconnect");
+  assert.equal(backoffDelay(0), 1000);
+  assert.equal(backoffDelay(3), 8000);
+  const live = [row({ seq: 1 }), row({ seq: 2, trace_id: "tr-2" })];
+  const history = [row({ seq: 9, trace_id: "hist" })];
+  assert.equal(clearLocalRows(live).length, 0);
+  assert.equal(history.length, 1);
+  assert.equal(eventsLiveFilteredEmpty(2, 0), true);
+  assert.equal(eventsLiveFilteredEmpty(0, 0), false);
+});
+
+test("history true empty vs filtered empty", () => {
+  const empty = classifyEventsHistory({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(empty.kind, "empty");
+  assert.equal(eventsFilteredEmpty(empty, false), false);
+  assert.equal(eventsFilteredEmpty(empty, true), true);
 });

@@ -1,3 +1,10 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  type PageLoadKind,
+  type PageState,
+} from "./page-state.ts";
+
 export const PAGE_SIZE = 25;
 export const META_CAP = 200;
 
@@ -204,6 +211,63 @@ export function uniqueField(rows: ActivityRecord[], key: "action" | "actor" | "e
 
 export function pageLabel(shown: number, total: number): { from: number; to: number; n: number } {
   return { from: total === 0 ? 0 : 1, to: shown, n: total };
+}
+
+export function activityFiltersActive(q: {
+  action?: string;
+  actor?: string;
+  entity?: string;
+  ip?: string;
+  range?: string;
+}): boolean {
+  return Boolean(
+    (q.action || "").trim() ||
+      (q.actor || "").trim() ||
+      (q.entity || "").trim() ||
+      (q.ip || "").trim() ||
+      (q.range && q.range !== "all"),
+  );
+}
+
+export function classifyActivityList(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function activityFilteredEmpty(state: PageState, filtersOn: boolean): boolean {
+  return state.kind === "empty" && filtersOn;
+}
+
+export function activityActionsBlocked(kind: PageLoadKind): boolean {
+  return inventoryBlocksMutation(kind);
+}
+
+export function activityCursorMeta(page: ActivityPage, stackLen: number): {
+  hasPrev: boolean;
+  hasNext: boolean;
+  shown: number;
+  total: number;
+  before?: number;
+  nextBefore?: number;
+} {
+  return {
+    hasPrev: stackLen > 0,
+    hasNext: Boolean(page.next_before),
+    shown: page.records.length,
+    total: page.total,
+    before: page.before,
+    nextBefore: page.next_before,
+  };
 }
 
 export function localToRfc3339(v: string): string {
