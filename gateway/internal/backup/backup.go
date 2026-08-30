@@ -20,12 +20,46 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const (
+	ScopeSystem    = "system"
+	ScopeTenant    = "tenant"
+	DestLocal      = "local"
+	DestS3         = "s3"
+	SecretExcluded = "excluded"
+	SchemaBackup   = "goso.backup/v1"
+	SchemaVersion  = 1
+)
+
 // SnapshotResult is the admin backup JSON body.
 type SnapshotResult struct {
-	File      string `json:"file"`
-	Bytes     int64  `json:"bytes"`
-	Integrity string `json:"integrity"`
-	Mtime     string `json:"mtime,omitempty"`
+	File         string         `json:"file"`
+	Bytes        int64          `json:"bytes"`
+	Integrity    string         `json:"integrity"`
+	Mtime        string         `json:"mtime,omitempty"`
+	Scope        string         `json:"scope,omitempty"`
+	Tenant       string         `json:"tenant,omitempty"`
+	SecretPolicy string         `json:"secret_policy,omitempty"`
+	Destination  string         `json:"destination,omitempty"`
+	RemoteKey    string         `json:"remote_key,omitempty"`
+	Progress     int            `json:"progress,omitempty"`
+	Steps        []Step         `json:"steps,omitempty"`
+	Warning      string         `json:"warning,omitempty"`
+	Counts       map[string]int `json:"counts,omitempty"`
+}
+
+// Step is a progress row for create/restore.
+type Step struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// CreateOpts selects system vs tenant snapshot and local vs S3 copy.
+type CreateOpts struct {
+	Scope       string
+	Tenant      string
+	Destination string
+	Remote      *Remote
 }
 
 var (
@@ -39,7 +73,19 @@ var (
 	ErrNotFound = errors.New("snapshot not found")
 	// ErrPostgres means GOSO_DATABASE_URL is a postgres DSN; VACUUM INTO
 	// would snapshot idle SQLite, not live PG rows.
-	ErrPostgres   = errors.New("postgres backup not supported")
+	ErrPostgres = errors.New("postgres backup not supported")
+	// ErrPreflight means create was refused because a blocking check failed.
+	ErrPreflight = errors.New("preflight blocked")
+	// ErrInvalidArchive means the snapshot failed schema or secret policy checks.
+	ErrInvalidArchive = errors.New("invalid archive")
+	// ErrConfirm means a destructive confirm token did not match the target.
+	ErrConfirm = errors.New("confirm does not match")
+	// ErrNotConfigured means optional S3 storage is unset.
+	ErrNotConfigured = errors.New("s3 not configured")
+	// ErrEnvOwned means S3 credentials come from the environment.
+	ErrEnvOwned = errors.New("s3 credentials are environment-owned")
+	// ErrScope means scope is not system or tenant.
+	ErrScope      = errors.New("unknown backup scope")
 	errDestExists = errors.New("snapshot dest exists")
 )
 
@@ -63,6 +109,23 @@ func DBPath() string {
 
 // Snapshot writes a consistent copy of the live db via VACUUM INTO.
 func Snapshot() (SnapshotResult, error) {
+	return Create(CreateOpts{Scope: ScopeSystem, Destination: DestLocal})
+}
+
+// Create snapshots the live db, strips credentials, and optionally copies to S3.
+func Create(opts CreateOpts) (SnapshotResult, error) {
+	opts.Scope = normalizeScope(opts.Scope)
+	if opts.Scope == "" {
+		return SnapshotResult{}, ErrScope
+	}
+	if opts.Scope == ScopeTenant {
+		opts.Tenant = store.NormalizeTenant(opts.Tenant)
+	} else {
+		opts.Tenant = ""
+	}
+	if strings.TrimSpace(opts.Destination) == "" {
+		opts.Destination = DestLocal
+	}
 	if store.IsPostgresDSN(os.Getenv("GOSO_DATABASE_URL")) {
 		return SnapshotResult{}, ErrPostgres
 	}
@@ -70,11 +133,19 @@ func Snapshot() (SnapshotResult, error) {
 	if src == "" {
 		return SnapshotResult{}, ErrNoFile
 	}
-	return SnapshotFile(src, Dir())
+	pf := Preflight()
+	if !pf.CanBackup {
+		return SnapshotResult{}, fmt.Errorf("%w: %s", ErrPreflight, pf.Blocking)
+	}
+	return snapshotFile(src, Dir(), opts)
 }
 
 // SnapshotFile VACUUM INTOs src into dir as a timestamped file.
 func SnapshotFile(src, dir string) (SnapshotResult, error) {
+	return snapshotFile(src, dir, CreateOpts{Scope: ScopeSystem, Destination: DestLocal})
+}
+
+func snapshotFile(src, dir string, opts CreateOpts) (SnapshotResult, error) {
 	src = strings.TrimSpace(src)
 	if src == "" || src == ":memory:" {
 		return SnapshotResult{}, ErrNoFile
@@ -82,6 +153,7 @@ func SnapshotFile(src, dir string) (SnapshotResult, error) {
 	if security.HasDotDot(src) || security.HasDotDot(dir) {
 		return SnapshotResult{}, ErrEscape
 	}
+	steps := []Step{{Name: "preflight", Status: "ok"}}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return SnapshotResult{}, err
 	}
@@ -95,7 +167,7 @@ func SnapshotFile(src, dir string) (SnapshotResult, error) {
 	var dest string
 	var last error
 	for i := 0; i < 8; i++ {
-		dest, err = uniqueDest(dir)
+		dest, err = uniqueDest(dir, opts.Scope, opts.Tenant)
 		if err != nil {
 			return SnapshotResult{}, err
 		}
@@ -111,20 +183,67 @@ func SnapshotFile(src, dir string) (SnapshotResult, error) {
 	if last != nil {
 		return SnapshotResult{}, last
 	}
+	steps = append(steps, Step{Name: "snapshot", Status: "ok"})
 	if err := IntegrityCheck(dest); err != nil {
 		_ = os.Remove(dest)
 		return SnapshotResult{}, err
+	}
+	if err := Sanitize(dest); err != nil {
+		_ = os.Remove(dest)
+		return SnapshotResult{}, err
+	}
+	steps = append(steps, Step{Name: "sanitize", Status: "ok", Detail: SecretExcluded})
+	if opts.Scope == ScopeTenant {
+		if err := PruneTenant(dest, opts.Tenant); err != nil {
+			_ = os.Remove(dest)
+			return SnapshotResult{}, err
+		}
+		steps = append(steps, Step{Name: "tenant_scope", Status: "ok", Detail: opts.Tenant})
+	}
+	if err := IntegrityCheck(dest); err != nil {
+		_ = os.Remove(dest)
+		return SnapshotResult{}, err
+	}
+	counts, err := TableCounts(dest)
+	if err != nil {
+		counts = map[string]int{}
 	}
 	st, err := os.Stat(dest)
 	if err != nil {
 		return SnapshotResult{}, err
 	}
-	return SnapshotResult{
-		File:      filepath.Base(dest),
-		Bytes:     st.Size(),
-		Integrity: "ok",
-		Mtime:     st.ModTime().UTC().Format(time.RFC3339),
-	}, nil
+	res := SnapshotResult{
+		File:         filepath.Base(dest),
+		Bytes:        st.Size(),
+		Integrity:    "ok",
+		Mtime:        st.ModTime().UTC().Format(time.RFC3339),
+		Scope:        opts.Scope,
+		Tenant:       opts.Tenant,
+		SecretPolicy: SecretExcluded,
+		Destination:  DestLocal,
+		Progress:     100,
+		Steps:        steps,
+		Counts:       counts,
+	}
+	if err := WriteManifest(dest, res); err != nil {
+		_ = os.Remove(dest)
+		return SnapshotResult{}, err
+	}
+	if strings.EqualFold(strings.TrimSpace(opts.Destination), DestS3) {
+		if opts.Remote == nil {
+			return res, fmt.Errorf("%w", ErrNotConfigured)
+		}
+		key, err := opts.Remote.UploadFile(dest)
+		if err != nil {
+			res.Warning = "s3 upload failed; local snapshot kept"
+			res.Steps = append(res.Steps, Step{Name: "s3", Status: "failed", Detail: err.Error()})
+			return res, err
+		}
+		res.Destination = DestS3
+		res.RemoteKey = key
+		res.Steps = append(res.Steps, Step{Name: "s3", Status: "ok", Detail: key})
+	}
+	return res, nil
 }
 
 // List returns snapshots under Dir with integrity badges.
@@ -151,9 +270,19 @@ func List() ([]SnapshotResult, error) {
 		if err != nil {
 			continue
 		}
-		item := SnapshotResult{File: name, Bytes: info.Size(), Mtime: info.ModTime().UTC().Format(time.RFC3339), Integrity: "fail"}
+		item := SnapshotResult{File: name, Bytes: info.Size(), Mtime: info.ModTime().UTC().Format(time.RFC3339), Integrity: "fail", SecretPolicy: SecretExcluded}
 		if IntegrityCheck(p) == nil {
 			item.Integrity = "ok"
+		}
+		if man, err := ReadManifest(p); err == nil {
+			item.Scope = man.Scope
+			item.Tenant = man.Tenant
+			item.SecretPolicy = man.SecretPolicy
+			item.Counts = man.Counts
+		} else if strings.Contains(name, "-t-") {
+			item.Scope = ScopeTenant
+		} else {
+			item.Scope = ScopeSystem
 		}
 		out = append(out, item)
 	}
@@ -317,14 +446,50 @@ func Apply(name, dest string) error {
 	return nil
 }
 
-func uniqueDest(dir string) (string, error) {
+func uniqueDest(dir, scope, tenant string) (string, error) {
 	ts := time.Now().UTC().Format("20060102T150405Z")
 	var buf [8]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		return "", err
 	}
 	name := fmt.Sprintf("goso-%s-%s.db", ts, hex.EncodeToString(buf[:]))
+	if scope == ScopeTenant {
+		tag := sanitizeTenantTag(tenant)
+		name = fmt.Sprintf("goso-t-%s-%s-%s.db", tag, ts, hex.EncodeToString(buf[:]))
+	}
 	return filepath.Join(dir, name), nil
+}
+
+func sanitizeTenantTag(tenant string) string {
+	tenant = strings.ToLower(strings.TrimSpace(tenant))
+	if tenant == "" {
+		tenant = store.DefaultTenant
+	}
+	var b strings.Builder
+	for _, r := range tenant {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	s := b.String()
+	if s == "" {
+		return "default"
+	}
+	if len(s) > 32 {
+		return s[:32]
+	}
+	return s
+}
+
+func normalizeScope(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", ScopeSystem:
+		return ScopeSystem
+	case ScopeTenant:
+		return ScopeTenant
+	default:
+		return ""
+	}
 }
 
 func vacuumInto(src, dest string) error {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, TENANT_STORAGE_KEY, type TenantInfo } from "../api/client";
-import { backupApi, type BackupFile } from "../api/backup";
+import { BackupPanel } from "./BackupPanel";
 import { pairingApi, type PairingIssued } from "../api/pairing";
 import { crmOrgId } from "../api/crm";
 import { isDemoMode } from "../demo/mode";
@@ -74,9 +74,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [templates, setTemplates] = useState<SettingsTemplate[]>([]);
   const [account, setAccount] = useState<SettingsAccount | null>(null);
   const [developing, setDeveloping] = useState("");
-  const [backups, setBackups] = useState<BackupFile[]>([]);
-  const [backupNote, setBackupNote] = useState("");
-  const [backupBusy, setBackupBusy] = useState(false);
+
   const [pairing, setPairing] = useState<PairingIssued | null>(null);
   const [pairingCopied, setPairingCopied] = useState(false);
   const [pairingBusy, setPairingBusy] = useState(false);
@@ -143,7 +141,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     const id = org.trim() || crmOrgId();
     setErr("");
     setDeveloping("");
-    if (page === "theme" || page === "pairing") return;
+    if (page === "theme" || page === "pairing" || page === "backup") return;
     setLoading(true);
     try {
       if (page === "users") setUsers(await settingsApi.listUsers(id));
@@ -180,9 +178,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         }
         setGw(cfg);
         setGwForm(formFromSnapshot(cfg));
-      } else if (page === "backup") {
-        const list = await backupApi.list();
-        setBackups(list.files || []);
       }
     } catch (e) {
       setErr(mapErr(e));
@@ -193,7 +188,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
 
   useEffect(() => {
     setSaved("");
-    if (page === "theme" || page === "pairing") return;
+    if (page === "theme" || page === "pairing" || page === "backup") return;
     void load();
   }, [page, org]);
 
@@ -280,8 +275,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             </Button>
           </div>
         ) : null}
-        {loading ? <StatusLine kind="loading" /> : null}
-        {err ? <StatusLine kind="error">{err}</StatusLine> : null}
+        {page !== "backup" && loading ? <StatusLine kind="loading" /> : null}
+        {page !== "backup" && err ? <StatusLine kind="error">{err}</StatusLine> : null}
         {saved && !err ? <p role="status" style={{ color: "var(--green)", fontSize: 12.5, margin: 0 }}>{saved}</p> : null}
 
         {page === "account" && (
@@ -693,80 +688,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
           </>
         )}
 
-        {page === "backup" && (
-          <>
-            <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.backup")}</div>
-            <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.backup.desc")}</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Button
-                variant="primary"
-                icon="plus"
-                disabled={backupBusy}
-                onClick={() =>
-                  void run(async () => {
-                    if (backupBusy) return;
-                    setBackupBusy(true);
-                    setBackupNote("");
-                    try {
-                      const snap = await backupApi.create();
-                      setBackupNote(t("settings.backup.created", { file: snap.file }));
-                    } finally {
-                      setBackupBusy(false);
-                    }
-                  })
-                }
-              >
-                {t("settings.backup.create")}
-              </Button>
-              <Button icon="refresh" iconGesture onClick={() => void load()}>
-                {t("common.refresh")}
-              </Button>
-            </div>
-            {backupNote ? <p style={{ color: "var(--text-2)", fontSize: 12.5, margin: 0 }}>{backupNote}</p> : null}
-            <Card>
-              <CardHeader icon="download" title={t("settings.backup")} meta={String(backups.length)} />
-              <TableScroll>
-                <Row head>
-                  <span style={{ flex: 2 }}>{t("settings.col.file")}</span>
-                  <span style={{ flex: 0.8 }}>{t("settings.col.bytes")}</span>
-                  <span style={{ flex: 1.2 }}>{t("settings.col.mtime")}</span>
-                  <span style={{ flex: 0.8 }}>{t("settings.col.integrity")}</span>
-                  <span style={{ width: 140 }} />
-                </Row>
-                {backups.map((b) => (
-                  <Row key={b.file}>
-                    <span style={{ flex: 2, fontWeight: 600, fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12 }}>{b.file}</span>
-                    <span style={{ flex: 0.8, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{b.bytes}</span>
-                    <span style={{ flex: 1.2, color: "var(--text-3)", fontSize: 12 }}>{b.mtime || "—"}</span>
-                    <span style={{ flex: 0.8 }}>
-                      <Badge tone={b.integrity === "ok" ? "positive" : "critical"}>
-                        {b.integrity === "ok" ? t("settings.backup.ok") : t("settings.backup.fail")}
-                      </Badge>
-                    </span>
-                    <span style={{ width: 140, textAlign: "right" }}>
-                      <Button
-                        variant="quiet"
-                        style={{ padding: "4px 8px" }}
-                        onClick={() =>
-                          void run(async () => {
-                            if (!window.confirm(t("settings.backup.confirmRestore"))) return;
-                            setBackupNote("");
-                            const r = await backupApi.restore(b.file);
-                            setBackupNote(t("settings.backup.restored", { file: r.file || b.file }));
-                          })
-                        }
-                      >
-                        {t("settings.backup.restore")}
-                      </Button>
-                    </span>
-                  </Row>
-                ))}
-                {backups.length === 0 ? <EmptyState>{t("settings.backup.empty")}</EmptyState> : null}
-              </TableScroll>
-            </Card>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.backup.applyHint")}</p>
-          </>
-        )}
+        {page === "backup" ? <BackupPanel /> : null}
 
         {page === "pairing" && (
           <>
