@@ -64,3 +64,27 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `0820bac` (`Merge SPEC 123 CAPABILITIES operator UX`, `--no-ff`) of `9a5571d` + `4b3143d` on top of SPEC 122 `d19c979`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No tokens, HMAC keys, MCP env values, or private messages in this record.
+
+Restart: Vite `:3000` only (new listen pid `1885`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Advisor re-ran `npm test` (233/233) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1813).
+
+Browser: Orca isolated profile `qc120-unauth` (no `goso_token`). Hard-reload `http://127.0.0.1:3000/`, then CAPABILITIES Skills / Tools / MCP / TTS / Cron / Webhooks / Connectors.
+
+| Defect | Live unauth (401) | Verdict |
+| --- | --- | --- |
+| Shared Functions heading + 0-count empty + enabled create | Skills first-class title. `Tạo skill` `disabled=true`. No `0 skills` / empty-on-error. | PASS |
+| Tools `0 tools` + Pick an agent during agent-inventory 401 | Tools list meta `—`. 401. No `0 tools` / pick-agent empty. | PASS |
+| MCP `0 connectors` + Add form | First-class `MCP Servers`. `Thêm connector` `disabled=true`. | PASS |
+| TTS 401 labeled not-configured + enabled Save/Test | First-class `TTS`. `Lưu` `disabled=true`. `not configured` not used as the 401 state. | PASS |
+| Cron `0 jobs` + create during error | First-class `Cron`. `Tạo job` `disabled=true`. Job 401 and session 401 shown separately. List meta `—`. | PASS |
+| Webhooks 401 + Create + `0 webhooks` | First-class `Webhook HTTP`. `Tạo webhook` `disabled=true`. HTTP-versus-lifecycle copy present. | PASS |
+| Connectors 401 + prefilled register + `0 connectors` | `Đăng ký` `disabled=true`. Same inventory note as MCP. No false-empty count. | PASS |
+
+### Advisor verdict: PASS — SPEC 123 closed
+
+Do not spawn a second 123 worker. Sequential 124+ only when asked. CRM `:8082` and sidecar `:8091` remain untouched.
