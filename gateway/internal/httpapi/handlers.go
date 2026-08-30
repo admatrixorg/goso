@@ -32,6 +32,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
+	"github.com/mqglobal/goso/gateway/internal/tts"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
 	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
@@ -80,6 +81,8 @@ type Options struct {
 	Portable *impexp.Service
 	// BackupS3 is optional S3-compatible snapshot storage. Nil → backup.NewRemote().
 	BackupS3 *backup.Remote
+	// TTS is speech-provider config. Nil → tts.Default().
+	TTS *tts.Service
 }
 
 func (o *Options) defaults() {
@@ -134,6 +137,9 @@ func (o *Options) defaults() {
 	if o.BackupS3 == nil {
 		o.BackupS3 = backup.NewRemote()
 	}
+	if o.TTS == nil {
+		o.TTS = tts.Default()
+	}
 }
 
 // Router builds the HTTP mux.
@@ -179,6 +185,7 @@ func NewRouter(opt Options) http.Handler {
 	registerPackageRoutes(mux, opt)
 	registerApprovalRoutes(mux, opt)
 	registerImportExportRoutes(mux, opt)
+	registerTTSRoutes(mux, opt)
 	return mux
 }
 

@@ -28,6 +28,7 @@ var viewPrefixes = []string{
 	"/api/packages",
 	"/api/approvals",
 	"/api/import-export",
+	"/api/tts",
 	"/v1/agents",
 	"/v1/sessions",
 	"/v1/pending-messages",
@@ -44,6 +45,7 @@ var viewPrefixes = []string{
 	"/v1/packages",
 	"/v1/approvals",
 	"/v1/import-export",
+	"/v1/tts",
 }
 
 // Grant is a hashed issued API key that passed Accept. Secret is never stored here.
@@ -90,7 +92,7 @@ func RequireToken(token string, bypass []string) func(http.Handler) http.Handler
 }
 
 // RequireTokens enforces GOSO_ADMIN_TOKEN (full) and optional GOSO_VIEW_TOKEN
-// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export and the matching /v1 aliases only).
+// (GET /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export /api/tts and the matching /v1 aliases only).
 func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.Handler {
 	return Require(Config{Admin: admin, View: view, Bypass: bypass})
 }

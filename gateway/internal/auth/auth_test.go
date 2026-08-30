@@ -476,6 +476,38 @@ func TestRequireTokens_ViewGETOnly(t *testing.T) {
 		t.Fatalf("view POST import-export 403, got %d", w.Code)
 	}
 
+	ttsGet := httptest.NewRequest("GET", "/api/tts", nil)
+	ttsGet.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, ttsGet)
+	if w.Code != 200 {
+		t.Fatalf("view GET tts 200, got %d", w.Code)
+	}
+
+	v1tts := httptest.NewRequest("GET", "/v1/tts", nil)
+	v1tts.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, v1tts)
+	if w.Code != 200 {
+		t.Fatalf("view GET /v1/tts 200, got %d", w.Code)
+	}
+
+	ttsPut := httptest.NewRequest("PUT", "/api/tts", nil)
+	ttsPut.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, ttsPut)
+	if w.Code != 403 {
+		t.Fatalf("view PUT tts 403, got %d", w.Code)
+	}
+
+	ttsTest := httptest.NewRequest("POST", "/api/tts/test", nil)
+	ttsTest.Header.Set("Authorization", "Bearer view-041")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, ttsTest)
+	if w.Code != 403 {
+		t.Fatalf("view POST tts test 403, got %d", w.Code)
+	}
+
 	stDel := httptest.NewRequest("POST", "/api/storage/delete", nil)
 	stDel.Header.Set("Authorization", "Bearer view-041")
 	w = httptest.NewRecorder()
@@ -568,6 +600,10 @@ func TestRequireTokens_ViewPOSTDenyMatrix(t *testing.T) {
 		"/api/storage/upload",
 		"/api/storage/delete",
 		"/v1/storage/delete",
+		"/api/tts",
+		"/api/tts/test",
+		"/api/tts/clear",
+		"/v1/tts/test",
 	}
 	for _, path := range paths {
 		req := httptest.NewRequest("POST", path, nil)

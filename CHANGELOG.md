@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của GOSO được ghi ở đây.
 
 ### Added
 
+- SPEC 118: TTS THIẾU page. Live `tts` tab. Provider select, provider-specific test/save, auto-apply/reply policy, limits, timeout. Write-only keys; GET boolean `key_set`/`configured` only. Test failures redact authorization. Loading/empty/error/disabled/not-configured. i18n vi+en. QA `docs/qa/118-tts.md`.
 - SPEC 117: Backup & Restore PARTIAL page. Settings backup sub-tabs (system/tenant/restore/S3). Preflight, tenant-scoped sanitized snapshots, archive validation, restore plan, type-to-confirm. Optional S3 write-only + `configured` on GET. Archives never include credentials. Live SQLite apply stays CLI-only. i18n vi+en. QA `docs/qa/117-backup-restore.md`.
 - SPEC 116: Import & Export THIẾU page. Live `impexp` tab. Staged export/import of selected teams, agents, skills, and MCP metadata. Manifest preview, schema/version validation, conflict skip|overwrite|rename, dry run, progress, rollback/reporting. Secrets excluded by default; GET/archive never return tokens. Operators re-enter MCP credentials after import. i18n vi+en. QA `docs/qa/116-import-export.md`.
 - SPEC 115: Approvals THIẾU page. Live `approvals` tab. Realtime execution-approval inbox distinct from channel pairing. Requester/agent/tool, bounded redacted arg preview, risk, expiry, Approve/Deny. Deny requires a reason. Single-resolution; stale/expired cannot be decided. GET never returns args or secrets. Audit `entity=approval`. i18n vi+en. QA `docs/qa/115-approvals.md`.
