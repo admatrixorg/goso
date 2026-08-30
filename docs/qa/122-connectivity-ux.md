@@ -55,3 +55,23 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials, pairing codes, private keys, or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `d19c979` (`Merge SPEC 122 CONNECTIVITY operator UX`, `--no-ff`) of `2bbb1e2` + `2f90bc6` on top of SPEC 121 `08a76ae` (follow-up `inventoryBlocksMutation` still present). Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No secrets, pairing codes, private keys, or vendor tokens in this record.
+
+Restart: Vite `:3000` only (new listen pid `57332`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Advisor re-ran `npm test` (218/218) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1745).
+
+Browser: Orca isolated profiles `qc120-unauth` (no `goso_token`) and `qc120-auth`. Hard-reload `http://127.0.0.1:3000/`, then CONNECTIVITY Channels / Nodes / Workstations.
+
+| Defect | Live unauth (401) | Live auth | Verdict |
+| --- | --- | --- | --- |
+| Channels error + `0` pairing/`0 channels` + implied Add Channel | Refresh primary. Honest copy “Không có Thêm kênh”. Pairing and catalog both 401 with meta `—`. `0 channels` / `No channels` / pending-empty copy absent. Logout button `disabled=true`. | Catalog loads. No Add Channel button. Refresh enabled. | PASS |
+| Nodes 401 + `0 pending`/`0 devices` empty | Refresh primary. 401. Pending meta `—`, paired meta `—`. Empty claims absent. | True-empty after successful load: `0 chờ` / `Không có yêu cầu ghép.` and `0 thiết bị` / `Không có thiết bị.` | PASS |
+| Workstations 401 + enabled Add + `0 targets` empty | `Thêm máy chạy` `disabled=true`. 401. List meta `—`. Empty-on-error copy absent. | True-empty `0 máy` / `Không có máy chạy.` Add enabled. | PASS |
+
+### Advisor verdict: PASS — SPEC 122 closed
+
+Do not spawn a second 122 worker. Sequential 123+ only when asked. CRM `:8082` and sidecar `:8091` remain untouched.
