@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ttsBlocksMutation, ttsItemCount } from "../api/capabilities-ops";
+import { classifyPageState, formatStaleAt } from "../api/page-state";
 import { ttsApi, type TTSStatus } from "../api/tts";
 import {
   TTS_APPLY,
@@ -18,7 +20,8 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 const PROVIDER_KEYS: Record<string, MsgKey> = {
@@ -67,7 +70,7 @@ function formFrom(row: TTSStatus): Form {
 }
 
 export function TTSPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [row, setRow] = useState<TTSStatus>(emptyStatus());
   const [form, setForm] = useState<Form>(formFrom(emptyStatus()));
   const [loading, setLoading] = useState(true);
@@ -78,6 +81,17 @@ export function TTSPage() {
   const [confirm, setConfirm] = useState(false);
   const [typed, setTyped] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<unknown>(null);
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: loadErr,
+    itemCount: ttsItemCount(loaded),
+    keepStale: loaded,
+  });
+  const blocked = ttsBlocksMutation(state.kind);
 
   async function load() {
     setLoading(true);
@@ -85,9 +99,13 @@ export function TTSPage() {
       const next = await ttsApi.get();
       setRow(next);
       setForm(formFrom(next));
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setLoadErr(null);
       setErr(publicHasSecrets(next) ? t("tts.leak") : "");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setLoadErr(e);
+      setErr("");
     } finally {
       setLoading(false);
     }
@@ -107,6 +125,7 @@ export function TTSPage() {
   }
 
   async function save() {
+    if (blocked) return;
     setBusy("save");
     try {
       const next = await ttsApi.put(
@@ -140,6 +159,11 @@ export function TTSPage() {
   }
 
   async function test() {
+    if (blocked) return;
+    if (kind === "not_configured") {
+      setErr(t("tts.testNotConfigured"));
+      return;
+    }
     setBusy("test");
     setTestView(null);
     try {
@@ -166,6 +190,7 @@ export function TTSPage() {
   }
 
   async function clearKey() {
+    if (blocked) return;
     if (!matched) {
       setErr(t("tts.mismatch"));
       return;
@@ -190,20 +215,28 @@ export function TTSPage() {
     }
   }
 
+  const formOpen = !blocked && state.kind !== "loading";
+
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="mic"
-        title={t("tts.title")}
-        description={t("tts.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="mic"
+      title={t("tts.title")}
+      description={t("tts.desc")}
+      primary={
+        <Button variant="primary" disabled={blocked || Boolean(busy)} onClick={() => void save()}>
+          {t("tts.save")}
+        </Button>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+    >
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("tts.hint")}</p>
-      {loading ? <StatusLine kind="loading" /> : null}
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("tts.di")}</p>
+      <PageStatus kind={state.kind} errorText={loadErr ? formatPublicError(loadErr) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
+      {blocked ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("tts.formClosed")}</p> : null}
       {err ? <StatusLine kind="error">{err}</StatusLine> : null}
       {ok && !err ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
@@ -211,9 +244,10 @@ export function TTSPage() {
         </p>
       ) : null}
 
-      {!loading && kind === "not_configured" ? <EmptyState>{t("tts.empty")}</EmptyState> : null}
-      {!loading && kind === "disabled" ? <EmptyState>{t("tts.disabled")}</EmptyState> : null}
+      {formOpen && kind === "not_configured" ? <EmptyState data-page-state="empty">{t("tts.empty")}</EmptyState> : null}
+      {formOpen && kind === "disabled" ? <EmptyState data-page-state="empty">{t("tts.disabled")}</EmptyState> : null}
 
+      {formOpen ? (
       <Card>
         <CardHeader
           icon="mic"
@@ -362,14 +396,14 @@ export function TTSPage() {
             </div>
           ) : null}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button variant="primary" disabled={Boolean(busy)} onClick={() => void save()}>
+            <Button variant="primary" disabled={blocked || Boolean(busy)} onClick={() => void save()}>
               {t("tts.save")}
             </Button>
-            <Button disabled={Boolean(busy)} onClick={() => void test()}>
+            <Button disabled={blocked || Boolean(busy)} onClick={() => void test()}>
               {t("tts.test")}
             </Button>
             <Button
-              disabled={Boolean(busy) || envLocked || (!row.key_set && row.provider === "none")}
+              disabled={blocked || Boolean(busy) || envLocked || (!row.key_set && row.provider === "none")}
               onClick={() => {
                 setConfirm(true);
                 setTyped("");
@@ -380,8 +414,9 @@ export function TTSPage() {
           </div>
         </div>
       </Card>
+      ) : null}
 
-      {testView ? (
+      {formOpen && testView ? (
         <Card>
           <CardHeader icon="pulse" title={t("tts.testTitle")} />
           <div style={{ padding: "0 16px 16px", fontSize: 13, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -405,7 +440,7 @@ export function TTSPage() {
         </Card>
       ) : null}
 
-      {confirm ? (
+      {formOpen && confirm ? (
         <Card>
           <CardHeader icon="lock" title={t("tts.confirmTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -433,6 +468,6 @@ export function TTSPage() {
           </div>
         </Card>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }
