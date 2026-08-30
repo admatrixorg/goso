@@ -136,3 +136,22 @@ export function lastSourceId(row: Pick<Contact, "merged_from">): string {
   const from = row.merged_from || [];
   return from.length ? String(from[from.length - 1]) : "";
 }
+
+export function mergePair(
+  selected: string[],
+  detailId: string,
+  rows: Contact[],
+): { target: Contact; source: Contact } | null {
+  if (selected.length !== 2) return null;
+  const [a, b] = selected;
+  const targetId = selected.includes(detailId) ? detailId : a;
+  const sourceId = targetId === a ? b : a;
+  const target = rows.find((row) => row.id === targetId);
+  const source = rows.find((row) => row.id === sourceId);
+  if (!target || !source || target.id === source.id) return null;
+  return { target, source };
+}
+
+export function swapMergePair(pair: { target: Contact; source: Contact }): { target: Contact; source: Contact } {
+  return { target: pair.source, source: pair.target };
+}

@@ -6,8 +6,10 @@ import {
   filterContacts,
   lastSourceId,
   mergeConfirmMatch,
+  mergePair,
   pageOf,
   publicHasSecrets,
+  swapMergePair,
   undoConfirmMatch,
 } from "./contacts-ops.ts";
 import type { Contact } from "./contacts.ts";
@@ -76,4 +78,16 @@ test("undoConfirmMatch, filter, page, labels", () => {
   assert.equal(pageOf([a, b, a], 0, 2).length, 2);
   assert.equal(channelIdsLine(a), "telegram:111");
   assert.equal(lastSourceId({ merged_from: ["ct_9", "ct_8"] }), "ct_8");
+});
+
+test("mergePair uses detail as target and can swap direction", () => {
+  const a = row({ id: "ct_keep", display: "Keep" });
+  const b = row({ id: "ct_src", display: "Source", dest: "222" });
+  assert.equal(mergePair(["ct_keep"], "ct_keep", [a, b]), null);
+  const pair = mergePair(["ct_keep", "ct_src"], "ct_keep", [a, b]);
+  assert.equal(pair?.target.id, "ct_keep");
+  assert.equal(pair?.source.id, "ct_src");
+  const swapped = swapMergePair(pair!);
+  assert.equal(swapped.target.id, "ct_src");
+  assert.equal(swapped.source.id, "ct_keep");
 });
