@@ -77,3 +77,29 @@ The CTO independently reran `npm test` (186/186), `npm run typecheck`, `npm run 
 ### CTO verdict: FAIL — follow-up required
 
 The follow-up must preserve the upstream agent/team dependency error in Agent Links, prevent `Promise.all([])` from becoming a true-empty result after the agent inventory failed, and disable or hide all create/mutation entry points while their required inventory is in blocking error or permission state. It must also make the offline/permission/error CRM advisor meta `—` (or hide the empty table) instead of `0 tips`/`No advice yet`, and remove the duplicate Overview authorization alert. After the fix merges, the CTO must repeat the same hard-refresh/browser checks before SPEC 120 can close.
+
+## Follow-up (this branch, after CTO FAIL)
+
+Behavior-only repairs for the four live defects. No Dewee/GoClaw copy. Worker does not merge and does not restart Vite `:3000`. Demos `:8082` `:8091` `:18791` and gateway `:18080` were not bound or killed.
+
+| Defect | Repair |
+| --- | --- |
+| Agent Links true-empty after failed agent inventory | `resolveAgentLinkLoad` keeps the upstream agent inventory error. Failed inventory never runs as a successful `Promise.all([])`. Links refresh re-fetches agents instead of walking a stale empty list. |
+| Create while inventory is blocking | `inventoryBlocksMutation` disables Create agent / Create team / Create Link (and hides their forms) in `error` and `permission`. Chat New Chat gating is unchanged. True-empty still allows create. |
+| CRM advisor `0 tips` / `No advice yet` while CRM is blocking | `crmAdvisorChrome`: offline, permission, checking, and advisor-fetch failure use meta `—` and hide the empty table. Successful zero-advice still uses `crm.adviceMeta` / `crm.emptyAdvice`. |
+| Duplicate Overview authorization alert | Overview keeps `PageStatus` for unauthorized and drops the second `StatusLine` with the same copy. |
+
+i18n: no new keys; existing vi+en copy is unchanged. `—` is the advisor unavailable meta in both locales.
+
+### Checks
+
+```
+cd control-plane && npm test && npm run typecheck
+GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-check.sh
+./scripts/agpl-check-docs.sh
+```
+
+- `npm test`: 197/197 pass (includes `resolveAgentLinkLoad`, `inventoryBlocksMutation`, `crmAdvisorChrome`).
+- `npm run typecheck`: pass.
+
+Live re-QC of `:3000` belongs to Codex CTO after merge. This record does not claim a live pass.
