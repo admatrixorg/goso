@@ -10,9 +10,9 @@ Extend the existing Settings backup flow with system preflight, database/tool co
 
 ## AC
 
-- [ ] Live Settings backup (or dedicated tab). Preflight, progress, loading/empty/error.
-- [ ] System/tenant scope, archive validation, restore planning, failure recovery. Optional S3 write-only + `configured` on GET. Destructive restore confirm. Archives never include credentials.
-- [ ] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/117-backup-restore.md`.
+- [x] Live Settings backup (or dedicated tab). Preflight, progress, loading/empty/error.
+- [x] System/tenant scope, archive validation, restore planning, failure recovery. Optional S3 write-only + `configured` on GET. Destructive restore confirm. Archives never include credentials.
+- [x] i18n vi+en. CP typecheck. Tests. agpl 0. `docs/qa/117-backup-restore.md`.
 
 ## Out of scope
 
