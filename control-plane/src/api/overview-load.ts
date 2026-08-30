@@ -1,5 +1,5 @@
 import { jsonFetch, probeHealthz, probeStats } from "./client";
-import { healthKind } from "./health";
+import { combineGatewayKind, healthKind } from "./health";
 import { formatPublicError } from "./public-error";
 import {
   countChannelHealth,
@@ -58,14 +58,16 @@ function emptyLists(health: OverviewSnapshot["health"], hzStatus: number, stats:
       channels: null,
       errors: [],
     }),
+    loadedAt: null,
+    stale: false,
   };
 }
 
 export async function loadOverview(signal?: AbortSignal): Promise<OverviewSnapshot> {
   const [hz, stats] = await Promise.all([probeHealthz(signal), probeStats(signal)]);
-  const health = healthKind(hz.status, hz.ok);
+  const health = combineGatewayKind(healthKind(hz.status, hz.ok), stats.status);
   if (health === "offline" || health === "unauthorized") {
-    return emptyLists(health, hz.status, stats);
+    return { ...emptyLists(health, hz.status, stats), loadedAt: new Date().toISOString() };
   }
 
   const errors: string[] = [];
@@ -116,6 +118,8 @@ export async function loadOverview(signal?: AbortSignal): Promise<OverviewSnapsh
         channels,
         errors,
       }),
+      loadedAt: new Date().toISOString(),
+      stale: false,
     };
   } finally {
     bound.stop();
