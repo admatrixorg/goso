@@ -1,4 +1,5 @@
 import type { StorageCrumb, StorageEntry, StorageListing, StoragePreview } from "./storage";
+import { classifyPageState, inventoryBlocksMutation, type PageLoadKind } from "./page-state.ts";
 
 export const PREVIEW_CAP = 64 * 1024;
 
@@ -139,4 +140,49 @@ export function isImageType(type?: string): boolean {
 
 export function quotaOver(used: number, max: number): boolean {
   return max > 0 && used >= max;
+}
+
+export type StorageViewKind =
+  | "loading"
+  | "permission"
+  | "error"
+  | "stale"
+  | "not_configured"
+  | "empty"
+  | "ready";
+
+/** configured=false is DI/not-configured, never a live object-store success or failure. */
+export function classifyStorageView(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  configured: boolean;
+  itemCount: number;
+}): StorageViewKind {
+  const page = classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+  if (page.kind === "loading") return "loading";
+  if (page.kind === "permission") return "permission";
+  if (page.kind === "error") return "error";
+  if (page.kind === "stale") return "stale";
+  if (input.loaded && input.configured !== true) return "not_configured";
+  if (page.kind === "empty") return "empty";
+  return "ready";
+}
+
+export function storagePageKind(kind: StorageViewKind): PageLoadKind | null {
+  if (kind === "loading" || kind === "permission" || kind === "error" || kind === "stale") return kind;
+  return null;
+}
+
+export function storageBlocksMutation(kind: StorageViewKind, quotaFull = false): boolean {
+  if (inventoryBlocksMutation(kind as PageLoadKind)) return true;
+  if (kind === "loading" || kind === "not_configured") return true;
+  if (quotaFull) return true;
+  return false;
 }

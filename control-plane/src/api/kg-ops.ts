@@ -1,3 +1,5 @@
+import { classifyPageState, inventoryBlocksMutation, type PageLoadKind } from "./page-state.ts";
+
 export const NODE_CAP = 40;
 export const EDGE_CAP = 80;
 export const BODY_CAP = 20_000;
@@ -223,3 +225,74 @@ export function formatWhen(raw?: string, fallback = "—"): string {
   if (Number.isNaN(d.getTime())) return s;
   return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
 }
+
+export type KgViewKind =
+  | "loading"
+  | "permission"
+  | "error"
+  | "stale"
+  | "no_agent"
+  | "no_selection"
+  | "empty"
+  | "filtered_empty"
+  | "ready";
+
+/** Agent inventory + explicit agent/scope before graph. Missing selection is not true-empty. */
+export function classifyKgView(input: {
+  agentsLoading: boolean;
+  agentsLoaded: boolean;
+  agentsError: unknown | null | undefined;
+  agentCount: number;
+  agentId: string;
+  scope: string;
+  graphLoading: boolean;
+  graphLoaded: boolean;
+  graphError: unknown | null | undefined;
+  nodeCount: number;
+  query?: string;
+}): KgViewKind {
+  const agents = classifyPageState({
+    loading: input.agentsLoading,
+    loaded: input.agentsLoaded,
+    error: input.agentsError,
+    itemCount: input.agentCount,
+    keepStale: input.agentsLoaded && input.agentCount > 0,
+  });
+  if (agents.kind === "loading") return "loading";
+  if (agents.kind === "permission") return "permission";
+  if (agents.kind === "error") return "error";
+  if (agents.kind === "stale") return "stale";
+  if (agents.kind === "empty") return "no_agent";
+  if (!(input.agentId || "").trim() || !normalizeScope(input.scope)) return "no_selection";
+
+  const graph = classifyPageState({
+    loading: input.graphLoading,
+    loaded: input.graphLoaded,
+    error: input.graphError,
+    itemCount: input.nodeCount,
+    keepStale: input.graphLoaded && input.nodeCount > 0,
+  });
+  if (graph.kind === "loading") return "loading";
+  if (graph.kind === "permission") return "permission";
+  if (graph.kind === "error") return "error";
+  if (graph.kind === "stale") return "stale";
+  if (graph.kind === "empty") {
+    return (input.query || "").trim() ? "filtered_empty" : "empty";
+  }
+  return "ready";
+}
+
+export function kgViewPageKind(kind: KgViewKind): PageLoadKind | null {
+  if (kind === "loading" || kind === "permission" || kind === "error" || kind === "stale") return kind;
+  return null;
+}
+
+export function kgBlocksFetch(kind: KgViewKind): boolean {
+  return kind === "permission" || kind === "error" || kind === "no_agent" || kind === "no_selection" || kind === "loading";
+}
+
+export function inferredLabel(row: { inferred?: boolean; source?: string }): "extracted" | "posted" {
+  return isInferred(row) ? "extracted" : "posted";
+}
+
+export { inventoryBlocksMutation };

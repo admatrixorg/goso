@@ -3,15 +3,21 @@ import test from "node:test";
 import {
   BODY_CAP,
   capRows,
+  classifyMemoryList,
   filterMemories,
   hasBothLanes,
   isEmbeddingConfigured,
   listTargetName,
+  memoryCreateBlocked,
+  memoryFilteredEmpty,
+  memoryFormBlocked,
   memoryLane,
+  memoryMutationsBlocked,
   memorySnippet,
   normalizeKind,
   plainMemoryBody,
 } from "./memory-ops.ts";
+import { classifyPageState, inventoryBlocksMutation } from "./page-state.ts";
 
 const rows = [
   { id: "e1", session_id: "s1", agent_id: "a1", kind: "episodic", snippet: "session banana note" },
@@ -80,4 +86,62 @@ test("capRows truncates at the cap", () => {
   assert.equal(capped.rows.length, 2);
   assert.equal(capped.truncated, true);
   assert.equal(capRows(rows, 10).truncated, false);
+});
+
+test("memory list permission is not true-empty and blocks mutations", () => {
+  const perm = classifyMemoryList({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.equal(perm.showEmpty, false);
+  assert.equal(perm.showItems, false);
+  assert.equal(memoryMutationsBlocked(perm), true);
+  assert.equal(inventoryBlocksMutation(perm.kind), true);
+});
+
+test("agent/session inventory failure is independent of memory-list empty", () => {
+  const notesOk = classifyMemoryList({ loading: false, loaded: true, error: null, itemCount: 0 });
+  const sessFail = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("403 forbidden"),
+    itemCount: 0,
+  });
+  const sessOk = classifyPageState({ loading: false, loaded: true, error: null, itemCount: 2 });
+  assert.equal(notesOk.kind, "empty");
+  assert.equal(notesOk.showEmpty, true);
+  assert.equal(memoryCreateBlocked(notesOk, sessFail, "s1"), true);
+  assert.equal(memoryFormBlocked(notesOk, sessFail), true);
+  assert.equal(memoryCreateBlocked(notesOk, sessOk, ""), true);
+  assert.equal(memoryFormBlocked(notesOk, sessOk), false);
+  assert.equal(memoryCreateBlocked(notesOk, sessOk, "s1"), false);
+  assert.equal(memoryMutationsBlocked(notesOk), false);
+});
+
+test("filtered empty is distinct from true empty", () => {
+  const ready = classifyMemoryList({ loading: false, loaded: true, error: null, itemCount: 3 });
+  const empty = classifyMemoryList({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(memoryFilteredEmpty(ready, 3, 0), true);
+  assert.equal(memoryFilteredEmpty(ready, 3, 1), false);
+  assert.equal(memoryFilteredEmpty(empty, 0, 0), false);
+});
+
+test("embedding not-configured is metadata, not vendor success or permission", () => {
+  assert.equal(isEmbeddingConfigured({ embedding: "not_configured", embedding_configured: false }), false);
+  const perm = classifyMemoryList({
+    loading: false,
+    loaded: false,
+    error: new Error('401 {"error":"unauthorized"}'),
+    itemCount: 0,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.notEqual(perm.kind, "empty");
+});
+
+test("named delete target prefers snippet", () => {
+  assert.equal(listTargetName({ snippet: "session banana", id: "e1", kind: "episodic" }), "session banana");
+  assert.equal(listTargetName({ id: "e1", kind: "episodic" }), "e1");
 });

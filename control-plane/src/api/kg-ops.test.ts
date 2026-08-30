@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  classifyKgView,
   formatWhen,
+  inferredLabel,
   isEmbeddingConfigured,
   isInferred,
+  kgBlocksFetch,
   kgSnippet,
+  kgViewPageKind,
   normalizeGraph,
   normalizeScope,
   plainKgBody,
@@ -92,4 +96,119 @@ test("formatWhen keeps empty fallback", () => {
   assert.equal(formatWhen("not-a-date", "n/a"), "not-a-date");
   const shown = formatWhen("2026-08-30T12:00:00Z", "n/a");
   assert.notEqual(shown, "n/a");
+});
+
+test("kg view: agent failure is not true-empty graph", () => {
+  const perm = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: false,
+    agentsError: new Error("401 unauthorized"),
+    agentCount: 0,
+    agentId: "",
+    scope: "",
+    graphLoading: false,
+    graphLoaded: false,
+    graphError: null,
+    nodeCount: 0,
+  });
+  assert.equal(perm, "permission");
+  assert.equal(kgViewPageKind(perm), "permission");
+  assert.equal(kgBlocksFetch(perm), true);
+});
+
+test("kg view requires agent and scope; missing selection is not empty", () => {
+  const noAgent = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 0,
+    agentId: "",
+    scope: "",
+    graphLoading: false,
+    graphLoaded: false,
+    graphError: null,
+    nodeCount: 0,
+  });
+  assert.equal(noAgent, "no_agent");
+  const noSel = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 2,
+    agentId: "",
+    scope: "all",
+    graphLoading: false,
+    graphLoaded: false,
+    graphError: null,
+    nodeCount: 0,
+  });
+  assert.equal(noSel, "no_selection");
+  const noScope = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 2,
+    agentId: "a1",
+    scope: "",
+    graphLoading: false,
+    graphLoaded: false,
+    graphError: null,
+    nodeCount: 0,
+  });
+  assert.equal(noScope, "no_selection");
+});
+
+test("kg query-filtered empty is distinct from true empty", () => {
+  const empty = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 1,
+    agentId: "a1",
+    scope: "all",
+    graphLoading: false,
+    graphLoaded: true,
+    graphError: null,
+    nodeCount: 0,
+  });
+  assert.equal(empty, "empty");
+  const filtered = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 1,
+    agentId: "a1",
+    scope: "posted",
+    graphLoading: false,
+    graphLoaded: true,
+    graphError: null,
+    nodeCount: 0,
+    query: "acme",
+  });
+  assert.equal(filtered, "filtered_empty");
+});
+
+test("inferred edges are labeled extracted, not facts", () => {
+  assert.equal(inferredLabel({ source: "extracted" }), "extracted");
+  assert.equal(inferredLabel({ inferred: true }), "extracted");
+  assert.equal(inferredLabel({ source: "posted" }), "posted");
+  assert.equal(isInferred({ source: "heuristic" }), true);
+});
+
+test("embedding not-configured is metadata, not permission", () => {
+  assert.equal(isEmbeddingConfigured({ embedding: "not_configured", embedding_configured: false }), false);
+  const ready = classifyKgView({
+    agentsLoading: false,
+    agentsLoaded: true,
+    agentsError: null,
+    agentCount: 1,
+    agentId: "a1",
+    scope: "all",
+    graphLoading: false,
+    graphLoaded: true,
+    graphError: null,
+    nodeCount: 2,
+  });
+  assert.equal(ready, "ready");
+  assert.equal(kgViewPageKind(ready), null);
 });

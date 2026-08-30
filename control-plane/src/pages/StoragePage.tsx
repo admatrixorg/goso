@@ -1,32 +1,41 @@
 import { useEffect, useRef, useState } from "react";
+import { formatStaleAt, listMetaCount } from "../api/page-state";
 import { storageApi, type StorageEntry, type StorageListing, type StoragePreview } from "../api/storage";
 import {
   asPublicListing,
   asPublicPreview,
+  classifyStorageView,
   formatBytes,
   formatWhen,
   isImageType,
   publicHasSecrets,
   quotaOver,
+  storageBlocksMutation,
   storageConfirmMatch,
+  storagePageKind,
 } from "../api/storage-ops";
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 export function StoragePage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [listing, setListing] = useState<StorageListing | null>(null);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [selected, setSelected] = useState<StorageEntry | null>(null);
   const [preview, setPreview] = useState<StoragePreview | null>(null);
+  const [previewErr, setPreviewErr] = useState<unknown>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [confirm, setConfirm] = useState<StorageEntry | null>(null);
   const [typed, setTyped] = useState("");
@@ -35,7 +44,19 @@ export function StoragePage() {
   const na = t("storage.na");
   const configured = listing?.configured === true;
   const over = listing ? quotaOver(listing.used_bytes, listing.max_bytes) : false;
+  const kind = classifyStorageView({
+    loading,
+    loaded,
+    error: err,
+    configured,
+    itemCount: listing?.entries.length ?? 0,
+  });
+  const pageKind = storagePageKind(kind);
+  const blocked = storageBlocksMutation(kind, over);
   const matched = confirm ? storageConfirmMatch(typed, confirm) : false;
+  const entries = kind === "ready" || kind === "stale" ? listing?.entries ?? [] : [];
+  const crumbs = listing?.breadcrumbs ?? [{ name: "workspace", path: "" }];
+  const metaN = listMetaCount(kind === "not_configured" ? "error" : kind === "empty" ? "empty" : kind === "ready" || kind === "stale" ? kind : kind === "loading" ? "loading" : "error", entries.length);
 
   function revokeImage() {
     if (imageRef.current) URL.revokeObjectURL(imageRef.current);
@@ -49,12 +70,14 @@ export function StoragePage() {
       const raw = await storageApi.list(nextPath);
       const next = asPublicListing(raw);
       setListing(next);
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
       const leak = publicHasSecrets(raw) || (raw.entries || []).some((e) => publicHasSecrets(e));
-      setErr(leak ? t("storage.leak") : "");
+      setErr(null);
+      setActionErr(leak ? t("storage.leak") : "");
       if (!next.configured) setOk("");
     } catch (e) {
-      setErr(formatPublicError(e));
-      setListing(null);
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -68,9 +91,11 @@ export function StoragePage() {
   }, []);
 
   async function openDir(next: string) {
+    if (blocked && kind !== "empty" && kind !== "ready" && kind !== "stale") return;
     setPath(next);
     setSelected(null);
     setPreview(null);
+    setPreviewErr(null);
     revokeImage();
     setConfirm(null);
     setOk("");
@@ -83,6 +108,7 @@ export function StoragePage() {
     setOk("");
     setBusy("preview:" + row.path);
     revokeImage();
+    setPreviewErr(null);
     try {
       if (isImageType(row.type)) {
         const blob = await storageApi.download(row.path);
@@ -94,15 +120,15 @@ export function StoragePage() {
         const raw = await storageApi.preview(row.path);
         const next = asPublicPreview(raw);
         if (!next) {
-          setErr(t("storage.leak"));
+          setActionErr(t("storage.leak"));
           setPreview(null);
           return;
         }
         setPreview(next);
       }
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setPreviewErr(e);
       setPreview(null);
     } finally {
       setBusy("");
@@ -110,14 +136,15 @@ export function StoragePage() {
   }
 
   async function onUpload(file: File) {
+    if (blocked) return;
     setBusy("upload");
     try {
       await storageApi.upload(file, path);
       setOk(t("storage.uploadOk"));
-      setErr("");
+      setActionErr("");
       await load(path);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
       if (fileRef.current) fileRef.current.value = "";
@@ -135,24 +162,24 @@ export function StoragePage() {
       a.click();
       URL.revokeObjectURL(url);
       setOk(t("storage.downloadOk"));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function submitConfirm() {
-    if (!confirm || !storageConfirmMatch(typed, confirm)) {
-      setErr(t("storage.mismatch"));
+    if (blocked || !confirm || !storageConfirmMatch(typed, confirm)) {
+      setActionErr(t("storage.mismatch"));
       return;
     }
     setBusy("delete:" + confirm.path);
     try {
       await storageApi.remove(confirm.path, typed.trim());
       setOk(t("storage.deleteOk"));
-      setErr("");
+      setActionErr("");
       setConfirm(null);
       setTyped("");
       if (selected?.path === confirm.path) {
@@ -162,65 +189,72 @@ export function StoragePage() {
       }
       await load(path);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
-  const entries = listing?.entries ?? [];
-  const crumbs = listing?.breadcrumbs ?? [{ name: "workspace", path: "" }];
-
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="doc"
-        title={t("storage.title")}
-        description={t("storage.desc")}
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              ref={fileRef}
-              type="file"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onUpload(f);
-              }}
-            />
-            <Button
-              icon="plus"
-              disabled={loading || Boolean(busy) || !configured || over}
-              onClick={() => fileRef.current?.click()}
-            >
-              {t("storage.upload")}
-            </Button>
-            <Button icon="refresh" iconGesture onClick={() => void load(path)} disabled={loading || Boolean(busy)}>
-              {t("common.refresh")}
-            </Button>
-          </div>
-        }
-      />
+    <PageChrome
+      icon="doc"
+      title={t("storage.title")}
+      description={t("storage.desc")}
+      primary={
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onUpload(f);
+            }}
+          />
+          <Button icon="plus" variant="primary" disabled={blocked || loading || Boolean(busy)} onClick={() => fileRef.current?.click()}>
+            {t("storage.upload")}
+          </Button>
+        </>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load(path)} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+    >
       <Card>
         <CardHeader icon="lock" title={t("storage.how")} />
         <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>
           {t("storage.howBody")}
         </p>
+        <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>
+          {t("storage.noS3")}
+        </p>
       </Card>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? (
+      {pageKind ? (
+        <PageStatus kind={pageKind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load(path)} />
+      ) : null}
+      {kind === "not_configured" ? <EmptyState data-page-state="not_configured">{t("storage.notConfigured")}</EmptyState> : null}
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {previewErr ? (
+        <div data-page-state="dependency">
+          <StatusLine kind="error">
+            {t("storage.previewUnavailable")} · {formatPublicError(previewErr)}
+          </StatusLine>
+        </div>
+      ) : null}
+      {ok && !actionErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
       ) : null}
-      {listing && configured ? (
+      {kind === "ready" || kind === "stale" ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: over ? "var(--orange)" : "var(--text-3)" }}>
-          {t("storage.quota", { used: formatBytes(listing.used_bytes), max: formatBytes(listing.max_bytes) })}
+          {t("storage.configuredLocal")} · {t("storage.quota", { used: formatBytes(listing?.used_bytes ?? 0), max: formatBytes(listing?.max_bytes ?? 0) })}
           {over ? ` · ${t("storage.quotaFull")}` : ""}
         </p>
       ) : null}
-      {confirm ? (
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="lock" title={t("storage.confirmDeleteTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -255,13 +289,9 @@ export function StoragePage() {
           </div>
         </Card>
       ) : null}
-      {selected && (preview || imageUrl) ? (
+      {selected && (preview || imageUrl) && (kind === "ready" || kind === "stale") ? (
         <Card>
-          <CardHeader
-            icon="eye"
-            title={t("storage.preview")}
-            meta={`${selected.name} · ${formatBytes(selected.size)}`}
-          />
+          <CardHeader icon="eye" title={t("storage.preview")} meta={`${selected.name} · ${formatBytes(selected.size)}`} />
           <div style={{ padding: "0 16px 16px" }}>
             {preview?.kind === "denied" ? (
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("storage.previewDenied")}</p>
@@ -286,21 +316,16 @@ export function StoragePage() {
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("storage.previewBinary")}</p>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <Button variant="quiet" disabled={Boolean(busy) || selected.dir} onClick={() => void onDownload(selected)}>
+              <Button variant="quiet" disabled={Boolean(busy) || selected.dir || blocked} onClick={() => void onDownload(selected)}>
                 {t("storage.download")}
               </Button>
             </div>
           </div>
         </Card>
       ) : null}
-      {!loading && listing && !configured ? <EmptyState>{t("storage.notConfigured")}</EmptyState> : null}
-      {configured ? (
+      {kind === "ready" || kind === "stale" || kind === "empty" ? (
         <Card>
-          <CardHeader
-            icon="doc"
-            title={t("storage.list")}
-            meta={t("storage.list.meta", { n: entries.length })}
-          />
+          <CardHeader icon="doc" title={t("storage.list")} meta={metaN == null ? "—" : t("storage.list.meta", { n: metaN })} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "10px 16px 0", fontSize: 12.5 }}>
             {crumbs.map((c, i) => (
               <span key={`${c.path}:${i}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -322,6 +347,14 @@ export function StoragePage() {
               </span>
             ))}
           </div>
+          {(listing?.hidden_skipped ?? 0) > 0 ? (
+            <p style={{ margin: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("storage.hiddenMeta", { n: listing?.hidden_skipped ?? 0 })}</p>
+          ) : (
+            <p style={{ margin: "8px 16px 0", fontSize: 12, color: "var(--text-4)" }}>{t("storage.hiddenNote")}</p>
+          )}
+          {listing?.truncated ? (
+            <p style={{ margin: "8px 16px 0", fontSize: 12, color: "var(--orange)" }}>{t("storage.truncated")}</p>
+          ) : null}
           <TableScroll>
             <div
               style={{
@@ -340,7 +373,7 @@ export function StoragePage() {
               <span style={{ flex: 1.4 }}>{t("storage.col.mtime")}</span>
               <span style={{ flex: 1.6 }} />
             </div>
-            {!loading && entries.length === 0 ? <EmptyState>{t("storage.empty")}</EmptyState> : null}
+            {kind === "empty" ? <EmptyState data-page-state="empty">{t("storage.empty")}</EmptyState> : null}
             {entries.map((row) => {
               const on = selected?.path === row.path;
               return (
@@ -373,16 +406,12 @@ export function StoragePage() {
                     {row.name}
                     {row.dir ? "/" : ""}
                   </button>
-                  <span style={{ flex: 1, color: "var(--text-2)" }}>
-                    {row.dir ? t("storage.type.dir") : row.type || na}
-                  </span>
-                  <span style={{ flex: 0.8, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                    {row.dir ? na : formatBytes(row.size)}
-                  </span>
+                  <span style={{ flex: 1, color: "var(--text-2)" }}>{row.dir ? t("storage.type.dir") : row.type || na}</span>
+                  <span style={{ flex: 0.8, color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{row.dir ? na : formatBytes(row.size)}</span>
                   <span style={{ flex: 1.4, color: "var(--text-3)" }}>{formatWhen(row.mtime, na)}</span>
                   <span style={{ flex: 1.6, display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                     {!row.dir ? (
-                      <Button variant="quiet" disabled={Boolean(busy)} onClick={() => void onDownload(row)}>
+                      <Button variant="quiet" disabled={Boolean(busy) || blocked} onClick={() => void onDownload(row)}>
                         {t("storage.download")}
                       </Button>
                     ) : (
@@ -392,12 +421,12 @@ export function StoragePage() {
                     )}
                     <Button
                       variant="quiet"
-                      disabled={Boolean(busy)}
+                      disabled={Boolean(busy) || blocked}
                       onClick={() => {
                         setConfirm(row);
                         setTyped("");
                         setOk("");
-                        setErr("");
+                        setActionErr("");
                       }}
                     >
                       {t("common.delete")}
@@ -407,14 +436,8 @@ export function StoragePage() {
               );
             })}
           </TableScroll>
-          {listing?.truncated ? (
-            <p style={{ margin: "8px 16px 14px", fontSize: 12, color: "var(--orange)" }}>{t("storage.truncated")}</p>
-          ) : null}
         </Card>
       ) : null}
-      {listing && configured && listing.hidden_skipped > 0 ? (
-        <p style={{ margin: 0, fontSize: 12, color: "var(--text-4)" }}>{t("storage.hiddenNote")}</p>
-      ) : null}
-    </div>
+    </PageChrome>
   );
 }

@@ -3,13 +3,16 @@ import test from "node:test";
 import {
   asPublicListing,
   asPublicPreview,
+  classifyStorageView,
   formatBytes,
   formatWhen,
   isImageType,
   publicHasSecrets,
   quotaOver,
   secretPath,
+  storageBlocksMutation,
   storageConfirmMatch,
+  storagePageKind,
 } from "./storage-ops.ts";
 import type { StorageListing } from "./storage.ts";
 
@@ -79,4 +82,62 @@ test("storageConfirmMatch, formatBytes, quotaOver", () => {
   const shown = formatWhen("2026-08-30T12:00:00Z", "n/a");
   assert.ok(shown.includes("2026") || shown.includes("30"));
   assert.equal(formatWhen("", "n/a"), "n/a");
+});
+
+test("storage permission is not empty browse and blocks upload/delete", () => {
+  const perm = classifyStorageView({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    configured: false,
+    itemCount: 0,
+  });
+  assert.equal(perm, "permission");
+  assert.equal(storagePageKind(perm), "permission");
+  assert.equal(storageBlocksMutation(perm), true);
+});
+
+test("configured=false is not-configured, not S3 success or listing empty", () => {
+  const di = classifyStorageView({
+    loading: false,
+    loaded: true,
+    error: null,
+    configured: false,
+    itemCount: 0,
+  });
+  assert.equal(di, "not_configured");
+  assert.equal(storagePageKind(di), null);
+  assert.equal(storageBlocksMutation(di), true);
+  const empty = classifyStorageView({
+    loading: false,
+    loaded: true,
+    error: null,
+    configured: true,
+    itemCount: 0,
+  });
+  assert.equal(empty, "empty");
+  assert.equal(storageBlocksMutation(empty), false);
+  assert.equal(storageBlocksMutation(empty, true), true);
+});
+
+test("quota, truncated listing, and named confirm stay honest", () => {
+  const rows = asPublicListing(
+    listing({ used_bytes: 1024, max_bytes: 1024, truncated: true, hidden_skipped: 3 }),
+  );
+  assert.equal(quotaOver(rows.used_bytes, rows.max_bytes), true);
+  assert.equal(rows.truncated, true);
+  assert.equal(rows.hidden_skipped, 3);
+  assert.equal(rows.configured, true);
+  const row = { name: "readme.txt", path: "docs/readme.txt" };
+  assert.equal(storageConfirmMatch("readme.txt", row), true);
+  assert.equal(storageConfirmMatch("docs/readme.txt", row), true);
+  const ready = classifyStorageView({
+    loading: false,
+    loaded: true,
+    error: null,
+    configured: true,
+    itemCount: 1,
+  });
+  assert.equal(ready, "ready");
+  assert.equal(storageBlocksMutation(ready, true), true);
 });

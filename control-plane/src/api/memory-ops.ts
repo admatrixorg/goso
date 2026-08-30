@@ -1,3 +1,10 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  isFilteredEmpty,
+  type PageState,
+} from "./page-state.ts";
+
 export const LIST_CAP = 200;
 export const BODY_CAP = 20_000;
 export const SNIPPET_CAP = 80;
@@ -95,4 +102,42 @@ export function isEmbeddingConfigured(idx?: MemoryIndexLite | null): boolean {
 export function capRows<T>(rows: T[], cap = LIST_CAP): { rows: T[]; truncated: boolean } {
   if (rows.length <= cap) return { rows, truncated: false };
   return { rows: rows.slice(0, cap), truncated: true };
+}
+
+/** Permission/error on notes is never true-empty; agent/session fail separately. */
+export function classifyMemoryList(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function memoryFormBlocked(notes: PageState, sessions: PageState): boolean {
+  if (memoryMutationsBlocked(notes)) return true;
+  if (inventoryBlocksMutation(sessions.kind)) return true;
+  if (sessions.kind === "loading") return true;
+  return false;
+}
+
+export function memoryCreateBlocked(notes: PageState, sessions: PageState, sessionId: string): boolean {
+  if (memoryFormBlocked(notes, sessions)) return true;
+  if (sessions.kind === "empty") return true;
+  if (!(sessionId || "").trim()) return true;
+  return false;
+}
+
+export function memoryMutationsBlocked(notes: PageState): boolean {
+  return inventoryBlocksMutation(notes.kind) || (notes.kind === "loading" && !notes.showItems);
+}
+
+export function memoryFilteredEmpty(state: PageState, unfilteredCount: number, visibleCount: number): boolean {
+  return isFilteredEmpty(state, unfilteredCount, visibleCount) || (state.showEmpty && unfilteredCount > 0 && visibleCount === 0);
 }
