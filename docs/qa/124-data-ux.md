@@ -53,3 +53,24 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO / advisor live QC. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `c45dc8a` (`Merge SPEC 124 DATA operator UX`, `--no-ff`) of `37d9fd5` + `f9117f4` on top of SPEC 123 `0820bac` / `3ff0c31`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No tokens, private keys, or vendor secrets in this record.
+
+Restart: Vite `:3000` only (new listen pid `33438`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Advisor re-ran `npm test` (251/251) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1839).
+
+Browser: Orca isolated profiles `qc120-unauth` (no `goso_token`) and `qc120-auth`. Hard-reload `http://127.0.0.1:3000/`, then DATA Memory / Vault / Knowledge Graph / Storage.
+
+| Defect | Live unauth (401) | Live auth | Verdict |
+| --- | --- | --- | --- |
+| Memory without PageChrome + empty/create on error | First-class `Memory`. `Ghi memory` `disabled=true`. 401. Agent-list failure labeled, not empty notes. | `Ghi memory` enabled. Agent/session filters populated. | PASS |
+| Vault `SectionHeader` + put/sync during 401 | First-class `Kho tài liệu`. `Ghi tài liệu` and `Sync` `disabled=true`. 401. No empty-docs claim. | — | PASS |
+| KG no chrome + empty graph on agent 401 | First-class `Knowledge Graph`. Refresh primary. Agent/scope comboboxes disabled. 401. No empty-graph claim. | — | PASS |
+| Storage upload enabled + false empty | First-class `Kho tệp`. `Tải lên` `disabled=true`. 401. Workspace-jail copy, not S3. | — | PASS |
+
+### Advisor verdict: PASS — SPEC 124 closed
+
+Do not spawn a second 124 worker. Sequential 125+ only when asked. CRM `:8082` and sidecar `:8091` remain untouched.
