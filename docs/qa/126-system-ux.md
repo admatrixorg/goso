@@ -59,3 +59,27 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO / advisor live QC. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `feca384` (`Merge SPEC 126 SYSTEM operator UX`, `--no-ff`) of `e6b4330` + `89ba1ef` on top of SPEC 125 `b38816f`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No tokens, API keys, or archive secrets in this record.
+
+Restart: Vite `:3000` only (new listen pid `10165`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Advisor re-ran `npm test` (280/280) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1867).
+
+Browser: Orca isolated profile `qc120-unauth` (no `goso_token`). Hard-reload `http://127.0.0.1:3000/`, then SYSTEM Tenants / Providers / API Keys / Packages / Config / Approvals / Import & Export.
+
+| Defect | Live unauth (401) | Verdict |
+| --- | --- | --- |
+| Tenants empty + Create enabled | First-class `Tenant`. `Tạo tenant` `disabled=true`. List meta `—`. | PASS |
+| Providers Add enabled on 401 | First-class `Provider`. `Thêm provider` `disabled=true`. | PASS |
+| API Keys Create + `0` keys | First-class `API Key`. `Tạo khóa` `disabled=true`. List meta `—`. | PASS |
+| Packages install on 401 | First-class `Gói`. `Thêm pin` `disabled=true`. Refresh primary. | PASS |
+| Config CRM 401 looks like empty gateway | First-class `Cấu hình`. Refresh. CRM extra shows `Error: 500` separately from gateway chrome. | PASS |
+| Approvals empty inbox on 401 | First-class `Duyệt lệnh`. Refresh. 401. Pairing stays off this page. | PASS |
+| Import & Export export on catalog 401 | First-class `Nhập & xuất`. `Xuất archive` `disabled=true`. | PASS |
+
+### Advisor verdict: PASS — SPEC 126 closed (last UX queue row)
+
+Do not spawn a second 126 worker. Queue 119–126 is complete. CRM `:8082` and sidecar `:8091` remain untouched.
