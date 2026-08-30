@@ -221,7 +221,7 @@ func scopeAllows(g Grant, r *http.Request) bool {
 }
 
 func privilegedWrite(path string) bool {
-	return hasPathPrefix(path, "/api/api-keys", "/v1/api-keys", "/api/tenants", "/v1/tenants", "/api/packages", "/v1/packages")
+	return hasPathPrefix(path, "/api/api-keys", "/v1/api-keys", "/api/tenants", "/v1/tenants", "/api/packages", "/v1/packages", "/api/system/backup", "/v1/system/backup", "/api/system/restore", "/v1/system/restore")
 }
 
 func pairingWritePath(path string) bool {

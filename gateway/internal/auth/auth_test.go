@@ -797,6 +797,20 @@ func TestRequire_IssuedAPIKeyScopes(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatalf("write POST packages %d", w.Code)
 	}
+	backupPost := httptest.NewRequest("POST", "/api/system/backup", nil)
+	backupPost.Header.Set("Authorization", "Bearer gk_write")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, backupPost)
+	if w.Code != 403 {
+		t.Fatalf("write POST backup %d", w.Code)
+	}
+	s3Put := httptest.NewRequest("PUT", "/api/system/backup/s3", nil)
+	s3Put.Header.Set("Authorization", "Bearer gk_write")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, s3Put)
+	if w.Code != 403 {
+		t.Fatalf("write PUT s3 %d", w.Code)
+	}
 
 	adminKeys := fakeKeys{token: "gk_admin", grant: Grant{ID: "ak_3", Prefix: "gk_admin", Scopes: []string{"admin"}}}
 	h = Require(Config{Admin: "admin-113", Keys: adminKeys})(okHandler())

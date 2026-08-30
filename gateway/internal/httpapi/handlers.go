@@ -18,6 +18,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/auth"
+	"github.com/mqglobal/goso/gateway/internal/backup"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
@@ -77,6 +78,8 @@ type Options struct {
 	Packages *pkgmgr.Manager
 	// Portable is staged import/export. Nil → impexp.New(Store).
 	Portable *impexp.Service
+	// BackupS3 is optional S3-compatible snapshot storage. Nil → backup.NewRemote().
+	BackupS3 *backup.Remote
 }
 
 func (o *Options) defaults() {
@@ -128,6 +131,9 @@ func (o *Options) defaults() {
 	if o.Portable == nil {
 		o.Portable = impexp.New(o.Store)
 	}
+	if o.BackupS3 == nil {
+		o.BackupS3 = backup.NewRemote()
+	}
 }
 
 // Router builds the HTTP mux.
@@ -156,7 +162,7 @@ func NewRouter(opt Options) http.Handler {
 	registerConfigRoutes(mux, opt)
 	registerConnectorRoutes(mux, opt)
 	registerCronRoutes(mux, opt)
-	registerBackupRoutes(mux)
+	registerBackupRoutes(mux, opt)
 	registerPairingRoutes(mux, opt.Pairing)
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)
