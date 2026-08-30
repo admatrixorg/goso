@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   editableValues,
   formFromSnapshot,
@@ -49,6 +50,38 @@ test("settingsConflictKind", () => {
   assert.equal(settingsConflictKind(new Error('409 {"error":"config was modified"}')), "conflict");
   assert.equal(settingsConflictKind(new Error('409 {"error":"field is env-owned: quota_day"}')), "env_owned");
   assert.equal(settingsConflictKind(new Error("400 bad")), null);
+});
+
+test("CRM failure does not classify as empty gateway config", () => {
+  const crm = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  const gw = classifyPageState({
+    loading: false,
+    loaded: true,
+    error: null,
+    itemCount: 1,
+  });
+  assert.equal(crm.kind, "permission");
+  assert.equal(crm.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(crm.kind), true);
+  assert.equal(gw.kind, "ready");
+  assert.equal(inventoryBlocksMutation(gw.kind), false);
+  assert.equal(listMetaCount(crm.kind, 0), null);
+});
+
+test("gateway 401 is not empty config", () => {
+  const gw = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(gw.kind, "permission");
+  assert.equal(gw.showEmpty, false);
 });
 
 test("publicHasSecrets flags token-shaped values, not token_set", () => {

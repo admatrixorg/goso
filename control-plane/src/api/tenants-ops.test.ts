@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   asPublic,
   asPublicContext,
@@ -71,6 +72,51 @@ test("tenantConfirmMatch and memberConfirmMatch", () => {
   assert.equal(memberConfirmMatch("ops@acme.test", { id: "tm_1", subject: "ops@acme.test" }), true);
   assert.equal(memberConfirmMatch("tm_1", { id: "tm_1", subject: "ops@acme.test" }), true);
   assert.equal(memberConfirmMatch("x", { id: "tm_1", subject: "ops@acme.test" }), false);
+});
+
+test("permission never claims tenant empty or enables create", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(listMetaCount(s.kind, 0), null);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+});
+
+test("true empty vs filtered empty after successful tenant list", () => {
+  const empty = classifyPageState({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(empty.kind, "empty");
+  assert.equal(empty.showEmpty, true);
+  assert.equal(inventoryBlocksMutation(empty.kind), false);
+  const ready = classifyPageState({ loading: false, loaded: true, error: null, itemCount: 2 });
+  assert.equal(filterTenants([row(), row({ id: "beta", name: "Beta" })], "nope").length, 0);
+  assert.equal(ready.showItems, true);
+});
+
+test("stale keeps last-known tenants; permission still wins", () => {
+  const stale = classifyPageState({
+    loading: false,
+    loaded: true,
+    error: new Error("502 bad gateway"),
+    itemCount: 1,
+    keepStale: true,
+  });
+  assert.equal(stale.kind, "stale");
+  assert.equal(stale.showItems, true);
+  const perm = classifyPageState({
+    loading: false,
+    loaded: true,
+    error: new Error("403 forbidden"),
+    itemCount: 1,
+    keepStale: true,
+  });
+  assert.equal(perm.kind, "permission");
+  assert.equal(perm.showItems, false);
+  assert.equal(inventoryBlocksMutation(perm.kind), true);
 });
 
 test("tenantLabel and formatWhen", () => {

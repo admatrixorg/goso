@@ -14,22 +14,27 @@ import {
   type ProviderSourceFilter,
   type ProviderTestView,
 } from "../api/providers";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, isFilteredEmpty, listMetaCount } from "../api/page-state";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError, redactPublicText } from "../ui/StatusLine";
 
 const emptyForm = { name: "", type: "openai-compat", base_url: "", model: "", api_key: "", enabled: true };
 
 export function ProvidersPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState<ProviderInfo[]>([]);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const [formErr, setFormErr] = useState("");
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [selected, setSelected] = useState("");
@@ -42,15 +47,25 @@ export function ProvidersPage() {
   const [sourceFilter, setSourceFilter] = useState<ProviderSourceFilter>("");
   const [enabledFilter, setEnabledFilter] = useState<ProviderEnabledFilter>("");
 
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: rows.length,
+    keepStale: loaded && rows.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
   const current = rows.find((r) => r.name === selected);
   const envLocked = current ? isEnvOwned(current) : false;
   const editing = Boolean(selected);
   const typeOptions = useMemo(() => uniqueProviderTypes(rows), [rows]);
   const visible = useMemo(
-    () => filterProviders(rows, { query, type: typeFilter, source: sourceFilter, enabled: enabledFilter }),
-    [rows, query, typeFilter, sourceFilter, enabledFilter],
+    () => filterProviders(state.showItems ? rows : [], { query, type: typeFilter, source: sourceFilter, enabled: enabledFilter }),
+    [rows, query, typeFilter, sourceFilter, enabledFilter, state.showItems],
   );
-  const filteredEmpty = !loading && rows.length > 0 && visible.length === 0;
+  const filteredEmpty = isFilteredEmpty(state, rows.length, visible.length);
+  const metaN = listMetaCount(state.kind, rows.length);
+  const formLocked = blocked || envLocked;
 
   async function load() {
     setLoading(true);
@@ -58,9 +73,11 @@ export function ProvidersPage() {
       const j = await providersApi.list();
       const list = (j.providers ?? []).filter((p) => p && typeof p === "object" && typeof p.name === "string");
       setRows(list);
-      setErr("");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -71,6 +88,7 @@ export function ProvidersPage() {
   }, []);
 
   function pick(row: ProviderInfo) {
+    if (blocked) return;
     setSelected(row.name);
     setForm({
       name: row.name,
@@ -81,22 +99,23 @@ export function ProvidersPage() {
       enabled: isProviderEnabled(row),
     });
     setTestView(null);
-    setErr("");
+    setFormErr("");
     setOk("");
   }
 
   function resetForm() {
+    if (blocked) return;
     setSelected("");
     setForm(emptyForm);
     setTestView(null);
-    setErr("");
+    setFormErr("");
     setOk("");
   }
 
   async function save() {
-    if (envLocked) return;
+    if (formLocked) return;
     setSaving(true);
-    setErr("");
+    setFormErr("");
     setOk("");
     try {
       const body = providerWriteBody(form);
@@ -117,17 +136,17 @@ export function ProvidersPage() {
       }
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setFormErr(formatPublicError(e));
     } finally {
       setSaving(false);
     }
   }
 
   async function clearKey() {
-    if (!current || !canClearProviderKey(current)) return;
+    if (!current || !canClearProviderKey(current) || formLocked) return;
     if (!window.confirm(t("providers.confirmClear", { name: current.name }))) return;
     setClearing(true);
-    setErr("");
+    setFormErr("");
     setOk("");
     try {
       await providersApi.clearKey(current.name);
@@ -135,54 +154,55 @@ export function ProvidersPage() {
       setOk(t("providers.cleared"));
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setFormErr(formatPublicError(e));
     } finally {
       setClearing(false);
     }
   }
 
   async function runTest() {
+    if (blocked) return;
     const name = editing ? selected : form.name.trim();
     if (!name) {
-      setErr(t("providers.needName"));
+      setFormErr(t("providers.needName"));
       return;
     }
     setTesting(true);
-    setErr("");
+    setFormErr("");
     setOk("");
     try {
       const result = await providersApi.test(name, testKind);
       setTestView(formatProviderTest(result));
     } catch (e) {
       setTestView(null);
-      setErr(formatPublicError(e));
+      setFormErr(formatPublicError(e));
     } finally {
       setTesting(false);
     }
   }
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="bolt"
-        title={t("providers.title")}
-        description={t("providers.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load()}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>{ok}</p> : null}
-      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("providers.noSecrets")}</p>
-      <Card>
-        <CardHeader icon="bolt" title={t("providers.list")} meta={t("providers.meta", { n: visible.length })} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 16px 8px" }}>
+    <PageChrome
+      icon="bolt"
+      title={t("providers.title")}
+      description={t("providers.desc")}
+      primary={
+        <Button variant="primary" icon="plus" disabled={blocked} onClick={resetForm}>
+          {t("providers.add")}
+        </Button>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load()}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        <>
           <input
             className="z-field"
             style={{ flex: 1, minWidth: 160 }}
             value={query}
+            disabled={blocked}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("providers.search")}
             aria-label={t("providers.search")}
@@ -192,6 +212,7 @@ export function ProvidersPage() {
             className="z-field"
             aria-label={t("providers.filterType")}
             value={typeFilter}
+            disabled={blocked}
             onChange={(e) => setTypeFilter(e.target.value)}
             style={{ minWidth: 140 }}
           >
@@ -206,6 +227,7 @@ export function ProvidersPage() {
             className="z-field"
             aria-label={t("providers.filterSource")}
             value={sourceFilter}
+            disabled={blocked}
             onChange={(e) => setSourceFilter(e.target.value as ProviderSourceFilter)}
             style={{ minWidth: 120 }}
           >
@@ -217,6 +239,7 @@ export function ProvidersPage() {
             className="z-field"
             aria-label={t("providers.filterEnabled")}
             value={enabledFilter}
+            disabled={blocked}
             onChange={(e) => setEnabledFilter(e.target.value as ProviderEnabledFilter)}
             style={{ minWidth: 120 }}
           >
@@ -224,7 +247,15 @@ export function ProvidersPage() {
             <option value="on">{t("providers.status.on")}</option>
             <option value="off">{t("providers.status.off")}</option>
           </select>
-        </div>
+        </>
+      }
+    >
+      <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("providers.noSecrets")}</p>
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
+      {formErr ? <StatusLine kind="error">{formErr}</StatusLine> : null}
+      {ok ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>{ok}</p> : null}
+      <Card>
+        <CardHeader icon="bolt" title={t("providers.list")} meta={metaN == null ? "—" : t("providers.meta", { n: metaN })} />
         <TableScroll>
         <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)", gap: 8 }}>
           <span style={{ flex: 1.2 }}>{t("providers.col.name")}</span>
@@ -253,7 +284,7 @@ export function ProvidersPage() {
                 background: on ? "var(--accent-soft)" : "transparent",
                 color: "var(--text)",
                 gap: 8,
-                cursor: "pointer",
+                cursor: blocked ? "default" : "pointer",
                 alignItems: "center",
               }}
             >
@@ -273,11 +304,11 @@ export function ProvidersPage() {
             </button>
           );
         })}
-        {loading ? <StatusLine kind="loading" /> : null}
-        {!loading && rows.length === 0 ? <EmptyState>{t("providers.empty")}</EmptyState> : null}
-        {filteredEmpty ? <EmptyState>{t("providers.filterEmpty")}</EmptyState> : null}
+        {state.showEmpty ? <EmptyState data-page-state="empty">{t("providers.empty")}</EmptyState> : null}
+        {filteredEmpty ? <EmptyState data-page-state="filtered_empty">{t("providers.filterEmpty")}</EmptyState> : null}
         </TableScroll>
       </Card>
+      {!blocked ? (
       <Card>
         <CardHeader icon="bolt" title={editing ? t("providers.edit") : t("providers.add")} />
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -393,6 +424,7 @@ export function ProvidersPage() {
           ) : null}
         </div>
       </Card>
-    </div>
+      ) : null}
+    </PageChrome>
   );
 }

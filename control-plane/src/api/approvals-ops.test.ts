@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   approvalLabel,
   asPublic,
@@ -66,9 +67,30 @@ test("canResolve and isExpired", () => {
   assert.equal(canResolve(row({ stale: true })), true);
   assert.equal(canResolve(row({ status: "expired", stale: true })), false);
   assert.equal(canResolve(row({ status: "approved" })), false);
+  assert.equal(canResolve(row({ status: "rejected" })), false);
   assert.equal(isExpired(row({ status: "expired" })), true);
   assert.equal(isExpired({ status: "pending", expires_at: "2000-01-01T00:00:00Z" }), true);
   assert.equal(isExpired({ status: "pending", expires_at: "2099-01-01T00:00:00Z" }), false);
+});
+
+test("inbox 401 is not an empty approvals list", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+  assert.equal(listMetaCount(s.kind, 0), null);
+});
+
+test("asPublic drops raw args so decisions stay redacted", () => {
+  const leaked = asPublic([row({ args: { token: "x" } } as never)]);
+  assert.equal(leaked.length, 0);
+  const ok = asPublic([row()]);
+  assert.equal("args" in ok[0], false);
 });
 
 test("approvalLabel", () => {

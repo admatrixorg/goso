@@ -10,11 +10,13 @@ import {
   type BackupDest,
   type BackupScope,
 } from "../api/backup-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type TabId = "system" | "tenant" | "restore" | "s3";
@@ -36,13 +38,16 @@ function triggerDownload(file: string, blob: Blob) {
 }
 
 export function BackupPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [tab, setTab] = useState<TabId>("system");
   const [files, setFiles] = useState<BackupFile[]>([]);
   const [pf, setPf] = useState<Preflight>(emptyPreflight());
   const [s3, setS3] = useState<S3Status>(emptyS3());
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState(0);
@@ -60,12 +65,22 @@ export function BackupPanel() {
   const [accessKey, setAccessKey] = useState("");
   const [secret, setSecret] = useState("");
 
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: files.length + (pf.can_backup ? 1 : 0),
+    keepStale: loaded && files.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const metaN = listMetaCount(state.kind, files.length);
+
   async function load() {
     setLoading(true);
     try {
       const [list, pre, remote] = await Promise.all([backupApi.list(), backupApi.preflight(), backupApi.s3()]);
       if (list.files.some((f) => publicHasSecrets(f)) || publicHasSecrets(pre) || publicHasSecrets(remote)) {
-        setErr(t("settings.backup.leak"));
+        setActionErr(t("settings.backup.leak"));
         setFiles([]);
       } else {
         setFiles(list.files);
@@ -77,10 +92,13 @@ export function BackupPanel() {
         setPrefix(remote.prefix || "");
         setAccessKey("");
         setSecret("");
-        setErr("");
+        setActionErr("");
       }
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -92,7 +110,7 @@ export function BackupPanel() {
 
   async function runCreate(scope: BackupScope) {
     if (!pf.can_backup) {
-      setErr(t("settings.backup.blocked", { reason: pf.blocking || "" }));
+      setActionErr(t("settings.backup.blocked", { reason: pf.blocking || "" }));
       return;
     }
     setBusy("create");
@@ -102,16 +120,16 @@ export function BackupPanel() {
       const snap = await backupApi.create(scope, scope === "tenant" ? tenant : "", dest);
       const pub = asPublicFile(snap);
       if (!pub) {
-        setErr(t("settings.backup.leak"));
+        setActionErr(t("settings.backup.leak"));
         return;
       }
       setProgress(pub.progress || 100);
       setSteps(pub.steps || []);
       setOk(pub.warning ? `${t("settings.backup.created", { file: pub.file })} — ${pub.warning}` : t("settings.backup.created", { file: pub.file }));
-      setErr("");
+      setActionErr("");
       await load();
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
       setProgress(0);
@@ -124,9 +142,9 @@ export function BackupPanel() {
       const blob = await backupApi.download(file);
       triggerDownload(file, blob);
       setOk(t("settings.backup.downloaded", { file }));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -134,23 +152,23 @@ export function BackupPanel() {
 
   async function runPlan(file: string) {
     if (!file) {
-      setErr(t("settings.backup.needFile"));
+      setActionErr(t("settings.backup.needFile"));
       return;
     }
     setBusy("plan");
     try {
       const next = await backupApi.plan(file);
       if (publicHasSecrets(next)) {
-        setErr(t("settings.backup.leak"));
+        setActionErr(t("settings.backup.leak"));
         setPlan(null);
         return;
       }
       setPlan(next);
       setSelected(file);
       setOk(t("settings.backup.planOk"));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -158,20 +176,20 @@ export function BackupPanel() {
 
   async function runRestore() {
     if (!selected) {
-      setErr(t("settings.backup.needFile"));
+      setActionErr(t("settings.backup.needFile"));
       return;
     }
     if (!confirm || !confirmMatches(selected, typed)) {
-      setErr(t("settings.backup.confirmMismatch"));
+      setActionErr(t("settings.backup.confirmMismatch"));
       return;
     }
     setBusy("restore");
     try {
       const r = await backupApi.restore(selected, typed);
       setOk(t("settings.backup.restored", { file: r.file || selected }));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -182,16 +200,16 @@ export function BackupPanel() {
     try {
       const row = await backupApi.putS3({ endpoint, bucket, region, prefix, access_key: accessKey, secret });
       if (publicHasSecrets(row)) {
-        setErr(t("settings.backup.leak"));
+        setActionErr(t("settings.backup.leak"));
         return;
       }
       setS3(row);
       setAccessKey("");
       setSecret("");
       setOk(t("settings.backup.s3.saved"));
-      setErr("");
+      setActionErr("");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -204,7 +222,7 @@ export function BackupPanel() {
   function fileTable(rows: BackupFile[], emptyKey: MsgKey) {
     return (
       <Card>
-        <CardHeader icon="download" title={t("settings.backup")} meta={String(rows.length)} />
+        <CardHeader icon="download" title={t("settings.backup")} meta={metaN == null ? "—" : String(rows.length)} />
         <TableScroll>
           <div style={{ display: "flex", gap: 12, padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "var(--text-3)" }}>
             <span style={{ flex: 2 }}>{t("settings.col.file")}</span>
@@ -231,7 +249,7 @@ export function BackupPanel() {
               </span>
             </div>
           ))}
-          {!loading && rows.length === 0 ? <EmptyState>{t(emptyKey)}</EmptyState> : null}
+          {!blocked && loaded && rows.length === 0 ? <EmptyState data-page-state="empty">{t(emptyKey)}</EmptyState> : null}
         </TableScroll>
       </Card>
     );
@@ -251,9 +269,9 @@ export function BackupPanel() {
           {t("common.refresh")}
         </Button>
       </div>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>{ok}</p> : null}
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {ok && !actionErr ? <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>{ok}</p> : null}
       {busy && progress > 0 ? (
         <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} style={{ height: 6, borderRadius: 99, background: "var(--border-soft)", overflow: "hidden" }}>
           <div style={{ width: `${progress}%`, height: "100%", background: "var(--accent)" }} />
@@ -325,7 +343,7 @@ export function BackupPanel() {
                 <Button disabled={!selected || Boolean(busy)} onClick={() => void runPlan(selected)}>
                   {t("settings.backup.plan")}
                 </Button>
-                <Button disabled={!selected || Boolean(busy)} onClick={() => void backupApi.validate(selected).then(() => setOk(t("settings.backup.validated"))).catch((e) => setErr(formatPublicError(e)))}>
+                <Button disabled={!selected || Boolean(busy)} onClick={() => void backupApi.validate(selected).then(() => setOk(t("settings.backup.validated"))).catch((e) => setActionErr(formatPublicError(e)))}>
                   {t("settings.backup.validate")}
                 </Button>
               </div>
@@ -384,7 +402,7 @@ export function BackupPanel() {
               <Button variant="primary" disabled={Boolean(busy) || Boolean(s3.env_owned)} onClick={() => void saveS3()}>
                 {t("settings.backup.s3.save")}
               </Button>
-              <Button disabled={Boolean(busy) || !s3.configured} onClick={() => void backupApi.testS3().then(() => setOk(t("settings.backup.s3.testOk"))).catch((e) => setErr(formatPublicError(e)))}>
+              <Button disabled={Boolean(busy) || !s3.configured} onClick={() => void backupApi.testS3().then(() => setOk(t("settings.backup.s3.testOk"))).catch((e) => setActionErr(formatPublicError(e)))}>
                 {t("settings.backup.s3.test")}
               </Button>
               <Button
@@ -393,13 +411,13 @@ export function BackupPanel() {
                   void backupApi
                     .clearS3(bucket || "s3")
                     .then((row) => {
-                      if (publicHasSecrets(row)) setErr(t("settings.backup.leak"));
+                      if (publicHasSecrets(row)) setActionErr(t("settings.backup.leak"));
                       else {
                         setS3(row);
                         setOk(t("settings.backup.s3.cleared"));
                       }
                     })
-                    .catch((e) => setErr(formatPublicError(e)))
+                    .catch((e) => setActionErr(formatPublicError(e)))
                 }
               >
                 {t("settings.backup.s3.clear")}

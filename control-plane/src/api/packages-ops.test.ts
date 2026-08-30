@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   allowConfirmMatch,
   asPublicCreds,
@@ -47,6 +48,27 @@ test("publicHasSecrets and snapshotHasSecrets", () => {
   assert.equal(publicHasSecrets({ id: "pk_1", log: ["Bearer abcdefghijk"] }), true);
   assert.equal(snapshotHasSecrets({ packages: [pkg()] }), false);
   assert.equal(snapshotHasSecrets({ packages: [{ id: "pk_1", secret: "x" }] }), true);
+});
+
+test("snapshot 401 blocks install and does not claim empty packages", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+  assert.equal(listMetaCount(s.kind, 0), null);
+});
+
+test("CLI credentials stay write-only in public snapshot", () => {
+  const snap = asPublicSnapshot({
+    credentials: [{ kind: "github", set: true, token: "ghp_livevalue" } as never],
+  });
+  assert.equal(snap.credentials[0].set, false);
+  assert.equal(JSON.stringify(snap).includes("ghp_livevalue"), false);
 });
 
 test("pinValid rejects latest and ranges", () => {

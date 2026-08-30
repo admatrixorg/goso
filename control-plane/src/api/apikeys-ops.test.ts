@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   asCreated,
   asPublic,
@@ -54,12 +55,27 @@ test("publicHasSecrets flags token payloads, not listing metadata", () => {
   assert.equal(publicHasSecrets({ id: "ak_1", prefix: "gk_abcd1234" }), false);
 });
 
-test("asCreated keeps secret once; hideCopiedSecret clears it", () => {
+test("asCreated keeps secret once; hideCopiedSecret clears it after copy hide or navigation", () => {
   const last = asCreated({ ...row(), secret: "gk_abcd1234deadbeef" });
   assert.equal(last?.secret, "gk_abcd1234deadbeef");
   assert.equal(asCreated(row()), null);
-  assert.equal(hideCopiedSecret(last!).secret, undefined);
-  assert.equal(hideCopiedSecret(last!).prefix, "gk_abcd1234");
+  const hidden = hideCopiedSecret(last!);
+  assert.equal(hidden.secret, undefined);
+  assert.equal(hidden.prefix, "gk_abcd1234");
+  assert.equal(JSON.stringify(hidden).includes("gk_abcd1234deadbeef"), false);
+});
+
+test("permission blocks create/revoke and does not claim zero keys", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+  assert.equal(listMetaCount(s.kind, 0), null);
 });
 
 test("filterKeys matches name prefix status scope tenant", () => {

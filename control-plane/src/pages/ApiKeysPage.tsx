@@ -15,12 +15,14 @@ import {
   usageLabel,
   type LastSecret,
 } from "../api/apikeys-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 function statusTone(st: string): "positive" | "warning" | "critical" | "neutral" {
@@ -54,12 +56,15 @@ function toRFC3339(local: string): string | undefined {
 }
 
 export function ApiKeysPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState<ApiKey[]>([]);
   const [selected, setSelected] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
@@ -72,19 +77,36 @@ export function ApiKeysPage() {
   const [typed, setTyped] = useState("");
   const na = t("apikeys.na");
 
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: rows.length,
+    keepStale: loaded && rows.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const filtersOn = q.trim().length > 0;
+  const filtered = useMemo(() => filterKeys(state.showItems ? rows : [], q), [rows, q, state.showItems]);
+  const trueEmpty = state.showEmpty && !filtersOn;
+  const filterEmpty = state.showEmpty && filtersOn;
+  const metaN = listMetaCount(state.kind, rows.length);
+  const detail = filtered.find((r) => r.id === selected) || filtered[0] || null;
+  const matched = confirm ? keyConfirmMatch(typed, confirm) : false;
+
   async function load(keepId = selected) {
     setLoading(true);
     try {
       const j = await apiKeysApi.list(q);
       const leak = (j.keys || []).some((row) => publicHasSecrets(row));
       setRows(asPublic(j.keys));
-      setErr(leak ? t("apikeys.leak") : "");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+      setActionErr(leak ? t("apikeys.leak") : "");
       const id = keepId && j.keys.some((r) => r.id === keepId) ? keepId : j.keys[0]?.id || "";
       setSelected(id);
     } catch (e) {
-      setErr(formatPublicError(e));
-      setRows([]);
-      setSelected("");
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -94,12 +116,14 @@ export function ApiKeysPage() {
     void load("");
   }, [q]);
 
-  const filtered = useMemo(() => filterKeys(rows, q), [rows, q]);
-  const detail = filtered.find((r) => r.id === selected) || filtered[0] || null;
-  const matched = confirm ? keyConfirmMatch(typed, confirm) : false;
-  const empty = !loading && !err && filtered.length === 0;
+  useEffect(() => {
+    return () => {
+      setLast(null);
+    };
+  }, []);
 
   async function createKey() {
+    if (blocked) return;
     setBusy("create");
     setOk("");
     try {
@@ -112,7 +136,7 @@ export function ApiKeysPage() {
         }),
       );
       if (!created) {
-        setErr(t("apikeys.leak"));
+        setActionErr(t("apikeys.leak"));
         return;
       }
       setLast(created);
@@ -121,11 +145,11 @@ export function ApiKeysPage() {
       setTenant("");
       setScopes(["read"]);
       setExpires("");
-      setErr("");
+      setActionErr("");
       setOk(t("apikeys.createOk"));
       await load(created.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -138,51 +162,79 @@ export function ApiKeysPage() {
       setLast(hideCopiedSecret(last));
       setCopied(t("apikeys.copied"));
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     }
   }
 
+  function hideSecret() {
+    if (!last) return;
+    setLast(hideCopiedSecret(last));
+    setCopied("");
+  }
+
   async function submitRevoke() {
-    if (!confirm || !keyConfirmMatch(typed, confirm)) {
-      setErr(t("apikeys.mismatch"));
+    if (blocked || !confirm || !keyConfirmMatch(typed, confirm)) {
+      setActionErr(t("apikeys.mismatch"));
       return;
     }
     setBusy("revoke");
     try {
       await apiKeysApi.revoke(confirm.id, typed.trim());
       setOk(t("apikeys.revokeOk"));
-      setErr("");
+      setActionErr("");
       if (last?.id === confirm.id) setLast(null);
       setConfirm(null);
       setTyped("");
       await load(confirm.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="lock"
-        title={t("apikeys.title")}
-        description={t("apikeys.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load(selected)} disabled={loading || Boolean(busy)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="lock"
+      title={t("apikeys.title")}
+      description={t("apikeys.desc")}
+      primary={
+        <Button
+          variant="primary"
+          icon="plus"
+          disabled={blocked || Boolean(busy) || !name.trim() || scopes.length === 0}
+          onClick={() => void createKey()}
+        >
+          {t("apikeys.create")}
+        </Button>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load(selected)} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        <input
+          className="z-field"
+          value={q}
+          disabled={blocked}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("apikeys.search")}
+          aria-label={t("apikeys.search")}
+          autoComplete="off"
+          style={{ minWidth: 220, flex: 1 }}
+        />
+      }
+    >
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("apikeys.once")}</p>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? (
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load(selected)} />
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {ok && !actionErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
       ) : null}
+      {!blocked ? (
       <Card>
         <CardHeader icon="plus" title={t("apikeys.create")} />
         <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -229,13 +281,10 @@ export function ApiKeysPage() {
               </label>
             ))}
           </fieldset>
-          <div>
-            <Button variant="accent" disabled={Boolean(busy) || !name.trim() || scopes.length === 0} onClick={() => void createKey()}>
-              {t("common.create")}
-            </Button>
-          </div>
         </div>
       </Card>
+      ) : null}
+      {!blocked ? (
       <Card>
         <CardHeader icon="lock" title={t("apikeys.last")} />
         {!last ? (
@@ -256,15 +305,21 @@ export function ApiKeysPage() {
               <span style={{ width: 110, color: "var(--text-3)", fontWeight: 600 }}>{t("apikeys.secret")}</span>
               <code style={{ flex: 1, fontSize: 12, overflowWrap: "anywhere" }}>{last.secret ?? t("apikeys.redacted")}</code>
               {last.secret ? (
-                <Button onClick={() => void copySecret()} style={{ padding: "4px 10px" }}>
-                  {t("common.copy")}
-                </Button>
+                <>
+                  <Button onClick={() => void copySecret()} style={{ padding: "4px 10px" }}>
+                    {t("common.copy")}
+                  </Button>
+                  <Button onClick={hideSecret} style={{ padding: "4px 10px" }}>
+                    {t("apikeys.hide")}
+                  </Button>
+                </>
               ) : null}
             </div>
           </div>
         )}
       </Card>
-      {confirm ? (
+      ) : null}
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="lock" title={t("apikeys.confirmTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -300,18 +355,7 @@ export function ApiKeysPage() {
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="list" title={t("apikeys.list")} meta={t("apikeys.meta", { n: filtered.length })} />
-        <div style={{ padding: "0 16px 10px" }}>
-          <input
-            className="z-field"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("apikeys.search")}
-            aria-label={t("apikeys.search")}
-            autoComplete="off"
-            style={{ width: "100%" }}
-          />
-        </div>
+        <CardHeader icon="list" title={t("apikeys.list")} meta={metaN == null ? "—" : t("apikeys.meta", { n: metaN })} />
         <TableScroll>
           <div
             style={{
@@ -332,7 +376,8 @@ export function ApiKeysPage() {
             <span style={{ flex: 1.2 }}>{t("apikeys.col.usage")}</span>
             <span style={{ width: 88 }}>{t("apikeys.col.actions")}</span>
           </div>
-          {empty ? <EmptyState>{q.trim() ? t("apikeys.filterEmpty") : t("apikeys.empty")}</EmptyState> : null}
+          {trueEmpty ? <EmptyState data-page-state="empty">{t("apikeys.empty")}</EmptyState> : null}
+          {filterEmpty ? <EmptyState data-page-state="filtered_empty">{t("apikeys.filterEmpty")}</EmptyState> : null}
           {filtered.map((row) => {
             const on = row.id === (detail?.id || selected);
             return (
@@ -350,6 +395,7 @@ export function ApiKeysPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (blocked) return;
                     setSelected(row.id);
                     setConfirm(null);
                     setTyped("");
@@ -365,7 +411,7 @@ export function ApiKeysPage() {
                     background: "transparent",
                     color: "var(--text)",
                     textAlign: "left",
-                    cursor: "pointer",
+                    cursor: blocked ? "default" : "pointer",
                   }}
                 >
                   <span style={{ flex: 1.2, fontWeight: 600 }}>{row.name || row.id}</span>
@@ -378,7 +424,7 @@ export function ApiKeysPage() {
                 </button>
                 <span style={{ width: 88, flex: "none", paddingRight: 16 }}>
                   <Button
-                    disabled={row.status === "revoked" || busy === "revoke"}
+                    disabled={blocked || row.status === "revoked" || busy === "revoke"}
                     onClick={() => {
                       setConfirm(row);
                       setTyped("");
@@ -394,7 +440,7 @@ export function ApiKeysPage() {
           })}
         </TableScroll>
       </Card>
-      {detail ? (
+      {detail && state.showItems ? (
         <Card>
           <CardHeader icon="pulse" title={t("apikeys.usageTitle")} meta={keyLabel(detail)} />
           <div style={{ padding: "0 16px 16px", display: "grid", gap: 6, fontSize: 12.5, color: "var(--text-2)" }}>
@@ -419,6 +465,6 @@ export function ApiKeysPage() {
           </div>
         </Card>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }

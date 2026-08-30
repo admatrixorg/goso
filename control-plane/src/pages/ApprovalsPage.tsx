@@ -1,20 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { approvalsApi, type Approval } from "../api/approvals";
 import {
   POLL_MS,
-  STALE_MS,
   approvalLabel,
   canResolve,
   formatWhen,
   listHasSecrets,
   publicHasSecrets,
 } from "../api/approvals-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type ActionKind = "approve" | "deny";
@@ -46,31 +47,43 @@ function riskKey(risk: string): MsgKey {
 }
 
 export function ApprovalsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [rows, setRows] = useState<Approval[]>([]);
   const [open, setOpen] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
-  const [stale, setStale] = useState(false);
   const [confirm, setConfirm] = useState<{ kind: ActionKind; row: Approval } | null>(null);
   const [reason, setReason] = useState("");
-  const lastOk = useRef(0);
   const na = t("approvals.na");
+
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: rows.length,
+    keepStale: loaded && rows.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const metaN = listMetaCount(state.kind, rows.length);
+  const shown = state.showItems ? rows : [];
+  const selected = shown.find((r) => r.id === open) ?? null;
 
   async function load(quiet = false) {
     if (!quiet) setLoading(true);
     try {
       const j = await approvalsApi.list();
       setRows(j.approvals);
-      if (listHasSecrets(j)) setErr(t("approvals.leak"));
-      else setErr("");
-      lastOk.current = Date.now();
-      setStale(false);
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+      setActionErr(listHasSecrets(j) ? t("approvals.leak") : "");
     } catch (e) {
-      setErr(formatPublicError(e));
-      if (Date.now() - lastOk.current > STALE_MS) setStale(true);
+      setErr(e);
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -82,23 +95,23 @@ export function ApprovalsPage() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (Date.now() - lastOk.current > STALE_MS) setStale(true);
       void load(true);
     }, POLL_MS);
     return () => window.clearInterval(id);
   }, []);
 
   function openConfirm(kind: ActionKind, row: Approval) {
+    if (blocked || !canResolve(row)) return;
     setConfirm({ kind, row });
     setReason("");
     setOk("");
-    setErr("");
+    setActionErr("");
   }
 
   async function submitConfirm() {
-    if (!confirm) return;
+    if (!confirm || blocked) return;
     if (confirm.kind === "deny" && !reason.trim()) {
-      setErr(t("approvals.reasonRequired"));
+      setActionErr(t("approvals.reasonRequired"));
       return;
     }
     const id = confirm.row.id;
@@ -107,55 +120,51 @@ export function ApprovalsPage() {
     try {
       const out = await approvalsApi.decide(id, kind, kind === "deny" ? reason.trim() : undefined);
       if (publicHasSecrets(out)) {
-        setErr(t("approvals.leak"));
+        setActionErr(t("approvals.leak"));
       } else {
         setOk(kind === "approve" ? t("approvals.approveOk") : t("approvals.denyOk"));
-        setErr("");
+        setActionErr("");
       }
       setConfirm(null);
       setReason("");
       await load(true);
     } catch (e) {
-      const msg = formatPublicError(e);
-      setErr(msg);
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
-  const selected = rows.find((r) => r.id === open) ?? null;
-
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="shield"
-        title={t("approvals.title")}
-        description={t("approvals.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="shield"
+      title={t("approvals.title")}
+      description={t("approvals.desc")}
+      primary={
+        <Button icon="refresh" iconGesture variant="primary" onClick={() => void load()} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+    >
       <Card>
         <CardHeader icon="lock" title={t("approvals.how")} />
         <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>
           {t("approvals.howBody")}
         </p>
       </Card>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {stale && !loading ? (
-        <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--orange, #b45309)" }}>
-          {t("approvals.stale")}
-        </p>
-      ) : null}
-      {ok && !err ? (
+      <PageStatus
+        kind={state.kind}
+        errorText={err ? formatPublicError(err) : ""}
+        staleAt={formatStaleAt(loadedAt, locale)}
+        onReload={() => void load()}
+      />
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {ok && !actionErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
       ) : null}
-      {confirm ? (
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="lock" title={confirm.kind === "approve" ? t("approvals.confirmApproveTitle") : t("approvals.confirmDenyTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -201,7 +210,7 @@ export function ApprovalsPage() {
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="inbox" title={t("approvals.inbox")} meta={t("approvals.meta", { n: rows.length })} />
+        <CardHeader icon="inbox" title={t("approvals.inbox")} meta={metaN == null ? "—" : t("approvals.meta", { n: metaN })} />
         <TableScroll>
           <div
             style={{
@@ -222,10 +231,12 @@ export function ApprovalsPage() {
             <span style={{ flex: 1.2 }}>{t("approvals.col.expiry")}</span>
             <span style={{ flex: 1.6 }} />
           </div>
-          {!loading && rows.length === 0 ? <EmptyState>{t("approvals.empty")}</EmptyState> : null}
-          {rows.map((row) => {
+          {state.showEmpty ? <EmptyState data-page-state="empty">{t("approvals.empty")}</EmptyState> : null}
+          {shown.map((row) => {
             const rowBusy = busy.endsWith(":" + row.id);
-            const act = canResolve(row);
+            const expired = row.status === "expired" || row.stale;
+            const resolved = row.status === "approved" || row.status === "rejected";
+            const act = canResolve(row) && !blocked;
             return (
               <div key={row.id} style={{ borderBottom: "1px solid var(--border-soft)" }}>
                 <div
@@ -269,6 +280,7 @@ export function ApprovalsPage() {
                   </span>
                   <span style={{ flex: 1.6, display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                     <Badge tone={statusTone(row.status)}>{t(statusKey(row.status))}</Badge>
+                    {expired && !resolved ? <Badge tone="warning">{t("approvals.status.expired")}</Badge> : null}
                     <Button variant="quiet" disabled={rowBusy || !act} onClick={() => openConfirm("approve", row)}>
                       {t("approvals.approve")}
                     </Button>
@@ -310,12 +322,15 @@ export function ApprovalsPage() {
               <span style={{ color: "var(--text-3)" }}>{t("approvals.col.expiry")}: </span>
               {formatWhen(selected.expires_at, na)}
             </p>
+            {selected.status === "approved" || selected.status === "rejected" ? (
+              <p style={{ margin: 0, color: "var(--text-3)" }}>{t("approvals.resolvedHint")}</p>
+            ) : null}
             {selected.stale || selected.status === "expired" ? (
               <p style={{ margin: 0, color: "var(--orange, #b45309)" }}>{t("approvals.expiredHint")}</p>
             ) : null}
           </div>
         </Card>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }

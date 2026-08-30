@@ -9,24 +9,31 @@ import {
   tenantConfirmMatch,
   tenantLabel,
 } from "../api/tenants-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type ConfirmKind = "deactivate" | "remove";
 
+const emptyList = (): TenantList => ({ tenants: [] });
+
 export function TenantsPage() {
-  const { t } = useI18n();
-  const [list, setList] = useState<TenantList>({ tenants: [] });
+  const { t, locale } = useI18n();
+  const [list, setList] = useState<TenantList>(emptyList);
   const [detail, setDetail] = useState<Tenant | null>(null);
   const [selected, setSelected] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [detailErr, setDetailErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [slug, setSlug] = useState("");
@@ -37,26 +44,55 @@ export function TenantsPage() {
   const [typed, setTyped] = useState("");
   const na = t("tenants.na");
 
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: list.tenants.length,
+    keepStale: loaded && list.tenants.length > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const filtersOn = q.trim().length > 0;
+  const filtered = useMemo(() => filterTenants(state.showItems ? list.tenants : [], q), [list.tenants, q, state.showItems]);
+  const trueEmpty = state.showEmpty && !filtersOn;
+  const filterEmpty = state.showEmpty && filtersOn;
+  const metaN = listMetaCount(state.kind, list.tenants.length);
+  const current = list.current;
+  const master = list.master;
+  const matched = confirm
+    ? confirm.kind === "deactivate"
+      ? tenantConfirmMatch(typed, confirm.tenant)
+      : confirm.member
+        ? memberConfirmMatch(typed, confirm.member)
+        : false
+    : false;
+
   async function load(keepId = selected) {
     setLoading(true);
     try {
       const j = await tenantsApi.list(q);
       const leak = (j.tenants || []).some((row) => publicHasSecrets(row));
       setList(j);
-      setErr(leak ? t("tenants.leak") : "");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+      setDetailErr(leak ? t("tenants.leak") : "");
       const id = keepId && j.tenants.some((r) => r.id === keepId) ? keepId : j.tenants[0]?.id || "";
       setSelected(id);
       if (id) {
-        const d = await tenantsApi.get(id);
-        setDetail(d);
-        if (publicHasSecrets(d)) setErr(t("tenants.leak"));
+        try {
+          const d = await tenantsApi.get(id);
+          setDetail(d);
+          if (publicHasSecrets(d)) setDetailErr(t("tenants.leak"));
+        } catch (e) {
+          setDetail(null);
+          setDetailErr(formatPublicError(e));
+        }
       } else {
         setDetail(null);
       }
     } catch (e) {
-      setErr(formatPublicError(e));
-      setList({ tenants: [] });
-      setDetail(null);
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -66,16 +102,8 @@ export function TenantsPage() {
     void load(selected);
   }, [q]);
 
-  const filtered = useMemo(() => filterTenants(list.tenants, q), [list.tenants, q]);
-  const matched = confirm
-    ? confirm.kind === "deactivate"
-      ? tenantConfirmMatch(typed, confirm.tenant)
-      : confirm.member
-        ? memberConfirmMatch(typed, confirm.member)
-        : false
-    : false;
-
   async function createTenant() {
+    if (blocked) return;
     setBusy("create");
     setOk("");
     try {
@@ -83,16 +111,17 @@ export function TenantsPage() {
       setSlug("");
       setName("");
       setOk(t("tenants.createOk"));
-      setErr("");
+      setDetailErr("");
       await load(row.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function pick(id: string) {
+    if (blocked) return;
     setSelected(id);
     setConfirm(null);
     setTyped("");
@@ -100,69 +129,69 @@ export function TenantsPage() {
     try {
       const d = await tenantsApi.get(id);
       setDetail(d);
-      if (publicHasSecrets(d)) setErr(t("tenants.leak"));
+      setDetailErr(publicHasSecrets(d) ? t("tenants.leak") : "");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
       setDetail(null);
     }
   }
 
   async function activate() {
-    if (!detail) return;
+    if (!detail || blocked) return;
     setBusy("status");
     try {
       const row = await tenantsApi.setStatus(detail.id, "active");
       setOk(t("tenants.activateOk"));
-      setErr("");
+      setDetailErr("");
       await load(row.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function addMember() {
-    if (!detail) return;
+    if (!detail || blocked) return;
     setBusy("member");
     try {
       const row = await tenantsApi.addMember(detail.id, subject.trim(), role);
       setSubject("");
       setRole("member");
       setOk(t("tenants.memberOk"));
-      setErr("");
+      setDetailErr("");
       setDetail(row);
       await load(row.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function changeRole(mid: string, next: string) {
-    if (!detail) return;
+    if (!detail || blocked) return;
     setBusy("role:" + mid);
     try {
       const row = await tenantsApi.setMemberRole(detail.id, mid, next);
       setOk(t("tenants.roleOk"));
-      setErr("");
+      setDetailErr("");
       setDetail(row);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function submitConfirm() {
-    if (!confirm) return;
+    if (!confirm || blocked) return;
     if (confirm.kind === "deactivate" && !tenantConfirmMatch(typed, confirm.tenant)) {
-      setErr(t("tenants.mismatch"));
+      setDetailErr(t("tenants.mismatch"));
       return;
     }
     if (confirm.kind === "remove" && confirm.member && !memberConfirmMatch(typed, confirm.member)) {
-      setErr(t("tenants.mismatch"));
+      setDetailErr(t("tenants.mismatch"));
       return;
     }
     setBusy(confirm.kind);
@@ -174,12 +203,12 @@ export function TenantsPage() {
         await tenantsApi.removeMember(confirm.tenant.id, confirm.member.id, typed.trim());
         setOk(t("tenants.removeOk"));
       }
-      setErr("");
+      setDetailErr("");
       setConfirm(null);
       setTyped("");
       await load(confirm.tenant.id);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setDetailErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -205,22 +234,41 @@ export function TenantsPage() {
     return r;
   }
 
-  const current = list.current;
-  const master = list.master;
-  const empty = !loading && !err && filtered.length === 0;
+  const showDetail = Boolean(detail) && (state.showItems || state.kind === "stale");
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="layers"
-        title={t("tenants.title")}
-        description={t("tenants.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load(selected)} disabled={loading || Boolean(busy)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="layers"
+      title={t("tenants.title")}
+      description={t("tenants.desc")}
+      primary={
+        <Button
+          variant="primary"
+          icon="plus"
+          disabled={blocked || Boolean(busy) || !slug.trim() || !name.trim()}
+          onClick={() => void createTenant()}
+        >
+          {t("tenants.create")}
+        </Button>
+      }
+      refresh={
+        <Button icon="refresh" iconGesture onClick={() => void load(selected)} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        <input
+          className="z-field"
+          value={q}
+          disabled={blocked}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("tenants.search")}
+          aria-label={t("tenants.search")}
+          autoComplete="off"
+          style={{ minWidth: 220, flex: 1 }}
+        />
+      }
+    >
       <Card>
         <CardHeader icon="shield" title={t("tenants.context")} />
         <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
@@ -233,9 +281,9 @@ export function TenantsPage() {
           })}
         </p>
       </Card>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? (
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load(selected)} />
+      {detailErr ? <StatusLine kind="error">{detailErr}</StatusLine> : null}
+      {ok && !detailErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
@@ -246,6 +294,7 @@ export function TenantsPage() {
           <input
             className="z-field"
             value={slug}
+            disabled={blocked}
             onChange={(e) => setSlug(e.target.value)}
             placeholder={t("tenants.slug")}
             aria-label={t("tenants.slug")}
@@ -256,18 +305,16 @@ export function TenantsPage() {
           <input
             className="z-field"
             value={name}
+            disabled={blocked}
             onChange={(e) => setName(e.target.value)}
             placeholder={t("tenants.name")}
             aria-label={t("tenants.name")}
             autoComplete="off"
             style={{ minWidth: 180, flex: 1 }}
           />
-          <Button variant="accent" disabled={Boolean(busy) || !slug.trim() || !name.trim()} onClick={() => void createTenant()}>
-            {t("common.create")}
-          </Button>
         </div>
       </Card>
-      {confirm ? (
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="lock" title={confirm.kind === "deactivate" ? t("tenants.confirmDeactivateTitle") : t("tenants.confirmRemoveTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -307,18 +354,7 @@ export function TenantsPage() {
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="list" title={t("tenants.list")} meta={t("tenants.meta", { n: filtered.length })} />
-        <div style={{ padding: "0 16px 10px" }}>
-          <input
-            className="z-field"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("tenants.search")}
-            aria-label={t("tenants.search")}
-            autoComplete="off"
-            style={{ width: "100%" }}
-          />
-        </div>
+        <CardHeader icon="list" title={t("tenants.list")} meta={metaN == null ? "—" : t("tenants.meta", { n: metaN })} />
         <TableScroll>
           <div
             style={{
@@ -336,7 +372,8 @@ export function TenantsPage() {
             <span style={{ flex: 0.9 }}>{t("tenants.col.status")}</span>
             <span style={{ flex: 1.2 }}>{t("tenants.col.created")}</span>
           </div>
-          {empty ? <EmptyState>{q.trim() ? t("tenants.filterEmpty") : t("tenants.empty")}</EmptyState> : null}
+          {trueEmpty ? <EmptyState data-page-state="empty">{t("tenants.empty")}</EmptyState> : null}
+          {filterEmpty ? <EmptyState data-page-state="filtered_empty">{t("tenants.filterEmpty")}</EmptyState> : null}
           {filtered.map((row) => {
             const on = row.id === selected;
             return (
@@ -355,7 +392,7 @@ export function TenantsPage() {
                   background: on ? "var(--accent-soft)" : "transparent",
                   color: "var(--text)",
                   textAlign: "left",
-                  cursor: "pointer",
+                  cursor: blocked ? "default" : "pointer",
                   gap: 8,
                 }}
               >
@@ -382,7 +419,7 @@ export function TenantsPage() {
           })}
         </TableScroll>
       </Card>
-      {detail ? (
+      {showDetail && detail ? (
         <Card>
           <CardHeader
             icon="user"
@@ -402,19 +439,19 @@ export function TenantsPage() {
               {detail.status === "active" && !detail.master ? (
                 <Button
                   variant="quiet"
-                  disabled={Boolean(busy)}
+                  disabled={blocked || Boolean(busy)}
                   onClick={() => {
                     setConfirm({ kind: "deactivate", tenant: detail });
                     setTyped("");
                     setOk("");
-                    setErr("");
+                    setDetailErr("");
                   }}
                 >
                   {t("tenants.deactivate")}
                 </Button>
               ) : null}
               {detail.status === "deactivated" ? (
-                <Button variant="quiet" disabled={Boolean(busy)} onClick={() => void activate()}>
+                <Button variant="quiet" disabled={blocked || Boolean(busy)} onClick={() => void activate()}>
                   {t("tenants.activate")}
                 </Button>
               ) : null}
@@ -424,6 +461,7 @@ export function TenantsPage() {
               <input
                 className="z-field"
                 value={subject}
+                disabled={blocked}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder={t("tenants.subject")}
                 aria-label={t("tenants.subject")}
@@ -431,14 +469,14 @@ export function TenantsPage() {
                 spellCheck={false}
                 style={{ minWidth: 180, flex: 1 }}
               />
-              <select className="z-field" value={role} onChange={(e) => setRole(e.target.value)} aria-label={t("tenants.role")}>
+              <select className="z-field" value={role} disabled={blocked} onChange={(e) => setRole(e.target.value)} aria-label={t("tenants.role")}>
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
                     {roleLabel(r)}
                   </option>
                 ))}
               </select>
-              <Button variant="secondary" disabled={Boolean(busy) || !subject.trim()} onClick={() => void addMember()}>
+              <Button variant="secondary" disabled={blocked || Boolean(busy) || !subject.trim()} onClick={() => void addMember()}>
                 {t("tenants.addMember")}
               </Button>
             </div>
@@ -477,7 +515,7 @@ export function TenantsPage() {
                       className="z-field"
                       value={m.role}
                       aria-label={t("tenants.role")}
-                      disabled={Boolean(busy)}
+                      disabled={blocked || Boolean(busy)}
                       onChange={(e) => void changeRole(m.id, e.target.value)}
                     >
                       {ROLES.map((r) => (
@@ -490,12 +528,12 @@ export function TenantsPage() {
                   <span style={{ flex: 1.1, display: "flex", justifyContent: "flex-end" }}>
                     <Button
                       variant="quiet"
-                      disabled={Boolean(busy)}
+                      disabled={blocked || Boolean(busy)}
                       onClick={() => {
                         setConfirm({ kind: "remove", tenant: detail, member: m });
                         setTyped("");
                         setOk("");
-                        setErr("");
+                        setDetailErr("");
                       }}
                     >
                       {t("tenants.removeMember")}
@@ -507,6 +545,6 @@ export function TenantsPage() {
           </div>
         </Card>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }

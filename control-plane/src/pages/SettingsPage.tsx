@@ -27,12 +27,15 @@ import {
   type GatewayField,
   type GatewayForm,
 } from "../api/settings-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "gateway" | "backup" | "pairing" | "theme";
@@ -62,11 +65,17 @@ const FIELD_KEYS: Record<string, MsgKey> = {
   vault_dir: "settings.field.vault_dir",
 };
 
+function isCrmPage(page: PageId): boolean {
+  return page === "account" || page === "users" || page === "roles" || page === "nicks" || page === "quotas" || page === "templates" || page === "billing";
+}
+
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [page, setPage] = useState<PageId>("account");
   const [org, setOrg] = useState(crmOrgId);
-  const [err, setErr] = useState("");
+  const [crmErr, setCrmErr] = useState<unknown>(null);
+  const [gwErr, setGwErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [users, setUsers] = useState<SettingsUser[]>([]);
   const [roles, setRoles] = useState<SettingsRole[]>([]);
   const [nicks, setNicks] = useState<SettingsNick[]>([]);
@@ -93,10 +102,36 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [gwTenant, setGwTenant] = useState<TenantInfo>({ tenant: "default", multi_tenant: false });
   const [tenantInput, setTenantInput] = useState("default");
   const [loading, setLoading] = useState(false);
+  const [crmLoaded, setCrmLoaded] = useState(false);
+  const [gwLoaded, setGwLoaded] = useState(false);
+  const [crmAt, setCrmAt] = useState<string | null>(null);
+  const [gwAt, setGwAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
   const [gw, setGw] = useState<GatewayConfig | null>(null);
   const [gwForm, setGwForm] = useState<GatewayForm>(emptyGatewayForm);
+
+  const crmCount =
+    page === "users" ? users.length : page === "roles" ? roles.length : page === "nicks" ? nicks.length : page === "templates" ? templates.length : page === "quotas" ? (quota ? 1 : 0) : page === "account" ? (account ? 1 : 0) : page === "billing" ? (developing ? 1 : 0) : 0;
+  const crmState = classifyPageState({
+    loading: isCrmPage(page) && loading,
+    loaded: crmLoaded,
+    error: crmErr,
+    itemCount: crmCount,
+    keepStale: crmLoaded && crmCount > 0,
+  });
+  const gwState = classifyPageState({
+    loading: page === "gateway" && loading,
+    loaded: gwLoaded,
+    error: gwErr,
+    itemCount: gw ? 1 : 0,
+    keepStale: gwLoaded && Boolean(gw),
+  });
+  const state = page === "gateway" ? gwState : isCrmPage(page) ? crmState : { kind: "ready" as const, showItems: true, showEmpty: false };
+  const blocked = inventoryBlocksMutation(state.kind);
+  const crmBlocked = inventoryBlocksMutation(crmState.kind);
+  const gwBlocked = inventoryBlocksMutation(gwState.kind);
+  const metaN = page === "users" ? listMetaCount(crmState.kind, users.length) : page === "roles" ? listMetaCount(crmState.kind, roles.length) : page === "nicks" ? listMetaCount(crmState.kind, nicks.length) : page === "templates" ? listMetaCount(crmState.kind, templates.length) : null;
 
   const menu: { group: string; items: { id: PageId; label: string; ic: IconName }[] }[] = [
     {
@@ -139,7 +174,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
 
   async function load() {
     const id = org.trim() || crmOrgId();
-    setErr("");
+    setActionErr("");
     setDeveloping("");
     if (page === "theme" || page === "pairing" || page === "backup") return;
     setLoading(true);
@@ -174,13 +209,24 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       } else if (page === "gateway") {
         const cfg = await settingsApi.getGateway();
         if (publicHasSecrets(cfg)) {
-          setErr(t("settings.secretHint"));
+          setActionErr(t("settings.secretHint"));
         }
         setGw(cfg);
         setGwForm(formFromSnapshot(cfg));
+        setGwLoaded(true);
+        setGwAt(new Date().toISOString());
+        setGwErr(null);
+        setLoading(false);
+        return;
+      }
+      if (isCrmPage(page)) {
+        setCrmLoaded(true);
+        setCrmAt(new Date().toISOString());
+        setCrmErr(null);
       }
     } catch (e) {
-      setErr(mapErr(e));
+      if (page === "gateway") setGwErr(e);
+      else setCrmErr(e);
     } finally {
       setLoading(false);
     }
@@ -200,35 +246,63 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   }, [page]);
 
   async function run(fn: () => Promise<unknown>) {
-    if (saving) return;
+    if (saving || blocked) return;
     setSaving(true);
     setSaved("");
     try {
-      setErr("");
+      setActionErr("");
       const ok = await fn();
       if (ok === false) return;
       await load();
       setSaved(t("settings.saved"));
     } catch (e) {
-      setErr(mapErr(e));
+      setActionErr(mapErr(e));
     } finally {
       setSaving(false);
     }
   }
 
   async function saveGateway() {
-    if (saving) return;
+    if (saving || gwBlocked) return;
     const values = editableValues(gwForm, gw);
     const invalid = validateGatewayForm(gwForm, values);
     if (invalid) {
-      setErr(t(invalid as MsgKey));
+      setActionErr(t(invalid as MsgKey));
       setSaved("");
       return;
     }
     await run(() => settingsApi.putGateway({ updated_at: gw?.updated_at || "", values }));
   }
 
+  const provenance =
+    page === "gateway" ? t("settings.gatewaySource") : page === "backup" ? t("settings.backupSource") : isCrmPage(page) ? t("settings.crmSource") : "";
+  const pageErr = page === "gateway" ? gwErr : isCrmPage(page) ? crmErr : null;
+  const staleAt = formatStaleAt(page === "gateway" ? gwAt : crmAt, locale);
+
   return (
+    <PageChrome
+      icon="gear"
+      title={t("nav.config")}
+      description={t("settings.desc")}
+      primary={
+        <Button icon="refresh" iconGesture variant="primary" onClick={() => void load()} disabled={loading || page === "theme" || page === "backup" || page === "pairing"}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        isCrmPage(page) ? (
+          <>
+            <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("common.org")}</span>
+            <input className="z-field" style={{ minWidth: 160, flex: 1 }} value={org} disabled={crmBlocked} onChange={(e) => setOrg(e.target.value)} aria-label={t("common.org")} />
+          </>
+        ) : undefined
+      }
+    >
+    {provenance ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{provenance}</p> : null}
+    {page !== "backup" && page !== "theme" && page !== "pairing" ? (
+      <PageStatus kind={state.kind} errorText={pageErr ? formatPublicError(pageErr) : ""} staleAt={staleAt} onReload={() => void load()} />
+    ) : null}
+    {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
     <div className="z-split-stack">
       <div className="z-split-rail" style={{ background: "var(--card)", borderRight: "1px solid var(--border)", overflowY: "auto", padding: "14px 10px" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 15, padding: "0 8px 10px" }}>{t("settings.title")}</div>
@@ -266,18 +340,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         ))}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 26px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {page !== "theme" && page !== "backup" && page !== "gateway" && page !== "pairing" ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>{t("common.org")}</span>
-            <input className="z-field" style={{ minWidth: 0, flex: 1 }} value={org} onChange={(e) => setOrg(e.target.value)} aria-label="CRM org id" />
-            <Button icon="refresh" iconGesture onClick={() => void load()}>
-              {t("common.refresh")}
-            </Button>
-          </div>
-        ) : null}
-        {page !== "backup" && loading ? <StatusLine kind="loading" /> : null}
-        {page !== "backup" && err ? <StatusLine kind="error">{err}</StatusLine> : null}
-        {saved && !err ? <p role="status" style={{ color: "var(--green)", fontSize: 12.5, margin: 0 }}>{saved}</p> : null}
+        {saved && !actionErr ? <p role="status" style={{ color: "var(--green)", fontSize: 12.5, margin: 0 }}>{saved}</p> : null}
 
         {page === "account" && (
           <>
@@ -291,7 +354,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onChange={(e) => setDisplayName(e.target.value)}
                 style={{ minWidth: 240, flex: 1 }}
               />
-              <Button variant="primary" disabled={saving} onClick={() => void run(() => settingsApi.putAccount({ displayName: displayName.trim() }, org))}>
+              <Button variant="primary" disabled={crmBlocked || saving} onClick={() => void run(() => settingsApi.putAccount({ displayName: displayName.trim() }, org))}>
                 {t("common.save")}
               </Button>
             </Card>
@@ -364,7 +427,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onClick={() =>
                   void run(async () => {
                     if (!userName.trim()) {
-                      setErr(t("settings.needName"));
+                      setActionErr(t("settings.needName"));
                       return false;
                     }
                     await settingsApi.createUser({ name: userName.trim(), email: userEmail.trim(), roleId: userRole.trim() }, org);
@@ -378,7 +441,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               </Button>
             </div>
             <Card>
-              <CardHeader icon="friends" title={t("settings.users")} meta={String(users.length)} />
+              <CardHeader icon="friends" title={t("settings.users")} meta={metaN == null ? "—" : String(metaN)} />
               <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
@@ -387,7 +450,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 <span style={{ flex: 0.8 }}>{t("settings.col.active")}</span>
                 <span style={{ width: 88 }} />
               </Row>
-              {users.map((u) => (
+              {(crmState.showItems ? users : []).map((u) => (
                 <Row key={u.id}>
                   <span style={{ flex: 1.4, fontWeight: 600 }}>{u.name}</span>
                   <span style={{ flex: 1.6, color: "var(--text-2)" }}>{u.email || "—"}</span>
@@ -407,7 +470,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                   </span>
                 </Row>
               ))}
-              {users.length === 0 ? <EmptyState>{t("settings.users.empty")}</EmptyState> : null}
+              {crmState.showEmpty ? <EmptyState data-page-state="empty">{t("settings.users.empty")}</EmptyState> : null}
               </TableScroll>
             </Card>
           </>
@@ -426,14 +489,14 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onClick={() =>
                   void run(async () => {
                     if (!roleName.trim()) {
-                      setErr(t("settings.needName"));
+                      setActionErr(t("settings.needName"));
                       return false;
                     }
                     let flags: Record<string, unknown> = {};
                     try {
                       flags = JSON.parse(roleFlags || "{}") as Record<string, unknown>;
                     } catch {
-                      setErr(t("settings.roles.flags"));
+                      setActionErr(t("settings.roles.flags"));
                       return false;
                     }
                     await settingsApi.createRole({ name: roleName.trim(), flags }, org);
@@ -446,19 +509,19 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               </Button>
             </div>
             <Card>
-              <CardHeader icon="shield" title={t("settings.roles")} meta={String(roles.length)} />
+              <CardHeader icon="shield" title={t("settings.roles")} meta={metaN == null ? "—" : String(metaN)} />
               <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
                 <span style={{ flex: 3 }}>{t("settings.col.flags")}</span>
               </Row>
-              {roles.map((r) => (
+              {(crmState.showItems ? roles : []).map((r) => (
                 <Row key={r.id}>
                   <span style={{ flex: 1.4, fontWeight: 600 }}>{r.name}</span>
                   <span style={{ flex: 3, color: "var(--text-2)", fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12 }}>{JSON.stringify(r.flags)}</span>
                 </Row>
               ))}
-              {roles.length === 0 ? <EmptyState>{t("settings.roles.empty")}</EmptyState> : null}
+              {crmState.showEmpty ? <EmptyState data-page-state="empty">{t("settings.roles.empty")}</EmptyState> : null}
               </TableScroll>
             </Card>
           </>
@@ -476,7 +539,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onClick={() =>
                   void run(async () => {
                     if (!nickName.trim()) {
-                      setErr(t("settings.needName"));
+                      setActionErr(t("settings.needName"));
                       return false;
                     }
                     await settingsApi.createNick({ displayName: nickName.trim() }, org);
@@ -488,15 +551,15 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               </Button>
             </div>
             <Card>
-              <CardHeader icon="tag" title={t("settings.nicks")} meta={String(nicks.length)} />
+              <CardHeader icon="tag" title={t("settings.nicks")} meta={metaN == null ? "—" : String(metaN)} />
               <TableScroll>
-              {nicks.map((n) => (
+              {(crmState.showItems ? nicks : []).map((n) => (
                 <Row key={n.id}>
                   <span style={{ flex: 1, fontWeight: 600 }}>{n.displayName}</span>
                   <span style={{ color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{n.id}</span>
                 </Row>
               ))}
-              {nicks.length === 0 ? <EmptyState>{t("settings.nicks.empty")}</EmptyState> : null}
+              {crmState.showEmpty ? <EmptyState data-page-state="empty">{t("settings.nicks.empty")}</EmptyState> : null}
               </TableScroll>
             </Card>
           </>
@@ -515,7 +578,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onClick={() =>
                   void run(async () => {
                     if (!/^\d+$/.test(cap.trim())) {
-                      setErr(t("settings.invalidQuota"));
+                      setActionErr(t("settings.invalidQuota"));
                       return false;
                     }
                     await settingsApi.putQuota({ dailySendCap: Number.parseInt(cap, 10) || 0 }, org);
@@ -546,7 +609,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onClick={() =>
                   void run(async () => {
                     if (!tplName.trim()) {
-                      setErr(t("settings.needName"));
+                      setActionErr(t("settings.needName"));
                       return false;
                     }
                     await settingsApi.createTemplate({ name: tplName.trim(), body: tplBody }, org);
@@ -559,14 +622,14 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               </Button>
             </div>
             <Card>
-              <CardHeader icon="doc" title={t("settings.templates")} meta={String(templates.length)} />
+              <CardHeader icon="doc" title={t("settings.templates")} meta={metaN == null ? "—" : String(metaN)} />
               <TableScroll>
               <Row head>
                 <span style={{ flex: 1.4 }}>{t("settings.col.name")}</span>
                 <span style={{ flex: 3 }}>{t("settings.col.body")}</span>
                 <span style={{ width: 72 }} />
               </Row>
-              {templates.map((tpl) => (
+              {(crmState.showItems ? templates : []).map((tpl) => (
                 <Row key={tpl.id}>
                   <span style={{ flex: 1.4, fontWeight: 600 }}>{tpl.name}</span>
                   <span style={{ flex: 3, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl.body}</span>
@@ -577,7 +640,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                   </span>
                 </Row>
               ))}
-              {templates.length === 0 ? <EmptyState>{t("settings.templates.empty")}</EmptyState> : null}
+              {crmState.showEmpty ? <EmptyState data-page-state="empty">{t("settings.templates.empty")}</EmptyState> : null}
               </TableScroll>
             </Card>
           </>
@@ -601,13 +664,12 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
             <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.gateway")}</div>
             <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.gateway.desc")}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Button icon="refresh" iconGesture onClick={() => void load()}>
-                {t("common.refresh")}
-              </Button>
-              <Button variant="primary" disabled={saving || loading} onClick={() => void saveGateway()}>
+              <Button variant="primary" disabled={gwBlocked || saving || loading} onClick={() => void saveGateway()}>
                 {t("common.save")}
               </Button>
             </div>
+            {gwState.showItems ? (
+            <>
             <GatewayCard title={t("settings.gateway.server")} icon="gear">
               <ReadRow t={t} field={gw?.server?.port} />
               <ReadRow t={t} field={gw?.server?.host} />
@@ -685,6 +747,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
               <ReadRow t={t} field={gw?.integrations?.skills_dir} />
               <ReadRow t={t} field={gw?.integrations?.vault_dir} />
             </GatewayCard>
+            </>
+            ) : null}
           </>
         )}
 
@@ -704,11 +768,11 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                   pairingInFlight.current = true;
                   setPairingBusy(true);
                   setPairingCopied(false);
-                  setErr("");
+                  setActionErr("");
                   void pairingApi
                     .create()
                     .then((issued) => setPairing(issued))
-                    .catch((e) => setErr(String(e)))
+                    .catch((e) => setActionErr(String(e)))
                     .finally(() => {
                       pairingInFlight.current = false;
                       setPairingBusy(false);
@@ -732,7 +796,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                       onClick={() => {
                         void navigator.clipboard.writeText(pairing.code).then(
                           () => setPairingCopied(true),
-                          (e) => setErr(String(e)),
+                          (e) => setActionErr(String(e)),
                         );
                       }}
                       style={{ padding: "4px 10px" }}
@@ -765,6 +829,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         )}
       </div>
     </div>
+    </PageChrome>
   );
 }
 
