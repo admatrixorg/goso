@@ -53,3 +53,24 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO / advisor live QC. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `b38816f` (`Merge SPEC 125 MONITORING operator UX`, `--no-ff`) of `6be84b3` + `8ac1070` on top of SPEC 124 `c45dc8a`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No tokens, prompts, or vendor secrets in this record.
+
+Restart: Vite `:3000` only (new listen pid `70496`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Advisor re-ran `npm test` (265/265) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1860).
+
+Browser: Orca isolated profile `qc120-unauth` (no `goso_token`). Hard-reload `http://127.0.0.1:3000/`, then MONITORING Traces / Events / Activity / Logs.
+
+| Defect | Live unauth (401) | Verdict |
+| --- | --- | --- |
+| Traces without PageChrome + empty on 401 | First-class `Traces`. Refresh primary. List meta `—`. 401. No inventory-empty claim. | PASS |
+| Events empty-while-error + stream looking live | First-class `Nhật ký`. Refresh enabled. `Tạm dừng` and `Xóa view local` `disabled=true`. 401. | PASS |
+| Activity empty + filters during 401 | First-class `Hoạt động`. Refresh primary. List meta `—`. 401. No export. | PASS |
+| Logs Start enabled + empty on 401 | First-class `Log`. `Bắt đầu` `disabled=true`. Pause/clear local disabled. History 401 separate from stream chrome. | PASS |
+
+### Advisor verdict: PASS — SPEC 125 closed
+
+Do not spawn a second 125 worker. Sequential 126+ only when asked. CRM `:8082` and sidecar `:8091` remain untouched.
