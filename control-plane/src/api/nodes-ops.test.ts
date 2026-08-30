@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { asPublic, formatWhen, nodeConfirmMatch, nodeLabel, publicHasSecrets } from "./nodes-ops.ts";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
+import { asPublic, formatWhen, nodeConfirmMatch, nodeInventoryCount, nodeLabel, publicHasSecrets } from "./nodes-ops.ts";
 import type { NodeDevice } from "./nodes.ts";
 
 function row(over: Partial<NodeDevice> = {}): NodeDevice {
@@ -42,6 +43,34 @@ test("nodeConfirmMatch accepts id or display", () => {
   assert.equal(nodeConfirmMatch(" nd_1 ", n), true);
   assert.equal(nodeConfirmMatch("", n), false);
   assert.equal(nodeConfirmMatch("other", n), false);
+});
+
+test("permission never claims pending or paired empty", () => {
+  const pending = asPublic([row()]);
+  const paired: NodeDevice[] = [];
+  const count = nodeInventoryCount(pending, paired);
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: count,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(listMetaCount(s.kind, pending.length), null);
+  assert.equal(listMetaCount(s.kind, paired.length), null);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+});
+
+test("true empty pending and paired only after successful load", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: true,
+    error: null,
+    itemCount: nodeInventoryCount([], []),
+  });
+  assert.equal(s.kind, "empty");
+  assert.equal(s.showEmpty, true);
 });
 
 test("nodeLabel and formatWhen", () => {

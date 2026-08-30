@@ -146,3 +146,57 @@ export function canClearBox(c: { writable?: string[]; secret_set?: boolean }): b
 export function isPhase2(c: { phase?: number; health?: string }): boolean {
   return c.phase === 2 || c.health === "parked";
 }
+
+export type SecretDraft = { bot_token: string; access_token: string; app_secret: string };
+
+export function emptySecretDraft(): SecretDraft {
+  return { bot_token: "", access_token: "", app_secret: "" };
+}
+
+export function isSecretDraftEmpty(writable: string[] | undefined, draft: Record<string, string>): boolean {
+  return Object.keys(secretPutBody(writable, draft)).length === 0;
+}
+
+/** GET-safe chrome only — never a credential value. */
+export function secretMetaKind(c: Pick<ChannelRow, "secret_set" | "from_env">): "env" | "set" | "unset" {
+  if (c.from_env) return "env";
+  if (c.secret_set) return "set";
+  return "unset";
+}
+
+export function publicPairingList(items: unknown): ChannelPairingItem[] {
+  const out: ChannelPairingItem[] = [];
+  const list = Array.isArray(items) ? items : [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const rec = raw as ChannelPairingItem & { code?: unknown; code_hash?: unknown };
+    if (pairingExposesCode(rec)) continue;
+    const clean = sanitizePairingItem(rec);
+    if (!clean.id || clean.status !== "pending") continue;
+    out.push(clean);
+  }
+  return out;
+}
+
+export function pairingListHasSecrets(items: unknown): boolean {
+  if (!Array.isArray(items)) return false;
+  return items.some((raw) => raw != null && typeof raw === "object" && pairingExposesCode(raw as { code?: unknown; code_hash?: unknown }));
+}
+
+export function pairingConfirmMatch(typed: string, item: Pick<ChannelPairingItem, "id" | "sender_id">): boolean {
+  const v = (typed || "").trim();
+  if (!v) return false;
+  return v === item.id || (Boolean(item.sender_id) && v === item.sender_id);
+}
+
+export function pairingLabel(item: Pick<ChannelPairingItem, "id" | "channel" | "sender_id">): string {
+  const ch = (item.channel || "").trim();
+  const sender = (item.sender_id || "").trim();
+  if (ch && sender) return `${ch} · ${sender}`;
+  return ch || sender || item.id;
+}
+
+export function resolveSettled<T>(settled: PromiseSettledResult<T>): { ok: true; value: T } | { ok: false; error: unknown } {
+  if (settled.status === "fulfilled") return { ok: true, value: settled.value };
+  return { ok: false, error: settled.reason };
+}

@@ -4,19 +4,28 @@ export type {
   ChannelPairingItem,
   ChannelRemediation,
   ChannelRow,
+  SecretDraft,
 } from "./channel-ops";
 export {
   DM_POLICIES,
   GROUP_POLICIES,
   canClearBox,
   channelRemediation,
+  emptySecretDraft,
   filterChannels,
   formatAllowFrom,
   isPhase2,
+  isSecretDraftEmpty,
   normalizeChannelRow,
+  pairingConfirmMatch,
   pairingExposesCode,
+  pairingLabel,
+  pairingListHasSecrets,
   parseAllowFrom,
+  publicPairingList,
+  resolveSettled,
   sanitizePairingItem,
+  secretMetaKind,
   secretPutBody,
 } from "./channel-ops";
 import type { ChannelPairingItem, ChannelRow } from "./channel-ops";

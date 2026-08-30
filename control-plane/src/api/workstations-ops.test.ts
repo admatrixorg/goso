@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   asPublic,
   asPublicTest,
@@ -7,8 +8,10 @@ import {
   identityError,
   looksLikeKey,
   publicHasSecrets,
+  testOutcome,
   writeBody,
   wsConfirmMatch,
+  wsFormError,
   wsLabel,
 } from "./workstations-ops.ts";
 import type { Workstation } from "./workstations.ts";
@@ -58,6 +61,36 @@ test("looksLikeKey accepts paths and named refs", () => {
   assert.equal(identityError("~/.ssh/id_ed25519"), null);
   assert.equal(identityError("-----BEGIN OPENSSH PRIVATE KEY-----"), "ws.keyMaterial");
   assert.equal(identityError("ssh://evil"), "ws.needPath");
+});
+
+test("wsFormError distinguishes missing fields from private-key rejection", () => {
+  assert.equal(wsFormError({ display: "", backend: "ssh", host: "10.0.0.8", identity_ref: "" }), "ws.needDisplay");
+  assert.equal(wsFormError({ display: "lab", backend: "", host: "10.0.0.8", identity_ref: "" }), "ws.needBackend");
+  assert.equal(wsFormError({ display: "lab", backend: "ssh", host: "", identity_ref: "" }), "ws.needHost");
+  assert.equal(
+    wsFormError({ display: "lab", backend: "ssh", host: "10.0.0.8", identity_ref: "-----BEGIN OPENSSH PRIVATE KEY-----" }),
+    "ws.keyMaterial",
+  );
+  assert.equal(wsFormError({ display: "lab", backend: "ssh", host: "10.0.0.8", identity_ref: "~/.ssh/id_ed25519" }), null);
+});
+
+test("testOutcome is config validation, never a live connect claim", () => {
+  assert.equal(testOutcome(null), "none");
+  assert.equal(testOutcome({ ok: true, health: "ok", summary: "ssh config valid", backend: "ssh", host: "h", port: 22, identity_set: true }), "valid");
+  assert.equal(testOutcome({ ok: false, health: "failed", summary: "host required", backend: "ssh", host: "", port: 22, identity_set: false }), "invalid");
+});
+
+test("workstation permission never claims empty or enables create", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(listMetaCount(s.kind, 0), null);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
 });
 
 test("wsConfirmMatch accepts id or display", () => {

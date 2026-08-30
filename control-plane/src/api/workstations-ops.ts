@@ -128,3 +128,24 @@ export function identityError(identityRef: string): "ws.needPath" | "ws.keyMater
   if (v.includes("://")) return "ws.needPath";
   return null;
 }
+
+export type WsFormError = "ws.needDisplay" | "ws.needHost" | "ws.needBackend" | "ws.needPath" | "ws.keyMaterial";
+
+/** Client field checks. Distinct from POST /test, which only validates stored config. */
+export function wsFormError(form: {
+  display: string;
+  backend: string;
+  host: string;
+  identity_ref: string;
+}): WsFormError | null {
+  if (!(form.display || "").trim()) return "ws.needDisplay";
+  if (!(form.backend || "").trim()) return "ws.needBackend";
+  if (!(form.host || "").trim()) return "ws.needHost";
+  return identityError(form.identity_ref);
+}
+
+/** Workstation test never claims a live SSH/Docker session. */
+export function testOutcome(row: WorkstationTest | null | undefined): "none" | "valid" | "invalid" {
+  if (!row) return "none";
+  return row.ok ? "valid" : "invalid";
+}

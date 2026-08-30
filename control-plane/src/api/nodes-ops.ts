@@ -55,6 +55,11 @@ export function nodeLabel(row: Pick<NodeDevice, "id" | "display">): string {
   return (row.display || "").trim() || row.id;
 }
 
+/** Combined inventory size for page-state. Pending-empty and paired-empty are section-local after a successful load. */
+export function nodeInventoryCount(pending: NodeDevice[] | null | undefined, paired: NodeDevice[] | null | undefined): number {
+  return (pending || []).length + (paired || []).length;
+}
+
 export function formatWhen(iso: string | undefined, fallback: string): string {
   const s = (iso || "").trim();
   if (!s) return fallback;
