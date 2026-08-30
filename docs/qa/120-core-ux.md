@@ -103,3 +103,26 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 - `npm run typecheck`: pass.
 
 Live re-QC of `:3000` belongs to Codex CTO after merge. This record does not claim a live pass.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO could not repeat the browser checks. Grok advisor ran the same four FAIL points on live Vite after merge `ad98808` (`Merge SPEC 120 CORE UX follow-up`, `--no-ff`). Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No secrets, tokens, prompts, or private message bodies in this record.
+
+Restart: Vite `:3000` only (new listen pid `62032`, `VITE_DEMO_MODE=false`, config `/tmp/goso-cp-demo/vite.config.ts`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Browser: Orca isolated profiles `qc120-unauth` (no `goso_token`) and `qc120-auth` (admin token in localStorage only; value not recorded). Hard-open `http://127.0.0.1:3000/`, then CORE Overview / Agents / Teams / Agent Links.
+
+Demo CRM extra stays offline because Vite `/crm-api` still targets `http://127.0.0.1:8089` (nothing listening). That is the live reproduction of the offline advisor defect. The `:8082` demo process was not used and was not restarted.
+
+### Four CTO FAIL points
+
+| Defect | Live unauth (blocking 401) | Live auth (inventory 200) | Verdict |
+| --- | --- | --- | --- |
+| Agent Links false-empty after failed agent inventory | Links peer shows `Không đủ quyền cho API này. · Error: 401 {"error":"unauthorized"}` and list meta `—`. Copy `No agent links yet` / `Chưa có liên kết agent.` is absent. | Agent inventory 5 rows; true-empty `Chưa có liên kết agent.` is allowed after a successful load. | PASS |
+| Create while inventory is blocking | `Tạo agent`, `Tạo nhóm`, `Tạo liên kết` all `disabled=true`. Forms stay closed. | `Tạo agent` / `Tạo nhóm` / `Tạo liên kết` enabled. Teams true-empty `Chưa có nhóm.` still allows create. | PASS |
+| CRM advisor `0 tips` / `No advice yet` while CRM blocking | Overview CRM extra: `goso-crm offline`, `goso-crm offline — không có metrics.`, Advisor meta `—`. `0 tips` / `0 gợi ý` / `No advice yet` / `Chưa có gợi ý.` absent; empty advice table hidden. | Same offline CRM extra (proxy 8089 down). Advisor still `—`, no false-empty tips copy. | PASS |
+| Duplicate Overview authorization alert | Exact `Không được phép xem tổng quan gateway` once (one `PageStatus`). Chrome + page badges both `Gateway · không được phép` (health, not a second StatusLine). No second StatusLine with the same unauthorized copy. | `Gateway · đã kết nối`; unauthorized copy count 0. KPIs show live uptime/requests/agents/sessions. | PASS |
+
+### Advisor verdict: PASS — SPEC 120 closed
+
+The four post-merge defects are gone on live `:3000`. SPEC 121 may retry with `--retry-of ctx_01394553944f`. Do not spawn a new 121 task.
