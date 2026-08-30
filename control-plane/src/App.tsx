@@ -62,6 +62,10 @@ export type Tab =
   | "heatmap"
   | "connectors"
   | "functions"
+  | "skills"
+  | "tools"
+  | "mcp"
+  | "cron"
   | "events"
   | "activity"
   | "logs"
@@ -115,48 +119,72 @@ function visibleTabItems(
 function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] {
   return [
     {
-      group: t("nav.group.overview"),
+      group: t("nav.group.core"),
       items: [
         { id: "crm", label: t("nav.overview"), ic: "gauge" },
         { id: "heatmap", label: t("nav.heatmap"), ic: "report" },
+        { id: "chat", label: t("nav.chat"), ic: "msg" },
+        { id: "agents", label: t("nav.agents"), ic: "bolt" },
+        { id: "teams", label: t("nav.teams"), ic: "layers" },
       ],
     },
     {
-      group: t("nav.group.work"),
+      group: t("nav.group.conversations"),
       items: [
-        { id: "agents", label: t("nav.agents"), ic: "bolt" },
         { id: "sessions", label: t("nav.sessions"), ic: "list" },
-        { id: "chat", label: t("nav.chat"), ic: "msg" },
         { id: "pending", label: t("nav.pending"), ic: "hourglass" },
         { id: "contacts", label: t("nav.contacts"), ic: "user" },
         { id: "marketing", label: t("nav.marketing"), ic: "mega" },
-        { id: "teams", label: t("nav.teams"), ic: "layers" },
-        { id: "vault", label: t("nav.vault"), ic: "doc" },
+      ],
+    },
+    {
+      group: t("nav.group.connectivity"),
+      items: [
+        { id: "channels", label: t("nav.channels"), ic: "device" },
+        { id: "nodes", label: t("nav.nodes"), ic: "device" },
+        { id: "workstations", label: t("nav.workstations"), ic: "cloud" },
+      ],
+    },
+    {
+      group: t("nav.group.capabilities"),
+      items: [
+        { id: "skills", label: t("nav.skills"), ic: "doc" },
+        { id: "tools", label: t("nav.tools"), ic: "build" },
+        { id: "mcp", label: t("nav.mcp"), ic: "hook" },
+        { id: "tts", label: t("nav.tts"), ic: "mic" },
+        { id: "cron", label: t("nav.cron"), ic: "timer" },
+        { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
+        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
+      ],
+    },
+    {
+      group: t("nav.group.data"),
+      items: [
         { id: "memory", label: t("nav.memory"), ic: "inbox" },
+        { id: "vault", label: t("nav.vault"), ic: "doc" },
         { id: "kg", label: t("nav.kg"), ic: "sitemap" },
         { id: "storage", label: t("nav.storage"), ic: "doc" },
       ],
     },
     {
-      group: t("nav.group.system"),
+      group: t("nav.group.monitoring"),
       items: [
-        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
-        { id: "functions", label: t("nav.functions"), ic: "build" },
-        { id: "tts", label: t("nav.tts"), ic: "mic" },
+        { id: "traces", label: t("nav.traces"), ic: "history" },
         { id: "events", label: t("nav.events"), ic: "history" },
         { id: "activity", label: t("nav.activity"), ic: "shield" },
         { id: "logs", label: t("nav.logs"), ic: "list" },
+      ],
+    },
+    {
+      group: t("nav.group.system"),
+      items: [
         { id: "tenants", label: t("nav.tenants"), ic: "layers" },
+        { id: "providers", label: t("nav.providers"), ic: "bolt" },
         { id: "apikeys", label: t("nav.apikeys"), ic: "lock" },
         { id: "packages", label: t("nav.packages"), ic: "build" },
+        { id: "settings", label: t("nav.config"), ic: "gear" },
         { id: "approvals", label: t("nav.approvals"), ic: "shield" },
         { id: "impexp", label: t("nav.impexp"), ic: "download" },
-        { id: "providers", label: t("nav.providers"), ic: "bolt" },
-        { id: "channels", label: t("nav.channels"), ic: "device" },
-        { id: "nodes", label: t("nav.nodes"), ic: "device" },
-        { id: "workstations", label: t("nav.workstations"), ic: "cloud" },
-        { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
-        { id: "traces", label: t("nav.traces"), ic: "history" },
       ],
     },
   ];
@@ -200,32 +228,22 @@ export default function App() {
   const headerSearchRef = useRef<HTMLInputElement>(null);
 
   const top = DEMO ? [...demoTop(locale), ...liveTop(t)] : liveTop(t);
+  const liveGroups = liveSide(t);
   const side = DEMO
-    ? [
-        {
-          group: t("nav.group.overview"),
-          items: [...demoOverviewItems(locale), { id: "heatmap" as const, label: t("nav.heatmap"), ic: "report" as const }],
-        },
-        {
-          group: t("nav.group.work"),
-          items: [
-            { id: "agents" as const, label: t("nav.agents"), ic: "bolt" as const },
-            { id: "sessions" as const, label: t("nav.sessions"), ic: "list" as const },
-            { id: "chat" as const, label: t("nav.chat"), ic: "msg" as const },
-            { id: "pending" as const, label: t("nav.pending"), ic: "hourglass" as const },
-            { id: "contacts" as const, label: t("nav.contacts"), ic: "user" as const },
-            { id: "marketing" as const, label: t("nav.marketing"), ic: "mega" as const },
-            { id: "teams" as const, label: t("nav.teams"), ic: "layers" as const },
-            { id: "vault" as const, label: t("nav.vault"), ic: "doc" as const },
-            { id: "memory" as const, label: t("nav.memory"), ic: "inbox" as const },
-            { id: "kg" as const, label: t("nav.kg"), ic: "sitemap" as const },
-            { id: "storage" as const, label: t("nav.storage"), ic: "doc" as const },
-            ...demoWorkExtra(locale),
-          ],
-        },
-        liveSide(t)[2],
-      ]
-    : liveSide(t);
+    ? liveGroups.map((group, index) => {
+        if (index === 0) {
+          return {
+            ...group,
+            items: [
+              ...demoOverviewItems(locale),
+              ...group.items.filter((item) => item.id !== "crm"),
+            ],
+          };
+        }
+        if (index === 1) return { ...group, items: [...group.items, ...demoWorkExtra(locale)] };
+        return group;
+      })
+    : liveGroups;
 
   function go(id: Tab) {
     setTab(id);
@@ -454,35 +472,6 @@ export default function App() {
           })}
           <div style={{ flex: 1 }} />
           <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 8 }}>
-            <button
-              type="button"
-              data-ig="gear"
-              className="z-nav-item"
-              onClick={() => go("settings")}
-              aria-current={tab === "settings" ? "page" : undefined}
-              aria-label={t("nav.settings")}
-              title={t("nav.settings")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                width: "100%",
-                minHeight: 34,
-                padding: "7px 10px",
-                borderRadius: 8,
-                fontSize: 13,
-                color: tab === "settings" ? "var(--accent)" : "var(--text-2)",
-                background: tab === "settings" ? "var(--accent-soft)" : "transparent",
-                border: "none",
-                fontWeight: tab === "settings" ? 600 : 400,
-                textAlign: "left",
-              }}
-            >
-              <span data-ig-part="">
-                <Icon name="gear" size={15} />
-              </span>
-              <span className="z-wide-only" style={{ flex: 1 }}>{t("nav.settings")}</span>
-            </button>
             <div
               className="z-nav-foot"
               style={{
@@ -574,7 +563,9 @@ export default function App() {
           {tab === "pending" && <PendingPage />}
           {tab === "contacts" && <ContactsPage />}
           {tab === "connectors" && <ConnectorsPage />}
-          {tab === "functions" && <FunctionsPage />}
+          {(tab === "functions" || tab === "skills" || tab === "tools" || tab === "mcp" || tab === "cron") && (
+            <FunctionsPage focus={tab === "functions" ? "tools" : tab} />
+          )}
           {tab === "tts" && <TTSPage />}
           {tab === "events" && <EventsPage />}
           {tab === "activity" && <ActivityPage />}
