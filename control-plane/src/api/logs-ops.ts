@@ -1,3 +1,12 @@
+import {
+  classifyPageState,
+  inventoryBlocksMutation,
+  isFilteredEmpty,
+  type PageLoadKind,
+  type PageState,
+} from "./page-state.ts";
+import type { StreamConn } from "./events-ops.ts";
+
 export const LIVE_CAP = 200;
 export const MESSAGE_CAP = 400;
 
@@ -21,7 +30,7 @@ export type LogFilters = {
   levels?: readonly string[];
 };
 
-export type StreamConn = "off" | "connecting" | "live" | "paused" | "reconnect" | "error";
+export type { StreamConn };
 
 const SECRET_KEYS = [
   "token",
@@ -169,4 +178,34 @@ export function uniqueComponents(rows: GatewayLog[], extra: string[] = []): stri
 export function toggleLevel(current: LogLevel[], level: LogLevel): LogLevel[] {
   if (current.includes(level)) return current.filter((x) => x !== level);
   return [...LOG_LEVELS].filter((x) => x === level || current.includes(x));
+}
+
+export function logsFiltersActive(f: LogFilters): boolean {
+  const levels = f.levels ?? [];
+  const levelNarrow = levels.length > 0 && levels.length < LOG_LEVELS.length;
+  return Boolean((f.component || "").trim() || (f.q || "").trim() || levelNarrow);
+}
+
+export function classifyLogsHistory(input: {
+  loading: boolean;
+  loaded: boolean;
+  error: unknown | null | undefined;
+  itemCount: number;
+}): PageState {
+  return classifyPageState({
+    loading: input.loading,
+    loaded: input.loaded,
+    error: input.error,
+    itemCount: input.itemCount,
+    keepStale: input.loaded && input.itemCount > 0,
+  });
+}
+
+export function logsFilteredEmpty(state: PageState, unfilteredCount: number, visibleCount: number, filtersOn: boolean): boolean {
+  if (isFilteredEmpty(state, unfilteredCount, visibleCount)) return true;
+  return state.kind === "empty" && filtersOn;
+}
+
+export function logsActionsBlocked(kind: PageLoadKind): boolean {
+  return inventoryBlocksMutation(kind);
 }

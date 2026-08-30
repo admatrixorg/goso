@@ -3,20 +3,29 @@ import { eventsApi, type GatewayEvent } from "../api/events";
 import {
   applyFilters,
   backoffDelay,
+  classifyEventsHistory,
+  classifyStreamConn,
+  clearLocalRows,
   EVENT_TYPES,
   eventKey,
+  eventsFilteredEmpty,
+  eventsLiveFilteredEmpty,
+  historyStreamProvenance,
   mergeLive,
   parseDetail,
+  streamStartBlocked,
   uniqueActors,
   type EventType,
   type StreamConn,
 } from "../api/events-ops";
+import { formatStaleAt, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 function kindTone(k: string): "positive" | "warning" | "critical" | "neutral" | "accent" {
@@ -41,14 +50,18 @@ function EventRows({
   open,
   onOpen,
   empty,
+  emptyState,
 }: {
   rows: GatewayEvent[];
   open: string;
   onOpen: (key: string) => void;
-  empty: string;
+  empty?: string;
+  emptyState?: string;
 }) {
   const { t } = useI18n();
-  if (rows.length === 0) return <EmptyState>{empty}</EmptyState>;
+  if (rows.length === 0) {
+    return empty ? <EmptyState data-page-state={emptyState || "empty"}>{empty}</EmptyState> : null;
+  }
   return (
     <>
       {rows.map((e, i) => {
@@ -111,16 +124,33 @@ function EventRows({
   );
 }
 
+function colHead(t: (k: MsgKey) => string) {
+  return (
+    <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
+      <span style={{ flex: 1.4 }}>{t("events.col.ts")}</span>
+      <span style={{ flex: 0.9 }}>{t("events.col.type")}</span>
+      <span style={{ flex: 1.1 }}>{t("events.col.kind")}</span>
+      <span style={{ flex: 1 }}>{t("events.col.actor")}</span>
+      <span style={{ flex: 1.1 }}>{t("events.col.connector")}</span>
+      <span style={{ flex: 0.9 }}>{t("events.col.tool")}</span>
+      <span style={{ flex: 2.2 }}>{t("events.col.summary")}</span>
+    </div>
+  );
+}
+
 export function EventsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [history, setHistory] = useState<GatewayEvent[]>([]);
   const [liveRows, setLiveRows] = useState<GatewayEvent[]>([]);
   const [kind, setKind] = useState("");
   const [connector, setConnector] = useState("");
   const [type, setType] = useState("");
   const [actor, setActor] = useState("");
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const [streamErr, setStreamErr] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [conn, setConn] = useState<StreamConn>("off");
@@ -129,9 +159,18 @@ export function EventsPage() {
   const lastSeq = useRef(0);
 
   const filters = useMemo(() => ({ type: type || undefined, actor: actor || undefined, kind: kind || undefined, connector: connector || undefined }), [type, actor, kind, connector]);
-  const shownHistory = useMemo(() => applyFilters(history, filters), [history, filters]);
+  const historyState = classifyEventsHistory({ loading, loaded, error: err, itemCount: history.length });
+  const blocked = streamStartBlocked(historyState.kind);
+  const streamConn = classifyStreamConn({ live, paused, conn });
+  const shownHistory = useMemo(() => applyFilters(historyState.showItems ? history : [], filters), [history, filters, historyState.showItems]);
   const shownLive = useMemo(() => applyFilters(liveRows, filters), [liveRows, filters]);
-  const actors = useMemo(() => uniqueActors([...liveRows, ...history]), [liveRows, history]);
+  const actors = useMemo(() => uniqueActors([...liveRows, ...(historyState.showItems ? history : [])]), [liveRows, history, historyState.showItems]);
+  const filtersOn = Boolean(type || actor || kind || connector);
+  const historyFilterEmpty = eventsFilteredEmpty(historyState, filtersOn);
+  const historyTrueEmpty = historyState.kind === "empty" && !filtersOn;
+  const liveFilterEmpty = eventsLiveFilteredEmpty(liveRows.length, shownLive.length);
+  const provenance = historyStreamProvenance(historyState.kind, streamConn);
+  const metaN = listMetaCount(historyState.kind, shownHistory.length);
 
   async function load() {
     setLoading(true);
@@ -144,9 +183,11 @@ export function EventsPage() {
         limit: 100,
       });
       setHistory(j.events);
-      setErr("");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setErr(e);
     } finally {
       setLoading(false);
     }
@@ -158,6 +199,13 @@ export function EventsPage() {
   }, [type, actor, kind, connector]);
 
   useEffect(() => {
+    if (blocked) {
+      setLive(false);
+      setPaused(false);
+      setConn("off");
+      setRetryIn(0);
+      return;
+    }
     if (!live || paused) {
       setConn(live ? "paused" : "off");
       setRetryIn(0);
@@ -189,7 +237,7 @@ export function EventsPage() {
             () => {
               attempt = 0;
               setConn("live");
-              setErr("");
+              setStreamErr(null);
             },
             ctrl.signal,
             lastSeq.current || undefined,
@@ -203,7 +251,7 @@ export function EventsPage() {
           if (stopped || ctrl.signal.aborted) return;
           attempt += 1;
           setConn("error");
-          setErr(formatPublicError(e));
+          setStreamErr(e);
           const delay = backoffDelay(attempt - 1);
           setConn("reconnect");
           await wait(delay);
@@ -217,140 +265,194 @@ export function EventsPage() {
       if (waitTimer) clearTimeout(waitTimer);
       waitDone?.();
     };
-  }, [live, paused]);
+  }, [live, paused, blocked]);
 
   const connLabel =
-    conn === "connecting"
+    streamConn === "connecting"
       ? t("events.connecting")
-      : conn === "live"
+      : streamConn === "live"
         ? t("events.connected")
-        : conn === "paused"
+        : streamConn === "paused"
           ? t("events.paused")
-          : conn === "reconnect"
+          : streamConn === "reconnect"
             ? t("events.reconnectIn", { s: retryIn || 1 })
-            : conn === "error"
-              ? t("common.error")
+            : streamConn === "error"
+              ? t("events.streamError")
               : t("events.liveOff");
 
+  const primary = paused ? (
+    <Button
+      variant="primary"
+      disabled={blocked || !live}
+      onClick={() => {
+        if (!blocked) setPaused(false);
+      }}
+    >
+      {t("events.resume")}
+    </Button>
+  ) : (
+    <Button icon="refresh" iconGesture variant="primary" onClick={() => void load()} disabled={loading}>
+      {t("common.refresh")}
+    </Button>
+  );
+
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="pulse"
-        title={t("events.title")}
-        description={t("events.desc")}
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button icon="refresh" iconGesture onClick={() => void load()}>
+    <PageChrome
+      icon="pulse"
+      title={t("events.title")}
+      description={t("events.desc")}
+      primary={primary}
+      refresh={
+        <>
+          {paused ? (
+            <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading}>
               {t("common.refresh")}
             </Button>
-            <Button
-              variant={live ? "accent" : "secondary"}
-              onClick={() => {
-                setLive((v) => !v);
-                if (live) setPaused(false);
-              }}
-            >
-              {live ? t("events.liveOn") : t("events.liveOff")}
-            </Button>
-            <Button
-              disabled={!live}
-              onClick={() => setPaused((v) => !v)}
-            >
-              {paused ? t("events.resume") : t("events.pause")}
-            </Button>
-            <Button
-              variant="quiet"
-              disabled={!live}
-              onClick={() => {
-                setLiveRows([]);
-                setOpen("");
-              }}
-            >
-              {t("events.clear")}
-            </Button>
-          </div>
-        }
+          ) : null}
+          <Button
+            variant={live ? "accent" : "secondary"}
+            disabled={blocked}
+            onClick={() => {
+              if (blocked) return;
+              setLive((v) => !v);
+              if (live) setPaused(false);
+            }}
+          >
+            {live ? t("events.liveOn") : t("events.liveOff")}
+          </Button>
+          <Button
+            disabled={blocked || !live}
+            onClick={() => {
+              if (!blocked && live) setPaused((v) => !v);
+            }}
+          >
+            {paused ? t("events.resume") : t("events.pause")}
+          </Button>
+          <Button
+            variant="quiet"
+            disabled={blocked || !live}
+            title={t("events.localHint")}
+            onClick={() => {
+              if (blocked || !live) return;
+              setLiveRows(clearLocalRows(liveRows));
+              setOpen("");
+            }}
+          >
+            {t("events.clearLocal")}
+          </Button>
+        </>
+      }
+      filters={
+        <>
+          <select className="z-field" value={type} disabled={blocked} onChange={(e) => setType(e.target.value)} aria-label={t("events.filterType")}>
+            <option value="">{t("events.type.all")}</option>
+            {EVENT_TYPES.map((tp) => (
+              <option key={tp} value={tp}>
+                {t(TYPE_KEYS[tp])}
+              </option>
+            ))}
+          </select>
+          <input
+            className="z-field"
+            list="event-actors"
+            placeholder={t("events.filterActor")}
+            value={actor}
+            disabled={blocked}
+            onChange={(e) => setActor(e.target.value)}
+            aria-label={t("events.filterActor")}
+            autoComplete="off"
+          />
+          <datalist id="event-actors">
+            {actors.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+          <input
+            className="z-field"
+            placeholder={t("events.filterKind")}
+            value={kind}
+            disabled={blocked}
+            onChange={(e) => setKind(e.target.value)}
+            aria-label={t("events.filterKind")}
+          />
+          <input
+            className="z-field"
+            placeholder={t("events.filterConnector")}
+            value={connector}
+            disabled={blocked}
+            onChange={(e) => setConnector(e.target.value)}
+            aria-label={t("events.filterConnector")}
+          />
+        </>
+      }
+    >
+      <p role="note" style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>
+        {t("events.auditHint")} {t("events.localHint")}
+      </p>
+      <PageStatus
+        kind={historyState.kind}
+        errorText={err ? `${t("events.historyError")} · ${formatPublicError(err)}` : ""}
+        staleAt={formatStaleAt(loadedAt, locale)}
+        onReload={() => void load()}
       />
-      {live ? (
-        <p role="status" style={{ margin: 0, fontSize: 12.5, color: conn === "error" ? "var(--red)" : "var(--text-3)" }}>
-          {connLabel}
-        </p>
+      {live && !blocked ? (
+        <div data-page-state="stream" data-stream-conn={streamConn} role="status">
+          {streamConn === "connecting" || streamConn === "reconnect" ? (
+            <StatusLine kind="loading">{connLabel}</StatusLine>
+          ) : streamConn === "error" || provenance === "stream" || provenance === "both" ? (
+            <StatusLine kind="error">
+              {t("events.streamError")}
+              {streamErr ? ` · ${formatPublicError(streamErr)}` : ""}
+            </StatusLine>
+          ) : (
+            <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{connLabel}</p>
+          )}
+        </div>
       ) : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <select className="z-field" value={type} onChange={(e) => setType(e.target.value)} aria-label={t("events.filterType")}>
-          <option value="">{t("events.type.all")}</option>
-          {EVENT_TYPES.map((tp) => (
-            <option key={tp} value={tp}>
-              {t(TYPE_KEYS[tp])}
-            </option>
-          ))}
-        </select>
-        <input
-          className="z-field"
-          list="event-actors"
-          placeholder={t("events.filterActor")}
-          value={actor}
-          onChange={(e) => setActor(e.target.value)}
-          aria-label={t("events.filterActor")}
-          autoComplete="off"
-        />
-        <datalist id="event-actors">
-          {actors.map((a) => (
-            <option key={a} value={a} />
-          ))}
-        </datalist>
-        <input
-          className="z-field"
-          placeholder={t("events.filterKind")}
-          value={kind}
-          onChange={(e) => setKind(e.target.value)}
-          aria-label={t("events.filterKind")}
-        />
-        <input
-          className="z-field"
-          placeholder={t("events.filterConnector")}
-          value={connector}
-          onChange={(e) => setConnector(e.target.value)}
-          aria-label={t("events.filterConnector")}
-        />
-      </div>
-      {live ? (
+      {live && !blocked ? (
         <Card>
           <CardHeader icon="bolt" title={t("events.liveList")} meta={`${connLabel} · ${t("events.meta", { n: shownLive.length })}`} />
           <TableScroll>
-            <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-              <span style={{ flex: 1.4 }}>{t("events.col.ts")}</span>
-              <span style={{ flex: 0.9 }}>{t("events.col.type")}</span>
-              <span style={{ flex: 1.1 }}>{t("events.col.kind")}</span>
-              <span style={{ flex: 1 }}>{t("events.col.actor")}</span>
-              <span style={{ flex: 1.1 }}>{t("events.col.connector")}</span>
-              <span style={{ flex: 0.9 }}>{t("events.col.tool")}</span>
-              <span style={{ flex: 2.2 }}>{t("events.col.summary")}</span>
-            </div>
-            {conn === "connecting" && shownLive.length === 0 ? (
+            {colHead(t)}
+            {streamConn === "connecting" && shownLive.length === 0 ? (
               <StatusLine kind="loading">{t("events.connecting")}</StatusLine>
             ) : (
-              <EventRows rows={shownLive} open={open} onOpen={setOpen} empty={conn === "live" ? t("events.waiting") : t("events.liveEmpty")} />
+              <EventRows
+                rows={shownLive}
+                open={open}
+                onOpen={setOpen}
+                empty={
+                  liveFilterEmpty
+                    ? t("events.filterEmpty")
+                    : streamConn === "live"
+                      ? t("events.waiting")
+                      : streamConn === "paused"
+                        ? t("events.paused")
+                        : t("events.liveEmpty")
+                }
+                emptyState={liveFilterEmpty ? "filtered_empty" : "empty"}
+              />
             )}
           </TableScroll>
         </Card>
       ) : null}
       <Card>
-        <CardHeader icon="history" title={t("events.list")} meta={t("events.meta", { n: shownHistory.length })} />
+        <CardHeader icon="history" title={t("events.list")} meta={metaN == null ? "—" : t("events.meta", { n: metaN })} />
         <TableScroll>
-          <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid var(--border-soft)", fontSize: 10, fontWeight: 600, letterSpacing: ".4px", color: "var(--text-3)" }}>
-            <span style={{ flex: 1.4 }}>{t("events.col.ts")}</span>
-            <span style={{ flex: 0.9 }}>{t("events.col.type")}</span>
-            <span style={{ flex: 1.1 }}>{t("events.col.kind")}</span>
-            <span style={{ flex: 1 }}>{t("events.col.actor")}</span>
-            <span style={{ flex: 1.1 }}>{t("events.col.connector")}</span>
-            <span style={{ flex: 0.9 }}>{t("events.col.tool")}</span>
-            <span style={{ flex: 2.2 }}>{t("events.col.summary")}</span>
-          </div>
-          {loading ? <StatusLine kind="loading" /> : <EventRows rows={shownHistory} open={open} onOpen={setOpen} empty={t("events.empty")} />}
+          {colHead(t)}
+          {historyState.showItems ? (
+            <EventRows
+              rows={shownHistory}
+              open={open}
+              onOpen={setOpen}
+              empty={shownHistory.length === 0 && history.length > 0 ? t("events.filterEmpty") : undefined}
+              emptyState="filtered_empty"
+            />
+          ) : null}
+          {historyTrueEmpty ? <EmptyState data-page-state="empty">{t("events.empty")}</EmptyState> : null}
+          {historyFilterEmpty ? <EmptyState data-page-state="filtered_empty">{t("events.filterEmpty")}</EmptyState> : null}
         </TableScroll>
       </Card>
-    </div>
+    </PageChrome>
   );
 }
