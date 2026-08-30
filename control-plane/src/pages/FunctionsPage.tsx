@@ -19,7 +19,9 @@ import { StatusLine, formatPublicError, redactPublicText } from "../ui/StatusLin
 
 const emptyConnForm = { name: "", transport: "mcp-http", endpoint: "", token: "", credential_ref: "", enabled: true };
 
-export function FunctionsPage() {
+type FunctionFocus = "skills" | "tools" | "mcp" | "cron";
+
+export function FunctionsPage({ focus = "tools" }: { focus?: FunctionFocus }) {
   const { t } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -54,6 +56,10 @@ export function FunctionsPage() {
 
   const selected = connectors.find((c) => c.name === connName);
   const envLocked = selected ? isConnectorEnvOwned(selected) : false;
+
+  useEffect(() => {
+    document.getElementById(`functions-${focus}`)?.scrollIntoView({ block: "start" });
+  }, [focus]);
 
   async function loadAgents() {
     try {
@@ -346,7 +352,7 @@ export function FunctionsPage() {
           ))}
         </select>
       </Card>
-      <Card>
+      <Card id="functions-tools">
         <CardHeader icon="build" title={t("functions.tools")} meta={t("functions.meta", { n: tools.length })} />
         {err ? <StatusLine kind="error">{err}</StatusLine> : null}
         <p style={{ margin: 0, padding: "8px 16px 0", fontSize: 12, color: "var(--text-3)" }}>{t("functions.workspace.note")}</p>
@@ -404,7 +410,7 @@ export function FunctionsPage() {
         {!loading && !toolsLoading && agentId && !notFound && tools.length === 0 ? <EmptyState>{t("functions.empty")}</EmptyState> : null}
         </TableScroll>
       </Card>
-      <Card>
+      <Card id="functions-mcp">
         <CardHeader icon="hook" title={t("functions.connectors")} meta={t("functions.mcp.meta", { n: connectors.length })} />
         {connErr ? <StatusLine kind="error">{connErr}</StatusLine> : null}
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -518,7 +524,7 @@ export function FunctionsPage() {
           </div>
         ) : null}
       </Card>
-      <Card>
+      <Card id="functions-skills">
         <CardHeader icon="doc" title={t("functions.skills")} meta={t("functions.skills.meta", { n: skills.length })} />
         {skillsErr ? <StatusLine kind="error">{skillsErr}</StatusLine> : null}
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -583,7 +589,7 @@ export function FunctionsPage() {
         {!skillsLoading && !skillsErr && skills.length === 0 ? <EmptyState>{t("functions.skills.empty")}</EmptyState> : null}
         </TableScroll>
       </Card>
-      <Card>
+      <Card id="functions-cron">
         <CardHeader icon="timer" title={t("functions.cron")} meta={t("functions.cron.meta", { n: cronJobs.length })} />
         {cronErr ? <StatusLine kind="error">{cronErr}</StatusLine> : null}
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
