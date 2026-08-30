@@ -57,3 +57,26 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge and Vite `:3000` restart belong to Codex CTO. CRM `:8082`, sidecar `:8091`, Dewee `:18791` untouched.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC (CTO credit exhausted)
+
+Date: 2026-08-30. Codex CTO did not repeat the browser checks. Grok advisor ran them after merge `08a76ae` (`Merge SPEC 121 CONVERSATIONS operator UX`, `--no-ff`) of `1b591a4` + `83b7e7d`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No secrets, tokens, prompts, or private message bodies in this record.
+
+Restart: Vite `:3000` only (new listen pid `10278`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Dewee `:18791` not bound or killed.
+
+Browser: Orca isolated profiles `qc120-unauth` (no `goso_token`) and `qc120-auth` (admin token in localStorage only; value not recorded). Hard-reload `http://127.0.0.1:3000/`, then CONVERSATIONS Sessions / Pending / Contacts / Marketing.
+
+Advisor re-ran `npm test` (208/208) and `npm run typecheck` on the worker worktree before merge. Source and QA AGPL checks passed. i18n en/vi key sets match (1714).
+
+### Live defects from the SPEC
+
+| Defect | Live unauth / blocking | Live auth | Verdict |
+| --- | --- | --- | --- |
+| Sessions error + `0 sessions` / empty + enabled New Chat | `Chat mới` `disabled=true`. Copy `0 phiên` / `Chưa có phiên` absent. `PageStatus` 401. List meta `—`. | Inventory rows present. `Chat mới` enabled. Context / message count / last-update labeled unavailable. | PASS |
+| Pending 401 + `0 groups` + Compact/Clear | No Compact/Clear buttons. `0 nhóm` / `Không có tin chờ` absent. 401 + list meta `—`. | True-empty after successful load: `0 nhóm` + `Không có tin chờ.` | PASS |
+| Contacts 401 + `0 contacts` + Merge | `Gộp` `disabled=true`. `0 danh bạ` / empty-on-error absent. 401 + list meta `—`. | True-empty `0 liên hệ` + `Không có liên hệ.` Merge stays disabled until two rows are selected. | PASS |
+| Marketing error + Create + `No audiences yet` | CRM extra offline (`/crm-api` → `:8089`). `Tạo tệp` `disabled=true`. `No audiences yet` / `Chưa có audience` absent. | Gateway connected; CRM still offline. `Tạo tệp` remains disabled. No false-empty audience claim. | PASS |
+
+### Advisor verdict: PASS — SPEC 121 closed
+
+Do not spawn a second 121 worker. Sequential 122+ stays with Codex CTO / advisor only when asked. CRM `:8082` and sidecar `:8091` remain untouched.
