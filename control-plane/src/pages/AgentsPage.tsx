@@ -10,7 +10,7 @@ import {
 } from "../api/agents";
 import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import { confirmNamed } from "../api/confirm";
-import { classifyPageState } from "../api/page-state";
+import { classifyPageState, inventoryBlocksMutation } from "../api/page-state";
 import { providersApi, type ProviderInfo } from "../api/providers";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
@@ -63,7 +63,6 @@ export function AgentsPage() {
   const [conflict, setConflict] = useState(false);
 
   const editing = Boolean(selectedId);
-  const formVisible = editing || createOpen;
   const busy = saving || deleting || loadingDetail;
   const state = classifyPageState({
     loading,
@@ -72,6 +71,8 @@ export function AgentsPage() {
     itemCount: agents.length,
     keepStale: loaded && agents.length > 0,
   });
+  const createBlocked = inventoryBlocksMutation(state.kind);
+  const formVisible = !createBlocked && (editing || createOpen);
 
   const visible = useMemo(
     () => filterAgents(agents, { query, status: statusFilter, provider: providerFilter }),
@@ -246,7 +247,9 @@ export function AgentsPage() {
         <Button
           variant="primary"
           icon="plus"
+          disabled={createBlocked}
           onClick={() => {
+            if (createBlocked) return;
             setSelectedId("");
             setForm(emptyForm);
             setCreateOpen(true);

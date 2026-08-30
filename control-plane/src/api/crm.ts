@@ -140,6 +140,18 @@ export type CrmAdvice = {
   evidenceIds?: string[];
 };
 
+/** Advisor chrome: blocking CRM states never claim "0 tips" / empty advice. */
+export function crmAdvisorChrome(input: {
+  online: boolean | null;
+  permission: boolean;
+  advisorLoaded: boolean;
+  adviceCount: number;
+}): { metaDash: boolean; showEmpty: boolean } {
+  const blocking = input.online !== true || input.permission || !input.advisorLoaded;
+  if (blocking) return { metaDash: true, showEmpty: false };
+  return { metaDash: false, showEmpty: input.adviceCount === 0 };
+}
+
 export async function fetchCrmAdvisor(orgId: string): Promise<CrmAdvice[]> {
   const j = await crmJson<unknown>("/api/crm/advisor", orgId);
   const rows = Array.isArray(j)

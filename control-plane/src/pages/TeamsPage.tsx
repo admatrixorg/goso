@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, ORCHESTRATION_MODES, type Agent } from "../api/client";
 import { confirmNamed, typedConfirm } from "../api/confirm";
-import { classifyPageState } from "../api/page-state";
+import { classifyPageState, inventoryBlocksMutation } from "../api/page-state";
 import {
   teamsApi,
   type AgentLink,
@@ -20,7 +20,7 @@ import {
   linkArrow,
   linkDirection,
   lockedFields,
-  mergeAgentLinks,
+  resolveAgentLinkLoad,
   safeEvolutionText,
   teamDisplayName,
   validateTeamDraft,
@@ -76,6 +76,8 @@ export function TeamsPage() {
   const [linksLoading, setLinksLoading] = useState(false);
   const [linksLoaded, setLinksLoaded] = useState(false);
   const [linksErr, setLinksErr] = useState<unknown>(null);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [agentsErr, setAgentsErr] = useState<unknown>(null);
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [createLinkOpen, setCreateLinkOpen] = useState(false);
 
@@ -107,6 +109,15 @@ export function TeamsPage() {
     itemCount: allLinks.length,
     keepStale: linksLoaded && allLinks.length > 0,
   });
+  const agentInvState = classifyPageState({
+    loading,
+    loaded: agentsLoaded,
+    error: agentsErr,
+    itemCount: agents.length,
+    keepStale: agentsLoaded && agents.length > 0,
+  });
+  const createTeamBlocked = inventoryBlocksMutation(teamState.kind) || inventoryBlocksMutation(agentInvState.kind);
+  const createLinkBlocked = inventoryBlocksMutation(linkState.kind) || inventoryBlocksMutation(agentInvState.kind);
   const filterEmpty = teamState.showItems && teams.length > 0 && visible.length === 0;
   const visibleLinks = useMemo(
     () => filterLinks(allLinks, linkQuery, (id) => agentLabel(agents, id)),
@@ -118,17 +129,52 @@ export function TeamsPage() {
     return agentLabel(agents, id);
   }
 
-  async function loadAllLinks(agentList: Agent[]) {
+  function applyLinkLoad(result: ReturnType<typeof resolveAgentLinkLoad>) {
+    setAllLinks(result.links);
+    setLinksLoaded(result.loaded);
+    setLinksErr(result.error);
+  }
+
+  async function loadAllLinks(prefetched?: { agents: Agent[]; error: unknown | null; loaded: boolean }) {
     setLinksLoading(true);
     try {
-      const groups = await Promise.allSettled(agentList.map((a) => teamsApi.listLinks(a.id)));
-      const rows = mergeAgentLinks(
-        groups.map((g) => (g.status === "fulfilled" ? g.value.links ?? [] : [])),
+      let list = prefetched?.agents ?? [];
+      let inventoryErr: unknown = prefetched?.error ?? null;
+      let inventoryLoaded = prefetched?.loaded ?? false;
+      if (!prefetched) {
+        try {
+          const a = await api.listAgents();
+          list = a.agents ?? [];
+          inventoryLoaded = true;
+          inventoryErr = null;
+          setAgents(list);
+          setAgentsLoaded(true);
+          setAgentsErr(null);
+        } catch (e) {
+          list = [];
+          inventoryLoaded = false;
+          inventoryErr = e;
+          setAgents([]);
+          setAgentsLoaded(false);
+          setAgentsErr(e);
+        }
+      }
+      let groups: Array<{ status: "fulfilled"; value: AgentLink[] } | { status: "rejected"; reason: unknown }> = [];
+      if (inventoryLoaded) {
+        const settled = await Promise.allSettled(list.map((a) => teamsApi.listLinks(a.id)));
+        groups = settled.map((g) =>
+          g.status === "fulfilled"
+            ? { status: "fulfilled" as const, value: g.value.links ?? [] }
+            : { status: "rejected" as const, reason: g.reason },
+        );
+      }
+      applyLinkLoad(
+        resolveAgentLinkLoad({
+          agentInventoryError: inventoryErr,
+          agentInventoryLoaded: inventoryLoaded,
+          groups,
+        }),
       );
-      const fail = groups.find((g) => g.status === "rejected");
-      setAllLinks(rows);
-      setLinksLoaded(true);
-      setLinksErr(fail && fail.status === "rejected" ? fail.reason : null);
     } catch (e) {
       setLinksErr(e);
     } finally {
@@ -139,13 +185,26 @@ export function TeamsPage() {
   async function loadTeams() {
     setLoading(true);
     try {
-      const [j, a] = await Promise.all([teamsApi.list(), api.listAgents()]);
-      const nextAgents = a.agents ?? [];
-      setTeams(j.teams ?? []);
-      setAgents(nextAgents);
-      setLoaded(true);
-      setErr(null);
-      void loadAllLinks(nextAgents);
+      const [j, a] = await Promise.allSettled([teamsApi.list(), api.listAgents()]);
+      if (j.status === "fulfilled") {
+        setTeams(j.value.teams ?? []);
+        setLoaded(true);
+        setErr(null);
+      } else {
+        setErr(j.reason);
+      }
+      if (a.status === "fulfilled") {
+        const nextAgents = a.value.agents ?? [];
+        setAgents(nextAgents);
+        setAgentsLoaded(true);
+        setAgentsErr(null);
+        void loadAllLinks({ agents: nextAgents, error: null, loaded: true });
+      } else {
+        setAgents([]);
+        setAgentsLoaded(false);
+        setAgentsErr(a.reason);
+        void loadAllLinks({ agents: [], error: a.reason, loaded: false });
+      }
     } catch (e) {
       setErr(e);
     } finally {
@@ -369,6 +428,7 @@ export function TeamsPage() {
   }
 
   async function addLink() {
+    if (createLinkBlocked) return;
     if (!linkAgent.trim()) {
       setFormErr(t("teams.needMember"));
       return;
@@ -382,7 +442,7 @@ export function TeamsPage() {
       setToAgent("");
       setFormErr("");
       setCreateLinkOpen(false);
-      await loadAllLinks(agents);
+      await loadAllLinks();
       if (selected) await loadDetail(selected, linkAgent.trim());
     } catch (e) {
       setFormErr(formatPublicError(e));
@@ -398,7 +458,7 @@ export function TeamsPage() {
     try {
       await teamsApi.removeLink(link.from_agent_id, link.to_agent_id, dir === "bidirectional");
       setFormErr("");
-      await loadAllLinks(agents);
+      await loadAllLinks();
       if (selected) await loadDetail(selected, link.from_agent_id);
     } catch (e) {
       setFormErr(formatPublicError(e));
@@ -443,6 +503,7 @@ export function TeamsPage() {
   }
 
   function startCreate() {
+    if (createTeamBlocked) return;
     setSelected("");
     setName("");
     setLead("");
@@ -461,7 +522,7 @@ export function TeamsPage() {
       variant={view === id ? "primary" : "secondary"}
       onClick={() => {
         setView(id);
-        if (id === "links") void loadAllLinks(agents);
+        if (id === "links") void loadAllLinks();
       }}
       data-teams-tab={id}
     >
@@ -476,17 +537,17 @@ export function TeamsPage() {
       description={view === "links" ? t("teams.linksDesc") : t("teams.desc")}
       primary={
         view === "links" ? (
-          <Button variant="primary" icon="plus" onClick={() => setCreateLinkOpen(true)}>
+          <Button variant="primary" icon="plus" disabled={createLinkBlocked} onClick={() => setCreateLinkOpen(true)}>
             {t("teams.createLink")}
           </Button>
         ) : (
-          <Button variant="primary" icon="plus" onClick={startCreate}>
+          <Button variant="primary" icon="plus" disabled={createTeamBlocked} onClick={startCreate}>
             {t("teams.create")}
           </Button>
         )
       }
       refresh={
-        <Button icon="refresh" iconGesture onClick={() => void (view === "links" ? loadAllLinks(agents) : selected ? loadDetail(selected) : loadTeams())}>
+        <Button icon="refresh" iconGesture onClick={() => void (view === "links" ? loadAllLinks() : selected ? loadDetail(selected) : loadTeams())}>
           {t("common.refresh")}
         </Button>
       }
@@ -522,8 +583,8 @@ export function TeamsPage() {
 
       {view === "links" ? (
         <div data-teams-view="links">
-          <PageStatus kind={linkState.kind} errorText={linksErr ? formatPublicError(linksErr) : ""} onReload={() => void loadAllLinks(agents)} />
-          {createLinkOpen ? (
+          <PageStatus kind={linkState.kind} errorText={linksErr ? formatPublicError(linksErr) : ""} onReload={() => void loadAllLinks()} />
+          {createLinkOpen && !createLinkBlocked ? (
             <Card>
               <CardHeader icon="hook" title={t("teams.createLink")} />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "10px 16px" }}>
@@ -631,7 +692,7 @@ export function TeamsPage() {
               {filterEmpty ? <EmptyState>{t("teams.emptySearch")}</EmptyState> : null}
             </Card>
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-              {createTeamOpen || selected ? (
+              {(createTeamOpen && !createTeamBlocked) || selected ? (
                 <Card>
                   <CardHeader icon="user" title={selected ? teamDisplayName(current || { id: selected, name }) : t("teams.create")} />
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "10px 16px" }}>

@@ -71,6 +71,40 @@ export function mergeAgentLinks(groups: PublicAgentLink[][]): PublicAgentLink[] 
   return out;
 }
 
+export type SettledLinkGroup =
+  | { status: "fulfilled"; value: PublicAgentLink[] }
+  | { status: "rejected"; reason: unknown };
+
+export type AgentLinkLoadResult = {
+  links: PublicAgentLink[];
+  error: unknown | null;
+  loaded: boolean;
+};
+
+/**
+ * Flatten per-agent link fetches. A failed agent inventory must not become a
+ * successful empty list — Promise.all([]) after that failure is not true-empty.
+ */
+export function resolveAgentLinkLoad(input: {
+  agentInventoryError: unknown | null | undefined;
+  agentInventoryLoaded: boolean;
+  groups: SettledLinkGroup[];
+}): AgentLinkLoadResult {
+  if (input.agentInventoryError) {
+    return { links: [], error: input.agentInventoryError, loaded: false };
+  }
+  if (!input.agentInventoryLoaded) {
+    return { links: [], error: null, loaded: false };
+  }
+  const rows = mergeAgentLinks(input.groups.map((g) => (g.status === "fulfilled" ? g.value : [])));
+  const fail = input.groups.find((g) => g.status === "rejected");
+  return {
+    links: rows,
+    error: fail && fail.status === "rejected" ? fail.reason : null,
+    loaded: true,
+  };
+}
+
 export function filterLinks<T extends PublicAgentLink>(
   links: T[],
   query: string,
