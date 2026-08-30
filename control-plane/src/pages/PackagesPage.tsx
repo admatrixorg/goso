@@ -20,12 +20,14 @@ import {
   type PkgJob,
   type Snapshot,
 } from "../api/packages-ops";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
-import { SectionHeader } from "../ui/SectionHeader";
+import { PageChrome } from "../ui/PageChrome";
+import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
 type TabId = Ecosystem | "cli";
@@ -72,12 +74,15 @@ function jobOkKey(job: PkgJob): MsgKey {
 }
 
 export function PackagesPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [snap, setSnap] = useState<Snapshot>(emptySnap);
   const [tab, setTab] = useState<TabId>("python");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [actionErr, setActionErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
@@ -88,14 +93,28 @@ export function PackagesPage() {
   const [typed, setTyped] = useState("");
   const na = t("pkg.na");
 
+  const inventoryCount = snap.runtimes.length + snap.packages.length + snap.allowlist.length;
+  const state = classifyPageState({
+    loading,
+    loaded,
+    error: err,
+    itemCount: inventoryCount,
+    keepStale: loaded && inventoryCount > 0,
+  });
+  const blocked = inventoryBlocksMutation(state.kind);
+  const metaN = listMetaCount(state.kind, snap.packages.length);
+
   async function load(quiet = false) {
     if (!quiet) setLoading(true);
     try {
       const next = await packagesApi.snapshot();
       setSnap(next);
-      setErr(snapshotHasSecrets(next) ? t("pkg.leak") : "");
+      setLoaded(true);
+      setLoadedAt(new Date().toISOString());
+      setErr(null);
+      setActionErr(snapshotHasSecrets(next) ? t("pkg.leak") : "");
     } catch (e) {
-      setErr(formatPublicError(e));
+      setErr(e);
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -113,11 +132,14 @@ export function PackagesPage() {
   }, [active]);
 
   const eco: Ecosystem = tab === "cli" ? "python" : tab;
-  const allows = useMemo(() => filterByEco(snap.allowlist, eco), [snap.allowlist, eco]);
-  const pkgs = useMemo(() => filterByEco(snap.packages, eco, q), [snap.packages, eco, q]);
-  const rt = runtimeForEco(snap.runtimes, eco);
-  const job = latestJob(snap.jobs, undefined, tab === "cli" ? undefined : eco);
-  const empty = !loading && tab !== "cli" && pkgs.length === 0;
+  const allows = useMemo(() => filterByEco(state.showItems ? snap.allowlist : [], eco), [snap.allowlist, eco, state.showItems]);
+  const pkgs = useMemo(() => filterByEco(state.showItems ? snap.packages : [], eco, q), [snap.packages, eco, q, state.showItems]);
+  const rt = runtimeForEco(state.showItems ? snap.runtimes : [], eco);
+  const job = latestJob(state.showItems ? snap.jobs : [], undefined, tab === "cli" ? undefined : eco);
+  const runtimeReady = Boolean(rt?.present);
+  const pkgEmpty = !blocked && tab !== "cli" && loaded && !err && pkgs.length === 0;
+  const pkgFilterEmpty = pkgEmpty && q.trim().length > 0;
+  const pkgTrueEmpty = pkgEmpty && !q.trim();
 
   const matched = confirm
     ? confirm.kind === "unpin" && confirm.allow
@@ -131,37 +153,39 @@ export function PackagesPage() {
 
   function afterJob(job: PkgJob) {
     setOk(t(jobOkKey(job)));
-    setErr("");
+    setActionErr("");
   }
 
   async function addAllow() {
+    if (blocked) return;
     if (!pinValid(pin)) {
-      setErr(t("pkg.pinBad"));
+      setActionErr(t("pkg.pinBad"));
       return;
     }
     setBusy("allow");
     try {
       await packagesApi.allow({ ecosystem: eco, name: name.trim(), pin: pin.trim() });
       setOk(t("pkg.allowOk"));
-      setErr("");
+      setActionErr("");
       setName("");
       setPin("");
       await load(true);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function install() {
+    if (blocked || !runtimeReady) return;
     const version = pin.trim();
     if (!pinValid(version)) {
-      setErr(t("pkg.pinBad"));
+      setActionErr(t("pkg.pinBad"));
       return;
     }
     if (!confirmInstall.trim()) {
-      setErr(t("pkg.mismatch"));
+      setActionErr(t("pkg.mismatch"));
       return;
     }
     setBusy("install");
@@ -173,42 +197,43 @@ export function PackagesPage() {
         confirm: confirmInstall.trim(),
       });
       if (publicHasSecrets(res.package) || publicHasSecrets(res.job)) {
-        setErr(t("pkg.leak"));
+        setActionErr(t("pkg.leak"));
       } else {
         afterJob(res.job);
       }
       setConfirmInstall("");
       await load(true);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function saveCLI(kind: CLIKind) {
+    if (blocked) return;
     const token = (cliDraft[kind] || "").trim();
     if (!token) return;
     setBusy("cli-" + kind);
     try {
       const row = await packagesApi.setCLI(kind, token);
-      if (publicHasSecrets(row)) setErr(t("pkg.leak"));
+      if (publicHasSecrets(row)) setActionErr(t("pkg.leak"));
       else {
         setOk(t("pkg.cliOk"));
-        setErr("");
+        setActionErr("");
       }
       setCliDraft((d) => ({ ...d, [kind]: "" }));
       await load(true);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
   }
 
   async function runConfirm() {
-    if (!confirm || !matched) {
-      setErr(t("pkg.mismatch"));
+    if (blocked || !confirm || !matched) {
+      setActionErr(t("pkg.mismatch"));
       return;
     }
     setBusy("confirm");
@@ -222,20 +247,20 @@ export function PackagesPage() {
       } else if (confirm.kind === "unpin" && confirm.allow) {
         await packagesApi.unpin(confirm.allow.id, typed.trim());
         setOk(t("pkg.unpinOk"));
-        setErr("");
+        setActionErr("");
       } else if (confirm.kind === "uncli" && confirm.cli) {
         const row = await packagesApi.clearCLI(confirm.cli, typed.trim());
-        if (publicHasSecrets(row)) setErr(t("pkg.leak"));
+        if (publicHasSecrets(row)) setActionErr(t("pkg.leak"));
         else {
           setOk(t("pkg.cliClearOk"));
-          setErr("");
+          setActionErr("");
         }
       }
       setConfirm(null);
       setTyped("");
       await load(true);
     } catch (e) {
-      setErr(formatPublicError(e));
+      setActionErr(formatPublicError(e));
     } finally {
       setBusy("");
     }
@@ -251,21 +276,35 @@ export function PackagesPage() {
   }
 
   return (
-    <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHeader
-        icon="build"
-        title={t("pkg.title")}
-        description={t("pkg.desc")}
-        actions={
-          <Button icon="refresh" iconGesture onClick={() => void load()} disabled={loading || Boolean(busy)}>
-            {t("common.refresh")}
-          </Button>
-        }
-      />
+    <PageChrome
+      icon="build"
+      title={t("pkg.title")}
+      description={t("pkg.desc")}
+      primary={
+        <Button icon="refresh" iconGesture variant="primary" onClick={() => void load()} disabled={loading || Boolean(busy)}>
+          {t("common.refresh")}
+        </Button>
+      }
+      filters={
+        tab !== "cli" ? (
+          <input
+            className="z-field"
+            value={q}
+            disabled={blocked}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("pkg.search")}
+            aria-label={t("pkg.search")}
+            autoComplete="off"
+            spellCheck={false}
+            style={{ minWidth: 220, flex: 1 }}
+          />
+        ) : undefined
+      }
+    >
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("pkg.hint")}</p>
-      {loading ? <StatusLine kind="loading" /> : null}
-      {err ? <StatusLine kind="error">{err}</StatusLine> : null}
-      {ok && !err ? (
+      <PageStatus kind={state.kind} errorText={err ? formatPublicError(err) : ""} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
+      {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
+      {ok && !actionErr ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--green)" }}>
           {ok}
         </p>
@@ -273,9 +312,9 @@ export function PackagesPage() {
 
       <Card>
         <CardHeader icon="pulse" title={t("pkg.runtime")} />
-        {snap.runtimes.length === 0 && !loading ? <EmptyState>{t("pkg.runtime.empty")}</EmptyState> : null}
+        {state.showEmpty ? <EmptyState data-page-state="empty">{t("pkg.runtime.empty")}</EmptyState> : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 16px 16px" }}>
-          {snap.runtimes.map((r) => (
+          {(state.showItems ? snap.runtimes : []).map((r) => (
             <div key={r.name} style={{ minWidth: 140, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 13 }}>{r.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{r.version || na}</div>
@@ -318,11 +357,13 @@ export function PackagesPage() {
                   aria-label={t("pkg.name")}
                   autoComplete="off"
                   spellCheck={false}
+                  disabled={blocked}
                   style={{ minWidth: 160, flex: 1 }}
                 />
                 <input
                   className="z-field"
                   value={pin}
+                  disabled={blocked}
                   onChange={(e) => setPin(e.target.value)}
                   placeholder={t("pkg.pin")}
                   aria-label={t("pkg.pin")}
@@ -330,11 +371,11 @@ export function PackagesPage() {
                   spellCheck={false}
                   style={{ minWidth: 120 }}
                 />
-                <Button variant="accent" disabled={Boolean(busy) || !name.trim() || !pin.trim()} onClick={() => void addAllow()}>
+                <Button variant="accent" disabled={blocked || Boolean(busy) || !name.trim() || !pin.trim()} onClick={() => void addAllow()}>
                   {t("pkg.addAllow")}
                 </Button>
                 <Button
-                  disabled={Boolean(busy) || !name.trim() || !pin.trim() || !confirmInstall.trim()}
+                  disabled={blocked || !runtimeReady || Boolean(busy) || !name.trim() || !pin.trim() || !confirmInstall.trim()}
                   onClick={() => void install()}
                 >
                   {t("pkg.install")}
@@ -348,8 +389,12 @@ export function PackagesPage() {
                 aria-label={t("pkg.confirm")}
                 autoComplete="off"
                 spellCheck={false}
+                disabled={blocked}
               />
-              {allows.length === 0 ? <EmptyState>{t("pkg.allowEmpty")}</EmptyState> : null}
+              {!runtimeReady && !blocked ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{t("pkg.runtimeMissing")}</p>
+              ) : null}
+              {!blocked && allows.length === 0 ? <EmptyState>{t("pkg.allowEmpty")}</EmptyState> : null}
               {allows.map((a) => (
                 <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5 }}>
                   <code style={{ flex: 1 }}>
@@ -357,6 +402,7 @@ export function PackagesPage() {
                   </code>
                   <Button
                     variant="quiet"
+                    disabled={blocked}
                     onClick={() => {
                       setConfirm({ kind: "unpin", allow: a });
                       setTyped("");
@@ -370,19 +416,7 @@ export function PackagesPage() {
           </Card>
 
           <Card>
-            <CardHeader icon="list" title={t("pkg.list")} meta={t("pkg.meta", { n: pkgs.length })} />
-            <div style={{ padding: "0 16px 10px" }}>
-              <input
-                className="z-field"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={t("pkg.search")}
-                aria-label={t("pkg.search")}
-                autoComplete="off"
-                spellCheck={false}
-                style={{ width: "100%" }}
-              />
-            </div>
+            <CardHeader icon="list" title={t("pkg.list")} meta={metaN == null ? "—" : t("pkg.meta", { n: pkgs.length })} />
             <TableScroll>
               <div className="z-row z-row-head" style={{ display: "flex", gap: 8, padding: "8px 16px", fontSize: 11, fontWeight: 700, color: "var(--text-3)" }}>
                 <span style={{ flex: 1.4 }}>{t("pkg.col.name")}</span>
@@ -391,7 +425,8 @@ export function PackagesPage() {
                 <span style={{ flex: 1.4 }}>{t("pkg.col.warning")}</span>
                 <span style={{ width: 140 }}>{t("pkg.col.actions")}</span>
               </div>
-              {empty ? <EmptyState>{q.trim() ? t("pkg.filterEmpty") : t("pkg.empty")}</EmptyState> : null}
+              {pkgTrueEmpty ? <EmptyState data-page-state="empty">{t("pkg.empty")}</EmptyState> : null}
+              {pkgFilterEmpty ? <EmptyState data-page-state="filtered_empty">{t("pkg.filterEmpty")}</EmptyState> : null}
               {pkgs.map((row) => (
                 <div key={row.id} className="z-row" style={{ display: "flex", gap: 8, padding: "10px 16px", alignItems: "center", fontSize: 13, borderTop: "1px solid var(--border)" }}>
                   <span style={{ flex: 1.4 }}>{row.name}</span>
@@ -404,6 +439,7 @@ export function PackagesPage() {
                     {row.status === "partial" || row.status === "failed" ? (
                       <Button
                         variant="quiet"
+                        disabled={blocked}
                         onClick={() => {
                           setConfirm({ kind: "recover", pkg: row });
                           setTyped("");
@@ -414,6 +450,7 @@ export function PackagesPage() {
                     ) : (
                       <Button
                         variant="quiet"
+                        disabled={blocked}
                         onClick={() => {
                           setConfirm({ kind: "uninstall", pkg: row });
                           setTyped("");
@@ -431,7 +468,7 @@ export function PackagesPage() {
           <Card>
             <CardHeader icon="history" title={t("pkg.progress")} meta={job ? `${job.progress}%` : undefined} />
             <div style={{ padding: "0 16px 16px" }}>
-              {!job ? <EmptyState>{t("pkg.progressEmpty")}</EmptyState> : null}
+              {!blocked && !job ? <EmptyState>{t("pkg.progressEmpty")}</EmptyState> : null}
               {job ? (
                 <>
                   <div style={{ height: 8, background: "var(--surface-2)", borderRadius: 99, overflow: "hidden" }}>
@@ -467,6 +504,7 @@ export function PackagesPage() {
                       className="z-field"
                       type="password"
                       value={cliDraft[c.kind] || ""}
+                      disabled={blocked}
                       onChange={(e) => setCliDraft((d) => ({ ...d, [c.kind]: e.target.value }))}
                       placeholder={t("pkg.cli.token")}
                       aria-label={`${c.kind} ${t("pkg.cli.token")}`}
@@ -474,12 +512,12 @@ export function PackagesPage() {
                       spellCheck={false}
                       style={{ minWidth: 220, flex: 1 }}
                     />
-                    <Button variant="accent" disabled={Boolean(busy) || !(cliDraft[c.kind] || "").trim()} onClick={() => void saveCLI(kind)}>
+                    <Button variant="accent" disabled={blocked || Boolean(busy) || !(cliDraft[c.kind] || "").trim()} onClick={() => void saveCLI(kind)}>
                       {t("pkg.cli.save")}
                     </Button>
                     <Button
                       variant="quiet"
-                      disabled={Boolean(busy) || !c.set}
+                      disabled={blocked || Boolean(busy) || !c.set}
                       onClick={() => {
                         setConfirm({ kind: "uncli", cli: kind });
                         setTyped("");
@@ -495,7 +533,7 @@ export function PackagesPage() {
         </Card>
       )}
 
-      {confirm ? (
+      {confirm && !blocked ? (
         <Card>
           <CardHeader icon="shield" title={t("pkg.confirmTitle")} />
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -527,6 +565,6 @@ export function PackagesPage() {
           </div>
         </Card>
       ) : null}
-    </div>
+    </PageChrome>
   );
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, isFilteredEmpty, listMetaCount } from "./page-state.ts";
 import {
   canClearProviderKey,
   filterProviders,
@@ -69,6 +70,33 @@ test("formatProviderTest redacts errors and never echoes keys", () => {
   const extra = formatProviderTest({ ok: true, latency_ms: 1, api_key: "secret-value" } as never);
   assert.equal(JSON.stringify(extra).includes("secret-value"), false);
   assert.deepEqual(Object.keys(extra).sort(), ["error", "latency_ms", "models", "ok", "reply"]);
+});
+
+test("inventory 401 blocks provider writes and never claims empty", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+  assert.equal(listMetaCount(s.kind, 0), null);
+});
+
+test("filtered empty is distinct from true empty", () => {
+  const ready = classifyPageState({ loading: false, loaded: true, error: null, itemCount: 3 });
+  const visible = filterProviders(rows, { query: "no-such" });
+  assert.equal(isFilteredEmpty(ready, rows.length, visible.length), true);
+  const empty = classifyPageState({ loading: false, loaded: true, error: null, itemCount: 0 });
+  assert.equal(empty.showEmpty, true);
+  assert.equal(isFilteredEmpty(empty, 0, 0), false);
+});
+
+test("write-only body never hydrates a stored key", () => {
+  const body = providerWriteBody({ name: "acme", type: "echo", base_url: "", model: "", api_key: "", enabled: true });
+  assert.equal("api_key" in body, false);
 });
 
 test("uniqueProviderTypes keeps catalog then extras", () => {

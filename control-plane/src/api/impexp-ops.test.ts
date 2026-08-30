@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { classifyPageState, inventoryBlocksMutation, listMetaCount } from "./page-state.ts";
 import {
   asPublicArchive,
   asPublicCatalog,
@@ -67,4 +68,40 @@ test("selection helpers", () => {
 test("catalogHasSecrets flags nested tokens", () => {
   const leak: Partial<Catalog> = { teams: [{ id: "t", name: "Ops", members: 0, token: "x" } as never] };
   assert.equal(catalogHasSecrets(leak), true);
+});
+
+test("catalog 401 is exclusive chrome and blocks export/import", () => {
+  const s = classifyPageState({
+    loading: false,
+    loaded: false,
+    error: new Error("401 unauthorized"),
+    itemCount: 0,
+  });
+  assert.equal(s.kind, "permission");
+  assert.equal(s.showEmpty, false);
+  assert.equal(inventoryBlocksMutation(s.kind), true);
+  assert.equal(listMetaCount(s.kind, 0), null);
+});
+
+test("public catalog and jobs never carry archive secrets", () => {
+  const cat = asPublicCatalog({
+    teams: [{ id: "t1", name: "Ops", members: 1 }],
+    agents: [],
+    skills: [],
+    mcp: [{ name: "crm", transport: "http", enabled: true, token_set: true, env_owned: false }],
+    skills_configured: false,
+  });
+  assert.equal(cat.skills_configured, false);
+  assert.equal(cat.mcp[0].token_set, true);
+  assert.equal(JSON.stringify(cat).includes("sk-"), false);
+  const job = asPublicJob({
+    id: "pe_1",
+    kind: "import",
+    status: "done",
+    progress: 100,
+    dry_run: true,
+    steps: [],
+    report: { created: [], skipped: [], overwritten: [], renamed: [], failed: [], credentials_needed: [{ kind: "mcp", name: "crm" }] },
+  });
+  assert.equal(job?.dry_run, true);
 });
