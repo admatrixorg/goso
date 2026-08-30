@@ -104,7 +104,7 @@ Environment:
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
-  GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export
+  GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export /api/tts
   Activity                 GET /api/activity append-only admin audit (action/actor/entity/IP/time, before cursor). Separate from Events. GET never returns secrets
   Logs                     GET /api/logs redacted tail (component/q/level, limit). SSE GET /api/logs/stream. GET never returns credentials
   Tenants                  GET /api/tenants list/detail; POST create/status/members. Master-admin lifecycle. GET never returns secrets. Deactivated tenants reject writes.
@@ -112,6 +112,7 @@ Environment:
   Packages                 GET /api/packages runtime+inventory+jobs+allowlist+CLI metadata (never tokens). Allowlist pins required. Install/uninstall/recover need confirm. CLI credentials are a separate write-only surface.
   Approvals                GET /api/approvals execution inbox (requester/agent/tool/arg_preview/risk/expiry). Distinct from channel pairing. POST decision approve|deny (deny needs reason). GET never returns args or secrets. Audit resolution.
   Import/Export            GET /api/import-export catalog (teams/agents/skills/MCP metadata). POST export/preview/import with conflict skip|overwrite|rename and dry_run. Rollback last import. GET/archive never returns tokens. Secrets excluded; re-enter credentials after import.
+  TTS                      GET /api/tts provider+policy status (key_set boolean only). PUT save; POST test/clear. Write-only api_key; test errors redact authorization. Env GOSO_TTS_* overlays and refuses PUT secrets.
   Pairing                  Admin POST /api/pairing → one-time code (10 min); POST /api/pairing/exchange → view grant
   Nodes                    POST /api/nodes/request (no Bearer) pending device; GET list; admin approve/deny/revoke
   Workstations             GET/POST /api/workstations; PATCH/test/disconnect/delete. Identity is a path/ref; GET never returns keys

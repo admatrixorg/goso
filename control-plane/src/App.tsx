@@ -33,6 +33,7 @@ import { PendingPage } from "./pages/PendingPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { NodesPage } from "./pages/NodesPage";
 import { WorkstationsPage } from "./pages/WorkstationsPage";
+import { TTSPage } from "./pages/TTSPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { StoragePage } from "./pages/StoragePage";
 import { Icon, type IconName } from "./ui/Icon";
@@ -82,6 +83,7 @@ export type Tab =
   | "contacts"
   | "nodes"
   | "workstations"
+  | "tts"
   | "settings";
 
 function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
@@ -140,6 +142,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       items: [
         { id: "connectors", label: t("nav.connectors"), ic: "hook" },
         { id: "functions", label: t("nav.functions"), ic: "build" },
+        { id: "tts", label: t("nav.tts"), ic: "mic" },
         { id: "events", label: t("nav.events"), ic: "history" },
         { id: "activity", label: t("nav.activity"), ic: "shield" },
         { id: "logs", label: t("nav.logs"), ic: "list" },
@@ -572,6 +575,7 @@ export default function App() {
           {tab === "contacts" && <ContactsPage />}
           {tab === "connectors" && <ConnectorsPage />}
           {tab === "functions" && <FunctionsPage />}
+          {tab === "tts" && <TTSPage />}
           {tab === "events" && <EventsPage />}
           {tab === "activity" && <ActivityPage />}
           {tab === "logs" && <LogsPage />}
