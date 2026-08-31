@@ -965,6 +965,7 @@ export const vi = {
   "settings.col.flags": "FLAGS",
   "settings.col.body": "NỘI DUNG",
   "settings.secretHint": "Token Bearer của Control Plane đặt ở Cấu hình → Gateway → Xác thực. Không hiện giá trị secret.",
+  "settings.configLeak": "GET chứa trường dạng secret — không hiển thị payload.",
   "settings.gateway": "Gateway",
   "settings.gateway.desc": "Cấu hình tiến trình: mặc định hành vi, hạn mức, công cụ, tích hợp. Trường do env giữ thì chỉ đọc. GET không trả auth token.",
   "settings.gateway.server": "Máy chủ",

@@ -65,6 +65,23 @@ export function browserTokenControlVisible(_inventoryKind?: string): boolean {
   return true;
 }
 
+/** Save/Clear must not consult gateway inventory (401/error). */
+export function browserTokenSaveBlockedByInventory(_inventoryKind?: string): boolean {
+  return false;
+}
+
+/** Status-only label from the existing GET /api/config page state. Never a secret. */
+export function browserTokenProbeFromInventory(
+  inventoryKind: string,
+  tokenKind: BrowserTokenKind,
+): BrowserTokenProbe | "" {
+  if (tokenKind === "unset") return "";
+  if (inventoryKind === "ready" || inventoryKind === "stale") return "accepted";
+  if (inventoryKind === "permission") return "unauthorized";
+  if (inventoryKind === "error") return "unreachable";
+  return "";
+}
+
 export function saveBrowserToken(input: string, env: BrowserTokenEnv, store: BrowserTokenStore): SaveBrowserTokenResult {
   if (browserTokenKind(env, store) === "env-owned") {
     return { ok: false, reason: "env-owned", input, reload: false };
@@ -117,11 +134,6 @@ export async function probeBrowserToken(
       headers,
       signal: ctrl.signal,
     });
-    try {
-      await res.text();
-    } catch {
-      /* discard */
-    }
     return classifyTokenProbeStatus(res.status);
   } catch {
     return "unreachable";

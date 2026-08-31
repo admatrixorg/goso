@@ -6,6 +6,8 @@ import {
   browserTokenClearable,
   browserTokenControlVisible,
   browserTokenKind,
+  browserTokenProbeFromInventory,
+  browserTokenSaveBlockedByInventory,
   browserTokenWritable,
   classifyTokenProbeStatus,
   clearBrowserToken,
@@ -101,6 +103,11 @@ test("401 inventory still allows the browser token control", () => {
   assert.equal(browserTokenControlVisible(gw.kind), true);
   assert.equal(browserTokenControlVisible("error"), true);
   assert.equal(browserTokenControlVisible("loading"), true);
+  assert.equal(browserTokenSaveBlockedByInventory(gw.kind), false);
+  assert.equal(inventoryBlocksMutation(gw.kind), true);
+  assert.equal(browserTokenProbeFromInventory(gw.kind, "unset"), "");
+  assert.equal(browserTokenProbeFromInventory(gw.kind, "set"), "unauthorized");
+  assert.equal(browserTokenProbeFromInventory("ready", "set"), "accepted");
   const store = memoryStore();
   const saved = saveBrowserToken("typed-sample", { viteAdminToken: "" }, store);
   assert.equal(saved.ok, true);

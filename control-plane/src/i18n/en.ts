@@ -967,6 +967,7 @@ export const en: Record<MsgKey, string> = {
   "settings.col.flags": "FLAGS",
   "settings.col.body": "BODY",
   "settings.secretHint": "Set the Control Plane browser bearer on Config → Gateway → Auth. Secret values are never shown.",
+  "settings.configLeak": "GET contained a secret-shaped field — payload is not shown.",
   "settings.gateway": "Gateway",
   "settings.gateway.desc": "Process configuration: behavior defaults, quotas, tools, integrations. Env-owned fields are read-only. GET never returns auth tokens.",
   "settings.gateway.server": "Server",

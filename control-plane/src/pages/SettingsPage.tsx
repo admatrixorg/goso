@@ -28,18 +28,15 @@ import {
   type GatewayForm,
 } from "../api/settings-ops";
 import {
-  BROWSER_TOKEN_STORAGE_KEY,
   browserTokenClearable,
   browserTokenControlVisible,
   browserTokenKind,
+  browserTokenProbeFromInventory,
+  browserTokenSaveBlockedByInventory,
   browserTokenWritable,
   clearBrowserToken,
-  consumeBrowserTokenProbe,
   emptyBrowserTokenInput,
-  probeBrowserToken,
   saveBrowserToken,
-  writeBrowserTokenProbe,
-  type BrowserTokenProbe,
   type BrowserTokenStore,
 } from "../api/browser-token";
 import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
@@ -84,29 +81,21 @@ function isCrmPage(page: PageId): boolean {
   return page === "account" || page === "users" || page === "roles" || page === "nicks" || page === "quotas" || page === "templates" || page === "billing";
 }
 
-function webStore(which: "local" | "session"): BrowserTokenStore {
-  return {
-    getItem(key) {
-      try {
-        const s = which === "local" ? localStorage : sessionStorage;
-        return s.getItem(key);
-      } catch {
-        return null;
-      }
-    },
-    setItem(key, value) {
-      const s = which === "local" ? localStorage : sessionStorage;
-      s.setItem(key, value);
-    },
-    removeItem(key) {
-      const s = which === "local" ? localStorage : sessionStorage;
-      s.removeItem(key);
-    },
-  };
-}
-
-const localStorageStore = webStore("local");
-const sessionStorageStore = webStore("session");
+const localStorageStore: BrowserTokenStore = {
+  getItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key, value) {
+    localStorage.setItem(key, value);
+  },
+  removeItem(key) {
+    localStorage.removeItem(key);
+  },
+};
 
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t, locale } = useI18n();
@@ -151,10 +140,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [gwForm, setGwForm] = useState<GatewayForm>(emptyGatewayForm);
   const [browserTokenInput, setBrowserTokenInput] = useState(emptyBrowserTokenInput);
   const [browserTokenBusy, setBrowserTokenBusy] = useState(false);
-  const [tokenProbe, setTokenProbe] = useState<BrowserTokenProbe | "">("");
 
   const viteAdminToken = (import.meta.env.VITE_GOSO_ADMIN_TOKEN as string) || "";
-  const gatewayBase = (import.meta.env.VITE_GATEWAY_URL as string) || "";
   const tokenKind = browserTokenKind({ viteAdminToken }, localStorageStore);
   const tokenWritable = browserTokenWritable(tokenKind);
   const tokenClearable = browserTokenClearable(tokenKind);
@@ -175,6 +162,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     itemCount: gw ? 1 : 0,
     keepStale: gwLoaded && Boolean(gw),
   });
+  const tokenProbe = browserTokenProbeFromInventory(gwState.kind, tokenKind);
   const state = page === "gateway" ? gwState : isCrmPage(page) ? crmState : { kind: "ready" as const, showItems: true, showEmpty: false };
   const blocked = inventoryBlocksMutation(state.kind);
   const crmBlocked = inventoryBlocksMutation(crmState.kind);
@@ -257,7 +245,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       } else if (page === "gateway") {
         const cfg = await settingsApi.getGateway();
         if (publicHasSecrets(cfg)) {
-          setActionErr(t("settings.secretHint"));
+          setActionErr(t("settings.configLeak"));
         }
         setGw(cfg);
         setGwForm(formFromSnapshot(cfg));
@@ -289,7 +277,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   useEffect(() => {
     if (page !== "gateway") return;
     setBrowserTokenInput(emptyBrowserTokenInput());
-    setTokenProbe(consumeBrowserTokenProbe(sessionStorageStore));
   }, [page]);
 
   useEffect(() => {
@@ -328,8 +315,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     await run(() => settingsApi.putGateway({ updated_at: gw?.updated_at || "", values }));
   }
 
-  async function persistBrowserToken(action: "save" | "clear") {
-    if (browserTokenBusy) return;
+  function persistBrowserToken(action: "save" | "clear") {
+    if (browserTokenBusy || browserTokenSaveBlockedByInventory(gwState.kind)) return;
     setBrowserTokenBusy(true);
     setActionErr("");
     setSaved("");
@@ -345,9 +332,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
         else if (result.reason === "env-owned") setActionErr(t("settings.browserToken.envOwned"));
         return;
       }
-      const probeToken = action === "save" ? localStorageStore.getItem(BROWSER_TOKEN_STORAGE_KEY) || "" : "";
-      const probe = await probeBrowserToken(fetch, gatewayBase, probeToken);
-      writeBrowserTokenProbe(sessionStorageStore, probe);
       window.location.reload();
     } catch (e) {
       setActionErr(formatPublicError(e));
