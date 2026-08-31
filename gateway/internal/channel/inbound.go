@@ -32,6 +32,22 @@ func writeOKWarning(w http.ResponseWriter, warning string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "warning": warning})
 }
 
+// resolveInboundLLM picks the bound agent's provider/model. A Resolve miss
+// keeps fallback so the webhook still returns 200 (LLM errors become reply text).
+func resolveInboundLLM(st store.StoreIface, agent *store.Agent, fallback llm.Provider) llm.Provider {
+	provider := fallback
+	if provider == nil {
+		provider = llm.Echo{}
+	}
+	if agent == nil {
+		return provider
+	}
+	if p, err := llm.Resolve(st, agent.LLMProvider, agent.Model, provider); err == nil && p != nil {
+		return p
+	}
+	return provider
+}
+
 func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, text string) {
 	if dest == "" || text == "" {
 		writeOK(w)
@@ -52,10 +68,7 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 
 	_, _ = d.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
-	provider := d.LLM
-	if provider == nil {
-		provider = llm.Echo{}
-	}
+	provider := resolveInboundLLM(d.Store, agent, d.LLM)
 	history, _ := d.Store.ListMessages(sess.ID)
 	var msgs []llm.Message
 	for _, m := range history {

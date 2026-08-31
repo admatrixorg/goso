@@ -81,10 +81,7 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	_, _ = z.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
-	provider := z.LLM
-	if provider == nil {
-		provider = llm.Echo{}
-	}
+	provider := resolveInboundLLM(z.Store, agent, z.LLM)
 	history, _ := z.Store.ListMessages(sess.ID)
 	var msgs []llm.Message
 	for _, m := range history {

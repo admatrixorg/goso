@@ -108,3 +108,45 @@ func TestZaloOA_IgnoreEmpty(t *testing.T) {
 		t.Fatalf("expected ignore")
 	}
 }
+
+func TestZaloOA_ResolvesAgentModel(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_ZALO_OA_SECRET", "")
+	base, gotModel := startChatCapture(t)
+	setRouter9Capture(t, base)
+	st := store.New()
+	if err := st.PutChannelConfig(store.ChannelConfig{Name: "zalo-oa", DMPolicy: "open"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAgent(store.Agent{
+		AgentKey: "zalo-oa", DisplayName: "Zalo OA",
+		LLMProvider: "router9", Model: agentModel,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sentText string
+	z := &ZaloOA{
+		Store: st,
+		LLM:   fallbackOpenAI(base, fallbackModel),
+		Sender: func(_ context.Context, _, text string) error {
+			sentText = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"sender":  map[string]any{"id": "u123"},
+		"message": map[string]any{"text": "hello grok"},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/zalo-oa/webhook", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	z.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	if sentText != "from-compat" {
+		t.Fatalf("text %q", sentText)
+	}
+	if *gotModel != agentModel {
+		t.Fatalf("model %q want %q (must not use fallback %q)", *gotModel, agentModel, fallbackModel)
+	}
+}

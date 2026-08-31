@@ -197,3 +197,141 @@ func TestTelegram_DisabledAgentBuffers(t *testing.T) {
 		t.Fatalf("payload in contacts %s", craw)
 	}
 }
+
+func TestTelegram_ResolvesAgentModel(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	base, gotModel := startChatCapture(t)
+	setRouter9Capture(t, base)
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{
+		AgentKey: "telegram", DisplayName: "Telegram Bot",
+		LLMProvider: "router9", Model: agentModel,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sentText string
+	tg := &Telegram{
+		Store: st,
+		LLM:   fallbackOpenAI(base, fallbackModel),
+		Sender: func(_ context.Context, _ int64, text string) error {
+			sentText = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 12345},
+			"text":       "hello grok",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	if sentText != "from-compat" {
+		t.Fatalf("text %q", sentText)
+	}
+	if *gotModel != agentModel {
+		t.Fatalf("model %q want %q (must not use fallback %q)", *gotModel, agentModel, fallbackModel)
+	}
+}
+
+func TestTelegram_BoundAgentIDWins(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	base, gotModel := startChatCapture(t)
+	setRouter9Capture(t, base)
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{AgentKey: "telegram", DisplayName: "Telegram Bot"}); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := st.CreateAgent(store.Agent{
+		AgentKey: "ops", DisplayName: "Ops",
+		LLMProvider: "router9", Model: agentModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutChannelConfig(store.ChannelConfig{Name: "telegram", AgentID: bound.ID, DMPolicy: "open"}); err != nil {
+		t.Fatal(err)
+	}
+	var sentText string
+	tg := &Telegram{
+		Store: st,
+		LLM:   fallbackOpenAI(base, fallbackModel),
+		Sender: func(_ context.Context, _ int64, text string) error {
+			sentText = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 42},
+			"text":       "hello bound",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	if sentText != "from-compat" {
+		t.Fatalf("text %q", sentText)
+	}
+	if *gotModel != agentModel {
+		t.Fatalf("bound agent model %q want %q (ensureAgent fallback would be %q)", *gotModel, agentModel, fallbackModel)
+	}
+	sessions := st.ListSessions()
+	if len(sessions) != 1 || sessions[0].AgentID != bound.ID {
+		t.Fatalf("session agent %v want %s", sessions, bound.ID)
+	}
+}
+
+func TestTelegram_UnknownProviderKeepsFallback(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{
+		AgentKey: "telegram", DisplayName: "Telegram Bot",
+		LLMProvider: "nope", Model: agentModel,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var sentText string
+	tg := &Telegram{
+		Store: st,
+		LLM:   llm.Echo{},
+		Sender: func(_ context.Context, _ int64, text string) error {
+			sentText = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 7},
+			"text":       "hello miss",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	if sentText != "echo: hello miss" {
+		t.Fatalf("text %q", sentText)
+	}
+}

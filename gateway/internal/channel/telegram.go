@@ -157,10 +157,7 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 	}
 	sess := t.ensureSession(agent.ID, chatID)
 	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
-	provider := t.LLM
-	if provider == nil {
-		provider = llm.Echo{}
-	}
+	provider := resolveInboundLLM(t.Store, agent, t.LLM)
 	history, _ := t.Store.ListMessages(sess.ID)
 	var msgs []llm.Message
 	for _, m := range history {
