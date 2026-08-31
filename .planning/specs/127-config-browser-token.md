@@ -27,9 +27,9 @@ Add a **browser session token** control on **Config → Gateway → Auth** (`Set
    - env-owned if `VITE_GOSO_ADMIN_TOKEN` is non-empty → input + Save/Clear disabled; env wins over localStorage (same as `authHeader()`).
    - else if `localStorage.goso_token` non-empty → “browser token set” (no body).
    - else → “browser token not set” (this is the 401 cause).
-3. **Save**: trim, reject empty, `localStorage.setItem("goso_token", value)`, clear the input, then `location.reload()`. Do not PUT this value to `/api/settings` or `/api/config`. Do not send it to the gateway as a config field.
-4. **Clear**: `localStorage.removeItem("goso_token")`, clear input, reload. Disabled when env-owned or when no browser token is set.
-5. After save/clear, do not claim vendor/S3/Grafana/SSO/channel success. Optional non-secret probe from `GET /api/agents` status only: accepted / still unauthorized / unreachable. Never log or display the token or response bodies.
+3. **Save**: trim, reject empty, `localStorage.setItem("goso_token", value)`, clear the input, then `location.reload()` immediately. Do not PUT this value to `/api/settings` or `/api/config`. Do not send it to the gateway as a config field. Do not await a probe before reload.
+4. **Clear**: `localStorage.removeItem("goso_token")`, clear input, reload immediately. Disabled when env-owned or when no browser token is set.
+5. After save/clear, do not claim vendor/S3/Grafana/SSO/channel success. Optional non-secret probe labels (accepted / still unauthorized / unreachable) come from the existing GET `/api/config` page state after the operator opens Gateway again — never from a pre-reload extra request, and never from response bodies.
 6. This field is the **Control Plane browser bearer**, distinct from gateway process `auth.token_set`. Keep both on the Auth card.
 7. i18n vi + en. Do not copy GoClaw/Dewee wording.
 8. Tests: empty-on-load, env-owned disables write, save writes localStorage and does not keep the typed value in state after save, clear removes the key, 401 inventory still allows this control. `npm test`, `npm run typecheck`, `npm run build` in `control-plane`. Both AGPL scripts exit 0.
