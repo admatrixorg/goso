@@ -1,4 +1,5 @@
 import { jsonFetch, TENANT_STORAGE_KEY } from "./client";
+import { gatewayFetchInit } from "./gateway-http";
 import { asPublicEvent, parseSseBlock, type GatewayEvent } from "./events-ops";
 
 export type { GatewayEvent } from "./events-ops";
@@ -60,7 +61,7 @@ export const eventsApi = {
   ): Promise<void> => {
     const headers = { ...authHeaders() };
     if (after && after > 0) headers["Last-Event-ID"] = String(after);
-    const res = await fetch(`${gatewayBase()}/api/events/stream${qs({ ...q, after })}`, { headers, signal });
+    const res = await fetch(`${gatewayBase()}/api/events/stream${qs({ ...q, after })}`, gatewayFetchInit({ headers, signal }));
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`${res.status} ${text}`);

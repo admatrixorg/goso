@@ -1,4 +1,5 @@
 import { jsonFetch, TENANT_STORAGE_KEY } from "./client";
+import { gatewayFetchInit } from "./gateway-http";
 import { parseSseBlock } from "./events-ops";
 import { asPublicLog, type GatewayLog } from "./logs-ops";
 
@@ -58,7 +59,7 @@ export const logsApi = {
   ): Promise<void> => {
     const headers = { ...authHeaders() };
     if (after && after > 0) headers["Last-Event-ID"] = String(after);
-    const res = await fetch(`${gatewayBase()}/api/logs/stream${qs({ after })}`, { headers, signal });
+    const res = await fetch(`${gatewayBase()}/api/logs/stream${qs({ after })}`, gatewayFetchInit({ headers, signal }));
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`${res.status} ${text}`);

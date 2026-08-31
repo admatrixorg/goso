@@ -128,6 +128,20 @@ test("formatPublicError redacts tokens and HTML bodies", () => {
   assert.equal(formatPublicError("500 <!doctype html>"), "non-JSON response");
 });
 
+test("non-JSON list failure is degraded not empty inventory", () => {
+  assert.equal(
+    deriveOverviewKind({
+      health: "connected",
+      statsStatus: 200,
+      agents: null,
+      sessions: null,
+      channels: null,
+      errors: ["agents: non-JSON response", "sessions: non-JSON response", "channels: non-JSON response"],
+    }),
+    "degraded",
+  );
+});
+
 test("stale overview keeps last-known snapshot and never invents zeros", () => {
   const prev: OverviewSnapshot = {
     health: "connected",
