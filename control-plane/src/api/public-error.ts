@@ -24,6 +24,6 @@ export function redactPublicText(raw: string): string {
 /** Surface gateway status text (502 / LLM 401). Truncate; never echo secrets. */
 export function formatPublicError(e: unknown): string {
   const s = String(e);
-  if (/<!doctype/i.test(s) || /Unexpected token\s+'<'/i.test(s)) return "non-JSON response";
+  if (/<!doctype/i.test(s) || /Unexpected token\s+'<'/i.test(s) || /non-JSON response/i.test(s)) return "non-JSON response";
   return redactPublicText(s);
 }

@@ -1,4 +1,5 @@
 import { jsonFetch, TENANT_STORAGE_KEY } from "./client";
+import { gatewayFetchInit, readGatewayJson } from "./gateway-http";
 
 export type StorageCrumb = { name: string; path: string };
 
@@ -52,7 +53,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function blobFetch(path: string): Promise<Blob> {
-  const res = await fetch(`${gatewayBase()}${path}`, { headers: authHeaders() });
+  const res = await fetch(`${gatewayBase()}${path}`, gatewayFetchInit({ headers: authHeaders() }));
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${text}`);
@@ -75,16 +76,15 @@ export const storageApi = {
     const body = new FormData();
     body.append("file", file, file.name);
     if (path) body.append("path", path);
-    const res = await fetch(`${gatewayBase()}/api/storage/upload`, {
-      method: "POST",
-      headers: authHeaders(),
-      body,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`${res.status} ${text}`);
-    }
-    return (await res.json()) as StorageEntry;
+    const res = await fetch(
+      `${gatewayBase()}/api/storage/upload`,
+      gatewayFetchInit({
+        method: "POST",
+        headers: authHeaders(),
+        body,
+      }),
+    );
+    return readGatewayJson<StorageEntry>(res);
   },
   remove: (path: string, confirm: string) =>
     jsonFetch<StorageEntry>("/api/storage/delete", {

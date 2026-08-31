@@ -1,6 +1,7 @@
 // Gateway API client — talks to GOSO gateway (proxied via Vite or direct).
 // Token is read from import.meta.env or localStorage; not hardcoded.
 
+import { gatewayFetchInit, readGatewayJson } from "./gateway-http";
 import { emptyGatewayStats, parseStatsBody, type GatewayStatsProbe } from "./stats";
 
 export type { GatewayStatsProbe } from "./stats";
@@ -31,15 +32,14 @@ function tenantHeader(): Record<string, string> {
 
 export async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${base()}${path}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeader(), ...tenantHeader(), ...(init?.headers as Record<string, string> | undefined) },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${text}`);
-  }
-  return (await res.json()) as T;
+  const res = await fetch(
+    url,
+    gatewayFetchInit({
+      ...init,
+      headers: { "Content-Type": "application/json", ...authHeader(), ...tenantHeader(), ...(init?.headers as Record<string, string> | undefined) },
+    }),
+  );
+  return readGatewayJson<T>(res);
 }
 
 const HEALTH_TIMEOUT_MS = 5000;
@@ -57,12 +57,14 @@ export async function probeHealthz(signal?: AbortSignal): Promise<{ status: numb
     signal.addEventListener("abort", onAbort, { once: true });
   }
   try {
-    const res = await fetch(`${base()}/healthz`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { ...authHeader(), ...tenantHeader() },
-      signal: ctrl.signal,
-    });
+    const res = await fetch(
+      `${base()}/healthz`,
+      gatewayFetchInit({
+        method: "GET",
+        headers: { ...authHeader(), ...tenantHeader() },
+        signal: ctrl.signal,
+      }),
+    );
     let ok = false;
     if (res.status === 200) {
       try {
@@ -100,12 +102,14 @@ export async function probeStats(signal?: AbortSignal): Promise<GatewayStatsProb
     signal.addEventListener("abort", onAbort, { once: true });
   }
   try {
-    const res = await fetch(`${base()}/api/stats`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { ...authHeader(), ...tenantHeader() },
-      signal: ctrl.signal,
-    });
+    const res = await fetch(
+      `${base()}/api/stats`,
+      gatewayFetchInit({
+        method: "GET",
+        headers: { ...authHeader(), ...tenantHeader() },
+        signal: ctrl.signal,
+      }),
+    );
     if (!res.ok) {
       try {
         await res.text();
@@ -205,23 +209,26 @@ async function readChatSSE(stream: ReadableStream<Uint8Array>, onDelta: (delta: 
 export async function chatStream(body: ChatBody, onDelta: (delta: string) => void): Promise<ChatReply> {
   const canStream = typeof fetch === "function" && typeof ReadableStream !== "undefined";
   if (!canStream) return chatJSON(body, onDelta);
-  const res = await fetch(`${base()}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      ...authHeader(),
-      ...tenantHeader(),
-    },
-    body: JSON.stringify({ ...body, stream: true }),
-  });
+  const res = await fetch(
+    `${base()}/api/chat`,
+    gatewayFetchInit({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...authHeader(),
+        ...tenantHeader(),
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+    }),
+  );
   if (res.status === 406) return chatJSON(body, onDelta);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${text}`);
   }
   if (!isEventStream(res.headers.get("content-type")) || !res.body) {
-    const j = (await res.json()) as ChatReply;
+    const j = await readGatewayJson<ChatReply>(res);
     if (j.reply) onDelta(j.reply);
     return j;
   }

@@ -1,4 +1,5 @@
 import { jsonFetch, TENANT_STORAGE_KEY } from "./client";
+import { gatewayFetchInit } from "./gateway-http";
 import {
   asPublicFile,
   asPublicList,
@@ -63,7 +64,10 @@ export const backupApi = {
     return row;
   },
   download: async (file: string): Promise<Blob> => {
-    const res = await fetch(`${gatewayBase()}/api/system/backup/download?file=${encodeURIComponent(file)}`, { headers: authHeaders() });
+    const res = await fetch(
+      `${gatewayBase()}/api/system/backup/download?file=${encodeURIComponent(file)}`,
+      gatewayFetchInit({ headers: authHeaders() }),
+    );
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`${res.status} ${text}`);

@@ -42,3 +42,9 @@ test("formatPublicError truncates long diagnostic text", () => {
   assert.equal(s.length, 401);
   assert.equal(s.endsWith("…"), true);
 });
+
+test("formatPublicError maps HTML doctype to non-JSON response", () => {
+  assert.equal(formatPublicError(new Error("<!doctype html><html></html>")), "non-JSON response");
+  assert.equal(formatPublicError(new Error("non-JSON response")), "non-JSON response");
+  assert.equal(formatPublicError("non-JSON response"), "non-JSON response");
+});
