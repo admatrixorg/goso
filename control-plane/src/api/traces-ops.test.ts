@@ -23,9 +23,11 @@ import {
 test("parseTraceHash reads id and empty list hash", () => {
   assert.equal(parseTraceHash("#traces/abc"), "abc");
   assert.equal(parseTraceHash("#traces"), "");
+  assert.equal(parseTraceHash("#/traces/abc"), "abc");
+  assert.equal(parseTraceHash("#/traces"), "");
   assert.equal(parseTraceHash("#memory/x"), "");
-  assert.equal(tracesHash("abc"), "#traces/abc");
-  assert.equal(tracesHash(""), "#traces");
+  assert.equal(tracesHash("abc"), "#/traces/abc");
+  assert.equal(tracesHash(""), "#/traces");
 });
 
 test("rangeFrom emits RFC3339 except all", () => {

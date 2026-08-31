@@ -88,7 +88,7 @@ export function HeatmapPage() {
       {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
       {online === false ? (
         <EmptyState>{t("crm.offlineEmpty")}</EmptyState>
-      ) : loading && !report ? null : !report || report.buckets.length === 0 ? (
+      ) : err ? null : loading && !report ? null : !report || report.buckets.length === 0 ? (
         <EmptyState>{t("heat.empty")}</EmptyState>
       ) : (
         <>

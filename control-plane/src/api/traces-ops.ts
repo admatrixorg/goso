@@ -1,3 +1,4 @@
+import { parseHash, serializeHash } from "./hash-route.ts";
 import {
   classifyPageState,
   inventoryBlocksMutation,
@@ -71,13 +72,13 @@ const SECRET_KEYS = [
 ];
 
 export function parseTraceHash(hash: string): string {
-  const m = /^#traces(?:\/([A-Za-z0-9_-]+))?$/.exec((hash || "").trim());
-  return m?.[1] || "";
+  const parsed = parseHash(hash);
+  if (parsed.tab !== "traces") return "";
+  return parsed.traceId || "";
 }
 
 export function tracesHash(id?: string): string {
-  const v = (id || "").trim();
-  return v ? `#traces/${v}` : "#traces";
+  return serializeHash({ tab: "traces", traceId: id });
 }
 
 export function rangeFrom(range: TimeRange, now = Date.now()): string | undefined {

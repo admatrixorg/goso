@@ -1,7 +1,7 @@
 // goso-crm HTTP client — KPI/advisor over HTTP only. Never import goso-crm Go.
 // Header X-Org-ID on CRM fetches. No secrets in this module or in displayed errors.
 
-export const CRM_UPSTREAM_DEFAULT = "http://127.0.0.1:8089";
+export const CRM_UPSTREAM_DEFAULT = "http://127.0.0.1:8082";
 export const CRM_ORG_DEFAULT = "01a01fe5-704c-7375-aa1f-6e50a9d0296d";
 export const CRM_PROXY_PREFIX = "/crm-api";
 const HEALTH_TIMEOUT_MS = 3000;
@@ -9,7 +9,7 @@ const HEALTH_TIMEOUT_MS = 3000;
 export function crmBase(): string {
   const v = import.meta.env.VITE_GOSOCRM_API_URL?.trim();
   if (v) return v.replace(/\/$/, "");
-  // Dev: Vite proxy /crm-api → http://127.0.0.1:8089 (CORS-free). Prod: direct default.
+  // Dev: Vite proxy /crm-api → http://127.0.0.1:8082 (CORS-free). Prod: direct default.
   if (import.meta.env.DEV) return CRM_PROXY_PREFIX;
   return CRM_UPSTREAM_DEFAULT;
 }

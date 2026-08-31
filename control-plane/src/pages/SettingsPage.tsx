@@ -3,6 +3,7 @@ import { api, TENANT_STORAGE_KEY, type TenantInfo } from "../api/client";
 import { BackupPanel } from "./BackupPanel";
 import { pairingApi, type PairingIssued } from "../api/pairing";
 import { crmOrgId } from "../api/crm";
+import { parseHash, serializeHash, type SettingsPageId } from "../api/hash-route";
 import { isDemoMode } from "../demo/mode";
 import {
   settingsApi,
@@ -50,7 +51,7 @@ import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
 
-type PageId = "account" | "users" | "roles" | "nicks" | "quotas" | "templates" | "billing" | "gateway" | "backup" | "pairing" | "theme";
+type PageId = SettingsPageId;
 
 const FIELD_KEYS: Record<string, MsgKey> = {
   port: "settings.field.port",
@@ -97,9 +98,18 @@ const localStorageStore: BrowserTokenStore = {
   },
 };
 
+const DEMO = isDemoMode();
+
+function pageFromHash(): PageId {
+  if (typeof window === "undefined") return "account";
+  const parsed = parseHash(window.location.hash, { demo: DEMO });
+  if (parsed.tab !== "settings") return "account";
+  return parsed.settingsPage ?? "account";
+}
+
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t, locale } = useI18n();
-  const [page, setPage] = useState<PageId>("account");
+  const [page, setPage] = useState<PageId>(pageFromHash);
   const [org, setOrg] = useState(crmOrgId);
   const [crmErr, setCrmErr] = useState<unknown>(null);
   const [gwErr, setGwErr] = useState<unknown>(null);
@@ -286,6 +296,19 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     }
   }, [page]);
 
+  useEffect(() => {
+    const onHash = () => {
+      const next = pageFromHash();
+      setPage((cur) => (cur === next ? cur : next));
+    };
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("popstate", onHash);
+    };
+  }, []);
+
   async function run(fn: () => Promise<unknown>) {
     if (saving || blocked) return;
     setSaving(true);
@@ -381,7 +404,12 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 <button
                   key={i.id}
                   type="button"
-                  onClick={() => setPage(i.id)}
+                  onClick={() => {
+                    setPage(i.id);
+                    if (typeof window === "undefined") return;
+                    const next = serializeHash({ tab: "settings", settingsPage: i.id }, { demo: DEMO });
+                    if (window.location.hash !== next) window.location.hash = next;
+                  }}
                   style={{
                     width: "100%",
                     border: "none",
