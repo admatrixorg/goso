@@ -170,9 +170,6 @@ export function TracesPage() {
     window.addEventListener("hashchange", onHash);
     return () => {
       window.removeEventListener("hashchange", onHash);
-      if (window.location.hash.startsWith("#traces")) {
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-      }
     };
   }, []);
 

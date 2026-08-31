@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { crmAdvisorChrome } from "./crm.ts";
+import { CRM_UPSTREAM_DEFAULT, crmAdvisorChrome } from "./crm.ts";
+
+test("CRM upstream default is the live goso-crm port", () => {
+  assert.equal(CRM_UPSTREAM_DEFAULT, "http://127.0.0.1:8082");
+  assert.equal(CRM_UPSTREAM_DEFAULT.includes("8089"), false);
+});
 
 test("offline CRM advisor never claims 0 tips or empty advice", () => {
   const s = crmAdvisorChrome({ online: false, permission: false, advisorLoaded: false, adviceCount: 0 });

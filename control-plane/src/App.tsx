@@ -36,6 +36,7 @@ import { WorkstationsPage } from "./pages/WorkstationsPage";
 import { TTSPage } from "./pages/TTSPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { StoragePage } from "./pages/StoragePage";
+import { hashForTab, parseHash, type Tab } from "./api/hash-route";
 import { Icon, type IconName } from "./ui/Icon";
 import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -47,48 +48,7 @@ import { clearSelectedSession, readSelectedSession, writeSelectedSession } from 
 
 const DEMO = isDemoMode();
 
-export type Tab =
-  | "home"
-  | "tasks"
-  | "meetings"
-  | "crm"
-  | "agents"
-  | "sessions"
-  | "chat"
-  | "friends"
-  | "calendar"
-  | "gallery"
-  | "marketing"
-  | "heatmap"
-  | "connectors"
-  | "functions"
-  | "skills"
-  | "tools"
-  | "mcp"
-  | "cron"
-  | "events"
-  | "activity"
-  | "logs"
-  | "tenants"
-  | "apikeys"
-  | "packages"
-  | "approvals"
-  | "impexp"
-  | "teams"
-  | "vault"
-  | "memory"
-  | "kg"
-  | "storage"
-  | "providers"
-  | "channels"
-  | "webhooks"
-  | "traces"
-  | "pending"
-  | "contacts"
-  | "nodes"
-  | "workstations"
-  | "tts"
-  | "settings";
+export type { Tab };
 
 function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
   return [
@@ -204,8 +164,8 @@ export default function App() {
   const [sessionLabel, setSessionLabel] = useState(() => readSelectedSession()?.label ?? "");
   const sessionsRef = useRef<SessionsPageHandle>(null);
   const [tab, setTab] = useState<Tab>(() => {
-    if (typeof window !== "undefined" && window.location.hash.startsWith("#traces")) return "traces";
-    return DEMO ? "home" : "crm";
+    if (typeof window === "undefined") return "crm";
+    return parseHash(window.location.hash, { demo: DEMO }).tab;
   });
 
   function pickSession(id: string, label?: string) {
@@ -245,16 +205,44 @@ export default function App() {
       })
     : liveGroups;
 
+  function applyHash(hash: string, mode: "push" | "replace" | "sync") {
+    const parsed = parseHash(hash, { demo: DEMO });
+    if (parsed.rewrite || (mode === "replace" && parsed.canonical && window.location.hash !== parsed.canonical)) {
+      const next = parsed.canonical || "#/overview";
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${next}`);
+    } else if (mode === "push") {
+      const next = parsed.canonical || hashForTab(parsed.tab, parsed, { demo: DEMO });
+      if (window.location.hash !== next) window.location.hash = next;
+    }
+    setTab(parsed.tab);
+  }
+
   function go(id: Tab) {
+    const current = typeof window === "undefined" ? parseHash("", { demo: DEMO }) : parseHash(window.location.hash, { demo: DEMO });
+    const extra =
+      id === "settings" && current.tab === "settings"
+        ? { settingsPage: current.settingsPage }
+        : id === "traces" && current.tab === "traces"
+          ? { traceId: current.traceId }
+          : undefined;
+    const next = hashForTab(id, extra, { demo: DEMO });
+    if (typeof window === "undefined") {
+      setTab(id);
+      return;
+    }
+    applyHash(next, "push");
     setTab(id);
   }
 
   useEffect(() => {
-    const onHash = () => {
-      if (window.location.hash.startsWith("#traces")) setTab("traces");
-    };
+    applyHash(window.location.hash, "replace");
+    const onHash = () => applyHash(window.location.hash, "sync");
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("popstate", onHash);
+    };
   }, []);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
@@ -519,7 +507,7 @@ export default function App() {
               selectedId={sessionId}
               onPick={(id, label) => {
                 pickSession(id, label);
-                setTab("chat");
+                go("chat");
               }}
               onDeleted={dropSession}
             />
