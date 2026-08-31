@@ -39,3 +39,27 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge `--no-ff` and Vite `:3000` restart belong to advisor/CTO live QC. CRM `:8082` and sidecar `:8091` untouched. No login route. No gateway Go auth change. Live browser confirmation of the new Auth field waits for the post-merge `:3000` restart.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC
+
+Date: 2026-08-31. After `worker_done` on `task_8018ddcef219` / `ctx_121e1d303f1d`. Merged `--no-ff` as `6226aab` (`Merge SPEC 127 Config browser token`) of `eee2caf` + `1343767` + `5662d25` + `4fdd274` onto `de43d0e`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No token literals or token-file contents in this record.
+
+Restart: Vite `:3000` only (new listen pid `46335`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`.
+
+Advisor re-ran `npm test` (286/286), `npm run typecheck`, `npm run build` on the worker worktree before merge. `agpl-check` and `agpl-check-docs` exit 0. `persistBrowserToken` writes `localStorage.goso_token` only and reloads; it does not call `settingsApi.putGateway`.
+
+HTTP (status only): `GET /api/agents` without bearer 401; with the demo file token 200. Bodies not copied here.
+
+Browser (Orca tab, start with no `goso_token`):
+
+| Check | Live | Verdict |
+| --- | --- | --- |
+| 401 still shows the Auth control | Config → Gateway → Auth visible with 401 alert. Password empty. Save enabled. Clear disabled. Status: browser token not set. Process `token_set` rows hidden while inventory is blocked. Gateway process Save disabled. | PASS |
+| Save writes browser token and reloads | After Save, chrome `Gateway · connected`. `localStorage.goso_token` present (boolean only). Password input empty. Overview no longer unauthorized (uptime/requests/WebSocket figures load). | PASS |
+| Status + probe never show the secret | Auth card: “Browser token set”; status “Gateway accepted token”. Process booleans remain (`Admin token set` / `View token set` / `Master key set`). Snapshot of the password field has no value. | PASS |
+
+Clear on the live demo was left unclicked so the operator session stays authenticated; unit tests cover Clear removing the key.
+
+### Advisor verdict: PASS — SPEC 127 closed
+
+Do not spawn a second 127 worker. CRM `:8082` and sidecar `:8091` remain untouched.
