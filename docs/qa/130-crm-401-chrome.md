@@ -42,3 +42,26 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge `--no-ff` and Vite `:3000` restart belong to advisor/CTO live QC. CRM `:8082` and sidecar `:8091` untouched. Gateway auth, channel vendor tokens, S3/Grafana/SSO stay DI. CRM Go server unchanged. Live browser confirmation that `#/config` lands on Gateway and Account shows the org-token field waits for the post-merge `:3000` restart.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC
+
+Date: 2026-08-31. After `worker_done` on `task_eb5e7a2c404a` / `ctx_adbbe63302b3`. Merged `--no-ff` as `0a7d236` (`Merge SPEC 130 CRM 401 chrome vs gateway`) of `b348a5d` + `b1c65cf` onto `c28911f`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No token literals or `crm-login.txt` contents in this record.
+
+Restart: Vite `:3000` only (new listen pid `53549`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`.
+
+Advisor re-ran `npm test` (314/314), `npm run typecheck`, `npm run build` on the worker worktree before merge. `agpl-check` and `agpl-check-docs` exit 0.
+
+Browser (Orca tab; gateway `goso_token` already set — value not recorded; CRM org token **not** filled):
+
+| Check | Live | Verdict |
+| --- | --- | --- |
+| `#/config` default | Hash stays `#/config`. Chrome `Gateway · connected`. Auth / Control Plane browser token visible. Not Account display-name. No raw `401 {"error":"unauthorized"}`. | PASS |
+| `#/config/account` | Org-token field present. One empty password input. Permission copy without JSON dump. Gateway chrome still connected (split from CRM 401). | PASS |
+| `#/heatmap` | CRM copy present. No raw 401 JSON. Gateway · connected. | PASS |
+| `#/marketing` | CRM copy present. No raw 401 JSON. Gateway · connected. | PASS |
+
+Did not paste `crm-login.txt` or invent an org token. Save/Clear of `goso_crm_org_token` covered by unit tests.
+
+### Advisor verdict: PASS — SPEC 130 closed
+
+Do not spawn a second 130 worker. CRM `:8082` and sidecar `:8091` remain untouched.
