@@ -85,7 +85,9 @@ export function HeatmapPage() {
         <input className="z-field" type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="from" />
         <input className="z-field" type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="to" />
       </div>
-      {err ? <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err}</p> : null}
+      {err ? (
+        <p style={{ color: "var(--red)", fontSize: 12.5, margin: 0 }}>{err === "unauthorized" ? t("crm.permission") : err}</p>
+      ) : null}
       {online === false ? (
         <EmptyState>{t("crm.offlineEmpty")}</EmptyState>
       ) : err ? null : loading && !report ? null : !report || report.buckets.length === 0 ? (

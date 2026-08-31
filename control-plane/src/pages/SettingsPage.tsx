@@ -3,7 +3,7 @@ import { api, TENANT_STORAGE_KEY, type TenantInfo } from "../api/client";
 import { BackupPanel } from "./BackupPanel";
 import { pairingApi, type PairingIssued } from "../api/pairing";
 import { crmOrgId } from "../api/crm";
-import { parseHash, serializeHash, type SettingsPageId } from "../api/hash-route";
+import { DEFAULT_SETTINGS_PAGE, parseHash, serializeHash, type SettingsPageId } from "../api/hash-route";
 import { isDemoMode } from "../demo/mode";
 import {
   settingsApi,
@@ -40,7 +40,17 @@ import {
   saveBrowserToken,
   type BrowserTokenStore,
 } from "../api/browser-token";
-import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
+import {
+  clearCrmOrgToken,
+  crmOrgTokenClearable,
+  crmOrgTokenControlVisible,
+  crmOrgTokenKind,
+  crmOrgTokenSaveBlockedByInventory,
+  crmOrgTokenWritable,
+  emptyCrmOrgTokenInput,
+  saveCrmOrgToken,
+} from "../api/crm-org-token";
+import { classifyPageState, formatStaleAt, inventoryBlocksMutation, isPermissionError, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -49,7 +59,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { Icon, type IconName } from "../ui/Icon";
 import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
-import { StatusLine, formatPublicError } from "../ui/StatusLine";
+import { StatusLine, formatCrmPublicError, formatPublicError } from "../ui/StatusLine";
 
 type PageId = SettingsPageId;
 
@@ -101,10 +111,10 @@ const localStorageStore: BrowserTokenStore = {
 const DEMO = isDemoMode();
 
 function pageFromHash(): PageId {
-  if (typeof window === "undefined") return "account";
+  if (typeof window === "undefined") return DEFAULT_SETTINGS_PAGE;
   const parsed = parseHash(window.location.hash, { demo: DEMO });
-  if (parsed.tab !== "settings") return "account";
-  return parsed.settingsPage ?? "account";
+  if (parsed.tab !== "settings") return DEFAULT_SETTINGS_PAGE;
+  return parsed.settingsPage ?? DEFAULT_SETTINGS_PAGE;
 }
 
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
@@ -150,11 +160,17 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [gwForm, setGwForm] = useState<GatewayForm>(emptyGatewayForm);
   const [browserTokenInput, setBrowserTokenInput] = useState(emptyBrowserTokenInput);
   const [browserTokenBusy, setBrowserTokenBusy] = useState(false);
+  const [crmOrgTokenInput, setCrmOrgTokenInput] = useState(emptyCrmOrgTokenInput);
+  const [crmOrgTokenBusy, setCrmOrgTokenBusy] = useState(false);
 
   const viteAdminToken = (import.meta.env.VITE_GOSO_ADMIN_TOKEN as string) || "";
   const tokenKind = browserTokenKind({ viteAdminToken }, localStorageStore);
   const tokenWritable = browserTokenWritable(tokenKind);
   const tokenClearable = browserTokenClearable(tokenKind);
+  const viteOrgToken = (import.meta.env.VITE_GOSOCRM_ORG_TOKEN as string) || "";
+  const crmTokenKind = crmOrgTokenKind({ viteOrgToken }, localStorageStore);
+  const crmTokenWritable = crmOrgTokenWritable(crmTokenKind);
+  const crmTokenClearable = crmOrgTokenClearable(crmTokenKind);
 
   const crmCount =
     page === "users" ? users.length : page === "roles" ? roles.length : page === "nicks" ? nicks.length : page === "templates" ? templates.length : page === "quotas" ? (quota ? 1 : 0) : page === "account" ? (account ? 1 : 0) : page === "billing" ? (developing ? 1 : 0) : 0;
@@ -215,7 +231,8 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     const kind = settingsConflictKind(e);
     if (kind === "env_owned") return t("settings.envOwnedConflict");
     if (kind === "conflict") return t("settings.conflict");
-    return formatPublicError(e);
+    if (isCrmPage(page) && isPermissionError(e)) return t("crm.permission");
+    return isCrmPage(page) ? formatCrmPublicError(e) || t("common.error") : formatPublicError(e);
   }
 
   async function load() {
@@ -287,6 +304,11 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   useEffect(() => {
     if (page !== "gateway") return;
     setBrowserTokenInput(emptyBrowserTokenInput());
+  }, [page]);
+
+  useEffect(() => {
+    if (page !== "account") return;
+    setCrmOrgTokenInput(emptyCrmOrgTokenInput());
   }, [page]);
 
   useEffect(() => {
@@ -363,6 +385,31 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     }
   }
 
+  function persistCrmOrgToken(action: "save" | "clear") {
+    if (crmOrgTokenBusy || crmOrgTokenSaveBlockedByInventory(crmState.kind)) return;
+    setCrmOrgTokenBusy(true);
+    setActionErr("");
+    setSaved("");
+    const env = { viteOrgToken };
+    try {
+      const result =
+        action === "save"
+          ? saveCrmOrgToken(crmOrgTokenInput, env, localStorageStore)
+          : clearCrmOrgToken(env, localStorageStore, crmOrgTokenInput);
+      setCrmOrgTokenInput(result.input);
+      if (!result.ok) {
+        if (result.reason === "empty") setActionErr(t("settings.crmOrgToken.empty"));
+        else if (result.reason === "env-owned") setActionErr(t("settings.crmOrgToken.envOwned"));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      setActionErr(formatCrmPublicError(e) || t("crm.permission"));
+    } finally {
+      setCrmOrgTokenBusy(false);
+    }
+  }
+
   const provenance =
     page === "gateway" ? t("settings.gatewaySource") : page === "backup" ? t("settings.backupSource") : isCrmPage(page) ? t("settings.crmSource") : "";
   const pageErr = page === "gateway" ? gwErr : isCrmPage(page) ? crmErr : null;
@@ -389,7 +436,21 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     >
     {provenance ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-3)" }}>{provenance}</p> : null}
     {page !== "backup" && page !== "theme" && page !== "pairing" ? (
-      <PageStatus kind={state.kind} errorText={pageErr ? formatPublicError(pageErr) : ""} staleAt={staleAt} onReload={() => void load()} />
+      <PageStatus
+        kind={state.kind}
+        permissionText={isCrmPage(page) && state.kind === "permission" ? t("crm.permission") : undefined}
+        errorText={
+          isCrmPage(page) && state.kind === "permission"
+            ? ""
+            : pageErr
+              ? isCrmPage(page)
+                ? formatCrmPublicError(pageErr)
+                : formatPublicError(pageErr)
+              : ""
+        }
+        staleAt={staleAt}
+        onReload={() => void load()}
+      />
     ) : null}
     {actionErr ? <StatusLine kind="error">{actionErr}</StatusLine> : null}
     <div className="z-split-stack">
@@ -440,6 +501,37 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
           <>
             <div style={{ fontSize: 21, fontWeight: 700 }}>{t("settings.account")}</div>
             <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{t("settings.account.desc")}</div>
+            {crmOrgTokenControlVisible(crmState.kind) ? (
+              <Card style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{t("settings.crmOrgToken")}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.crmOrgToken.desc")}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    className="z-field"
+                    type="password"
+                    autoComplete="off"
+                    value={crmOrgTokenInput}
+                    disabled={!crmTokenWritable || crmOrgTokenBusy}
+                    onChange={(e) => setCrmOrgTokenInput(e.target.value)}
+                    aria-label={t("settings.crmOrgToken")}
+                    style={{ minWidth: 220, flex: 1 }}
+                  />
+                  <Button variant="primary" disabled={!crmTokenWritable || crmOrgTokenBusy} onClick={() => void persistCrmOrgToken("save")}>
+                    {t("common.save")}
+                  </Button>
+                  <Button disabled={!crmTokenClearable || crmOrgTokenBusy} onClick={() => void persistCrmOrgToken("clear")}>
+                    {t("settings.crmOrgToken.clear")}
+                  </Button>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+                  {crmTokenKind === "env-owned"
+                    ? t("settings.crmOrgToken.envOwned")
+                    : crmTokenKind === "set"
+                      ? t("settings.crmOrgToken.set")
+                      : t("settings.crmOrgToken.unset")}
+                </div>
+              </Card>
+            ) : null}
             <Card style={{ padding: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <input
                 className="z-field"
