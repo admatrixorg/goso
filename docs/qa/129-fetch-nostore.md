@@ -39,3 +39,24 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge `--no-ff` and Vite `:3000` restart belong to advisor/CTO live QC. CRM `:8082` and sidecar `:8091` untouched. CRM org token 401, channel vendor tokens, S3/Grafana/SSO stay DI. Live browser confirmation that Overview lists load as JSON waits for the post-merge `:3000` restart.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC
+
+Date: 2026-08-31. After `worker_done` on `task_1587516fd7e4` / `ctx_09badafe3d3b`. Merged `--no-ff` as `a41237d` (`Merge SPEC 129 fetch cache no-store`) of `58df4e8` + `f2daeeb` onto `28eddd7`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No token literals in this record.
+
+Restart: Vite `:3000` only (new listen pid `5940`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`.
+
+Advisor re-ran `npm test` (303/303), `npm run typecheck`, `npm run build` on the worker worktree before merge. `agpl-check` and `agpl-check-docs` exit 0.
+
+Browser (Orca tab, `goso_token` present — length/value not recorded):
+
+| Check | Live | Verdict |
+| --- | --- | --- |
+| Overview | `#/overview`. Chrome `Gateway · connected`. Body does **not** contain `non-JSON`. | PASS |
+| Agents | `#/agents`. No `non-JSON`, no unauthorized, no doctype dump. | PASS |
+| `fetch("/api/agents", { cache: "no-store" })` + bearer | 200 `application/json`, body looks like JSON, not HTML. | PASS |
+| Bare `fetch("/api/agents")` (no cache option) | Still 200 `text/html` Vite index — browser document cache. App paths now force `no-store`, so UI is not affected. | PASS (expected leftover for uncached-option callers) |
+
+### Advisor verdict: PASS — SPEC 129 closed
+
+Do not spawn a second 129 worker. CRM `:8082` and sidecar `:8091` remain untouched.
