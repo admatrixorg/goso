@@ -45,3 +45,29 @@ GOSO_ROOT=$PWD /Users/mqglobal/Documents/goclaw-binary/goso-crm/scripts/agpl-che
 Merge `--no-ff` and Vite `:3000` restart belong to advisor/CTO live QC. CRM `:8082` and sidecar `:8091` untouched. Hash-router click/refresh/back-forward in the browser waits for the post-merge `:3000` restart. After restart, CRM health should stay 200 through `/crm-api`; metrics without an org token must stay 401 with unauthorized chrome, never fake zeros or vendor success.
 
 No credentials or secret values are included in this record.
+
+## Advisor live QC
+
+Date: 2026-08-31. After `worker_done` on `task_94e110c964ff` / `ctx_947b1fc3734e`. Merged `--no-ff` as `ec8706f` (`Merge SPEC 128 menu URLs and CRM proxy`) of `c154c9a` + `033355c` onto `8510fa3`. Clean-room React. No ZaloCRM / goclaw-source copy. No banned author ids. No token literals in this record.
+
+Restart: Vite `:3000` only (new listen pid `1792`, demo config `/crm-api` → `:8082`). Unchanged: CRM `:8082` pid `85417`, sidecar `:8091` pid `83346`, gateway `:18080` pid `68421`. Nothing listens on `:8089`.
+
+Advisor re-ran `npm test` (295/295), `npm run typecheck`, `npm run build` on the worker worktree before merge. `agpl-check` and `agpl-check-docs` exit 0.
+
+HTTP (status only): `GET /` 200; `/healthz` 200; `/crm-api/healthz` 200; `/crm-api/api/crm/metrics` 401; `/api/agents` without bearer 401.
+
+Browser (Orca tab):
+
+| Check | Live | Verdict |
+| --- | --- | --- |
+| Direct `#/overview` | Loads Overview; chrome `Gateway · connected`. | PASS |
+| Nav writes hashes | Agents → `#/agents`; Chat → `#/chat`; Channels → `#/channels`; Config → `#/config`. | PASS |
+| Config subpage | Gateway rail → `#/config/gateway`; Auth card still present. | PASS |
+| Unknown hash | `#/not-a-menu` rewrites to `#/overview`. | PASS |
+| Old traces alias | `#traces` rewrites to `#/traces`. | PASS |
+| Refresh restore | `#/agents` + reload stays `#/agents` with Agents heading. | PASS |
+| CRM proxy | `/crm-api/healthz` 200 via `:8082`; metrics without org token 401 (not dead-port 500). | PASS |
+
+### Advisor verdict: PASS — SPEC 128 closed
+
+Do not spawn a second 128 worker. CRM `:8082` and sidecar `:8091` remain untouched.
