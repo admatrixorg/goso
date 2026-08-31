@@ -27,6 +27,18 @@ import {
   type GatewayField,
   type GatewayForm,
 } from "../api/settings-ops";
+import {
+  browserTokenClearable,
+  browserTokenControlVisible,
+  browserTokenKind,
+  browserTokenProbeFromInventory,
+  browserTokenSaveBlockedByInventory,
+  browserTokenWritable,
+  clearBrowserToken,
+  emptyBrowserTokenInput,
+  saveBrowserToken,
+  type BrowserTokenStore,
+} from "../api/browser-token";
 import { classifyPageState, formatStaleAt, inventoryBlocksMutation, listMetaCount } from "../api/page-state";
 import { useI18n, type MsgKey } from "../i18n";
 import { Badge } from "../ui/Badge";
@@ -69,6 +81,22 @@ function isCrmPage(page: PageId): boolean {
   return page === "account" || page === "users" || page === "roles" || page === "nicks" || page === "quotas" || page === "templates" || page === "billing";
 }
 
+const localStorageStore: BrowserTokenStore = {
+  getItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key, value) {
+    localStorage.setItem(key, value);
+  },
+  removeItem(key) {
+    localStorage.removeItem(key);
+  },
+};
+
 export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const { t, locale } = useI18n();
   const [page, setPage] = useState<PageId>("account");
@@ -110,6 +138,13 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
   const [saved, setSaved] = useState("");
   const [gw, setGw] = useState<GatewayConfig | null>(null);
   const [gwForm, setGwForm] = useState<GatewayForm>(emptyGatewayForm);
+  const [browserTokenInput, setBrowserTokenInput] = useState(emptyBrowserTokenInput);
+  const [browserTokenBusy, setBrowserTokenBusy] = useState(false);
+
+  const viteAdminToken = (import.meta.env.VITE_GOSO_ADMIN_TOKEN as string) || "";
+  const tokenKind = browserTokenKind({ viteAdminToken }, localStorageStore);
+  const tokenWritable = browserTokenWritable(tokenKind);
+  const tokenClearable = browserTokenClearable(tokenKind);
 
   const crmCount =
     page === "users" ? users.length : page === "roles" ? roles.length : page === "nicks" ? nicks.length : page === "templates" ? templates.length : page === "quotas" ? (quota ? 1 : 0) : page === "account" ? (account ? 1 : 0) : page === "billing" ? (developing ? 1 : 0) : 0;
@@ -127,6 +162,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     itemCount: gw ? 1 : 0,
     keepStale: gwLoaded && Boolean(gw),
   });
+  const tokenProbe = browserTokenProbeFromInventory(gwState.kind, tokenKind);
   const state = page === "gateway" ? gwState : isCrmPage(page) ? crmState : { kind: "ready" as const, showItems: true, showEmpty: false };
   const blocked = inventoryBlocksMutation(state.kind);
   const crmBlocked = inventoryBlocksMutation(crmState.kind);
@@ -209,7 +245,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       } else if (page === "gateway") {
         const cfg = await settingsApi.getGateway();
         if (publicHasSecrets(cfg)) {
-          setActionErr(t("settings.secretHint"));
+          setActionErr(t("settings.configLeak"));
         }
         setGw(cfg);
         setGwForm(formFromSnapshot(cfg));
@@ -237,6 +273,11 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
     if (page === "theme" || page === "pairing" || page === "backup") return;
     void load();
   }, [page, org]);
+
+  useEffect(() => {
+    if (page !== "gateway") return;
+    setBrowserTokenInput(emptyBrowserTokenInput());
+  }, [page]);
 
   useEffect(() => {
     if (page !== "pairing") {
@@ -272,6 +313,31 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
       return;
     }
     await run(() => settingsApi.putGateway({ updated_at: gw?.updated_at || "", values }));
+  }
+
+  function persistBrowserToken(action: "save" | "clear") {
+    if (browserTokenBusy || browserTokenSaveBlockedByInventory(gwState.kind)) return;
+    setBrowserTokenBusy(true);
+    setActionErr("");
+    setSaved("");
+    const env = { viteAdminToken };
+    try {
+      const result =
+        action === "save"
+          ? saveBrowserToken(browserTokenInput, env, localStorageStore)
+          : clearBrowserToken(env, localStorageStore, browserTokenInput);
+      setBrowserTokenInput(result.input);
+      if (!result.ok) {
+        if (result.reason === "empty") setActionErr(t("settings.browserToken.empty"));
+        else if (result.reason === "env-owned") setActionErr(t("settings.browserToken.envOwned"));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      setActionErr(formatPublicError(e));
+    } finally {
+      setBrowserTokenBusy(false);
+    }
   }
 
   const provenance =
@@ -668,6 +734,55 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 {t("common.save")}
               </Button>
             </div>
+            {browserTokenControlVisible(gwState.kind) ? (
+            <GatewayCard title={t("settings.gateway.auth")} icon="lock">
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--border-soft)" }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{t("settings.browserToken")}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.browserToken.desc")}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    className="z-field"
+                    type="password"
+                    autoComplete="off"
+                    value={browserTokenInput}
+                    disabled={!tokenWritable || browserTokenBusy}
+                    onChange={(e) => setBrowserTokenInput(e.target.value)}
+                    aria-label={t("settings.browserToken")}
+                    style={{ minWidth: 220, flex: 1 }}
+                  />
+                  <Button variant="primary" disabled={!tokenWritable || browserTokenBusy} onClick={() => void persistBrowserToken("save")}>
+                    {t("common.save")}
+                  </Button>
+                  <Button disabled={!tokenClearable || browserTokenBusy} onClick={() => void persistBrowserToken("clear")}>
+                    {t("settings.browserToken.clear")}
+                  </Button>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+                  {tokenKind === "env-owned"
+                    ? t("settings.browserToken.envOwned")
+                    : tokenKind === "set"
+                      ? t("settings.browserToken.set")
+                      : t("settings.browserToken.unset")}
+                </div>
+                {tokenProbe ? (
+                  <div role="status" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                    {tokenProbe === "accepted"
+                      ? t("settings.browserToken.probe.accepted")
+                      : tokenProbe === "unauthorized"
+                        ? t("settings.browserToken.probe.unauthorized")
+                        : t("settings.browserToken.probe.unreachable")}
+                  </div>
+                ) : null}
+              </div>
+              {gw ? (
+                <>
+                  <ReadRow t={t} field={gw.auth?.token_set} boolean />
+                  <ReadRow t={t} field={gw.auth?.view_token_set} boolean />
+                  <ReadRow t={t} field={gw.auth?.master_key_set} boolean />
+                </>
+              ) : null}
+            </GatewayCard>
+            ) : null}
             {gwState.showItems ? (
             <>
             <GatewayCard title={t("settings.gateway.server")} icon="gear">
@@ -681,12 +796,6 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
                 onChange={(v) => setGwForm({ ...gwForm, log_level: v })}
                 options={["debug", "info", "warn", "error"]}
               />
-            </GatewayCard>
-            <GatewayCard title={t("settings.gateway.auth")} icon="lock">
-              <ReadRow t={t} field={gw?.auth?.token_set} boolean />
-              <ReadRow t={t} field={gw?.auth?.view_token_set} boolean />
-              <ReadRow t={t} field={gw?.auth?.master_key_set} boolean />
-              <div style={{ padding: "8px 16px 12px", fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{t("settings.secretHint")}</div>
             </GatewayCard>
             <GatewayCard title={t("settings.gateway.behavior")} icon="pulse">
               <ReadRow t={t} field={gw?.behavior?.context_dir} />
