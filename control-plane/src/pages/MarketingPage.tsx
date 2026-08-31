@@ -17,7 +17,7 @@ import { Card, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
-import { StatusLine, formatPublicError } from "../ui/StatusLine";
+import { StatusLine, formatCrmPublicError } from "../ui/StatusLine";
 
 const TAB_LABEL: Record<(typeof MARKETING_TABS)[number]["id"], MsgKey> = {
   audience: "mkt.audience",
@@ -140,7 +140,7 @@ export function MarketingPage() {
       await fn();
       await load();
     } catch (e) {
-      setFormErr(formatPublicError(e));
+      setFormErr(isPermissionError(e) ? t("crm.permission") : formatCrmPublicError(e) || t("common.error"));
     }
   }
 
@@ -190,16 +190,17 @@ export function MarketingPage() {
       ? (Object.keys(KPI_LABEL) as (keyof MarketingOverview)[]).map((key) => ({ key, value: overview[key] }))
       : [];
 
-  const statusKind = state.kind;
+  const statusKind = state.kind === "error" && err && isPermissionError(err) ? "permission" : state.kind;
+  const crmPerm = statusKind === "permission";
   const errText =
     statusKind === "stale"
       ? ""
-      : err && String(err).includes("offline")
-        ? t("mkt.offline")
-        : err && isPermissionError(err)
-          ? t("crm.permission")
+      : crmPerm
+        ? ""
+        : err && String(err).includes("offline")
+          ? t("mkt.offline")
           : err
-            ? formatPublicError(err)
+            ? formatCrmPublicError(err) || t("common.error")
             : "";
 
   return (
@@ -278,7 +279,8 @@ export function MarketingPage() {
         {crmOnline === true ? t("crm.online") : crmOnline === false ? t("crm.offline") : t("crm.checking")}
       </p>
       <PageStatus
-        kind={statusKind === "error" && err && isPermissionError(err) ? "permission" : statusKind}
+        kind={statusKind}
+        permissionText={crmPerm ? t("crm.permission") : undefined}
         errorText={errText}
         staleAt={formatStaleAt(loadedAt, locale)}
         onReload={() => void load()}

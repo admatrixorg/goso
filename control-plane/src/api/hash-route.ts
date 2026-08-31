@@ -59,6 +59,9 @@ export const SETTINGS_PAGES = [
 
 export type SettingsPageId = (typeof SETTINGS_PAGES)[number];
 
+/** Bare `#/config` opens Gateway, not CRM Account. */
+export const DEFAULT_SETTINGS_PAGE: SettingsPageId = "gateway";
+
 export const DEMO_HASH_TABS = ["home", "tasks", "meetings", "friends", "calendar", "gallery"] as const;
 export type DemoHashTab = (typeof DEMO_HASH_TABS)[number];
 
@@ -203,7 +206,7 @@ export function serializeHash(route: HashRoute, opts?: HashOpts): string {
   if (isDemoTab(tab) && !demo) return "#/overview";
   if (tab === "crm") return "#/overview";
   if (tab === "settings") {
-    const page = route.settingsPage && route.settingsPage !== "account" ? route.settingsPage : undefined;
+    const page = route.settingsPage && route.settingsPage !== DEFAULT_SETTINGS_PAGE ? route.settingsPage : undefined;
     return page ? `#/config/${page}` : "#/config";
   }
   if (tab === "traces") {
@@ -246,11 +249,11 @@ export function parseHash(hash: string, opts?: HashOpts): HashParse {
 
   if (head === "config") {
     const pageRaw = segs[1];
-    if (!pageRaw) return parsed({ tab: "settings", settingsPage: "account" }, opts, false, false);
+    if (!pageRaw) return parsed({ tab: "settings", settingsPage: DEFAULT_SETTINGS_PAGE }, opts, false, false);
     const page = settingsPageOf(pageRaw.toLowerCase());
-    if (!page) return parsed({ tab: "settings", settingsPage: "account" }, opts, true, false);
+    if (!page) return parsed({ tab: "settings", settingsPage: DEFAULT_SETTINGS_PAGE }, opts, true, false);
     if (segs.length > 2) return parsed({ tab: "settings", settingsPage: page }, opts, true, false);
-    return parsed({ tab: "settings", settingsPage: page }, opts, page === "account", false);
+    return parsed({ tab: "settings", settingsPage: page }, opts, page === DEFAULT_SETTINGS_PAGE, false);
   }
 
   if (head === "traces") {

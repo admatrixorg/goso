@@ -63,24 +63,45 @@ test("old #traces aliases rewrite to #/traces", () => {
 test("settings pages serialize under #/config", () => {
   assert.equal(serializeHash({ tab: "settings" }), "#/config");
   assert.equal(parseHash("#/config").tab, "settings");
-  assert.equal(parseHash("#/config").settingsPage, "account");
+  assert.equal(parseHash("#/config").settingsPage, "gateway");
   for (const page of SETTINGS_PAGES) {
     const hash = serializeHash({ tab: "settings", settingsPage: page });
     const parsed = parseHash(hash);
     assert.equal(parsed.tab, "settings", page);
     assert.equal(parsed.settingsPage, page, page);
-    if (page === "account") assert.equal(hash, "#/config");
+    if (page === "gateway") assert.equal(hash, "#/config");
     else assert.equal(hash, `#/config/${page}`);
   }
   const account = parseHash("#/config/account");
   assert.equal(account.tab, "settings");
   assert.equal(account.settingsPage, "account");
-  assert.equal(account.canonical, "#/config");
+  assert.equal(account.canonical, "#/config/account");
+  assert.equal(account.rewrite, false);
+  const gateway = parseHash("#/config/gateway");
+  assert.equal(gateway.tab, "settings");
+  assert.equal(gateway.settingsPage, "gateway");
+  assert.equal(gateway.canonical, "#/config");
+  assert.equal(gateway.rewrite, true);
   const bad = parseHash("#/config/not-a-page");
   assert.equal(bad.tab, "settings");
-  assert.equal(bad.settingsPage, "account");
+  assert.equal(bad.settingsPage, "gateway");
   assert.equal(bad.rewrite, true);
   assert.equal(bad.canonical, "#/config");
+});
+
+test("bare #/config and empty settings hash open gateway not account", () => {
+  for (const h of ["#/config", "#/config/", "#/config/gateway"]) {
+    const p = parseHash(h);
+    assert.equal(p.tab, "settings", h);
+    assert.equal(p.settingsPage, "gateway", h);
+    assert.equal(p.canonical, "#/config", h);
+  }
+  assert.equal(serializeHash({ tab: "settings" }), "#/config");
+  assert.equal(serializeHash({ tab: "settings", settingsPage: "gateway" }), "#/config");
+  assert.equal(serializeHash({ tab: "settings", settingsPage: "account" }), "#/config/account");
+  assert.equal(hashForTab("settings"), "#/config");
+  assert.equal(hashForTab("settings", { settingsPage: "gateway" }), "#/config");
+  assert.equal(hashForTab("settings", { settingsPage: "account" }), "#/config/account");
 });
 
 test("demo tabs parse only in demo mode", () => {
@@ -108,7 +129,8 @@ test("functions segment is a tools alias", () => {
 
 test("hashForTab preserves traces id and settings page", () => {
   assert.equal(hashForTab("traces", { traceId: "t-9" }), "#/traces/t-9");
-  assert.equal(hashForTab("settings", { settingsPage: "gateway" }), "#/config/gateway");
+  assert.equal(hashForTab("settings", { settingsPage: "gateway" }), "#/config");
+  assert.equal(hashForTab("settings", { settingsPage: "account" }), "#/config/account");
   const live: Tab[] = ["chat", "mcp", "kg", "impexp"];
   for (const tab of live) assert.match(hashForTab(tab), new RegExp(`^#/${tab === "settings" ? "config" : tab}`));
 });

@@ -6,11 +6,13 @@ import { StatusLine } from "./StatusLine";
 export function PageStatus({
   kind,
   errorText,
+  permissionText,
   staleAt,
   onReload,
 }: {
   kind: PageLoadKind;
   errorText?: string;
+  permissionText?: string;
   staleAt?: string;
   onReload?: () => void;
 }) {
@@ -23,11 +25,13 @@ export function PageStatus({
     );
   }
   if (kind === "permission") {
+    const label = permissionText || t("common.permission");
+    const extra = permissionText ? "" : errorText || "";
     return (
       <div data-page-state="permission">
         <StatusLine kind="error">
-          {t("common.permission")}
-          {errorText ? ` · ${errorText}` : ""}
+          {label}
+          {extra ? ` · ${extra}` : ""}
         </StatusLine>
       </div>
     );

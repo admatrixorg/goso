@@ -1,6 +1,8 @@
 // goso-crm HTTP client — KPI/advisor over HTTP only. Never import goso-crm Go.
 // Header X-Org-ID on CRM fetches. No secrets in this module or in displayed errors.
 
+import { crmOrgTokenValue, type CrmOrgTokenEnv, type CrmOrgTokenStore } from "./crm-org-token.ts";
+
 export const CRM_UPSTREAM_DEFAULT = "http://127.0.0.1:8082";
 export const CRM_ORG_DEFAULT = "01a01fe5-704c-7375-aa1f-6e50a9d0296d";
 export const CRM_PROXY_PREFIX = "/crm-api";
@@ -25,11 +27,31 @@ export function crmUpstream(): string {
   return CRM_UPSTREAM_DEFAULT;
 }
 
-function orgHeaders(orgId: string): Record<string, string> {
+function liveOrgTokenStore(): CrmOrgTokenStore {
+  return {
+    getItem(key) {
+      try {
+        if (typeof localStorage === "undefined") return null;
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    setItem() {},
+    removeItem() {},
+  };
+}
+
+/** X-Org-Token from env, else localStorage goso_crm_org_token. Never log the value. */
+export function crmOrgHeaders(orgId: string, env?: CrmOrgTokenEnv, store?: CrmOrgTokenStore): Record<string, string> {
   const h: Record<string, string> = { Accept: "application/json", "X-Org-ID": orgId };
-  const tok = import.meta.env.VITE_GOSOCRM_ORG_TOKEN?.trim();
+  const tok = crmOrgTokenValue(env ?? { viteOrgToken: import.meta.env.VITE_GOSOCRM_ORG_TOKEN }, store ?? liveOrgTokenStore());
   if (tok) h["X-Org-Token"] = tok;
   return h;
+}
+
+function orgHeaders(orgId: string): Record<string, string> {
+  return crmOrgHeaders(orgId);
 }
 
 function clip(s: string, n = 240): string {
@@ -42,6 +64,8 @@ export function asCrmError(e: unknown): string {
     return "request timed out (~3s)";
   }
   if (e instanceof Error && e.name === "AbortError") return "request timed out (~3s)";
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/^\s*40[13]\b/.test(raw)) return "unauthorized";
   if (e instanceof Error) return clip(e.message);
   return clip(String(e));
 }

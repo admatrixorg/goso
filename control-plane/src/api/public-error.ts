@@ -27,3 +27,26 @@ export function formatPublicError(e: unknown): string {
   if (/<!doctype/i.test(s) || /Unexpected token\s+'<'/i.test(s) || /non-JSON response/i.test(s)) return "non-JSON response";
   return redactPublicText(s);
 }
+
+const JSON_BLOB = /\{[\s\S]*\}/g;
+
+function crmUnauthorized(e: unknown): boolean {
+  const raw = e instanceof Error ? e.message : String(e);
+  return /^\s*40[13]\b/.test(raw) || /^\s*Error:\s*40[13]\b/.test(String(e));
+}
+
+/**
+ * CRM chrome only. 401/403 never dump JSON (`{"error":"unauthorized"}`).
+ * Callers pair an empty result with dedicated CRM i18n — not gateway copy.
+ */
+export function formatCrmPublicError(e: unknown): string {
+  if (crmUnauthorized(e)) return "";
+  const s = formatPublicError(e);
+  return s.replace(JSON_BLOB, "").replace(/\s{2,}/g, " ").trim();
+}
+
+/** Permission banner for CRM surfaces. Never concatenates a raw 401 JSON body. */
+export function crmPermissionBanner(permissionLabel: string, err: unknown): string {
+  const extra = formatCrmPublicError(err);
+  return extra ? `${permissionLabel} · ${extra}` : permissionLabel;
+}

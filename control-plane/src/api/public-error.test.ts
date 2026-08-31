@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatPublicError, redactPublicText } from "./public-error.ts";
+import { crmPermissionBanner, formatCrmPublicError, formatPublicError, redactPublicText } from "./public-error.ts";
 
 test("formatPublicError redacts bearer and vendor keys", () => {
   const s = formatPublicError(new Error("401 Bearer abc.def sk-live-ABCDEFG xai-ZZZZYYYY"));
@@ -47,4 +47,16 @@ test("formatPublicError maps HTML doctype to non-JSON response", () => {
   assert.equal(formatPublicError(new Error("<!doctype html><html></html>")), "non-JSON response");
   assert.equal(formatPublicError(new Error("non-JSON response")), "non-JSON response");
   assert.equal(formatPublicError("non-JSON response"), "non-JSON response");
+});
+
+test("formatCrmPublicError does not dump 401 JSON body", () => {
+  const err = new Error('401 {"error":"unauthorized"}');
+  assert.equal(formatCrmPublicError(err), "");
+  assert.equal(formatCrmPublicError(err).includes("{"), false);
+  assert.equal(formatCrmPublicError(err).includes("401"), false);
+  const banner = crmPermissionBanner("CRM refused authorization — separate from the gateway.", err);
+  assert.equal(banner.includes("{"), false);
+  assert.equal(banner.includes('"error"'), false);
+  assert.equal(banner.includes("401"), false);
+  assert.equal(banner.includes("Error:"), false);
 });
