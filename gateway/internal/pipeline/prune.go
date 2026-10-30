@@ -17,6 +17,9 @@ import (
 const (
 	PruneDefaultDays = 90
 	pruneInterval    = 6 * time.Hour
+	// pruneStartDelay keeps the first sweep off the boot path, where the
+	// SQLite file is still busy with schema/startup writers.
+	pruneStartDelay = time.Minute
 )
 
 // PruneTTL returns the configured episodic retention; 0 means off.
@@ -55,6 +58,11 @@ func PruneLoop(ctx context.Context, st store.StoreIface) {
 		if n > 0 {
 			log.Printf("goso memory: pruned %d episodic notes older than %s", n, PruneTTL())
 		}
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(pruneStartDelay):
 	}
 	run()
 	t := time.NewTicker(pruneInterval)

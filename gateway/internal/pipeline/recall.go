@@ -133,6 +133,7 @@ func (r *Runner) recall(st *State, userText string) (string, int) {
 		return "", 0
 	}
 	if IsTrivialQuery(userText) {
+		log.Printf("goso memory: recall session=%s agent=%s skipped=trivial", st.SessionID, st.AgentID)
 		return "", 0
 	}
 	hits, err := r.Store.RecallMemories(store.RecallQuery{
