@@ -67,8 +67,10 @@ func useLLMSummary(p llm.Provider) bool {
 
 func llmSummary(ctx context.Context, p llm.Provider, msgs []llm.Message) (string, error) {
 	prompt := []llm.Message{{
-		Role:    "system",
-		Content: "Write a concise session summary in at most 500 characters. Reply with the summary only.",
+		Role: "system",
+		Content: "Summarize this session in at most 500 characters, in the same language the user wrote in. " +
+			"Keep what a future session would need: names, decisions, stated preferences, numbers, and open tasks. " +
+			"Omit greetings and filler. Reply with the summary only.",
 	}}
 	for _, m := range msgs {
 		if m.Role != "user" && m.Role != "assistant" {
