@@ -109,6 +109,9 @@ func (s *SQLiteStore) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	if err != nil {
 		return nil, err
 	}
+	if rel.Exclusive {
+		s.supersedeExclusive(rel)
+	}
 	cp := rel
 	return &cp, nil
 }

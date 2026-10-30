@@ -113,6 +113,9 @@ func (s *Store) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	if !SameTenant(from.TenantID, rel.TenantID) || !SameTenant(to.TenantID, rel.TenantID) {
 		return nil, errors.New("from entity not found")
 	}
+	if rel.Exclusive {
+		s.supersedeExclusiveLocked(rel)
+	}
 	rel.ID = s.nextID()
 	cp := rel
 	s.kgRelations[cp.ID] = &cp

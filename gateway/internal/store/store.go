@@ -259,6 +259,9 @@ type KGRelation struct {
 	Source     string     `json:"source,omitempty"`
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
+	// Exclusive: on insert, close every current relation with the same
+	// (tenant, from_id, rel) but a different to_id (temporal supersede).
+	Exclusive bool `json:"exclusive,omitempty"`
 }
 
 // KGSearchHit is one progressive L1+L2 search row.
@@ -431,6 +434,10 @@ type StoreIface interface {
 	ListKGGraph(KGGraphQuery) (*KGGraph, error)
 	ExpandKG(id string) (*KGExpand, error)
 	SearchProgressive(q, tenant string) ([]KGSearchHit, error)
+	RecallMemories(q RecallQuery) ([]RecallHit, error)
+	PruneEpisodic(before time.Time) (int, error)
+	SupersedeKGEntity(tenant, id string, until time.Time) error
+	SupersedeKGRelation(tenant, id string, until time.Time) error
 	PutVaultDoc(VaultDoc) (*VaultDoc, error)
 	GetVaultDoc(string) (*VaultDoc, error)
 	ListVaultDocs() []*VaultDoc
