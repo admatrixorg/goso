@@ -229,6 +229,8 @@ func routerBase(opt Options) *http.ServeMux {
 	aliasAPI(mux, "GET /api/kg/entities/{id}", handleExpandKG(st))
 	aliasAPI(mux, "POST /api/kg/entities", handleCreateKGEntity(st))
 	aliasAPI(mux, "POST /api/kg/relations", handleCreateKGRelation(st))
+	aliasAPI(mux, "POST /api/kg/entities/{id}/supersede", handleSupersedeKGEntity(st))
+	aliasAPI(mux, "POST /api/kg/relations/{id}/supersede", handleSupersedeKGRelation(st))
 
 	mux.HandleFunc("GET /api/vault/search", handleSearchVault(st))
 	mux.HandleFunc("POST /api/vault/sync", handleSyncVault(st))
