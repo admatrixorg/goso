@@ -19,7 +19,7 @@ cd control-plane && npm test && npm run verify
 
 `npm test`: 317 pass, 0 fail. `npm run verify`: `tsc --noEmit` and vite build exit 0. `go test ./gateway/...` exit 0.
 
-UI was exercised against a local gateway on 127.0.0.1:8080 with a local OpenAI-compatible mock (not a commercial provider). Screenshot: chat composer shows Agent and Model (Theo agent), an assistant caption, a "Chuyển sang" line, and an `@` mention. The mock reply is the text the local server returned.
+UI was exercised in Chrome against a local gateway and a local OpenAI-compatible mock (reply text starts with `Mock local:`). The chat column was then restyled to the 31/10 prototype: greeting, 740px thread, one rounded composer, quiet agent/model buttons, hover-only copy, no stream badge and no “unavailable” footer. A second browser pass covered agent/model/@/switch/caption, empty state, long threads, streaming deltas, reload, session switch, 50 agents, a removed model name, no-agent and one-agent lists, light/dark, and widths 1280/1024/768/390. Offline shows “Không kết nối được máy chủ”. CRM `healthz`/`readyz` 500s on Overview are the existing proxy to `:8082`, which is not running here.
 
 ## Not verified
 

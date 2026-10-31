@@ -4,6 +4,15 @@ Source: `docs/qa/goso-spec-2026-10-31-gap.md`. Order follows §13 (phase 1 first
 
 Ideas only from OpenKnowledge. No GPL-3.0 code. No Claude CLI / Codex OAuth on a commercial path. API keys only. Demo-only data must be labeled mock. Do not edit live Mac mini deploy config or secrets.
 
+## Design rule (prototype 31/10)
+
+SPECs 134+ that touch the control plane follow the interactive prototype “Giao diện Goclaw/Goso”, not a denser operator form.
+
+- Tokens, scoped until an app-wide pass: `--bg #fff`, `--panel #fafbfc`, `--line #e8eaef`, `--fg #1d2433`, `--muted #636b7d`, `--faint #9aa1b0`, one accent `#2563eb` (dark: `#0f1218` / `#131720` / `#232936` / `#e6e9ef` / `#5b8cff`). Type is Inter at 13–14px, JetBrains Mono only for ids and code. Chat already scopes these on `.z-chat-split`. Adopting them on every page is a later SPEC, not a drive-by.
+- One job per surface. No role badges, no “this API is missing” footers, no session ids in the title, no prompt-mode control on the chat screen.
+- Chat: empty state is only “Chào buổi …” and a few suggestion chips. Thread max 740px. One rounded composer, fixed to the bottom. Agent and model are quiet text buttons inside it. Caption is a 12px muted `agent · model` line. “Chuyển sang X” is a short hairline, not a banner. Reply actions appear on hover.
+- Vietnamese copy, with diacritics. Long names truncate. Focus is a 2px accent outline, not a heavy ring.
+
 | SPEC | Phase | Scope | Acceptance |
 |---|---|---|---|
 | 133 | 1 | Chat: session agent picker, model picker default "Theo agent", @ for one message, reply caption `agent · model`, switch line. See `.planning/specs/133-chat-agent-model.md`. | Implemented on this branch. |

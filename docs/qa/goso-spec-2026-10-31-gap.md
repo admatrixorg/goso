@@ -146,6 +146,10 @@ Phase 4 (user browser, AI Workers, entity vault, connectors, first SME sale) **T
 | Lock 8 Decision questions + named R0–R3 owners into LarkBase | **Open.** No product surface yet |
 | Choose the repo for ingest + Goso MCP | **Open.** Ingest would extend `gateway/internal/vault`; MCP would extend `mcp/` unless a new module is chosen |
 
+## Design rule for later SPECs
+
+The 31/10 prototype is the visual source. Chat (SPEC 133) now follows it inside `.z-chat-split` only: white / `#fafbfc` panel, hairline `#e8eaef`, ink `#1d2433`, muted `#636b7d`, faint `#9aa1b0`, accent `#2563eb`, and the matching dark set. The rest of the control plane still uses the existing tokens in `control-plane/src/styles/tokens/`. An app-wide token move is a separate SPEC. Until then, new screens stay sparse: no technical footers, no extra badges, thread width 740px, controls inside the surface they belong to. The full note is in `.planning/specs/goso-2026-10-31-queue.md`.
+
 ## SPEC 132 note
 
 Do not rebase this gap's first slice onto `admatrixmdp/spec132-memory-revive`. SPEC 133 does not read recall or KG supersede. SPEC 137 (Memory Facts) **should stack on 132** if 132 is still unmerged, because both touch `gateway/internal/store` memory/KG and `gateway/internal/pipeline`.

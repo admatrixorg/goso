@@ -5,10 +5,15 @@ import {
   ensureModelChoice,
   filterMentionAgents,
   highlightMentions,
+  isOfflineError,
   mentionQueryAt,
+  mentionStep,
   mentionStillPresent,
   choiceFromSelect,
+  dayPart,
   modelChoiceValue,
+  modelFace,
+  shortLabel,
   modelOptions,
   parseModelChoice,
   selectValueForChoice,
@@ -38,10 +43,35 @@ test("model options skip empty provider and paused agents", () => {
   assert.equal(choiceFromSelect(""), null);
 });
 
+test("day part and model face stay quiet", () => {
+  assert.equal(dayPart(new Date(2026, 9, 31, 8, 0, 0)), "morning");
+  assert.equal(dayPart(new Date(2026, 9, 31, 12, 0, 0)), "noon");
+  assert.equal(dayPart(new Date(2026, 9, 31, 15, 0, 0)), "afternoon");
+  assert.equal(dayPart(new Date(2026, 9, 31, 20, 0, 0)), "evening");
+  assert.equal(modelFace("grok-4.5", "", "Theo agent"), "grok-4.5");
+  assert.equal(modelFace("grok-4.5", "gpt-4o", "Theo agent"), "gpt-4o");
+  assert.equal(modelFace("", "", "Theo agent"), "Theo agent");
+  assert.equal(shortLabel("Ngắn"), "Ngắn");
+  assert.equal(shortLabel("Cố vấn pháp lý và tuân thủ hợp đồng thương mại", 24).endsWith("…"), true);
+});
+
 test("reply caption joins agent and model", () => {
   assert.equal(replyCaption("Đầu tư", "grok-4.5"), "Đầu tư · grok-4.5");
   assert.equal(replyCaption("Đầu tư", ""), "Đầu tư");
   assert.equal(replyCaption("", "echo"), "echo");
+});
+
+test("browser network failures are not shown as TypeError", () => {
+  assert.equal(isOfflineError("TypeError: Failed to fetch"), true);
+  assert.equal(isOfflineError("NetworkError when attempting to fetch resource."), true);
+  assert.equal(isOfflineError("400 agent not found"), false);
+});
+
+test("mention arrow keys wrap the list", () => {
+  assert.equal(mentionStep(0, 3, 1), 1);
+  assert.equal(mentionStep(2, 3, 1), 0);
+  assert.equal(mentionStep(0, 3, -1), 2);
+  assert.equal(mentionStep(0, 0, 1), 0);
 });
 
 test("@ query, insert, and highlight", () => {

@@ -312,76 +312,50 @@ export const SessionsPage = forwardRef<
 
   if (compact) {
     return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-chat-list="">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 4px 8px", flexWrap: "wrap" }}>
-          <b style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>{t("sessions.title")}</b>
-          <Button
-            variant="primary"
-            icon="plus"
-            onClick={() => {
-              if (createBlocked) return;
-              setCreateOpen(true);
-            }}
-            disabled={createBlocked}
-            style={{ padding: "4px 10px" }}
-          >
-            {t("sessions.newChat")}
-          </Button>
-          <Button icon="refresh" iconGesture variant="ghost" onClick={() => void load()} style={{ padding: "4px 8px" }}>
-            {t("common.refresh")}
-          </Button>
-        </div>
-        {formVisible ? <div style={{ padding: "0 4px 4px" }}>{createFields()}</div> : null}
-        <div style={{ padding: "0 4px 4px" }}>{filterBar()}</div>
-        <PageStatus kind={state.kind} errorText={errText} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
-        {formErr ? <StatusLine kind="error">{formErr}</StatusLine> : null}
+      <div className="z-gs-sb" data-chat-list="">
+        <button
+          type="button"
+          className="z-gs-new"
+          onClick={() => {
+            if (createBlocked) return;
+            setCreateOpen(true);
+          }}
+          disabled={createBlocked}
+        >
+          {t("chat.newConv")}
+        </button>
+        {formVisible ? <div className="z-gs-form">{createFields()}</div> : null}
+        {state.kind === "error" || state.kind === "permission" ? <p className="z-gs-note">{errText}</p> : null}
+        {formErr ? <p className="z-gs-note">{formErr}</p> : null}
+        {state.showItems ? <h6>{t("chat.recent")}</h6> : null}
         {state.showItems
           ? visible.map((s) => {
               const selected = Boolean(selectedId) && selectedId === s.id;
               const named = sessionDisplayName(s);
-              const activity = formatStaleAt(sessionActivityAt(s), locale);
               return (
-                <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+                <div key={s.id} className={selected ? "z-gs-row is-on" : "z-gs-row"}>
                   <button
                     type="button"
+                    className="z-gs-cv"
                     aria-current={selected ? "true" : undefined}
                     onClick={() => onPick(s.id, named)}
-                    style={{
-                      display: "block",
-                      textAlign: "left",
-                      background: selected ? "var(--accent-soft)" : "var(--card)",
-                      border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                      borderRadius: 11,
-                      padding: "10px 12px",
-                      flex: 1,
-                      minWidth: 0,
-                      transition: "background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)",
-                    }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {named}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>
-                      {agentLabel(agents, s.agent_id)}
-                      {activity ? ` · ${activity}` : ""}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-4)", marginTop: 2 }}>{t("sessions.messagesUnavailable")}</div>
+                    {named}
                   </button>
-                  <Button
-                    variant="ghost"
+                  <button
+                    type="button"
+                    className="z-gs-del"
                     disabled={busy || createBlocked}
                     aria-label={t("sessions.deleteNamed", { name: named })}
                     onClick={() => void remove(s)}
-                    style={{ padding: "4px 8px", alignSelf: "center" }}
                   >
                     {t("common.delete")}
-                  </Button>
+                  </button>
                 </div>
               );
             })
           : null}
-        {state.showEmpty ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.empty")}</EmptyState> : null}
-        {filteredEmpty ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.emptyFilter")}</EmptyState> : null}
+        {state.showEmpty ? <p className="z-gs-note">{t("sessions.empty")}</p> : null}
       </div>
     );
   }

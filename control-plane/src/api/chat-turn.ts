@@ -68,6 +68,31 @@ export function ensureModelChoice(options: ModelChoice[], provider?: string, mod
   return [...options, { provider: p, model: m }];
 }
 
+export type DayPart = "morning" | "noon" | "afternoon" | "evening";
+
+/** Same day parts as the chat prototype: trước 11, trước 14, trước 18, còn lại. */
+export function dayPart(date: Date): DayPart {
+  const h = date.getHours();
+  if (h < 11) return "morning";
+  if (h < 14) return "noon";
+  if (h < 18) return "afternoon";
+  return "evening";
+}
+
+/** Composer face shows the model that will run. "Theo agent" stays inside the menu. */
+export function shortLabel(name: string, max = 32): string {
+  const n = name.trim();
+  if (n.length <= max) return n;
+  return n.slice(0, max - 1) + "…";
+}
+
+export function modelFace(agentModel: string | undefined, override: string | undefined, followLabel: string): string {
+  const over = (override || "").trim();
+  if (over) return over;
+  const own = (agentModel || "").trim();
+  return own || followLabel;
+}
+
 export function replyCaption(agentName: string, model: string): string {
   const a = agentName.trim();
   const m = model.trim();
@@ -85,6 +110,17 @@ export function mentionQueryAt(text: string, cursor: number): string | null {
   const m = /(^|[\s])@([^\s@]*)$/.exec(upto);
   if (!m) return null;
   return m[2];
+}
+
+/** Arrow up/down inside the @ list. Empty list stays at 0. */
+export function isOfflineError(message: string): boolean {
+  return /failed to fetch|networkerror|load failed|network request failed/i.test(message);
+}
+
+export function mentionStep(index: number, count: number, dir: 1 | -1): number {
+  if (count <= 0) return 0;
+  const i = Number.isFinite(index) ? index : 0;
+  return (i + dir + count) % count;
 }
 
 export function filterMentionAgents(agents: TurnAgent[], query: string): TurnAgent[] {
