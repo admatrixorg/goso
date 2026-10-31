@@ -5,6 +5,7 @@ package bridge
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -55,14 +56,7 @@ func DefaultComplete(ctx context.Context, in Completion) (Result, error) {
 		text, usage, err = llm.ChatUsage(ctx, p, in.Messages)
 	}
 	if err != nil {
-		var up *llm.UpstreamError
-		if errors.As(err, &up) {
-			return Result{}, upstreamFailure(up)
-		}
-		if strings.Contains(err.Error(), "empty content") || strings.Contains(err.Error(), "no choices") {
-			return Result{}, &Error{Status: http.StatusBadGateway, Code: "empty_reply", Msg: "upstream returned empty text"}
-		}
-		return Result{}, unavailable(redact(err.Error(), in.APIKey))
+		return Result{}, err
 	}
 	if strings.TrimSpace(text) == "" {
 		return Result{}, &Error{Status: http.StatusBadGateway, Code: "empty_reply", Msg: "upstream returned empty text"}
@@ -216,4 +210,50 @@ func redact(msg, key string) string {
 		msg = msg[:300]
 	}
 	return msg
+}
+
+// classifyTransport turns provider and transport failures into coded bridge errors.
+func classifyTransport(err error, key string) error {
+	if err == nil {
+		return nil
+	}
+	var be *Error
+	if errors.As(err, &be) {
+		return be
+	}
+	var up *llm.UpstreamError
+	if errors.As(err, &up) {
+		return upstreamFailure(up)
+	}
+	if isTimeout(err) {
+		return &Error{Status: http.StatusGatewayTimeout, Code: "upstream_timeout", Msg: "upstream timed out"}
+	}
+	low := strings.ToLower(err.Error())
+	if strings.Contains(low, "ssrf:") {
+		return &Error{Status: http.StatusForbidden, Code: "ssrf_blocked", Msg: "ssrf blocked"}
+	}
+	if isDial(err) {
+		return &Error{Status: http.StatusBadGateway, Code: "dial_error", Msg: "upstream dial failed"}
+	}
+	if strings.Contains(low, "empty content") || strings.Contains(low, "no choices") {
+		return &Error{Status: http.StatusBadGateway, Code: "empty_reply", Msg: "upstream returned empty text"}
+	}
+	return &Error{Status: http.StatusServiceUnavailable, Code: "upstream_error", Msg: redact(err.Error(), key)}
+}
+
+func isTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "client.timeout") || strings.Contains(low, "timeout exceeded") || strings.Contains(low, "context deadline exceeded")
+}
+
+func isDial(err error) bool {
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "dial ") || strings.Contains(low, "connection refused") || strings.Contains(low, "no such host") || strings.Contains(low, "network is unreachable")
 }

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -189,14 +190,7 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		OnDelta:     onDelta,
 	})
 	if err != nil {
-		var up *llm.UpstreamError
-		if errors.As(err, &up) {
-			err = upstreamFailure(up)
-		}
-		var be *Error
-		if !errors.As(err, &be) {
-			err = unavailable(redact(err.Error(), prov.APIKey))
-		}
+		err = classifyTransport(err, prov.APIKey)
 		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
 		return ReplyOutput{}, err
 	}
@@ -431,21 +425,45 @@ func knowledgePrompt(docs []KnowledgeDoc) string {
 }
 
 func logReplyFailure(in ReplyInput, provider, model string, latency time.Duration, err error) {
+	code := "upstream_error"
+	status := http.StatusServiceUnavailable
+	upstream := 0
+	msg := ""
 	var be *Error
-	if !errors.As(err, &be) || be == nil || be.Code == "" {
-		return
+	if errors.As(err, &be) && be != nil {
+		if be.Code != "" {
+			code = be.Code
+		}
+		if be.Status != 0 {
+			status = be.Status
+		}
+		upstream = be.Upstream
+		msg = be.Msg
 	}
+	if msg == "" && err != nil {
+		msg = err.Error()
+	}
+	msg = clipLogErr(redact(msg, ""))
 	logJSON(map[string]any{
 		"event":           "bridge_reply_failed",
 		"tenant":          in.TenantID,
 		"agent":           in.AgentID,
 		"provider":        provider,
 		"model":           model,
-		"code":            be.Code,
-		"http_status":     be.Status,
-		"upstream_status": be.Upstream,
+		"code":            code,
+		"http_status":     status,
+		"upstream_status": upstream,
 		"latency_ms":      latency.Milliseconds(),
+		"error":           msg,
 	})
+}
+
+func clipLogErr(msg string) string {
+	msg = strings.Join(strings.Fields(msg), " ")
+	if len(msg) > 180 {
+		msg = msg[:180]
+	}
+	return msg
 }
 
 func sessionLabel(in ReplyInput, agentID string) string {

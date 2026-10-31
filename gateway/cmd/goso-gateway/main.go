@@ -84,6 +84,7 @@ Environment:
   GOSO_LLM_API_KEY         API key for the env fallback. Unset = no env fallback
   GOSO_LLM_BASE_URL        Base URL for the env fallback (for example http://9router:20128/v1). A synced provider base_url wins
   GOSO_LLM_MODEL           Model for the env fallback, slashes allowed (for example gcli/grok-4.5-high)
+  GOSO_LLM_TIMEOUT         Upstream chat budget in seconds or a Go duration (default 120s). Bridge WriteTimeout is this plus 30s
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)

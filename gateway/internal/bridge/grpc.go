@@ -151,6 +151,12 @@ func connectErr(err error) error {
 			code = connect.CodePermissionDenied
 		case "upstream_not_found":
 			code = connect.CodeNotFound
+		case "upstream_timeout":
+			code = connect.CodeDeadlineExceeded
+		case "ssrf_blocked":
+			code = connect.CodePermissionDenied
+		case "dial_error", "upstream_error":
+			code = connect.CodeUnavailable
 		case "empty_reply", "upstream_unavailable":
 			code = connect.CodeUnavailable
 		case "upstream_rejected":
@@ -167,7 +173,7 @@ func connectErr(err error) error {
 				code = connect.CodeFailedPrecondition
 			case http.StatusRequestEntityTooLarge:
 				code = connect.CodeResourceExhausted
-			case http.StatusServiceUnavailable, http.StatusBadGateway:
+			case http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
 				code = connect.CodeUnavailable
 			}
 		}

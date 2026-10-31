@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 )
 
 // Anthropic calls Anthropic Messages API via net/http.
@@ -111,7 +110,7 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 	if err := checkEndpoint(endpoint); err != nil {
 		return "", Usage{}, err
 	}
-	client := guardedClient(a.Client, 30*time.Second)
+	client := clientWithTimeout(a.Client, ChatTimeout(), true)
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", Usage{}, err
