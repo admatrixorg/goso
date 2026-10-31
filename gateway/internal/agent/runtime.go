@@ -42,8 +42,23 @@ type Trace struct {
 type ChatResult struct {
 	Reply     string         `json:"reply"`
 	SessionID string         `json:"session_id"`
+	AgentID   string         `json:"agent_id,omitempty"`
+	Model     string         `json:"model,omitempty"`
+	Provider  string         `json:"provider,omitempty"`
 	Trace     []Trace        `json:"trace,omitempty"`
 	Spans     []observe.Span `json:"spans,omitempty"`
+}
+
+// ErrMentionNotFound means the one-turn @ agent is missing or outside the session tenant.
+var ErrMentionNotFound = errors.New("agent not found")
+
+// ErrAgentInactive means the one-turn @ agent is paused.
+var ErrAgentInactive = errors.New("agent is inactive")
+
+// ChatTurn is optional per-message routing. MentionAgentID does not change the session agent.
+// Empty mention uses the session agent. The session model override, when set, still wins over the agent model.
+type ChatTurn struct {
+	MentionAgentID string
 }
 
 // CallResult is a single tool-layer invocation (direct or from chat).
@@ -413,6 +428,12 @@ func (rt *Runtime) ChatOpts(ctx context.Context, sessionID, message, promptMode 
 
 // ChatOptsStream is ChatOpts with a per-delta callback (nil = non-stream).
 func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promptMode string, summarize bool, onDelta llm.StreamHandler) (*ChatResult, error) {
+	return rt.ChatWithTurn(ctx, sessionID, message, promptMode, summarize, ChatTurn{}, onDelta)
+}
+
+// ChatWithTurn runs one chat turn. A mention agent is used for persona, tools, and
+// the default model, and is not written back onto the session.
+func (rt *Runtime) ChatWithTurn(ctx context.Context, sessionID, message, promptMode string, summarize bool, turn ChatTurn, onDelta llm.StreamHandler) (*ChatResult, error) {
 	if rt.Store == nil {
 		return nil, errors.New("store required")
 	}
@@ -427,20 +448,55 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 	}
 	provider := rt.LLM
 	sessionMode := ""
-	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
-		sessionMode = sess.PromptMode
-		ctx = WithCallMeta(ctx, sess.AgentID, sess.ID, "agent:"+sess.AgentID)
-		if a, e := rt.Store.GetAgent(sess.AgentID); e == nil && a != nil {
-			p, rerr := llm.Resolve(rt.Store, a.LLMProvider, a.Model, rt.LLM)
-			if rerr != nil {
-				return nil, rerr
+	sessionAgent := ""
+	turnAgent := ""
+	model := ""
+	providerName := ""
+	var sess *store.Session
+	if s, e := rt.Store.GetSession(sessionID); e == nil && s != nil {
+		sess = s
+		sessionMode = s.PromptMode
+		sessionAgent = s.AgentID
+		turnAgent = s.AgentID
+		mention := strings.TrimSpace(turn.MentionAgentID)
+		if mention != "" && mention != s.AgentID {
+			ag, aerr := rt.Store.GetAgent(mention)
+			if aerr != nil || ag == nil || !store.SameTenant(ag.TenantID, s.TenantID) {
+				return nil, ErrMentionNotFound
 			}
-			provider = p
+			if !ag.Enabled {
+				return nil, ErrAgentInactive
+			}
+			turnAgent = mention
 		}
+		if a, e := rt.Store.GetAgent(turnAgent); e == nil && a != nil {
+			providerName = a.LLMProvider
+			model = a.Model
+		}
+		if strings.TrimSpace(s.ModelOverride) != "" {
+			model = strings.TrimSpace(s.ModelOverride)
+			if p := strings.TrimSpace(s.ProviderOverride); p != "" {
+				providerName = p
+			}
+		}
+		ctx = WithCallMeta(ctx, turnAgent, s.ID, "agent:"+turnAgent)
+		p, rerr := llm.Resolve(rt.Store, providerName, model, rt.LLM)
+		if rerr != nil {
+			return nil, rerr
+		}
+		provider = p
 	}
 	mode, err := pipeline.ResolvePromptMode(promptMode, sessionMode)
 	if err != nil {
 		return nil, err
+	}
+	shownModel := providerModelName(provider)
+	if shownModel == "" {
+		shownModel = strings.TrimSpace(model)
+	}
+	shownProvider := strings.TrimSpace(providerName)
+	if shownProvider == "" && provider != nil {
+		shownProvider = provider.Name()
 	}
 	runner := pipeline.NewRunner(rt.Store, runtimeTools{rt: rt}, provider, hooks)
 	if rt.Memory != nil {
@@ -451,6 +507,13 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 	}
 	runner.ForceSummarize = summarize
 	runner.OnDelta = onDelta
+	runner.TurnAgentID = turnAgent
+	runner.SessionAgentID = sessionAgent
+	if turnAgent != "" && turnAgent != sessionAgent {
+		runner.MentionAgentID = turnAgent
+	}
+	runner.TurnModel = shownModel
+	runner.TurnProvider = shownProvider
 	out, err := runner.Run(ctx, sessionID, message, mode)
 	if out != nil && rt.Observer != nil {
 		rt.Observer.RecordSpans(out.Spans)
@@ -458,16 +521,28 @@ func (rt *Runtime) ChatOptsStream(ctx context.Context, sessionID, message, promp
 	if err != nil {
 		return nil, err
 	}
-	if sess, e := rt.Store.GetSession(sessionID); e == nil && sess != nil {
+	if turnAgent != "" {
+		rt.Store.RecordChatRun(turnAgent)
+	} else if sess != nil {
 		rt.Store.RecordChatRun(sess.AgentID)
 	}
-	res := &ChatResult{SessionID: sessionID}
+	res := &ChatResult{SessionID: sessionID, AgentID: turnAgent, Model: shownModel, Provider: shownProvider}
 	if out != nil {
 		res.Reply = out.Reply
 		res.Trace = toAgentTraces(out.Trace)
 		res.Spans = out.Spans
 	}
 	return res, nil
+}
+
+func providerModelName(p llm.Provider) string {
+	if p == nil {
+		return ""
+	}
+	if mn, ok := p.(interface{ ModelName() string }); ok {
+		return strings.TrimSpace(mn.ModelName())
+	}
+	return ""
 }
 
 type runtimeTools struct{ rt *Runtime }

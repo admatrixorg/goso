@@ -578,23 +578,66 @@ func handlePatchSession(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		var body struct {
-			PromptMode *string `json:"prompt_mode"`
+			PromptMode       *string `json:"prompt_mode"`
+			AgentID          *string `json:"agent_id"`
+			ModelOverride    *string `json:"model_override"`
+			ProviderOverride *string `json:"provider_override"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if body.PromptMode == nil {
+		if body.PromptMode == nil && body.AgentID == nil && body.ModelOverride == nil && body.ProviderOverride == nil {
 			writeErr(w, http.StatusBadRequest, "prompt_mode is required")
 			return
 		}
-		mode, err := pipeline.ParseMode(*body.PromptMode)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
 		upd := *cur
-		upd.PromptMode = string(mode)
+		upd.TouchModel = false
+		if body.PromptMode != nil {
+			mode, err := pipeline.ParseMode(*body.PromptMode)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			upd.PromptMode = string(mode)
+		}
+		if body.AgentID != nil {
+			id := strings.TrimSpace(*body.AgentID)
+			if id == "" {
+				writeErr(w, http.StatusBadRequest, "agent_id is required")
+				return
+			}
+			if _, err := agentVisible(st, id, requestTenant(r)); err != nil {
+				writeErr(w, http.StatusBadRequest, "agent not found")
+				return
+			}
+			if rejectInactiveAgent(w, st, id) {
+				return
+			}
+			upd.AgentID = id
+		}
+		if body.ModelOverride != nil || body.ProviderOverride != nil {
+			model := cur.ModelOverride
+			provider := cur.ProviderOverride
+			if body.ModelOverride != nil {
+				model = strings.TrimSpace(*body.ModelOverride)
+			}
+			if body.ProviderOverride != nil {
+				provider = strings.TrimSpace(*body.ProviderOverride)
+			}
+			if strings.ContainsAny(model, "\r\n") || strings.ContainsAny(provider, "\r\n") || len(model) > 200 || len(provider) > 80 {
+				writeErr(w, http.StatusBadRequest, "invalid model")
+				return
+			}
+			if provider != "" && model == "" {
+				writeErr(w, http.StatusBadRequest, "model_override is required")
+				return
+			}
+			upd.ModelOverride = model
+			upd.ProviderOverride = provider
+			upd.TouchModel = true
+		}
+		prevAgent := cur.AgentID
 		sess, err := st.UpdateSession(upd)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -603,6 +646,9 @@ func handlePatchSession(st store.StoreIface) http.HandlerFunc {
 			}
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		if sess.AgentID != prevAgent {
+			_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "event", AgentID: sess.AgentID})
 		}
 		writeJSON(w, http.StatusOK, sess)
 	}
@@ -693,6 +739,7 @@ type chatBody struct {
 	SessionID  string  `json:"session_id"`
 	Message    string  `json:"message"`
 	PromptMode string  `json:"prompt_mode"`
+	AgentID    string  `json:"agent_id"`
 	Summarize  boolish `json:"summarize"`
 	Stream     bool    `json:"stream"`
 }

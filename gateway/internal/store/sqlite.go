@@ -83,6 +83,8 @@ func (s *SQLiteStore) migrate() error {
 			created_at TEXT NOT NULL,
 			tenant_id TEXT NOT NULL DEFAULT 'default',
 			prompt_mode TEXT NOT NULL DEFAULT '',
+			model_override TEXT NOT NULL DEFAULT '',
+			provider_override TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY(agent_id) REFERENCES agents(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
@@ -91,6 +93,10 @@ func (s *SQLiteStore) migrate() error {
 			role TEXT NOT NULL,
 			content TEXT NOT NULL,
 			created_at TEXT NOT NULL,
+			agent_id TEXT NOT NULL DEFAULT '',
+			mention_agent_id TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			provider TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY(session_id) REFERENCES sessions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)`,
@@ -324,6 +330,12 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN model_override TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN provider_override TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN mention_agent_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN provider TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE memories ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE vault_docs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
 	_, _ = s.db.Exec(`ALTER TABLE teams ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`)
@@ -653,8 +665,8 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 	}
 	sess.ID = newID()
 	sess.CreatedAt = time.Now().UTC()
-	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode) VALUES(?,?,?,?,?,?)`,
-		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode)
+	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override) VALUES(?,?,?,?,?,?,?,?)`,
+		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode, sess.ModelOverride, sess.ProviderOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +675,7 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 }
 
 func (s *SQLiteStore) ListSessions() []*Session {
-	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -683,7 +695,7 @@ func (s *SQLiteStore) ListSessions() []*Session {
 }
 
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
-	sess, err := scanSessionRow(s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode FROM sessions WHERE id=?`, id))
+	sess, err := scanSessionRow(s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override FROM sessions WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -702,7 +714,19 @@ func (s *SQLiteStore) UpdateSession(sess Session) (*Session, error) {
 		return nil, err
 	}
 	cur.PromptMode = sess.PromptMode
-	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=? WHERE id=?`, cur.PromptMode, cur.ID)
+	if id := strings.TrimSpace(sess.AgentID); id != "" && id != cur.AgentID {
+		ag, aerr := s.GetAgent(id)
+		if aerr != nil || ag == nil || !SameTenant(ag.TenantID, cur.TenantID) {
+			return nil, errors.New("agent not found")
+		}
+		cur.AgentID = id
+	}
+	if sess.TouchModel {
+		cur.ModelOverride = strings.TrimSpace(sess.ModelOverride)
+		cur.ProviderOverride = strings.TrimSpace(sess.ProviderOverride)
+	}
+	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=?, agent_id=?, model_override=?, provider_override=? WHERE id=?`,
+		cur.PromptMode, cur.AgentID, cur.ModelOverride, cur.ProviderOverride, cur.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -748,7 +772,7 @@ type sessionScanner interface {
 func scanSessionRow(row sessionScanner) (*Session, error) {
 	var sess Session
 	var ts, tenant string
-	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode); err != nil {
+	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode, &sess.ModelOverride, &sess.ProviderOverride); err != nil {
 		return nil, err
 	}
 	sess.TenantID = NormalizeTenant(tenant)
@@ -774,8 +798,8 @@ func (s *SQLiteStore) AddMessage(m Message) (*Message, error) {
 	}
 	m.ID = newID()
 	m.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO messages(id, session_id, role, content, created_at) VALUES(?,?,?,?,?)`,
-		m.ID, m.SessionID, m.Role, m.Content, formatTime(m.CreatedAt))
+	_, err := s.db.Exec(`INSERT INTO messages(id, session_id, role, content, created_at, agent_id, mention_agent_id, model, provider) VALUES(?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.SessionID, m.Role, m.Content, formatTime(m.CreatedAt), m.AgentID, m.MentionAgentID, m.Model, m.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -791,7 +815,7 @@ func (s *SQLiteStore) ListMessages(sessionID string) ([]*Message, error) {
 	if cnt == 0 {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.Query(`SELECT id, session_id, role, content, created_at FROM messages WHERE session_id=? ORDER BY created_at`, sessionID)
+	rows, err := s.db.Query(`SELECT id, session_id, role, content, created_at, agent_id, mention_agent_id, model, provider FROM messages WHERE session_id=? ORDER BY created_at`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -800,7 +824,7 @@ func (s *SQLiteStore) ListMessages(sessionID string) ([]*Message, error) {
 	for rows.Next() {
 		var m Message
 		var ts string
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &ts); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &ts, &m.AgentID, &m.MentionAgentID, &m.Model, &m.Provider); err != nil {
 			continue
 		}
 		m.CreatedAt = parseTime(ts)

@@ -482,6 +482,16 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectInactiveAgent(w, st, sess.AgentID) {
 			return
 		}
+		mention := strings.TrimSpace(body.AgentID)
+		if mention != "" && mention != sess.AgentID {
+			if _, err := agentVisible(st, mention, requestTenant(r)); err != nil {
+				writeErr(w, http.StatusBadRequest, "agent not found")
+				return
+			}
+			if rejectInactiveAgent(w, st, mention) {
+				return
+			}
+		}
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
@@ -489,12 +499,21 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if provider != nil {
 			name = provider.Name()
 		}
+		turn := agent.ChatTurn{MentionAgentID: mention}
 		if chatWantsStream(r, body) {
 			sw := newSSEWriter(w)
-			out, err := rt.ChatOptsStream(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), sw.delta)
+			out, err := rt.ChatWithTurn(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, sw.delta)
 			if err != nil {
 				if errors.Is(err, llm.ErrProviderNotFound) {
 					writeErr(w, http.StatusBadRequest, "provider not found")
+					return
+				}
+				if errors.Is(err, agent.ErrMentionNotFound) {
+					writeErr(w, http.StatusBadRequest, "agent not found")
+					return
+				}
+				if errors.Is(err, agent.ErrAgentInactive) {
+					writeErr(w, http.StatusConflict, err.Error())
 					return
 				}
 				if strings.Contains(err.Error(), "unknown prompt_mode") {
@@ -508,14 +527,22 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			if out != nil {
 				reply = out.Reply
 			}
-			recordUsage(meter, sess.AgentID, name, llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
+			recordUsage(meter, billAgent(sess.AgentID, out), billProvider(name, out), llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
 			sw.data("[DONE]")
 			return
 		}
-		out, err := rt.ChatOpts(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize))
+		out, err := rt.ChatWithTurn(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, nil)
 		if err != nil {
 			if errors.Is(err, llm.ErrProviderNotFound) {
 				writeErr(w, http.StatusBadRequest, "provider not found")
+				return
+			}
+			if errors.Is(err, agent.ErrMentionNotFound) {
+				writeErr(w, http.StatusBadRequest, "agent not found")
+				return
+			}
+			if errors.Is(err, agent.ErrAgentInactive) {
+				writeErr(w, http.StatusConflict, err.Error())
 				return
 			}
 			if strings.Contains(err.Error(), "unknown prompt_mode") {
@@ -529,9 +556,23 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if out != nil {
 			reply = out.Reply
 		}
-		recordUsage(meter, sess.AgentID, name, llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
+		recordUsage(meter, billAgent(sess.AgentID, out), billProvider(name, out), llm.EstimateUsage([]llm.Message{{Role: "user", Content: body.Message}}, reply))
 		respondChat(w, r, body, reply, out, nil, 0)
 	}
+}
+
+func billAgent(sessionAgent string, out *agent.ChatResult) string {
+	if out != nil && out.AgentID != "" {
+		return out.AgentID
+	}
+	return sessionAgent
+}
+
+func billProvider(fallback string, out *agent.ChatResult) string {
+	if out != nil && out.Provider != "" {
+		return out.Provider
+	}
+	return fallback
 }
 
 func looksLikeSecret(s string) bool {
