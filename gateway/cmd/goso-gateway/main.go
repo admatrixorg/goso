@@ -80,15 +80,14 @@ Environment:
   GOSO_HOST                Bind host (default 127.0.0.1; Docker uses 0.0.0.0)
   GOSO_SHARED_SECRET       Bridge HMAC secret for x-goclaw-* (required when GOSO_ENV=production and command is bridge)
   GOSO_ADMIN_TOKEN         Accepted from core compose; bridge auth is the HMAC secret, not this bearer
-  GOSO_LLM_PROVIDER        Env-level provider type (opencode = OpenAI-compatible OpenCode Zen)
-  GOSO_LLM_API_KEY         API key for that provider. Unset = no env fallback
-  GOSO_LLM_BASE_URL        Base URL (opencode default https://opencode.ai/zen/v1)
-  GOSO_LLM_MODEL           Model (opencode default deepseek-v4-pro; also deepseek-v4.1-flash)
+  GOSO_LLM_PROVIDER        Bridge fallback type: openai, custom, opencode, or openai_compatible (all OpenAI-compatible). Gateway also uses this to force Preferred() when that provider name exists
+  GOSO_LLM_API_KEY         API key for the env fallback. Unset = no env fallback
+  GOSO_LLM_BASE_URL        Base URL for the env fallback (for example http://9router:20128/v1). A synced provider base_url wins
+  GOSO_LLM_MODEL           Model for the env fallback, slashes allowed (for example gcli/grok-4.5-high)
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
   GOSO_ROUTER9_BASE_URL    Construct named provider router9 when set (key optional)
-  GOSO_LLM_PROVIDER        Force Preferred() name when that provider exists
   GOSO_WEB_SEARCH          ddg or 1 = DuckDuckGo Instant Answer for builtin web_search (empty = not_configured)
   GOSO_SANDBOX_IMAGE       docker image for builtin sandbox; also needs docker on PATH (empty = not_configured)
   GOSO_BROWSER_BIN         existing Chrome/Chromium file (or CHROME_PATH); empty = browser not_configured

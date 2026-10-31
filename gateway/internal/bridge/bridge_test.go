@@ -425,13 +425,13 @@ func TestResolveByModelAndZenDefault(t *testing.T) {
 	t.Setenv("GOSO_LLM_BASE_URL", "")
 	t.Setenv("GOSO_LLM_MODEL", "")
 	t.Setenv("GOSO_LLM_PROVIDER", "")
-	if got := normalizeBase("opencode", ""); got != OpenCodeZenBase {
-		t.Fatalf("opencode base %s", got)
+	if got := normalizeBase("opencode", ""); got != "https://api.openai.com/v1" {
+		t.Fatalf("opencode alias base %s", got)
 	}
-	if got := normalizeBase("zen", ""); got != OpenCodeZenBase {
-		t.Fatalf("zen base %s", got)
+	if got := normalizeBase("opencode", "http://9router:20128/v1"); got != "http://9router:20128/v1" {
+		t.Fatalf("opencode custom base %s", got)
 	}
-	if got := normalizeBase("openai", OpenCodeZenBase); got != OpenCodeZenBase {
+	if got := normalizeBase("custom", "http://9router:20128/v1"); got != "http://9router:20128/v1" {
 		t.Fatalf("custom base %s", got)
 	}
 	cat := newMem()
@@ -447,14 +447,14 @@ func TestResolveByModelAndZenDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := cat.PutProvider(Provider{
-		TenantID: tenant, ID: "zen", Name: "zen", Type: "openai",
-		BaseURL: OpenCodeZenBase, Models: []string{OpenCodeZenPro, OpenCodeZenFlash}, Active: true, APIKey: "k2",
+		TenantID: tenant, ID: "router", Name: "router", Type: "custom",
+		BaseURL: "http://9router:20128/v1", Models: []string{"gcli/grok-4.5-high"}, Active: true, APIKey: "k2",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p, err := svc.resolveProvider(tenant, "", OpenCodeZenFlash)
-	if err != nil || p.ID != "zen" || p.APIKey != "k2" {
-		t.Fatalf("flash provider id=%s err=%v", p.ID, err)
+	p, err := svc.resolveProvider(tenant, "", "gcli/grok-4.5-high")
+	if err != nil || p.ID != "router" || p.APIKey != "k2" || p.BaseURL != "http://9router:20128/v1" {
+		t.Fatalf("router provider id=%s base=%s err=%v", p.ID, p.BaseURL, err)
 	}
 	p, err = svc.resolveProvider(tenant, "", "gpt-4o-mini")
 	if err != nil || p.ID != "oa" {
@@ -462,12 +462,12 @@ func TestResolveByModelAndZenDefault(t *testing.T) {
 	}
 	t.Setenv("GOSO_DEFAULT_API_KEY", "")
 	t.Setenv("GOSO_LLM_API_KEY", "sk-llm")
-	t.Setenv("GOSO_LLM_PROVIDER", "opencode")
-	t.Setenv("GOSO_LLM_BASE_URL", OpenCodeZenBase)
-	t.Setenv("GOSO_LLM_MODEL", OpenCodeZenFlash)
-	p, err = svc.resolveProvider("tenant-without-providers", "", OpenCodeZenFlash)
-	if err != nil || p.Type != "opencode" || p.BaseURL != OpenCodeZenBase || p.APIKey != "sk-llm" || len(p.Models) == 0 || p.Models[0] != OpenCodeZenFlash {
-		t.Fatalf("llm env base=%s type=%s model0=%v keyset=%v err=%v", p.BaseURL, p.Type, p.Models, p.APIKey != "", err)
+	t.Setenv("GOSO_LLM_PROVIDER", "openai_compatible")
+	t.Setenv("GOSO_LLM_BASE_URL", "http://9router:20128/v1")
+	t.Setenv("GOSO_LLM_MODEL", "gcli/grok-4.5-high")
+	p, err = svc.resolveProvider("tenant-without-providers", "", "gcli/grok-4.5-high")
+	if err != nil || p.Type != "openai_compatible" || p.BaseURL != "http://9router:20128/v1" || p.APIKey != "sk-llm" || len(p.Models) != 1 || p.Models[0] != "gcli/grok-4.5-high" {
+		t.Fatalf("llm env base=%s type=%s models=%v keyset=%v err=%v", p.BaseURL, p.Type, p.Models, p.APIKey != "", err)
 	}
 }
 
@@ -508,16 +508,16 @@ func TestUpstream402And429(t *testing.T) {
 	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/other", svc.Secret, tenant, provBody); res.StatusCode != 200 {
 		t.Fatalf("other provider %d %s", res.StatusCode, res.Body)
 	}
-	zenBody := []byte(`{"name":"zen","provider_type":"openai","base_url":"` + upstream.URL + `/v1","api_key":"sk-zen","models":["` + OpenCodeZenPro + `","` + OpenCodeZenFlash + `"],"is_active":true}`)
+	zenBody := []byte(`{"name":"router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"sk-zen","models":["gcli/grok-4.5-high","gcli/grok-4.5"],"is_active":true}`)
 	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/zen", svc.Secret, tenant, zenBody); res.StatusCode != 200 {
 		t.Fatalf("zen provider %d %s", res.StatusCode, res.Body)
 	}
 	// Core agents have no provider_id; the model name selects the provider.
-	agentBody := []byte(`{"name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"` + OpenCodeZenFlash + `","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5}`)
+	agentBody := []byte(`{"name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5}`)
 	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agentBody); res.StatusCode != 200 {
 		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
 	}
-	replyBody := []byte(`{"agent_id":"` + agentID + `","model":"` + OpenCodeZenFlash + `","prompt":"xin chao"}`)
+	replyBody := []byte(`{"agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","prompt":"xin chao"}`)
 
 	status = http.StatusPaymentRequired
 	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
@@ -559,7 +559,7 @@ func TestUpstream402And429(t *testing.T) {
 	h2 := h2cHTTPClient()
 	gclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.GenerateReplyResponse](h2, base+procGenerate, connect.WithGRPC())
 	greq := connect.NewRequest(&gosov1.GenerateReplyRequest{
-		SessionId: agentID, TenantId: tenant, Model: OpenCodeZenFlash, Prompt: "grpc",
+		SessionId: agentID, TenantId: tenant, Model: "gcli/grok-4.5-high", Prompt: "grpc",
 	})
 	stamp(greq.Header(), svc.Secret, tenant, []byte("grpc"))
 	_, err = gclient.CallUnary(context.Background(), greq)
@@ -571,7 +571,7 @@ func TestUpstream402And429(t *testing.T) {
 	status = http.StatusTooManyRequests
 	sclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.StreamReplyChunk](h2, base+procStream, connect.WithGRPC())
 	sreq := connect.NewRequest(&gosov1.GenerateReplyRequest{
-		SessionId: agentID, TenantId: tenant, Model: OpenCodeZenPro, Prompt: "stream",
+		SessionId: agentID, TenantId: tenant, Model: "gcli/grok-4.5", Prompt: "stream",
 	})
 	stamp(sreq.Header(), svc.Secret, tenant, []byte("stream"))
 	stream, err := sclient.CallServerStream(context.Background(), sreq)
@@ -602,11 +602,11 @@ func TestKnowledgeSync(t *testing.T) {
 		tenant  = "00000000-0000-0000-0000-000000000001"
 		agentID = "agent-know"
 	)
-	prov := []byte(`{"name":"zen","provider_type":"opencode","base_url":"https://opencode.ai/zen/v1","api_key":"sk-zen","models":["deepseek-v4-pro","deepseek-v4.1-flash"],"is_active":true}`)
-	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/zen", svc.Secret, tenant, prov); res.StatusCode != 200 {
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"http://9router:20128/v1","api_key":"sk-zen","models":["gcli/grok-4.5-high"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
 		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
 	}
-	agent := []byte(`{"id":"` + agentID + `","tenant_id":"` + tenant + `","name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"deepseek-v4-pro","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5,"status":"ACTIVE","harness_config_json":""}`)
+	agent := []byte(`{"id":"` + agentID + `","tenant_id":"` + tenant + `","name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5,"status":"ACTIVE","harness_config_json":""}`)
 	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
 		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
 	}
@@ -627,17 +627,38 @@ func TestKnowledgeSync(t *testing.T) {
 	if res.StatusCode != 200 || !strings.Contains(string(body), `"status":"SYNCED"`) || strings.Contains(string(body), "Gia cua hang") {
 		t.Fatalf("knowledge %d %s", res.StatusCode, body)
 	}
-	reply := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","model":"deepseek-v4-pro","system_prompt":"Ban la tro ly","temperature":0.2,"prompt":"gia?"}`)
+	reply := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"prompt":"gia?"}`)
 	got := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
 	if got.StatusCode != 200 {
 		t.Fatalf("reply %d %s", got.StatusCode, got.Body)
 	}
 	last := fake.snapshot()
-	if last.Type != "opencode" || last.BaseURL != OpenCodeZenBase || last.Model != OpenCodeZenPro {
+	if last.Type != "custom" || last.BaseURL != "http://9router:20128/v1" || last.Model != "gcli/grok-4.5-high" {
 		t.Fatalf("routed type=%s base=%s model=%s", last.Type, last.BaseURL, last.Model)
 	}
 	if len(last.Messages) == 0 || !strings.Contains(last.Messages[0].Content, "Gia cua hang la 10") || !strings.Contains(last.Messages[0].Content, "Ban la tro ly") {
 		t.Fatalf("system prompt missing knowledge: %+v", last.Messages)
+	}
+}
+
+func TestOpenAICompatAliasesKeepSlashModel(t *testing.T) {
+	const base = "http://9router:20128/v1"
+	const model = "gcli/grok-4.5-high"
+	for _, typ := range []string{"openai", "openai_compatible", "openai-compatible", "custom", "opencode"} {
+		if mapProviderType(typ) != llm.TypeOpenAICompat {
+			t.Fatalf("%s mapped to %s", typ, mapProviderType(typ))
+		}
+		if got := normalizeBase(typ, base); got != base {
+			t.Fatalf("%s base %s", typ, got)
+		}
+	}
+	t.Setenv("GOSO_LLM_API_KEY", "router-key")
+	t.Setenv("GOSO_LLM_PROVIDER", "custom")
+	t.Setenv("GOSO_LLM_BASE_URL", base)
+	t.Setenv("GOSO_LLM_MODEL", model)
+	p, ok := envDefaultProvider()
+	if !ok || p.BaseURL != base || len(p.Models) != 1 || p.Models[0] != model || strings.Contains(p.BaseURL, "opencode.ai") {
+		t.Fatalf("%+v", p)
 	}
 }
 

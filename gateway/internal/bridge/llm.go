@@ -12,14 +12,6 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 )
 
-const (
-	// OpenCodeZenBase is the production OpenAI-compatible OpenCode Zen endpoint.
-	OpenCodeZenBase = "https://opencode.ai/zen/v1"
-	// OpenCodeZenPro and OpenCodeZenFlash are the Zen models used in production.
-	OpenCodeZenPro   = "deepseek-v4-pro"
-	OpenCodeZenFlash = "deepseek-v4.1-flash"
-)
-
 // Completion is one tenant-scoped model call. APIKey is not logged.
 type Completion struct {
 	Type        string
@@ -92,7 +84,7 @@ func mapProviderType(typ string) string {
 	case "router9":
 		return llm.TypeRouter9
 	default:
-		// openai, openai-compat, opencode, zen, openrouter, deepseek, gemini, custom, goso.
+		// openai, openai_compatible, custom, opencode, openrouter, deepseek, gemini, goso.
 		return llm.TypeOpenAICompat
 	}
 }
@@ -113,11 +105,10 @@ func normalizeBase(typ, base string) string {
 			return "https://api.deepseek.com/v1"
 		case "openrouter":
 			return "https://openrouter.ai/api/v1"
-		case "opencode", "zen", "opencode-zen":
-			return OpenCodeZenBase
 		case "echo", "router9":
 			return ""
 		default:
+			// opencode is an alias of openai: same default host, no dedicated vendor URL.
 			return "https://api.openai.com/v1"
 		}
 	}
@@ -130,7 +121,8 @@ func normalizeBase(typ, base string) string {
 
 func openAICompatType(t string) bool {
 	switch t {
-	case "", "openai", "openai-compat", "opencode", "zen", "opencode-zen", "openrouter", "deepseek", "gemini", "custom", "goso":
+	case "", "openai", "openai-compat", "openai_compatible", "openai-compatible",
+		"opencode", "zen", "opencode-zen", "openrouter", "deepseek", "gemini", "custom", "goso":
 		return true
 	default:
 		return false
@@ -170,8 +162,7 @@ func classifyStatus(status int) (code string, httpStatus int, msg string) {
 // envDefaultProvider is the process-wide OpenAI-compatible fallback used when
 // the tenant has no provider for the requested model. Core compose sets
 // GOSO_LLM_PROVIDER, GOSO_LLM_API_KEY, GOSO_LLM_BASE_URL, and GOSO_LLM_MODEL.
-// GOSO_DEFAULT_* is accepted as an alias. With no base URL, provider type
-// opencode uses https://opencode.ai/zen/v1 and model deepseek-v4-pro.
+// The model string is kept as given, including slashes. GOSO_DEFAULT_* is an alias.
 func envDefaultProvider() (Provider, bool) {
 	key := firstNonEmpty(os.Getenv("GOSO_LLM_API_KEY"), os.Getenv("GOSO_DEFAULT_API_KEY"))
 	if key == "" {
@@ -179,26 +170,16 @@ func envDefaultProvider() (Provider, bool) {
 	}
 	typ := firstNonEmpty(os.Getenv("GOSO_LLM_PROVIDER"), os.Getenv("GOSO_DEFAULT_PROVIDER_TYPE"))
 	if typ == "" {
-		typ = "opencode"
+		typ = "openai"
 	}
 	base := strings.TrimRight(firstNonEmpty(os.Getenv("GOSO_LLM_BASE_URL"), os.Getenv("GOSO_DEFAULT_BASE_URL")), "/")
 	if base == "" {
 		base = normalizeBase(typ, "")
 	}
 	model := firstNonEmpty(os.Getenv("GOSO_LLM_MODEL"), os.Getenv("GOSO_DEFAULT_MODEL"))
-	if model == "" && (strings.EqualFold(typ, "opencode") || strings.EqualFold(typ, "zen") || strings.Contains(base, "opencode.ai/zen")) {
-		model = OpenCodeZenPro
-	}
 	var models []string
 	if model != "" {
-		models = append(models, model)
-	}
-	if strings.EqualFold(typ, "opencode") || strings.EqualFold(typ, "zen") || strings.Contains(base, "opencode.ai/zen") {
-		for _, m := range []string{OpenCodeZenPro, OpenCodeZenFlash} {
-			if m != model {
-				models = append(models, m)
-			}
-		}
+		models = []string{model}
 	}
 	return Provider{
 		ID:      "env-default",
