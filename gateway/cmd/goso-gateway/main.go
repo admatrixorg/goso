@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/backup"
+	"github.com/mqglobal/goso/gateway/internal/bridge"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -43,6 +44,8 @@ func main() {
 		printDoctor()
 	case "gateway", "serve":
 		runGateway(os.Args[2:])
+	case "bridge":
+		runBridge(os.Args[2:])
 	case "restore":
 		runRestore(os.Args[2:])
 	case "help", "--help", "-h":
@@ -64,6 +67,7 @@ Commands:
   version    Print version (JSON)
   doctor     Run health checks (JSON)
   gateway    Start HTTP gateway (SPEC 006)
+  bridge     Omni-Core AI bridge on GOSO_PORT (default 8088): gRPC + POST /v1/chat/reply
   restore    Restore a VACUUM INTO snapshot to a temp db (optional --apply)
   help       Show this help
 
@@ -72,8 +76,14 @@ gateway flags:
   --host string Host (default env GOSO_HOST or 127.0.0.1)
 
 Environment:
-  GOSO_PORT                Port (default 8080)
+  GOSO_PORT                Port (default 8080; bridge command defaults to 8088 when unset)
   GOSO_HOST                Bind host (default 127.0.0.1; Docker uses 0.0.0.0)
+  GOSO_SHARED_SECRET       Bridge HMAC secret for x-goclaw-* (required when GOSO_ENV=production and command is bridge)
+  GOSO_ADMIN_TOKEN         Accepted from core compose; bridge auth is the HMAC secret, not this bearer
+  GOSO_LLM_PROVIDER        Env-level provider type (opencode = OpenAI-compatible OpenCode Zen)
+  GOSO_LLM_API_KEY         API key for that provider. Unset = no env fallback
+  GOSO_LLM_BASE_URL        Base URL (opencode default https://opencode.ai/zen/v1)
+  GOSO_LLM_MODEL           Model (opencode default deepseek-v4-pro; also deepseek-v4.1-flash)
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
@@ -253,4 +263,51 @@ func runGateway(args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+}
+
+func runBridge(args []string) {
+	fs := flag.NewFlagSet("bridge", flag.ExitOnError)
+	port := fs.Int("port", -1, "port (omit = env GOSO_PORT or 8088; 0 = random)")
+	host := fs.String("host", "", "host (default env GOSO_HOST or 127.0.0.1)")
+	_ = fs.Parse(args)
+
+	if err := bridge.ValidateRuntime(); err != nil {
+		log.Fatal(err)
+	}
+	dbPath := os.Getenv("GOSO_DB_PATH")
+	st, closeDB, err := store.Open(dbPath)
+	if err != nil {
+		log.Fatalf("open store: %v", err)
+	}
+	if closeDB != nil {
+		defer closeDB()
+	}
+	cat, err := bridge.OpenCatalog(st)
+	if err != nil {
+		log.Fatalf("open catalog: %v", err)
+	}
+	addr := bridge.ListenAddr(*host, *port)
+	kind := "memory"
+	switch {
+	case store.IsPostgresDSN(os.Getenv("GOSO_DATABASE_URL")) || store.IsPostgresDSN(dbPath):
+		kind = "postgres"
+	case dbPath != "" && dbPath != ":memory:":
+		kind = "sqlite"
+	}
+	log.Printf("goso bridge listening on %s store=%s secret_set=%v llm_key_set=%v admin_token_set=%v",
+		addr, kind, strings.TrimSpace(os.Getenv("GOSO_SHARED_SECRET")) != "",
+		strings.TrimSpace(os.Getenv("GOSO_LLM_API_KEY")) != "",
+		strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN")) != "")
+
+	svc := &bridge.Service{
+		Secret:  strings.TrimSpace(os.Getenv("GOSO_SHARED_SECRET")),
+		Version: version,
+		Catalog: cat,
+		Store:   st,
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := bridge.Run(ctx, addr, svc); err != nil {
+		log.Fatal(err)
+	}
 }

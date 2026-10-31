@@ -23,6 +23,10 @@ type OpenAI struct {
 	Label         string // named provider; empty → "openai"
 	Stream        bool   // when true, send stream=true and parse SSE
 	AllowEmptyKey bool   // router9 may omit Authorization
+	// Temperature, when non-nil, is sent as the sampling temperature (including 0).
+	Temperature *float64
+	// MaxTokens, when non-nil and positive, is sent as max_tokens.
+	MaxTokens *int
 }
 
 func (o *OpenAI) Name() string {
@@ -93,6 +97,12 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 		"model":    model,
 		"messages": openaiMessages(messages),
 	}
+	if o.Temperature != nil {
+		payload["temperature"] = *o.Temperature
+	}
+	if o.MaxTokens != nil && *o.MaxTokens > 0 {
+		payload["max_tokens"] = *o.MaxTokens
+	}
 	if ts := openaiTools(tools); len(ts) > 0 {
 		payload["tools"] = ts
 	}
@@ -127,7 +137,7 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(resp.Body)
-		return Reply{}, Usage{}, fmt.Errorf("%s %d: %s", o.Name(), resp.StatusCode, string(b))
+		return Reply{}, Usage{}, &UpstreamError{Provider: o.Name(), Status: resp.StatusCode, Detail: clipDetail(string(b))}
 	}
 	if stream {
 		reply, u, err := readOpenAIStreamOrJSON(resp, onDelta)

@@ -21,6 +21,10 @@ type Anthropic struct {
 	BaseURL   string // default https://api.anthropic.com
 	Client    *http.Client
 	CacheMode string // "full" includes cache_control; other values are ignored
+	// Temperature, when non-nil, is sent as the sampling temperature (including 0).
+	Temperature *float64
+	// MaxTokens, when non-nil and positive, overrides the default max_tokens.
+	MaxTokens *int
 }
 
 func (a *Anthropic) Name() string { return "anthropic" }
@@ -75,10 +79,17 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 		}
 	}
 	fullCache := anthropicCacheFull(a.CacheMode)
+	maxTok := 1024
+	if a.MaxTokens != nil && *a.MaxTokens > 0 {
+		maxTok = *a.MaxTokens
+	}
 	payload := map[string]any{
 		"model":      model,
-		"max_tokens": 1024,
+		"max_tokens": maxTok,
 		"messages":   in,
+	}
+	if a.Temperature != nil {
+		payload["temperature"] = *a.Temperature
 	}
 	if stream {
 		payload["stream"] = true
@@ -115,7 +126,7 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, fmt.Errorf("anthropic %d: %s", resp.StatusCode, string(b))
+		return "", Usage{}, &UpstreamError{Provider: "anthropic", Status: resp.StatusCode, Detail: clipDetail(string(b))}
 	}
 	if stream {
 		text, su, err := ReadAnthropicStreamDeltas(resp.Body, onDelta)

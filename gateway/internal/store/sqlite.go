@@ -440,6 +440,16 @@ func (s *SQLiteStore) initVaultFTS() {
 // Close closes the DB.
 func (s *SQLiteStore) Close() error { return s.db.Close() }
 
+// SQL returns the shared pool and whether the dialect is Postgres.
+// Additive schemas (the Omni bridge catalog) use this connection.
+// The in-memory Store has no SQL pool.
+func (s *SQLiteStore) SQL() (*sql.DB, bool) {
+	if s == nil || s.db == nil {
+		return nil, false
+	}
+	return s.db.db, s.pg
+}
+
 func parseTime(v string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, v)
 	if t.IsZero() {
