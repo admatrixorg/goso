@@ -700,6 +700,12 @@ func TestBridgeAccessAndFailureLogs(t *testing.T) {
 		_, _ = io.Copy(io.Discard, res.Body)
 		_ = res.Body.Close()
 	}
+	if res, err := http.Get(base + "/v1/health"); err != nil || res.StatusCode != 200 {
+		t.Fatalf("v1 health %v", err)
+	} else {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}
 	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"http://9router:20128/v1","api_key":"` + apiKey + `","models":["` + model + `"],"is_active":true}`)
 	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
 		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
@@ -727,9 +733,6 @@ func TestBridgeAccessAndFailureLogs(t *testing.T) {
 	}
 	logs := buf.String()
 	for _, want := range []string{
-		`"event":"bridge_access"`,
-		`"method":"GET"`,
-		`"path":"/healthz"`,
 		`"method":"POST"`,
 		`"path":"/v1/chat/reply"`,
 		`"status":402`,
@@ -746,10 +749,122 @@ func TestBridgeAccessAndFailureLogs(t *testing.T) {
 			t.Fatalf("missing %s in %s", want, logs)
 		}
 	}
+	if strings.Contains(logs, `"/healthz"`) || strings.Contains(logs, `"/v1/health"`) {
+		t.Fatalf("health access logged: %s", logs)
+	}
 	for _, secret := range []string{apiKey, prompt, "hidden prompt text", sig, "x-goclaw-signature"} {
 		if secret != "" && strings.Contains(logs, secret) {
 			t.Fatalf("log leaked %q", secret)
 		}
+	}
+}
+
+func TestLLMTimeoutAndTransportCodes(t *testing.T) {
+	if llm.ChatTimeout() != 120*time.Second {
+		t.Fatalf("default timeout %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "45")
+	if llm.ChatTimeout() != 45*time.Second {
+		t.Fatalf("seconds %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "90s")
+	if llm.ChatTimeout() != 90*time.Second {
+		t.Fatalf("duration %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "1")
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_LLM_API_KEY", "")
+
+	hold := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+		case <-timer.C:
+		}
+	}))
+	t.Cleanup(hold.Close)
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-timeout"
+		model   = "gcli/grok-4.5-high"
+		prompt  = "slow reasoning prompt"
+	)
+	cat := newMem()
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + hold.URL + `/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"slow","harness_type":"GOSO","model_name":"` + model + `","system_prompt":"secret prompt","temperature":0.2}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"` + model + `","prompt":"` + prompt + `"}`)
+	started := time.Now()
+	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	elapsed := time.Since(started)
+	if elapsed > 5*time.Second {
+		t.Fatalf("timeout took %s, still using a longer client", elapsed)
+	}
+	if res.StatusCode != http.StatusGatewayTimeout || !strings.Contains(res.Body, `"code":"upstream_timeout"`) {
+		t.Fatalf("timeout %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"upstream_timeout"`) || strings.Contains(buf.String(), prompt) {
+		t.Fatalf("timeout log %s", buf.String())
+	}
+
+	buf.Reset()
+	t.Setenv("GOSO_SSRF", "1")
+	t.Setenv("GOSO_SSRF_ALLOW_HOSTS", "")
+	blocked := []byte(`{"name":"local","provider_type":"custom","base_url":"http://127.0.0.1:9/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/local", svc.Secret, tenant, blocked); res.StatusCode != 200 {
+		t.Fatalf("local provider %d %s", res.StatusCode, res.Body)
+	}
+	agentLocal := []byte(`{"name":"blocked","harness_type":"GOSO","model_name":"` + model + `","provider_id":"local","system_prompt":"secret prompt"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/agent-ssrf", svc.Secret, tenant, agentLocal); res.StatusCode != 200 {
+		t.Fatalf("ssrf agent %d %s", res.StatusCode, res.Body)
+	}
+	ssrfReply := []byte(`{"agent_id":"agent-ssrf","model":"` + model + `","prompt":"` + prompt + `"}`)
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, ssrfReply)
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(res.Body, `"code":"ssrf_blocked"`) {
+		t.Fatalf("ssrf %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"ssrf_blocked"`) || strings.Contains(buf.String(), prompt) {
+		t.Fatalf("ssrf log %s", buf.String())
+	}
+
+	buf.Reset()
+	t.Setenv("GOSO_SSRF", "0")
+	dead := []byte(`{"name":"dead","provider_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/dead", svc.Secret, tenant, dead); res.StatusCode != 200 {
+		t.Fatalf("dead provider %d %s", res.StatusCode, res.Body)
+	}
+	agentDead := []byte(`{"name":"dead-agent","harness_type":"GOSO","model_name":"` + model + `","provider_id":"dead"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/agent-dial", svc.Secret, tenant, agentDead); res.StatusCode != 200 {
+		t.Fatalf("dial agent %d %s", res.StatusCode, res.Body)
+	}
+	dialReply := []byte(`{"agent_id":"agent-dial","model":"` + model + `","prompt":"` + prompt + `"}`)
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, dialReply)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(res.Body, `"code":"dial_error"`) {
+		t.Fatalf("dial %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"dial_error"`) || strings.Contains(buf.String(), prompt) || strings.Contains(buf.String(), "fixture-key") {
+		t.Fatalf("dial log %s", buf.String())
 	}
 }
 

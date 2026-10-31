@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,22 @@ import (
 )
 
 const probeTimeout = 20 * time.Second
+
+// ChatTimeout is the upstream LLM budget for chat (not the 20s probe).
+// GOSO_LLM_TIMEOUT is seconds ("120") or a Go duration ("90s"). Default 120s.
+func ChatTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("GOSO_LLM_TIMEOUT"))
+	if raw == "" {
+		return 120 * time.Second
+	}
+	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+		return d
+	}
+	return 120 * time.Second
+}
 
 // TestResult is the public payload of POST /api/providers/{name}/test.
 // Never includes api_key. ok is true only after a real probe succeeds.

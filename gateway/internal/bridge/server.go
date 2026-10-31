@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -89,9 +90,11 @@ func Run(ctx context.Context, addr string, svc *Service) error {
 	if err != nil {
 		return err
 	}
+	writeTimeout := llm.ChatTimeout() + 30*time.Second
 	srv := &http.Server{
 		Handler:           h2c.NewHandler(NewMux(svc), &http2.Server{}),
 		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      writeTimeout,
 	}
 	errc := make(chan error, 1)
 	go func() {
