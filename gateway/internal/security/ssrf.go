@@ -33,6 +33,12 @@ func SSRFEnabled() bool {
 // CheckURL blocks localhost, private, link-local, unspecified, multicast,
 // IPv6 unique-local, and the cloud metadata address when SSRF is enabled.
 // Hostnames are resolved; any blocked address or a failed lookup denies.
+//
+// GOSO_SSRF_ALLOW_HOSTS is a comma-separated exact-host allowlist, optionally
+// host:port (IPv6 as [::1] or [::1]:port). A listed host is allowed even when
+// it resolves to a private address. Matching is the full hostname only:
+// 9router does not match evil9router, 9router.internal, or not.9router.
+// An entry without a port allows any port; host:port allows only that port.
 func CheckURL(raw string) error {
 	if !SSRFEnabled() {
 		return nil
@@ -44,6 +50,9 @@ func CheckURL(raw string) error {
 	host := strings.ToLower(strings.TrimSpace(u.Hostname()))
 	if host == "" {
 		return fmt.Errorf("ssrf: invalid host")
+	}
+	if hostAllowed(host, u.Port()) {
+		return nil
 	}
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return fmt.Errorf("ssrf: localhost blocked")
@@ -61,6 +70,81 @@ func CheckURL(raw string) error {
 		}
 	}
 	return nil
+}
+
+type allowHost struct {
+	host string
+	port string
+}
+
+func allowHosts() []allowHost {
+	raw := config.Lookup("GOSO_SSRF_ALLOW_HOSTS")
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []allowHost
+	for _, part := range strings.Split(raw, ",") {
+		if h, ok := parseAllowHost(part); ok {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func parseAllowHost(s string) (allowHost, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return allowHost{}, false
+	}
+	if strings.HasPrefix(s, "[") {
+		host, port, err := net.SplitHostPort(s)
+		if err != nil {
+			host = strings.Trim(s, "[]")
+			port = ""
+		}
+		host = strings.ToLower(strings.TrimSpace(host))
+		if host == "" {
+			return allowHost{}, false
+		}
+		return allowHost{host: host, port: port}, true
+	}
+	if host, port, ok := splitHostPort(s); ok {
+		return allowHost{host: strings.ToLower(host), port: port}, true
+	}
+	return allowHost{host: strings.ToLower(s)}, true
+}
+
+func splitHostPort(s string) (string, string, bool) {
+	i := strings.LastIndex(s, ":")
+	if i <= 0 || i == len(s)-1 {
+		return "", "", false
+	}
+	host, port := s[:i], s[i+1:]
+	if strings.Contains(host, ":") || host == "" {
+		return "", "", false
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return "", "", false
+		}
+	}
+	return host, port, true
+}
+
+func hostAllowed(host, port string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	for _, a := range allowHosts() {
+		if a.host != host {
+			continue
+		}
+		if a.port == "" || a.port == port {
+			return true
+		}
+	}
+	return false
 }
 
 func denyIP(ip net.IP) error {

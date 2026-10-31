@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -659,6 +660,96 @@ func TestOpenAICompatAliasesKeepSlashModel(t *testing.T) {
 	p, ok := envDefaultProvider()
 	if !ok || p.BaseURL != base || len(p.Models) != 1 || p.Models[0] != model || strings.Contains(p.BaseURL, "opencode.ai") {
 		t.Fatalf("%+v", p)
+	}
+}
+
+func TestBridgeAccessAndFailureLogs(t *testing.T) {
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-log"
+		apiKey  = "fixture-key"
+		prompt  = "do not log this prompt"
+		model   = "gcli/grok-4.5-high"
+	)
+	cat := newMem()
+	svc := &Service{
+		Secret:  "test-secret",
+		Version: "test",
+		Catalog: cat,
+		Store:   store.New(),
+		Complete: func(context.Context, Completion) (Result, error) {
+			return Result{}, &llm.UpstreamError{Provider: "custom", Status: http.StatusPaymentRequired, Detail: apiKey + " " + prompt}
+		},
+	}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	if res, err := http.Get(base + "/healthz"); err != nil || res.StatusCode != 200 {
+		t.Fatalf("healthz %v", err)
+	} else {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"http://9router:20128/v1","api_key":"` + apiKey + `","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"logger","harness_type":"GOSO","model_name":"` + model + `","system_prompt":"hidden prompt text","temperature":0.2}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","model":"` + model + `","prompt":"` + prompt + `"}`)
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/reply", bytes.NewReader(reply))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp(req.Header, svc.Secret, tenant, reply)
+	req.Header.Set(headerAgent, agentID)
+	sig := req.Header.Get(headerSignature)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusPaymentRequired {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	logs := buf.String()
+	for _, want := range []string{
+		`"event":"bridge_access"`,
+		`"method":"GET"`,
+		`"path":"/healthz"`,
+		`"method":"POST"`,
+		`"path":"/v1/chat/reply"`,
+		`"status":402`,
+		`"event":"bridge_reply_failed"`,
+		`"code":"insufficient_funds"`,
+		`"upstream_status":402`,
+		`"provider":"custom"`,
+		`"model":"gcli/grok-4.5-high"`,
+		`"tenant":"` + tenant + `"`,
+		`"agent":"` + agentID + `"`,
+		`"latency_ms":`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("missing %s in %s", want, logs)
+		}
+	}
+	for _, secret := range []string{apiKey, prompt, "hidden prompt text", sig, "x-goclaw-signature"} {
+		if secret != "" && strings.Contains(logs, secret) {
+			t.Fatalf("log leaked %q", secret)
+		}
 	}
 }
 
