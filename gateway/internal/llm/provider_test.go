@@ -327,6 +327,9 @@ func TestRegistry_LLMProviderOverride(t *testing.T) {
 }
 
 func TestChatCompletionsURL(t *testing.T) {
+	if got := chatCompletionsURL("http://9router:20128/v1"); got != "http://9router:20128/v1/chat/completions" {
+		t.Fatalf("9router url %s", got)
+	}
 	if got := chatCompletionsURL("http://127.0.0.1:20127/v1"); got != "http://127.0.0.1:20127/v1/chat/completions" {
 		t.Fatalf("v1 suffix %s", got)
 	}

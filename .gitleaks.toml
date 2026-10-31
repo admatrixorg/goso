@@ -7,14 +7,56 @@ useDefault = true
 [allowlist]
 description = "Generated artifacts, lockfiles, local env files, and planning docs (no live secrets in git)"
 paths = [
-  '''(^|/)bin/''',
-  '''(^|/)dist/''',
-  '''(^|/)data/''',
-  '''(^|/)node_modules/''',
-  '''(^|/)\.git/''',
-  '''go\.sum$''',
-  '''package-lock\.json$''',
-  '''(^|/)\.planning/''',
-  '''(^|/)\.env$''',
-  '''(^|/)\.env\.[^./]+$''',
+    '''(^|/)bin/''',
+    '''(^|/)dist/''',
+    '''(^|/)data/''',
+    '''(^|/)node_modules/''',
+    '''(^|/)\.git/''',
+    '''go\.sum$''',
+    '''package-lock\.json$''',
+    '''(^|/)\.planning/''',
+    '''(^|/)\.env$''',
+    '''(^|/)\.env\.[^./]+$''',
 ]
+
+# Fake fixtures only. condition=AND so the fake value is ignored only in that
+# test file. The same string in non-test source still fails the scan.
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "TTS test placeholder sk-liveSECRET99"
+  condition = "AND"
+  regexTarget = "secret"
+  regexes = ['''^sk-liveSECRET99$''']
+  paths = [
+    '''(^|/)control-plane/src/api/tts-ops\.test\.ts$''',
+    '''(^|/)gateway/internal/httpapi/handlers_tts_test\.go$''',
+    '''(^|/)gateway/internal/tts/tts_test\.go$''',
+  ]
+
+  [[rules.allowlists]]
+  description = "AWS documentation example secret used as an S3 test fixture (access key is AKIAFAKE)"
+  condition = "AND"
+  regexTarget = "secret"
+  regexes = ['''^wJalrXUtnFEMI/K7MDENG$''']
+  paths = [
+    '''(^|/)gateway/internal/backup/backup_extra_test\.go$''',
+    '''(^|/)gateway/internal/httpapi/handlers_backup_test\.go$''',
+  ]
+
+[[rules]]
+id = "private-key"
+
+  [[rules.allowlists]]
+  description = "OpenSSH header fixture with no key body (workstation rejection tests)"
+  condition = "AND"
+  regexTarget = "secret"
+  regexes = [
+    '''-----BEGIN OPENSSH PRIVATE KE[Y]-----"\), "ws\.keyMaterial"\);''',
+    '''-----BEGIN OPENSSH PRIVATE KE[Y]-----\\nAAAA\\n-----END OPENSSH PRIVATE KE[Y]-----"''',
+  ]
+  paths = [
+    '''(^|/)control-plane/src/api/workstations-ops\.test\.ts$''',
+    '''(^|/)gateway/internal/workstation/workstations_test\.go$''',
+  ]
