@@ -79,7 +79,7 @@ func NewMux(svc *Service) http.Handler {
 	mux.Handle(procGenerate, connect.NewUnaryHandler(procGenerate, svc.generateReply))
 	mux.Handle(procStream, connect.NewServerStreamHandler(procStream, svc.streamReply))
 	mux.Handle(procHealth, connect.NewUnaryHandler(procHealth, svc.checkHealth))
-	return mux
+	return accessLog(mux)
 }
 
 // Run listens until ctx is cancelled. gRPC is HTTP/2 cleartext (h2c);

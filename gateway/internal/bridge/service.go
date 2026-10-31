@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"strings"
 	"time"
 
@@ -198,12 +197,12 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		if !errors.As(err, &be) {
 			err = unavailable(redact(err.Error(), prov.APIKey))
 		}
-		logReplyFailure(in, model, err)
+		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
 		return ReplyOutput{}, err
 	}
 	if strings.TrimSpace(res.Text) == "" {
 		err = &Error{Status: 502, Code: "empty_reply", Msg: "upstream returned empty text"}
-		logReplyFailure(in, model, err)
+		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
 		return ReplyOutput{}, err
 	}
 	s.appendTurn(ag.GosoAgentID, in, res.Text)
@@ -431,13 +430,22 @@ func knowledgePrompt(docs []KnowledgeDoc) string {
 	return b.String()
 }
 
-func logReplyFailure(in ReplyInput, model string, err error) {
+func logReplyFailure(in ReplyInput, provider, model string, latency time.Duration, err error) {
 	var be *Error
 	if !errors.As(err, &be) || be == nil || be.Code == "" {
 		return
 	}
-	log.Printf("bridge reply failed tenant=%s agent=%s model=%s code=%s http_status=%d upstream_status=%d",
-		in.TenantID, in.AgentID, model, be.Code, be.Status, be.Upstream)
+	logJSON(map[string]any{
+		"event":           "bridge_reply_failed",
+		"tenant":          in.TenantID,
+		"agent":           in.AgentID,
+		"provider":        provider,
+		"model":           model,
+		"code":            be.Code,
+		"http_status":     be.Status,
+		"upstream_status": be.Upstream,
+		"latency_ms":      latency.Milliseconds(),
+	})
 }
 
 func sessionLabel(in ReplyInput, agentID string) string {
