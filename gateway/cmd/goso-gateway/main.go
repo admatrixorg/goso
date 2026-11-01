@@ -22,6 +22,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/bridge"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/serve"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -311,6 +312,8 @@ func runBridge(args []string) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// SPEC 132: episodic TTL prune (GOSO_MEMORY_TTL_DAYS) also runs for the bridge store.
+	go pipeline.PruneLoop(ctx, st)
 	if err := bridge.Run(ctx, addr, svc); err != nil {
 		log.Fatal(err)
 	}

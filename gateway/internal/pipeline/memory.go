@@ -16,7 +16,8 @@ const SummarizeMessageMin = 12
 
 const summaryRuneLimit = 500
 
-const previousSummaryPrefix = "Previous summary: "
+// PreviousSummaryPrefix marks the injected L1 summary of the same session.
+const PreviousSummaryPrefix = "Previous summary: "
 
 // MemoryStage is the post-turn L0 hook. Working memory is session messages.
 func MemoryStage(_ store.StoreIface) StageFunc {
@@ -65,7 +66,10 @@ func useLLMSummary(p llm.Provider) bool {
 	}
 }
 
-func llmSummary(ctx context.Context, p llm.Provider, msgs []llm.Message) (string, error) {
+// SummaryPrompt is the L1 summarize request for msgs: the summary instruction
+// followed by the user/assistant turns, each capped at 400 runes. Shared by
+// the pipeline and the Omni bridge so both write the same kind of memory.
+func SummaryPrompt(msgs []llm.Message) []llm.Message {
 	prompt := []llm.Message{{
 		Role: "system",
 		Content: "Summarize this session in at most 500 characters, in the same language the user wrote in. " +
@@ -82,7 +86,11 @@ func llmSummary(ctx context.Context, p llm.Provider, msgs []llm.Message) (string
 		}
 		prompt = append(prompt, llm.Message{Role: m.Role, Content: TruncateRunes(c, 400)})
 	}
-	return p.Chat(ctx, prompt)
+	return prompt
+}
+
+func llmSummary(ctx context.Context, p llm.Provider, msgs []llm.Message) (string, error) {
+	return p.Chat(ctx, SummaryPrompt(msgs))
 }
 
 // EchoSummary concatenates the first and last user lines (deterministic).
@@ -129,6 +137,6 @@ func prependSummary(st store.StoreIface, sessionID string, msgs []llm.Message) [
 	if err != nil || sum == nil || strings.TrimSpace(sum.Body) == "" {
 		return msgs
 	}
-	note := previousSummaryPrefix + sum.Body
+	note := PreviousSummaryPrefix + sum.Body
 	return append([]llm.Message{{Role: "system", Content: note}}, msgs...)
 }

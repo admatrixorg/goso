@@ -36,3 +36,13 @@ Nguồn: audit prod GoClaw 30/10 (`~/goclaw-audit-20261030/REPORT.md`): memory L
 3. Phiên 2 "ok cảm ơn" → `skipped=trivial`.
 4. Supersede entity qua API → 200 kèm `valid_until`.
 5. Bật multi-tenant: header `bad tenant!` → 400; `acme` → 200.
+
+## Phần 2 — bridge Omni-Core (01/11/2026)
+
+- Test: `gateway/internal/bridge/memory_test.go` (`TestBridgeMemoryPerConversation`, `TestMemoryScoped`).
+- Phiên dùng chung (Omni không gửi conversation/contact): 7 lượt, không có memory, không nạp ghi chú.
+- Hội thoại c1: 6 lượt (12 tin) → 1 bản tóm tắt; lượt 7 nhận `Previous summary:` ở vị trí ngay sau system prompt.
+- Hội thoại c2 cùng agent: không thấy ghi chú của c1.
+- `GOSO_MEMORY_RECALL=0`: không nạp.
+- Postgres: `TestBridgeReplySessionOnPostgres` + probe RecallMemories/PruneEpisodic trên Postgres 16 (zcrm-test-db) đều PASS.
+- Điều kiện vận hành: omni-core hiện (hongta0506/omni-core staging, `goso_http_stream.go replyPayload`) không gửi `metadata`, và `GenerateReplyHandler` bỏ `ExternalConversationID`/`ExternalSenderID` khi dựng `HarnessRequest`. Chừng nào chưa sửa hai chỗ đó, memory trên bridge nằm im (cổng gác), prod không đổi hành vi.

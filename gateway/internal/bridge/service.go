@@ -164,10 +164,17 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 	if err := s.ensureSession(ten.GosoID, &ag, model, system, in); err != nil {
 		return ReplyOutput{}, err
 	}
+	// SPEC 132 §bridge: this conversation's session, or "" when memory is off/unscoped.
+	sid := s.memorySession(ag.GosoAgentID, in)
 
 	msgs := make([]llm.Message, 0, len(in.History)+2)
 	if system != "" {
 		msgs = append(msgs, llm.Message{Role: "system", Content: system})
+	}
+	if note := s.memoryNote(sid); note != "" {
+		// Prior turns of this conversation go right after the system prompt,
+		// never buried mid-history (lost-in-the-middle).
+		msgs = append(msgs, llm.Message{Role: "system", Content: note})
 	}
 	msgs = append(msgs, in.History...)
 	if strings.TrimSpace(in.Prompt) != "" {
@@ -212,6 +219,7 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		return ReplyOutput{}, err
 	}
 	s.appendTurn(ag.GosoAgentID, in, res.Text)
+	s.scheduleSummary(sid, prov, model, ag)
 	stop := res.StopReason
 	if stop == "" {
 		stop = "stop"
