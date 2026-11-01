@@ -85,6 +85,7 @@ func (s *SQLiteStore) migrate() error {
 			prompt_mode TEXT NOT NULL DEFAULT '',
 			model_override TEXT NOT NULL DEFAULT '',
 			provider_override TEXT NOT NULL DEFAULT '',
+			archived INTEGER NOT NULL DEFAULT 0,
 			FOREIGN KEY(agent_id) REFERENCES agents(id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
@@ -332,6 +333,7 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN model_override TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN provider_override TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN mention_agent_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''`)
@@ -665,8 +667,12 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 	}
 	sess.ID = newID()
 	sess.CreatedAt = time.Now().UTC()
-	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override) VALUES(?,?,?,?,?,?,?,?)`,
-		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode, sess.ModelOverride, sess.ProviderOverride)
+	archived := 0
+	if sess.Archived {
+		archived = 1
+	}
+	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override, archived) VALUES(?,?,?,?,?,?,?,?,?)`,
+		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode, sess.ModelOverride, sess.ProviderOverride, archived)
 	if err != nil {
 		return nil, err
 	}
@@ -675,7 +681,7 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 }
 
 func (s *SQLiteStore) ListSessions() []*Session {
-	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override, archived FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -695,7 +701,7 @@ func (s *SQLiteStore) ListSessions() []*Session {
 }
 
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
-	sess, err := scanSessionRow(s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override FROM sessions WHERE id=?`, id))
+	sess, err := scanSessionRow(s.db.QueryRow(`SELECT id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override, archived FROM sessions WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -725,8 +731,18 @@ func (s *SQLiteStore) UpdateSession(sess Session) (*Session, error) {
 		cur.ModelOverride = strings.TrimSpace(sess.ModelOverride)
 		cur.ProviderOverride = strings.TrimSpace(sess.ProviderOverride)
 	}
-	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=?, agent_id=?, model_override=?, provider_override=? WHERE id=?`,
-		cur.PromptMode, cur.AgentID, cur.ModelOverride, cur.ProviderOverride, cur.ID)
+	if sess.TouchLabel {
+		cur.Label = strings.TrimSpace(sess.Label)
+	}
+	if sess.TouchArchive {
+		cur.Archived = sess.Archived
+	}
+	archived := 0
+	if cur.Archived {
+		archived = 1
+	}
+	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=?, agent_id=?, model_override=?, provider_override=?, label=?, archived=? WHERE id=?`,
+		cur.PromptMode, cur.AgentID, cur.ModelOverride, cur.ProviderOverride, cur.Label, archived, cur.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -772,10 +788,12 @@ type sessionScanner interface {
 func scanSessionRow(row sessionScanner) (*Session, error) {
 	var sess Session
 	var ts, tenant string
-	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode, &sess.ModelOverride, &sess.ProviderOverride); err != nil {
+	var archived int
+	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode, &sess.ModelOverride, &sess.ProviderOverride, &archived); err != nil {
 		return nil, err
 	}
 	sess.TenantID = NormalizeTenant(tenant)
+	sess.Archived = archived != 0
 	sess.CreatedAt = parseTime(ts)
 	return &sess, nil
 }

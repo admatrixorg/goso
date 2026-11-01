@@ -215,8 +215,44 @@ func TestSQLiteStore_PromptModeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.PromptMode != "task" {
-		t.Fatalf("persisted prompt_mode %q", again.PromptMode)
+	if again.PromptMode != "task" || again.Archived || again.Label != "" {
+		t.Fatalf("persisted prompt_mode %q archived=%v label=%q", again.PromptMode, again.Archived, again.Label)
+	}
+}
+
+func TestSQLiteStore_SessionRenameAndArchive(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenSQLite(filepath.Join(dir, "arch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	a, err := s.CreateAgent(Agent{AgentKey: "tc", DisplayName: "Cố vấn tài chính"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s.CreateSession(Session{AgentID: a.ID, Label: "Giao ban"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd := *sess
+	upd.TouchLabel = true
+	upd.Label = "Giao ban tuần 44"
+	upd.TouchArchive = true
+	upd.Archived = true
+	got, err := s.UpdateSession(upd)
+	if err != nil || got.Label != "Giao ban tuần 44" || !got.Archived {
+		t.Fatalf("update %#v %v", got, err)
+	}
+	mode := *got
+	mode.TouchLabel = false
+	mode.TouchArchive = false
+	mode.Label = ""
+	mode.Archived = false
+	mode.PromptMode = "minimal"
+	kept, err := s.UpdateSession(mode)
+	if err != nil || kept.Label != "Giao ban tuần 44" || !kept.Archived || kept.PromptMode != "minimal" {
+		t.Fatalf("prompt patch %#v %v", kept, err)
 	}
 }
 

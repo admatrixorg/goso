@@ -1,0 +1,152 @@
+import { useState } from "react";
+import { useI18n, type MsgKey } from "../i18n";
+import { Button } from "../ui/Button";
+import { Card, CardHeader } from "../ui/Card";
+import { EmptyState } from "../ui/EmptyState";
+import { PageChrome } from "../ui/PageChrome";
+import { BackupPanel } from "./BackupPanel";
+import { WebhooksPage } from "./WebhooksPage";
+
+function FoldNote({ href, label }: { href: string; label: string }) {
+  const { t } = useI18n();
+  return (
+    <p className="z-fold">
+      <a href={href}>{label}</a>
+      <span> — {t("fold.note")}</span>
+    </p>
+  );
+}
+
+export function FoldedTeamsLink() {
+  const { t } = useI18n();
+  return <FoldNote href="#/teams" label={t("fold.teams")} />;
+}
+
+export function FoldedHeatmapLink() {
+  const { t } = useI18n();
+  return <FoldNote href="#/heatmap" label={t("fold.heatmap")} />;
+}
+
+export function FoldedMarketingLink() {
+  const { t } = useI18n();
+  return <FoldNote href="#/marketing" label={t("fold.marketing")} />;
+}
+
+const DECISION_TABS: MsgKey[] = [
+  "feature.decision.tab.route",
+  "feature.decision.tab.questions",
+  "feature.decision.tab.model",
+  "feature.decision.tab.log",
+];
+
+export function DecisionPage() {
+  const { t } = useI18n();
+  const [tab, setTab] = useState(0);
+  return (
+    <PageChrome icon="shield" title={t("nav.decision")} description={t("feature.decision.desc")}>
+      <div className="z-seg" role="tablist">
+        {DECISION_TABS.map((key, i) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>
+            {t(key)}
+          </button>
+        ))}
+      </div>
+      <Card>
+        <CardHeader title={t(DECISION_TABS[tab])} />
+        <EmptyState>{t("feature.decision.empty")}</EmptyState>
+      </Card>
+      <p className="z-fold">{t("feature.decision.rules")}</p>
+    </PageChrome>
+  );
+}
+
+const FLOWS: MsgKey[] = ["feature.flow.in", "feature.flow.tool", "feature.flow.reply"];
+
+export function DecisionFlowPage() {
+  const { t } = useI18n();
+  return (
+    <PageChrome icon="sitemap" title={t("nav.decisionFlow")} description={t("feature.flow.desc")}>
+      <div className="z-flow-grid">
+        {FLOWS.map((key) => (
+          <Card key={key}>
+            <CardHeader title={t(key)} />
+            <EmptyState>{t("feature.flow.empty")}</EmptyState>
+          </Card>
+        ))}
+      </div>
+    </PageChrome>
+  );
+}
+
+export function HooksPage() {
+  const { t } = useI18n();
+  return (
+    <div>
+      <PageChrome icon="hook" title={t("nav.hooks")} description={t("feature.hooks.desc")}>
+        <EmptyState>{t("feature.hooks.empty")}</EmptyState>
+      </PageChrome>
+      <div style={{ padding: "0 22px 8px", fontSize: 13, fontWeight: 600 }}>{t("feature.hooks.webhooks")}</div>
+      <WebhooksPage />
+    </div>
+  );
+}
+
+export function MeetingsLivePage() {
+  const { t } = useI18n();
+  const [settings, setSettings] = useState(false);
+  const [upload, setUpload] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [note, setNote] = useState("");
+  return (
+    <PageChrome
+      icon="mic"
+      title={t("nav.meetings")}
+      description={t("feature.meetings.desc")}
+      primary={
+        <>
+          <Button icon="gear" onClick={() => setSettings((v) => !v)}>
+            {t("feature.meetings.settings")}
+          </Button>
+          <Button variant="primary" icon="plus" onClick={() => { setUpload((v) => !v); setNote(""); }}>
+            {t("feature.meetings.upload")}
+          </Button>
+        </>
+      }
+    >
+      <p className="z-fold">
+        {t("feature.meetings.sources")} <a href="#/connectors">{t("feature.meetings.openConnectors")}</a>
+      </p>
+      {settings ? <p className="z-fold">{t("feature.meetings.settingsNote")}</p> : null}
+      {upload ? (
+        <Card>
+          <form
+            style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              setNote(consent ? t("feature.meetings.noAsr") : t("feature.meetings.needConsent"));
+            }}
+          >
+            <label className="z-fold" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+              <span>{t("feature.meetings.consent")}</span>
+            </label>
+            <Button variant="primary" type="submit">
+              {t("feature.meetings.upload")}
+            </Button>
+            {note ? <p className="z-fold">{note}</p> : null}
+          </form>
+        </Card>
+      ) : null}
+      <EmptyState>{t("feature.meetings.empty")}</EmptyState>
+    </PageChrome>
+  );
+}
+
+export function BackupPage() {
+  const { t } = useI18n();
+  return (
+    <PageChrome icon="download" title={t("nav.backup")} description={t("feature.backup.desc")}>
+      <BackupPanel />
+    </PageChrome>
+  );
+}

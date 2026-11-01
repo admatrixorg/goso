@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { fileChips, messageFromComposer, planPaste, type Chip } from "../api/chat-attach";
 import { api, type Agent, type Message } from "../api/client";
 import {
   agentDisplayName,
@@ -73,7 +74,13 @@ export function ChatPage({
   const [mentionQ, setMentionQ] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const [menu, setMenu] = useState<null | { kind: "agent" | "model"; bottom: number; left: number; maxHeight: number }>(null);
+  const [chips, setChips] = useState<Chip[]>([]);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [dragOver, setDragOver] = useState(false);
   const genRef = useRef(0);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const dragDepth = useRef(0);
   const sessionRef = useRef(sessionId);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -179,6 +186,8 @@ export function ChatPage({
       setMentionIdx(0);
       setMenu(null);
       setInput("");
+      clearChips();
+      abortRef.current?.abort();
       return;
     }
     setLoading(true);
@@ -191,6 +200,8 @@ export function ChatPage({
     setMentionIdx(0);
     setMenu(null);
     setInput("");
+    clearChips();
+    abortRef.current?.abort();
     void load(sessionId, gen);
   }, [sessionId]);
 
@@ -253,8 +264,45 @@ export function ChatPage({
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, sending]);
 
+  function clearChips() {
+    setPreviews((prev) => {
+      for (const url of Object.values(prev)) URL.revokeObjectURL(url);
+      return {};
+    });
+    setChips([]);
+  }
+
+  function takeFiles(list: File[]) {
+    const got = fileChips(list, () => localId("chip"));
+    const images = list.filter((file) => file.size <= 200 * 1024 * 1024 && file.type.startsWith("image/"));
+    const urls: Record<string, string> = {};
+    for (const chip of got.chips) {
+      if (!chip.image) continue;
+      const file = images.shift();
+      if (file) urls[chip.id] = URL.createObjectURL(file);
+    }
+    if (Object.keys(urls).length) setPreviews((prev) => ({ ...prev, ...urls }));
+    if (got.chips.length) setChips((prev) => [...prev, ...got.chips]);
+    if (got.errors.length) setErr(got.errors.map((name) => t("chat.attachTooBig", { name })).join(" "));
+  }
+
+  function dropChip(id: string) {
+    setChips((prev) => prev.filter((chip) => chip.id !== id));
+    setPreviews((prev) => {
+      const url = prev[id];
+      if (url) URL.revokeObjectURL(url);
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
   async function send() {
-    const text = input.trim();
+    const text = messageFromComposer(input, chips, (name) => t("chat.attachUnread", { name }));
     if (!text || sending || savingMeta || !sessionId) return;
     const forSession = sessionId;
     const gen = genRef.current;
@@ -283,10 +331,13 @@ export function ChatPage({
     setStream("connecting");
     setMsgs((m) => [...m, userMsg, asst]);
     setInput("");
+    clearChips();
     if (inputRef.current) inputRef.current.style.height = "auto";
     setMention(null);
     setMentionQ(null);
     setErr("");
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       await api.chatStream(
         {
@@ -300,12 +351,19 @@ export function ChatPage({
           setStream("streaming");
           setMsgs((m) => m.map((x) => (x.id === asst.id ? { ...x, content: x.content + delta } : x)));
         },
+        ctrl.signal,
       );
       if (!stillCurrent(forSession, gen)) return;
       setStream("idle");
       await load(forSession, gen);
     } catch (e) {
       if (!stillCurrent(forSession, gen)) return;
+      if (e instanceof Error && e.name === "AbortError") {
+        setMsgs((m) => m.filter((x) => x.id !== asst.id || x.content.trim()));
+        setStream("idle");
+        setErr("");
+        return;
+      }
       const msg = shownError(e);
       setErr(msg);
       setStream("reconnect");
@@ -357,12 +415,6 @@ export function ChatPage({
   const lastAi = visible.map((m) => m.role).lastIndexOf("assistant");
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      const btn = document.querySelector<HTMLButtonElement>("[data-chat-agent]");
-      if (btn) openMenu("agent", btn);
-      return;
-    }
     if (mentionQ !== null) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -396,8 +448,43 @@ export function ChatPage({
     void send();
   }
 
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "u" || !sessionId) return;
+      e.preventDefault();
+      fileRef.current?.click();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sessionId]);
+
   return (
-    <div className={showHello ? "z-gs is-empty" : "z-gs"} data-chat-state={sessionId ? "ready" : "no-session"} data-chat-stream={stream}>
+    <div
+      className={showHello ? "z-gs is-empty" : "z-gs"}
+      data-chat-state={sessionId ? "ready" : "no-session"}
+      data-chat-stream={stream}
+      onDragEnter={(e) => {
+        if (![...e.dataTransfer.types].includes("Files")) return;
+        e.preventDefault();
+        dragDepth.current += 1;
+        setDragOver(true);
+      }}
+      onDragOver={(e) => {
+        if ([...e.dataTransfer.types].includes("Files")) e.preventDefault();
+      }}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (![...e.dataTransfer.types].includes("Files")) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragOver(false);
+        takeFiles(Array.from(e.dataTransfer.files));
+      }}
+    >
+      {dragOver ? <div className="z-gs-drop">{t("chat.drop")}</div> : null}
       <div className="z-gs-bar">
         <span className="z-gs-ttl">{title}</span>
       </div>
@@ -493,6 +580,33 @@ export function ChatPage({
               )}
             </div>
           ) : null}
+          {chips.length ? (
+            <div className="z-gs-atts">
+              {chips.map((chip) => {
+                const preview = chip.kind === "file" ? previews[chip.id] : "";
+                return (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    className={preview ? "z-gs-chip" : "z-gs-chip is-doc"}
+                    onClick={() => dropChip(chip.id)}
+                    aria-label={t("chat.attachRemove", { name: chip.name })}
+                  >
+                    {preview ? <img src={preview} alt="" /> : null}
+                    {preview ? null : (
+                      <>
+                        <b>{chip.name}</b>
+                        <small>{chip.typeLabel}</small>
+                      </>
+                    )}
+                    <span className="x" aria-hidden="true">
+                      ×
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <textarea
             ref={inputRef}
             rows={1}
@@ -502,8 +616,44 @@ export function ChatPage({
             placeholder={sessionId ? t("chat.placeholder", { name: shortLabel(agentFace, 28) }) : t("chat.emptySession")}
             onChange={(e) => onInput(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={onKeyDown}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData.files);
+              if (files.length) {
+                e.preventDefault();
+                takeFiles(files);
+                return;
+              }
+              const plan = planPaste(
+                { files: [], html: e.clipboardData.getData("text/html"), text: e.clipboardData.getData("text/plain") },
+                () => localId("chip"),
+              );
+              if (!plan.handled) return;
+              e.preventDefault();
+              if (plan.chips.length) setChips((prev) => [...prev, ...plan.chips]);
+            }}
           />
           <div className="z-gs-row">
+            <button
+              type="button"
+              className="z-gs-ic"
+              aria-label={t("chat.attach")}
+              title={t("chat.attachHint")}
+              disabled={!sessionId || sending || savingMeta}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Icon name="plus" size={16} />
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              aria-hidden="true"
+              onChange={(e) => {
+                takeFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
             <span className="z-gs-grow" />
             <button
               type="button"
@@ -529,8 +679,14 @@ export function ChatPage({
               <span>{modelLabel}</span>
               <Caret />
             </button>
-            <button type="button" className="z-gs-send" aria-label={t("chat.send")} disabled={!sessionId || busy || !input.trim()} onClick={() => void send()}>
-              <Icon name="arrow-up" size={15} />
+            <button
+              type="button"
+              className="z-gs-send"
+              aria-label={sending ? t("chat.stop") : t("chat.send")}
+              disabled={!sessionId || savingMeta || (!sending && !input.trim() && chips.length === 0)}
+              onClick={() => (sending ? stop() : void send())}
+            >
+              {sending ? <StopMark /> : <Icon name="arrow-up" size={15} />}
             </button>
           </div>
         </div>
@@ -619,6 +775,14 @@ export function ChatPage({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function StopMark() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+      <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 

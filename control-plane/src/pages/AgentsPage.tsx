@@ -20,6 +20,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
+import { FoldedTeamsLink } from "./FeaturePages";
 
 function modeLabelKey(mode: string): MsgKey {
   if (mode === "auto") return "agents.mode.auto";
@@ -304,6 +305,7 @@ export function AgentsPage() {
         </>
       }
     >
+      <FoldedTeamsLink />
       <Badge tone="neutral" data-agent-transfer="unavailable">
         {t("agents.transferUnavailable")}
       </Badge>

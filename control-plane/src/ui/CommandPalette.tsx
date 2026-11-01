@@ -19,6 +19,7 @@ export function CommandPalette<T extends string>({
   onOpen,
   onClose,
   onPick,
+  suppressShortcut,
 }: {
   open: boolean;
   query: string;
@@ -31,6 +32,7 @@ export function CommandPalette<T extends string>({
   onOpen: () => void;
   onClose: () => void;
   onPick: (id: T) => void;
+  suppressShortcut?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [active, setActive] = useState(0);
@@ -53,6 +55,11 @@ export function CommandPalette<T extends string>({
     function onKey(e: KeyboardEvent) {
       if (e.repeat) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {
+        if (suppressShortcut) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("goso-chat-search"));
+          return;
+        }
         e.preventDefault();
         if (open) onClose();
         else onOpen();
@@ -66,7 +73,7 @@ export function CommandPalette<T extends string>({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, onOpen]);
+  }, [open, onClose, onOpen, suppressShortcut]);
 
   useEffect(() => {
     if (!open) return;

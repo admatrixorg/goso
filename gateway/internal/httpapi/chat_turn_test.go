@@ -163,3 +163,59 @@ func TestChatTurn_AgentModelMentionAndSwitch(t *testing.T) {
 		t.Fatalf("messages event=%v mention=%v override=%v %#v", sawEvent, sawMention, sawOverride, payload.Messages)
 	}
 }
+
+func TestPatchSession_RenameAndArchive(t *testing.T) {
+	st := store.New()
+	h := NewRouter(Options{Store: st, Version: "0.1.0"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/agents", strings.NewReader(`{"agent_key":"tai-chinh","display_name":"Cố vấn tài chính"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("agent %d %s", w.Code, w.Body.String())
+	}
+	var agent map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &agent)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/sessions", strings.NewReader(`{"agent_id":"`+agent["id"].(string)+`","label":"Giao ban"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("session %d %s", w.Code, w.Body.String())
+	}
+	var sess map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &sess)
+	id := sess["id"].(string)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/"+id, strings.NewReader(`{"label":"Giao ban tuần 44"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"label":"Giao ban tuần 44"`) {
+		t.Fatalf("rename %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/"+id, strings.NewReader(`{"archived":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"archived":true`) || !strings.Contains(w.Body.String(), `"label":"Giao ban tuần 44"`) {
+		t.Fatalf("archive cleared label %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/"+id, strings.NewReader("{\"label\":\"bad\\nname\"}"))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 400 {
+		t.Fatalf("newline label %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("PATCH", "/api/sessions/"+id, strings.NewReader(`{"archived":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"archived":true`) {
+		t.Fatalf("restore %d %s", w.Code, w.Body.String())
+	}
+}

@@ -582,12 +582,14 @@ func handlePatchSession(st store.StoreIface) http.HandlerFunc {
 			AgentID          *string `json:"agent_id"`
 			ModelOverride    *string `json:"model_override"`
 			ProviderOverride *string `json:"provider_override"`
+			Label            *string `json:"label"`
+			Archived         *bool   `json:"archived"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if body.PromptMode == nil && body.AgentID == nil && body.ModelOverride == nil && body.ProviderOverride == nil {
+		if body.PromptMode == nil && body.AgentID == nil && body.ModelOverride == nil && body.ProviderOverride == nil && body.Label == nil && body.Archived == nil {
 			writeErr(w, http.StatusBadRequest, "prompt_mode is required")
 			return
 		}
@@ -636,6 +638,19 @@ func handlePatchSession(st store.StoreIface) http.HandlerFunc {
 			upd.ModelOverride = model
 			upd.ProviderOverride = provider
 			upd.TouchModel = true
+		}
+		if body.Label != nil {
+			label := strings.TrimSpace(*body.Label)
+			if strings.ContainsAny(label, "\r\n") || len([]rune(label)) > 120 {
+				writeErr(w, http.StatusBadRequest, "invalid label")
+				return
+			}
+			upd.Label = label
+			upd.TouchLabel = true
+		}
+		if body.Archived != nil {
+			upd.Archived = *body.Archived
+			upd.TouchArchive = true
 		}
 		prevAgent := cur.AgentID
 		sess, err := st.UpdateSession(upd)

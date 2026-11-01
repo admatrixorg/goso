@@ -151,7 +151,10 @@ type Session struct {
 	PromptMode       string    `json:"prompt_mode"`
 	ModelOverride    string    `json:"model_override,omitempty"`
 	ProviderOverride string    `json:"provider_override,omitempty"`
+	Archived         bool      `json:"archived,omitempty"`
 	TouchModel       bool      `json:"-"`
+	TouchLabel       bool      `json:"-"`
+	TouchArchive     bool      `json:"-"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -932,6 +935,12 @@ func (s *Store) UpdateSession(sess Session) (*Session, error) {
 	if sess.TouchModel {
 		cur.ModelOverride = strings.TrimSpace(sess.ModelOverride)
 		cur.ProviderOverride = strings.TrimSpace(sess.ProviderOverride)
+	}
+	if sess.TouchLabel {
+		cur.Label = strings.TrimSpace(sess.Label)
+	}
+	if sess.TouchArchive {
+		cur.Archived = sess.Archived
 	}
 	cp := *cur
 	return &cp, nil

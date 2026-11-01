@@ -1,41 +1,60 @@
-# SPEC queue 133+ — GOSO combined spec 2026-10-31
+# SPEC queue — GOSO spec v2 (2026-11-01)
 
-Source: `docs/qa/goso-spec-2026-10-31-gap.md`. Order follows §13 (phase 1 first), then the dependency each later phase has on the previous one. SPEC 132 is not merged; only SPEC 137 stacks on `admatrixmdp/spec132-memory-revive` while that remains true.
+Read with `GOSO_SPEC_2026-10-31.md`. A v2 section marked **THAY THẾ** replaces the old one. This file follows **v2 §11**, not the 31/10 phase list. SPEC 133 (chat agent / model / @) stays the slice already on this branch. The old 134–148 sequence in this file is retired; do not implement it in parallel.
 
-Ideas only from OpenKnowledge. No GPL-3.0 code. No Claude CLI / Codex OAuth on a commercial path. API keys only. Demo-only data must be labeled mock. Do not edit live Mac mini deploy config or secrets.
+UI reference is `Goso_Prototype_2026-11-01.html` (version 24). Sample data is **Minh An (demo)** only: household-goods distribution, teams `kinh-doanh` / `phap-che`, agents Cố vấn pháp lý · Cố vấn chiến lược · Cố vấn tài chính · Trợ lý giám đốc. Do not put MQ fund, ARR, or “Chủ tịch” examples in new code or copy.
 
-## Design rule (prototype 31/10)
+Ideas only from OpenKnowledge. No GPL-3.0 code. No Claude CLI / Codex OAuth on a commercial path. API keys only. Do not edit the live Mac mini deploy or secrets. SPEC 132 (`admatrixmdp/spec132-memory-revive`, six commits, not merged) is a dependency of SPEC 134 only. Do not merge it into this branch unless that SPEC starts.
 
-SPECs 134+ that touch the control plane follow the interactive prototype “Giao diện Goclaw/Goso”, not a denser operator form.
+## Design rule
 
-- Tokens, scoped until an app-wide pass: `--bg #fff`, `--panel #fafbfc`, `--line #e8eaef`, `--fg #1d2433`, `--muted #636b7d`, `--faint #9aa1b0`, one accent `#2563eb` (dark: `#0f1218` / `#131720` / `#232936` / `#e6e9ef` / `#5b8cff`). Type is Inter at 13–14px, JetBrains Mono only for ids and code. Chat already scopes these on `.z-chat-split`. Adopting them on every page is a later SPEC, not a drive-by.
-- One job per surface. No role badges, no “this API is missing” footers, no session ids in the title, no prompt-mode control on the chat screen.
-- Chat: empty state is only “Chào buổi …” and a few suggestion chips. Thread max 740px. One rounded composer, fixed to the bottom. Agent and model are quiet text buttons inside it. Caption is a 12px muted `agent · model` line. “Chuyển sang X” is a short hairline, not a banner. Reply actions appear on hover.
-- Vietnamese copy, with diacritics. Long names truncate. Focus is a 2px accent outline, not a heavy ring.
+Surfaces that the prototype already shows follow that prototype: one job, Vietnamese copy, no mock counts on a page whose API does not exist. Shell tokens stay on the sidebar and top bar. Chat stays a 740px column, one rounded composer, quiet Agent / Model controls.
 
-| SPEC | Phase | Scope | Acceptance |
-|---|---|---|---|
-| 133 | 1 | Chat: session agent picker, model picker default "Theo agent", @ for one message, reply caption `agent · model`, switch line. See `.planning/specs/133-chat-agent-model.md`. | Implemented on this branch. |
-| 134 | 1 | Paste, drop, and Ctrl+U on the chat composer. Chips in the input (image thumb or name+type, remove on hover). Ctrl+V of images and long text. No Docling. Files the browser cannot read are not invented. | A dropped file is visible as a chip before send; send still works with text; oversize (>200 MB) is refused with Vietnamese copy; control-plane tests cover chip helpers; no secret in the chip label. |
-| 135 | 1 | Vault wiki layers under `{scope}/wiki/{raw,sources,topics,_meta}` plus frontmatter `status` (`draft\|stable\|deprecated`) and `superseded_by`. Keep today's list/graph. | Creating a doc writes the layer path; list filter can show a layer; superseded doc stays readable; no OpenKnowledge import. |
-| 136 | 1 | Docling ingest job: save original, markdown, heading split at 1 MB of markdown, source page, index/log update. If Docling is not configured, the doc stays `đang xử lý` / not configured — never a fake OCR body. | Upload PDF/markdown shows the path that will be written and a duplicate SHA-256 warning; a missing Docling URL does not invent text. |
-| 137 | 1 | Memory Facts shadow store: subject, attribute, value, valid-from/to, asserted-by, confidence, source, status. Reconciliation create/extend/supersede/dispute/skip with authority admin > user > agent > extractor. Default shadow (score + log, no prompt injection). **Stack on SPEC 132 if it is still unmerged.** | A lower-authority fact cannot overwrite; the old row remains; shadow mode does not change chat; Go tests cover the five outcomes. |
-| 138 | 1 | Memory screen, 7 tabs: Kiến trúc, Memory Facts, Episodic, Tài liệu, Truy hồi, Dreaming, Quản trị. Recall sliders warn when weights ≠ 100. Facts tab reads SPEC 137 and shows the shadow badge. | Tabs render empty/error without pretending embeddings are on; slider warning is unit-tested. |
-| 139 | shell | Left nav: one **Agent Setting** with tabs Agent / Agent Team / Agent Link. Rename group labels to CHÍNH / KHẢ NĂNG, "Máy chủ MCP" → MCP, cron → Schedule Task. Keep `#/agents` and `#/teams` as aliases. Supersedes the Agents-vs-Teams split in SPEC 119 only. | `liveSide` has one core entry; both old hashes open the right tab; vi+en; hash tests. |
-| 140 | 3 (start) | Decision in Khả năng: routing matrix R0–R3 × confidence, question bank, model chain placeholder (no Jev/Clef network calls unless a public hostname is configured), log. Default shadow. Hard rules cannot be disabled (R3 never auto, R2 at least logs, <70% auto only on R0). | A dry-run message writes a log row and does not branch the pipeline; refusing an action is not counted as "người sửa đáp án". |
-| 141 | 3 | Decision Flow: three sample graphs (inbound message, pre-tool, before reply) on the existing graph viewer pattern. Run-test highlights the path. Edits stay in the question bank from 140. | Selecting a sample and running a message highlights nodes; a dashed loop is visible on the reply flow; no drag-create of new nodes. |
-| 142 | 2 | Goso MCP read tools: `tra_cuu`, `tra_cuu_fact`, `boi_canh_phien`, `doc_tep`, `search`, `links`. Scope by caller. Labels công khai / nội bộ / mật / tối mật; mật and above never leave the platform. Access log: who, what, when, which platform. | A mật doc is absent from a tool result tagged external; the log row exists; no OpenKnowledge source. |
-| 143 | 2 | Vault "Sức khoẻ" tab: orphans, broken links, missing citations, expired claims. Runnable by hand. Monthly Schedule Task hook can be a registered no-op until cron can call it. | A fixture vault with one orphan and one broken wikilink shows both; empty vault is an empty state, not a fake issue. |
-| 144 | 3 | `ghi_nho` (through SPEC 137 reconciliation) and `ghi_quyet_dinh`. Decision may leave shadow only when the log has ≥300 rows and human answer-edits <10%. The gate is real counts, not a constant. | Below the gate, execute mode is refused; at the gate it is allowed; a refusal is not an answer-edit. |
-| 145 | later | "Hiểu media" settings: provider chain for image/document/audio, per agent "theo model của agent" or the shared chain. Default display Gemini 2.5 Flash → GPT-4o as labels only. API keys, write-only. No Claude CLI / Codex. OCR for Vault stays in SPEC 136, not chat. | Saving a chain does not call a vendor; unset chain says ảnh đi theo model chính. |
-| 146 | 1 remainder | Chat polish on top of 133: stop button aborts the stream, empty greeting, "Trò chuyện thường", retry with another model, one-line activity ("Đã đọc n tệp") that expands on click. Image fallback to a vision model only if SPEC 145 configured a chain; otherwise say the model cannot read the image. | Abort stops the local stream; greeting is Vietnamese and uses the signed-in label when present; retry sends one new turn with the picked model and does not change the session default. |
-| 147 | 4 | AI Workers page, 3 tabs by direction, plus a multi-model room. Rows without a real ACP/API connection are badges **mô phỏng**. No personal-subscription providers. | The page cannot show a green "connected" for Claude CLI or Codex OAuth. |
-| 148 | §1 / §12 | Top bar: timezone, account menu (org list, org, API keys link, about, logout). Optional follow-up: one monitoring timeline with filters LLM / tool / admin. Do not hide Nodes/MCP until 139 has shipped and an operator asks. | Language and theme still work; logout clears the local token only; timeline is a filter over existing trace/event/activity APIs, not a new store. |
+## Already on this branch (not a new SPEC)
 
-## Not scheduled
+Sidebar matches v2 §1, including aliases `#projects` → `#chat` and `#agent-team` / `#agent-link` → Agent Setting. Composer is text, +, Agent, Model, send/stop. Conversation search (Ctrl+K on Trò chuyện) and rename / archive / delete / restore are wired to the session API. Project menu items stay disabled until SPEC 136.
 
-User-Chrome extension and 8-character pairing (§2.5), entity vault, meeting ingest, Muse/Dots connectors, SME billing, and the LarkBase routing workbook. Those stay in §14 / phase 4 until the phase 1 brain answers fund-policy questions from versioned facts.
+Folded out of the sidebar, still reachable:
+
+| Old item | Where it lives now |
+|---|---|
+| Nhóm (`#/teams`) | Link on Agent Setting |
+| Bản đồ nhiệt (`#/heatmap`) | Link on Tổng quan |
+| Marketing (`#/marketing`) | Link on Liên hệ |
+| Webhook (`#/webhooks`) | Rewrites to Hooks, under the lifecycle-hook empty state. Webhooks are not labeled Hooks |
+| Log | Renamed Nhật ký, group GIÁM SÁT. Same logs API |
+| Sao lưu | Was only inside Cấu hình. Now also `#/backup`, same backup API |
+
+Decision, Decision Flow, and Cuộc họp use the prototype layout with an empty state. They do not invent Minh An meeting rows or decision counts.
+
+## Queue (v2 §11)
+
+| SPEC | v2 | Scope | GoClaw already has | Goso must build | Acceptance (from v2) | Depends on |
+|---|---|---|---|---|---|---|
+| 134 | 1 | Memory backend: append/patch one section at a time; keep every write as a version; Dreaming consolidates **per scope**; episodic prompt in the user’s language, typed entities (person / org / doc / topic), drop empty sessions; add scope `project`. | Episodic notes, durable notes, message FTS (`gateway/internal/store` memory kinds). In-process pipeline. No fact store, no per-section history, no project scope. SPEC 132 (unmerged) adds tenant fail-closed, cross-session recall, episodic prune, KG supersede, prior-session admission. | Section writer that does not overwrite the whole file; version rows; scope on facts and episodes; Vietnamese extraction prompt; empty-session skip. UI for the seven memory tabs stays a later slice of this SPEC, after the store is honest. | A lower-authority write cannot erase a higher one; the previous version remains and can be compared. An empty “OK” session is marked skip, not stored as a 31K episode. Entity labels are typed, not stop-words. A project-scoped fact is not returned outside that project. Shadow mode does not change the chat prompt until a later gate. Tests cover the store. Sample rows use Minh An (chiết khấu 8% → 10% toàn công ty, 9% dự án miền Tây). | SPEC 132 if it is still unmerged. Stack 134 on that branch; do not copy it into main first. |
+| 135 | 2 | Connector + automatic source lookup + citations. OAuth per person. Three ingest modes: live lookup, sync, one-shot import. First sources: Google Drive, Lark, Notion. Chat looks up Vault + enabled connectors and shows citation chips. No composer toggles. | Generic connector records (name, transport, endpoint, enabled) and a connector page. No Drive/Lark/Notion OAuth, no per-user grant, no “tra lúc chat”, no citation on a reply. | Connector kinds, OAuth, scope picker, the three modes, conflict flag, and a retrieval step the chat pipeline can call. Citation chip: source name · document · section, deep link. Turning a connector off removes it from the next lookup. | “Đại lý X còn nợ bao nhiêu?” returns one “Đã tra N nguồn” line, a citation row, and does not attach an unrelated doc. “chỉ tìm trên Drive” uses one source. A pasted URL is summarized as “Đã đọc trang” without asking. A missing OAuth shows not connected, never a fake document count. | 134 for fact reconciliation when a looked-up number disagrees with memory. The connector record itself can start before 134; citations that update facts cannot. |
+| 136 | 3 | Project inside Trò chuyện, plus the rest of the conversation menu and search. | Sessions have label, agent, model override, and (from this branch) `archived`. Search, rename, archive, restore, delete already call that API. There is no `project` table and no project-scoped memory. | Project list above Gần đây, project screen (instructions, files or connector folder, members, meetings, project knowledge, close), `project_id` on the session, memory precedence user > project > team > agent > tenant. Enable “Thêm vào project” / “Bỏ khỏi project”. No project picker in the composer. | A chat inside “Mở kênh đại lý miền Tây” uses that project’s 9% discount, not the company 10%. Closing the project archives its facts and queues a lesson on Phê duyệt. Search covers recent, every project, and archived. Delete still confirms and does not delete extracted memory. | 134 (project scope). 135 for “trỏ thư mục Drive/Lark”. Menu items that only need the session API are already done. |
+| 137 | 4 | One Phê duyệt queue (shell, browser send, Decision R2/R3, knowledge promotion) and the remaining HỆ THỐNG gaps against the live gateway. | Approvals page and API for tool/shell-style approvals. Tenants, providers, API keys, packages, config, import/export, backup, and Nhật ký are real pages. Account menu links to Tổ chức and API Keys. Hooks have no registry. Decision is an empty page. | Four approval kinds in one list. Provider notes for personal-subscription OAuth (do not enable them for customers). Optional user/agent counts on Tổ chức if the API grows them. Daily backup schedule only when the gateway can store it. Do not invent the 23-provider catalog. | A shell approval and a “nâng tri thức” row are distinguishable and can be approved or refused. Refusing does not count as an answer edit. Nhật ký still tails the real log. A provider that is not configured stays off, with no sample spend. | 134–136 for the knowledge-promotion kind and Decision R2/R3. Shell approvals can be grouped earlier. |
+| 138 | 5 | Cuộc họp. Meet + uploaded audio first. Meeting bot only after a Vietnamese transcript trial. | Nothing. The live Cuộc họp page is an empty layout: upload refuses because there is no speech-to-text service, and it does not create a sample meeting. Connectors have no `meet` kind. | `meetings/<date>-<name>.md`, idempotency key `source + source_meeting_id`, summary / decisions / tasks / entities, reconciliation labels, review-before-save, consent checkbox that is required, viewer set = attendees + project members. | Re-sync overwrites the same file, not a second one. A decision that disagrees with the project fact is labeled, not silently applied. Upload without the consent check is rejected. No fake “46 phút” row. Chat can answer “họp giao ban tuần 44 chốt gì?” only after a real meeting is stored. | 134, 135 (Meet/Zoom connectors), 136 if a meeting is attached to a project. |
+| 139 | 6 | Entity profile (two parts) on the knowledge graph, OKF export/import, issued-document lifecycle. | Knowledge graph page and vault files exist. No profile page, no OKF package type, no draft → issued → superseded lifecycle. | Profile opened from a graph node: a rewritten summary plus an append-only timeline (meetings, superseded facts, connector docs). Import/Export kind “Kho tri thức (OKF)”. Issued docs answer by effective date. Keep `[[wikilink]]` inside; convert only on OKF export **if Dat confirms §13**. | “Đại lý Cần Thơ 1 hiện thế nào?” returns a short summary and a timeline with sources. An issued policy for September is not used for an October order. Empty graph stays empty. | 134, 135, 138. Blocked on the §13 choices below. |
+
+## Not in this queue
+
+User-Chrome extension and 8-character pairing, SME billing, and the Lark routing workbook. Plain notes and worldbuilding stay out (v2 §9.3). Claude CLI and Codex subscription OAuth stay off.
 
 ## Definition of done
 
-Each SPEC names the page and API it changes, keeps vi+en, states empty/error, and does not echo secrets. UI copy stays consistent with the current Vietnamese strings. Gateway tests for store/HTTP changes. `npm test` and `npm run verify` in `control-plane/` for UI changes.
+Each SPEC names the page and API it changes, keeps vi and en, and states the empty and error cases. Gateway tests for store or HTTP changes. `npm test` and `npm run verify` in `control-plane/` for UI changes. No secret in a response body.
+
+## Decisions that block work (v2 §13)
+
+1. Entity profile: inside Knowledge Graph (v2 proposal) or its own tab. SPEC 139 assumes the graph until Dat says otherwise.
+2. `[[wikilink]]` on OKF export: keep inside, convert only in the export package, or convert in storage too.
+3. Vietnamese transcript trial (three real meetings per tool) and legal confirmation before any meeting bot. SPEC 138 does not start the bot.
+4. Whether GoClaw 3.14 already has project-scoped memory. This queue assumes it does not; 134 adds it. Confirm before building a second scope model.
+5. Official Lark logo. Do not draw a stand-in mark and call it Lark.
+6. GoClaw LICENSE is still unread. `mcp/LICENSE` is not that grant. No license change in these SPECs.
+
+## What to start next
+
+**SPEC 134**, stacked on SPEC 132 if 132 is still unmerged. Dirty memory makes Connector citations, Project precedence, meetings, and entity profiles lie. Do not start 135’s fact updates before 134. A connector OAuth spike can be sketched beside 134; it should not write facts yet.

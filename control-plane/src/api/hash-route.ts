@@ -19,6 +19,9 @@ export type Tab =
   | "tools"
   | "mcp"
   | "cron"
+  | "decision"
+  | "decisionFlow"
+  | "hooks"
   | "events"
   | "activity"
   | "logs"
@@ -41,6 +44,7 @@ export type Tab =
   | "nodes"
   | "workstations"
   | "tts"
+  | "backup"
   | "settings";
 
 export const SETTINGS_PAGES = [
@@ -62,7 +66,7 @@ export type SettingsPageId = (typeof SETTINGS_PAGES)[number];
 /** Bare `#/config` opens Gateway, not CRM Account. */
 export const DEFAULT_SETTINGS_PAGE: SettingsPageId = "gateway";
 
-export const DEMO_HASH_TABS = ["home", "tasks", "meetings", "friends", "calendar", "gallery"] as const;
+export const DEMO_HASH_TABS = ["home", "tasks", "friends", "calendar", "gallery"] as const;
 export type DemoHashTab = (typeof DEMO_HASH_TABS)[number];
 
 const TRACE_ID = /^[A-Za-z0-9_-]+$/;
@@ -88,6 +92,9 @@ const TAB_SEG: Partial<Record<Tab, string>> = {
   mcp: "mcp",
   tts: "tts",
   cron: "cron",
+  decision: "decision",
+  decisionFlow: "decision-flow",
+  hooks: "hooks",
   webhooks: "webhooks",
   connectors: "connectors",
   memory: "memory",
@@ -105,6 +112,7 @@ const TAB_SEG: Partial<Record<Tab, string>> = {
   settings: "config",
   approvals: "approvals",
   impexp: "impexp",
+  backup: "backup",
   home: "home",
   tasks: "tasks",
   meetings: "meetings",
@@ -132,7 +140,17 @@ const SEG_TAB: Record<string, Tab> = {
   mcp: "mcp",
   tts: "tts",
   cron: "cron",
-  webhooks: "webhooks",
+  decision: "decision",
+  "decision-flow": "decisionFlow",
+  hooks: "hooks",
+  webhooks: "hooks",
+  projects: "chat",
+  "agent-team": "agents",
+  "agent-link": "agents",
+  "agent-setting": "agents",
+  "api-keys": "apikeys",
+  "import-export": "impexp",
+  kgraph: "kg",
   connectors: "connectors",
   memory: "memory",
   vault: "vault",
@@ -149,6 +167,8 @@ const SEG_TAB: Record<string, Tab> = {
   config: "settings",
   approvals: "approvals",
   impexp: "impexp",
+  backup: "backup",
+  "backup-restore": "backup",
   home: "home",
   tasks: "tasks",
   meetings: "meetings",
@@ -269,8 +289,10 @@ export function parseHash(hash: string, opts?: HashOpts): HashParse {
   const tab = SEG_TAB[head];
   if (!tab) return overview(opts, true, true);
   if (isDemoTab(tab) && !demoOn(opts)) return overview(opts, true, true);
-  if (segs.length > 1) return parsed({ tab }, opts, true, false);
-  return parsed({ tab }, opts, false, false);
+  const out = parsed({ tab }, opts, segs.length > 1, false);
+  const canonHead = out.canonical.replace(/^#\//, "").split("/")[0];
+  if (canonHead && canonHead !== head) return { ...out, rewrite: true };
+  return out;
 }
 
 export function hashForTab(tab: Tab, extra?: { settingsPage?: SettingsPageId; traceId?: string }, opts?: HashOpts): string {
@@ -280,26 +302,26 @@ export function hashForTab(tab: Tab, extra?: { settingsPage?: SettingsPageId; tr
 export function liveTabIds(): Tab[] {
   return [
     "crm",
-    "heatmap",
     "chat",
     "agents",
-    "teams",
     "sessions",
     "pending",
     "contacts",
-    "marketing",
     "channels",
+    "connectors",
     "nodes",
     "workstations",
     "skills",
+    "decision",
+    "decisionFlow",
     "tools",
     "mcp",
     "tts",
     "cron",
-    "webhooks",
-    "connectors",
+    "hooks",
     "memory",
     "vault",
+    "meetings",
     "kg",
     "storage",
     "traces",
@@ -313,5 +335,6 @@ export function liveTabIds(): Tab[] {
     "settings",
     "approvals",
     "impexp",
+    "backup",
   ];
 }

@@ -27,7 +27,6 @@ import { VaultPage } from "./pages/VaultPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
-import { WebhooksPage } from "./pages/WebhooksPage";
 import { TracesPage } from "./pages/TracesPage";
 import { PendingPage } from "./pages/PendingPage";
 import { ContactsPage } from "./pages/ContactsPage";
@@ -36,6 +35,7 @@ import { WorkstationsPage } from "./pages/WorkstationsPage";
 import { TTSPage } from "./pages/TTSPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { StoragePage } from "./pages/StoragePage";
+import { BackupPage, DecisionFlowPage, DecisionPage, HooksPage, MeetingsLivePage } from "./pages/FeaturePages";
 import { hashForTab, parseHash, type Tab } from "./api/hash-route";
 import { Icon, type IconName } from "./ui/Icon";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -44,6 +44,8 @@ import { isDemoMode } from "./demo/mode";
 import { demoOverviewItems, demoWorkExtra } from "./demo/nav";
 import { useI18n, type Locale } from "./i18n";
 import { clearSelectedSession, readSelectedSession, writeSelectedSession } from "./api/sessions";
+import { TENANT_STORAGE_KEY } from "./api/client";
+import { tenantsApi, type Tenant } from "./api/tenants";
 
 const DEMO = isDemoMode();
 
@@ -74,8 +76,6 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "crm", label: t("nav.overview"), ic: "gauge" },
         { id: "chat", label: t("nav.chat"), ic: "msg" },
         { id: "agents", label: t("nav.agents"), ic: "bolt" },
-        { id: "teams", label: t("nav.teams"), ic: "layers" },
-        { id: "heatmap", label: t("nav.heatmap"), ic: "report" },
       ],
     },
     {
@@ -84,7 +84,6 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "sessions", label: t("nav.sessions"), ic: "list" },
         { id: "pending", label: t("nav.pending"), ic: "hourglass" },
         { id: "contacts", label: t("nav.contacts"), ic: "user" },
-        { id: "marketing", label: t("nav.marketing"), ic: "mega" },
       ],
     },
     {
@@ -100,11 +99,13 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       group: t("nav.group.capabilities"),
       items: [
         { id: "skills", label: t("nav.skills"), ic: "doc" },
+        { id: "decision", label: t("nav.decision"), ic: "shield" },
+        { id: "decisionFlow", label: t("nav.decisionFlow"), ic: "sitemap" },
         { id: "tools", label: t("nav.tools"), ic: "build" },
         { id: "mcp", label: t("nav.mcp"), ic: "hook" },
         { id: "tts", label: t("nav.tts"), ic: "mic" },
         { id: "cron", label: t("nav.cron"), ic: "timer" },
-        { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
+        { id: "hooks", label: t("nav.hooks"), ic: "hook" },
       ],
     },
     {
@@ -112,6 +113,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       items: [
         { id: "memory", label: t("nav.memory"), ic: "inbox" },
         { id: "vault", label: t("nav.vault"), ic: "doc" },
+        { id: "meetings", label: t("nav.meetings"), ic: "mic" },
         { id: "kg", label: t("nav.kg"), ic: "sitemap" },
         { id: "storage", label: t("nav.storage"), ic: "doc" },
       ],
@@ -135,6 +137,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "settings", label: t("nav.config"), ic: "gear" },
         { id: "approvals", label: t("nav.approvals"), ic: "shield" },
         { id: "impexp", label: t("nav.impexp"), ic: "download" },
+        { id: "backup", label: t("nav.backup"), ic: "history" },
       ],
     },
   ];
@@ -184,6 +187,7 @@ export default function App() {
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const zoneLabel = useMemo(() => localZoneLabel(), []);
 
   const liveGroups = liveSide(t);
@@ -261,19 +265,33 @@ export default function App() {
         <div className="z-topbar-spacer" />
         <div className="z-chrome-actions">
           <LangToggle locale={locale} setLocale={setLocale} />
-          <span className="z-gbtn" title={zoneLabel}>
+          <span className="z-gbtn" title={t("chrome.zone")}>
             <Icon name="clock" size={13} />
             <span className="z-wide-only">{zoneLabel}</span>
           </span>
-          <button type="button" className="z-gbtn" aria-label={t("nav.settings")} onClick={() => go("settings")}>
+          <button type="button" className="z-gbtn" aria-label={t("chrome.system")} title={t("chrome.system")} onClick={() => go("settings")}>
             <Icon name="gear" size={14} />
           </button>
           <button type="button" className="z-gbtn" onClick={toggle} aria-label={dark ? t("chrome.dark") : t("chrome.light")}>
             {dark ? <Icon name="sun" size={14} /> : <ThemeMoon />}
           </button>
-          <span className="z-gbtn" aria-label={t("nav.settings")}>
-            <Icon name="user" size={14} />
-          </span>
+          <AccountMenu
+            open={accountOpen}
+            label={t("chrome.account")}
+            orgLabel={t("chrome.account.org")}
+            keysLabel={t("chrome.account.keys")}
+            logoutLabel={t("chrome.account.logout")}
+            onToggle={() => setAccountOpen((v) => !v)}
+            onClose={() => setAccountOpen(false)}
+            onOrg={() => {
+              setAccountOpen(false);
+              go("tenants");
+            }}
+            onKeys={() => {
+              setAccountOpen(false);
+              go("apikeys");
+            }}
+          />
         </div>
       </header>
 
@@ -344,9 +362,13 @@ export default function App() {
 
         <div className="z-main">
           {DEMO && tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
-          {DEMO && tab === "meetings" && <MeetingsPage />}
+          {tab === "meetings" && (DEMO ? <MeetingsPage /> : <MeetingsLivePage />)}
           {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
           {tab === "crm" && <OverviewPage />}
+          {tab === "decision" && <DecisionPage />}
+          {tab === "decisionFlow" && <DecisionFlowPage />}
+          {tab === "hooks" && <HooksPage />}
+          {tab === "backup" && <BackupPage />}
           {tab === "heatmap" && <HeatmapPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
@@ -356,8 +378,11 @@ export default function App() {
                 pickSession(id, label);
                 go("chat");
               }}
-              onDeleted={dropSession}
-            />
+                  onDeleted={dropSession}
+                  onRenamed={(id, label) => {
+                    if (sessionId === id) pickSession(id, label);
+                  }}
+                />
           )}
           {tab === "chat" && (
             <div className="z-chat-split">
@@ -368,6 +393,9 @@ export default function App() {
                   selectedId={sessionId}
                   onPick={pickSession}
                   onDeleted={dropSession}
+                  onRenamed={(id, label) => {
+                    if (sessionId === id) pickSession(id, label);
+                  }}
                 />
               </div>
               <div className="z-chat-transcript">
@@ -393,7 +421,6 @@ export default function App() {
           {tab === "channels" && <ChannelsPage />}
           {tab === "nodes" && <NodesPage />}
           {tab === "workstations" && <WorkstationsPage />}
-          {tab === "webhooks" && <WebhooksPage />}
           {tab === "traces" && <TracesPage />}
           {tab === "pending" && <PendingPage />}
           {tab === "contacts" && <ContactsPage />}
@@ -425,15 +452,115 @@ export default function App() {
         onOpen={openPalette}
         onClose={closePalette}
         onPick={go}
+        suppressShortcut={tab === "chat"}
       />
     </div>
   );
 }
 
+function AccountMenu({
+  open,
+  label,
+  orgLabel,
+  keysLabel,
+  logoutLabel,
+  onToggle,
+  onClose,
+  onOrg,
+  onKeys,
+}: {
+  open: boolean;
+  label: string;
+  orgLabel: string;
+  keysLabel: string;
+  logoutLabel: string;
+  onToggle: () => void;
+  onClose: () => void;
+  onOrg: () => void;
+  onKeys: () => void;
+}) {
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [current, setCurrent] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let stop = false;
+    void tenantsApi
+      .list()
+      .then((j) => {
+        if (stop) return;
+        setTenants(j.tenants ?? []);
+        setCurrent(j.current?.name || j.current?.id || "");
+      })
+      .catch(() => {
+        if (!stop) setTenants([]);
+      });
+    const close = (e: PointerEvent) => {
+      const node = e.target as HTMLElement | null;
+      if (node?.closest?.(".z-account")) return;
+      onClose();
+    };
+    window.addEventListener("pointerdown", close);
+    return () => {
+      stop = true;
+      window.removeEventListener("pointerdown", close);
+    };
+  }, [open, onClose]);
+
+  function pickTenant(id: string) {
+    try {
+      localStorage.setItem(TENANT_STORAGE_KEY, id);
+    } catch {
+      /* private mode */
+    }
+    window.location.reload();
+  }
+
+  function logout() {
+    try {
+      localStorage.removeItem("goso_token");
+    } catch {
+      /* private mode */
+    }
+    onClose();
+    window.location.reload();
+  }
+
+  return (
+    <div className="z-account">
+      <button type="button" className="z-gbtn" aria-label={label} aria-expanded={open} onClick={onToggle}>
+        <Icon name="user" size={14} />
+        <span className="z-wide-only">{label}</span>
+      </button>
+      {open ? (
+        <div className="z-account-menu" role="menu">
+          {current ? <div className="z-account-current">{current}</div> : null}
+          {tenants.map((row) => (
+            <button key={row.id} type="button" role="menuitem" onClick={() => pickTenant(row.id)}>
+              {row.name || row.id}
+            </button>
+          ))}
+          {tenants.length ? <hr /> : null}
+          <button type="button" role="menuitem" onClick={onOrg}>
+            {orgLabel}
+          </button>
+          <button type="button" role="menuitem" onClick={onKeys}>
+            {keysLabel}
+          </button>
+          <hr />
+          <button type="button" role="menuitem" onClick={logout}>
+            {logoutLabel}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function LangToggle({ locale, setLocale }: { locale: Locale; setLocale: (l: Locale) => void }) {
+  const { t } = useI18n();
   const next = locale === "vi" ? "en" : "vi";
   return (
-    <button type="button" className="z-gbtn" aria-label="Language" onClick={() => setLocale(next)}>
+    <button type="button" className="z-gbtn" aria-label={t("chrome.lang")} title={t("chrome.lang")} onClick={() => setLocale(next)}>
       <Icon name="sitemap" size={13} />
       <span className="z-wide-only">{locale === "vi" ? "Tiếng Việt" : "English"}</span>
     </button>

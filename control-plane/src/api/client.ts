@@ -138,8 +138,8 @@ function isEventStream(ct: string | null): boolean {
   return (ct || "").toLowerCase().includes("text/event-stream");
 }
 
-async function chatJSON(body: ChatBody, onDelta?: (delta: string) => void): Promise<ChatReply> {
-  const j = await jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body) });
+async function chatJSON(body: ChatBody, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<ChatReply> {
+  const j = await jsonFetch<ChatReply>("/api/chat", { method: "POST", body: JSON.stringify(body), signal });
   if (j.reply && onDelta) onDelta(j.reply);
   return j;
 }
@@ -206,9 +206,9 @@ async function readChatSSE(stream: ReadableStream<Uint8Array>, onDelta: (delta: 
 }
 
 /** Prefer SSE (Accept + stream:true). Fall back to JSON POST on 406 or non-stream responses. */
-export async function chatStream(body: ChatBody, onDelta: (delta: string) => void): Promise<ChatReply> {
+export async function chatStream(body: ChatBody, onDelta: (delta: string) => void, signal?: AbortSignal): Promise<ChatReply> {
   const canStream = typeof fetch === "function" && typeof ReadableStream !== "undefined";
-  if (!canStream) return chatJSON(body, onDelta);
+  if (!canStream) return chatJSON(body, onDelta, signal);
   const res = await fetch(
     `${base()}/api/chat`,
     gatewayFetchInit({
@@ -220,9 +220,10 @@ export async function chatStream(body: ChatBody, onDelta: (delta: string) => voi
         ...tenantHeader(),
       },
       body: JSON.stringify({ ...body, stream: true }),
+      signal,
     }),
   );
-  if (res.status === 406) return chatJSON(body, onDelta);
+  if (res.status === 406) return chatJSON(body, onDelta, signal);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${text}`);
@@ -259,6 +260,7 @@ export type Session = {
   prompt_mode?: string;
   model_override?: string;
   provider_override?: string;
+  archived?: boolean;
   created_at: string;
 };
 export type Message = {
@@ -352,7 +354,14 @@ export const api = {
     jsonFetch<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
   updateSession: (
     id: string,
-    body: { prompt_mode?: string; agent_id?: string; model_override?: string; provider_override?: string },
+    body: {
+      prompt_mode?: string;
+      agent_id?: string;
+      model_override?: string;
+      provider_override?: string;
+      label?: string;
+      archived?: boolean;
+    },
   ) => jsonFetch<Session>(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteSession: (id: string) => jsonFetch<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" }),
   listMessages: (sid: string) => jsonFetch<{ messages: Message[] }>(`/api/sessions/${sid}/messages`),
