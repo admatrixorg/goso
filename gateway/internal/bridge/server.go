@@ -16,7 +16,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -90,11 +89,13 @@ func Run(ctx context.Context, addr string, svc *Service) error {
 	if err != nil {
 		return err
 	}
-	writeTimeout := llm.ChatTimeout() + 30*time.Second
+	// WriteTimeout stays unset. A single deadline covers the whole response,
+	// including an SSE body, and would cut a long upstream stream. Header
+	// wait is bounded by the outbound ResponseHeaderTimeout; the request
+	// context cancels the rest. ReadHeaderTimeout still bounds slow clients.
 	srv := &http.Server{
 		Handler:           h2c.NewHandler(NewMux(svc), &http2.Server{}),
 		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      writeTimeout,
 	}
 	errc := make(chan error, 1)
 	go func() {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // Anthropic calls Anthropic Messages API via net/http.
@@ -110,33 +111,74 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 	if err := checkEndpoint(endpoint); err != nil {
 		return "", Usage{}, err
 	}
-	client := clientWithTimeout(a.Client, ChatTimeout(), true)
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", Usage{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", a.APIKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", Usage{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(resp.Body)
-		return "", Usage{}, &UpstreamError{Provider: "anthropic", Status: resp.StatusCode, Detail: clipDetail(string(b))}
-	}
-	if stream {
-		text, su, err := ReadAnthropicStreamDeltas(resp.Body, onDelta)
+	client := chatClient(a.Client)
+	var text string
+	var usage Usage
+	err := withAttempts(ctx, func(int) (bool, time.Duration, bool, error) {
+		req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 		if err != nil {
-			return "", Usage{}, err
+			return false, 0, false, err
 		}
-		u := fallbackUsage(messages, text, su.PromptTokens, su.CompletionTokens)
-		u.CacheReadTokens = su.CacheReadTokens
-		return text, u, nil
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", a.APIKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+		resp, err := client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, 0, false, err
+			}
+			return retryableNetErr(err), 0, false, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			uerr := &UpstreamError{Provider: "anthropic", Status: resp.StatusCode, Detail: clipDetail(string(b))}
+			if !retryableStatus(resp.StatusCode) {
+				return false, 0, false, uerr
+			}
+			if d, ok := retryAfterDelay(resp.Header, time.Now()); ok {
+				return true, d, true, uerr
+			}
+			return true, 0, false, uerr
+		}
+		if stream {
+			var emitted bool
+			var su Usage
+			text, su, err = ReadAnthropicStreamDeltas(resp.Body, func(delta string) {
+				if delta != "" {
+					emitted = true
+				}
+				emitDelta(onDelta, delta)
+			})
+			if err != nil && !emitted && retryableNetErr(err) {
+				return true, 0, false, err
+			}
+			if err != nil {
+				return false, 0, false, err
+			}
+			usage = fallbackUsage(messages, text, su.PromptTokens, su.CompletionTokens)
+			usage.CacheReadTokens = su.CacheReadTokens
+			return false, 0, false, nil
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return retryableNetErr(err), 0, false, err
+		}
+		parsed, u, err := parseAnthropicMessage(b, messages)
+		if err != nil {
+			return false, 0, false, err
+		}
+		text = parsed
+		usage = u
+		return false, 0, false, nil
+	})
+	if err != nil {
+		return "", Usage{}, err
 	}
-	b, _ := io.ReadAll(resp.Body)
+	return text, usage, nil
+}
+
+func parseAnthropicMessage(b []byte, messages []Message) (string, Usage, error) {
 	var out struct {
 		Content []struct {
 			Type string `json:"type"`

@@ -772,6 +772,7 @@ func TestLLMTimeoutAndTransportCodes(t *testing.T) {
 		t.Fatalf("duration %s", llm.ChatTimeout())
 	}
 	t.Setenv("GOSO_LLM_TIMEOUT", "1")
+	t.Setenv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", "200ms")
 	t.Setenv("GOSO_SSRF", "0")
 	t.Setenv("GOSO_ENV", "demo")
 	master, err := secrets.RandomKeyHex()
@@ -781,7 +782,10 @@ func TestLLMTimeoutAndTransportCodes(t *testing.T) {
 	t.Setenv("GOSO_MASTER_KEY", master)
 	t.Setenv("GOSO_LLM_API_KEY", "")
 
+	var attempts int
 	hold := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		_, _ = io.Copy(io.Discard, r.Body)
 		timer := time.NewTimer(3 * time.Second)
 		defer timer.Stop()
 		select {
@@ -818,8 +822,8 @@ func TestLLMTimeoutAndTransportCodes(t *testing.T) {
 	started := time.Now()
 	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
 	elapsed := time.Since(started)
-	if elapsed > 5*time.Second {
-		t.Fatalf("timeout took %s, still using a longer client", elapsed)
+	if attempts != 3 || elapsed > 4*time.Second {
+		t.Fatalf("timeout attempts %d took %s", attempts, elapsed)
 	}
 	if res.StatusCode != http.StatusGatewayTimeout || !strings.Contains(res.Body, `"code":"upstream_timeout"`) {
 		t.Fatalf("timeout %d %s", res.StatusCode, res.Body)
@@ -865,6 +869,105 @@ func TestLLMTimeoutAndTransportCodes(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `"code":"dial_error"`) || strings.Contains(buf.String(), prompt) || strings.Contains(buf.String(), "fixture-key") {
 		t.Fatalf("dial log %s", buf.String())
+	}
+}
+
+func TestAgentFallbackModelOverride(t *testing.T) {
+	t.Setenv("GOSO_LLM_FALLBACK_MODEL", "from-env")
+	if got := agentFallbackModel(Agent{}); got != "from-env" {
+		t.Fatalf("env %q", got)
+	}
+	if got := agentFallbackModel(Agent{ParamsJSON: `{"fallback_model":"from-params"}`}); got != "from-params" {
+		t.Fatalf("params %q", got)
+	}
+	if got := agentFallbackModel(Agent{HarnessConfigJSON: `{"fallback_model":"from-agent"}`, ParamsJSON: `{"llm_fallback_model":"from-params"}`}); got != "from-agent" {
+		t.Fatalf("harness %q", got)
+	}
+}
+
+func TestLLMFallbackAfterRetries(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	t.Setenv("GOSO_LLM_FALLBACK_MODEL", "gcli/should-not-use")
+	t.Setenv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", "5s")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+
+	var models []string
+	mode := "fallback"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		models = append(models, body.Model)
+		if mode == "reject" || body.Model == "gcli/grok-4.5-high" && mode == "fallback" {
+			if mode == "reject" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"fallback ok"}}]}`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-fb"
+		prompt  = "hidden fallback prompt"
+	)
+	cat := newMem()
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"fixture-key","models":["gcli/grok-4.5-high","gcli/grok-4.5"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"fb","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","harness_config_json":"{\"fallback_model\":\"gcli/grok-4.5\"}"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","prompt":"` + prompt + `"}`)
+	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if res.StatusCode != 200 || !strings.Contains(res.Body, "fallback ok") {
+		t.Fatalf("fallback %d %s", res.StatusCode, res.Body)
+	}
+	if len(models) != 4 || models[0] != "gcli/grok-4.5-high" || models[1] != "gcli/grok-4.5-high" || models[2] != "gcli/grok-4.5-high" || models[3] != "gcli/grok-4.5" {
+		t.Fatalf("models %v", models)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, `"event":"bridge_reply_model"`) || !strings.Contains(logs, `"model":"gcli/grok-4.5"`) || !strings.Contains(logs, `"fallback":true`) {
+		t.Fatalf("model log %s", logs)
+	}
+	if strings.Contains(logs, prompt) || strings.Contains(logs, "fixture-key") || strings.Contains(logs, "gcli/should-not-use") {
+		t.Fatalf("log leaked %s", logs)
+	}
+
+	buf.Reset()
+	models = nil
+	mode = "reject"
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(res.Body, `"code":"upstream_rejected"`) {
+		t.Fatalf("400 %d %s", res.StatusCode, res.Body)
+	}
+	if len(models) != 1 || models[0] != "gcli/grok-4.5-high" {
+		t.Fatalf("4xx retried %v", models)
+	}
+	if strings.Contains(buf.String(), prompt) || strings.Contains(buf.String(), `"fallback":true`) {
+		t.Fatalf("4xx log %s", buf.String())
 	}
 }
 

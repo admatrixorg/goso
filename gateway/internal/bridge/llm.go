@@ -15,22 +15,27 @@ import (
 
 // Completion is one tenant-scoped model call. APIKey is not logged.
 type Completion struct {
-	Type        string
-	BaseURL     string
-	APIKey      string
-	Model       string
-	Temperature *float64
-	MaxTokens   *int
-	Messages    []llm.Message
-	OnDelta     func(string)
+	Type          string
+	BaseURL       string
+	APIKey        string
+	Model         string
+	Temperature   *float64
+	MaxTokens     *int
+	Messages      []llm.Message
+	OnDelta       func(string)
+	FallbackModel string
 }
 
 // Result is a model reply plus token counts.
+// Model is the model that produced the text. UsedFallback is true when the
+// primary model exhausted retries and the fallback model answered.
 type Result struct {
 	Text             string
 	PromptTokens     int
 	CompletionTokens int
 	StopReason       string
+	Model            string
+	UsedFallback     bool
 }
 
 // Completer generates a reply. Tests inject a fake; production uses DefaultComplete.
@@ -38,6 +43,29 @@ type Completer func(ctx context.Context, in Completion) (Result, error)
 
 // DefaultComplete calls the tenant provider through the existing LLM clients.
 func DefaultComplete(ctx context.Context, in Completion) (Result, error) {
+	primary := strings.TrimSpace(in.Model)
+	res, err := completeOnce(ctx, in)
+	fallback := strings.TrimSpace(in.FallbackModel)
+	if err != nil && fallback != "" && fallback != primary && llm.Retryable(err) {
+		in.Model = fallback
+		res, err = completeOnce(ctx, in)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Model = fallback
+		res.UsedFallback = true
+		return res, nil
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	if res.Model == "" {
+		res.Model = primary
+	}
+	return res, nil
+}
+
+func completeOnce(ctx context.Context, in Completion) (Result, error) {
 	typ := mapProviderType(in.Type)
 	base := normalizeBase(in.Type, in.BaseURL)
 	if typ != llm.TypeEcho && typ != llm.TypeRouter9 && strings.TrimSpace(in.APIKey) == "" {
@@ -66,6 +94,7 @@ func DefaultComplete(ctx context.Context, in Completion) (Result, error) {
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		StopReason:       "stop",
+		Model:            in.Model,
 	}, nil
 }
 
