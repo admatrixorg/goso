@@ -33,7 +33,7 @@ func TestDispatchSessionTool_ListJailsTenantAndCap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	body, err := DispatchSessionTool(st, "acme", llm.ToolCall{Name: ToolSessionsList})
+	body, err := DispatchSessionTool(st, "acme", "", llm.ToolCall{Name: ToolSessionsList})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,20 +77,20 @@ func TestDispatchSessionTool_HistoryFailClosedAndCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := DispatchSessionTool(st, "acme", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": "  "}})
+	_, err := DispatchSessionTool(st, "acme", "", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": "  "}})
 	if err == nil {
 		t.Fatal("empty session_id must fail")
 	}
-	_, err = DispatchSessionTool(st, "acme", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": "missing"}})
+	_, err = DispatchSessionTool(st, "acme", "", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": "missing"}})
 	if err == nil {
 		t.Fatal("missing must fail")
 	}
-	body, err := DispatchSessionTool(st, "acme", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": theirs.ID}})
+	body, err := DispatchSessionTool(st, "acme", "", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": theirs.ID}})
 	if err == nil || strings.Contains(body, "secret-body") {
 		t.Fatalf("other tenant must fail-closed %v %s", err, body)
 	}
 
-	got, err := DispatchSessionTool(st, "acme", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": mine.ID}})
+	got, err := DispatchSessionTool(st, "acme", "", llm.ToolCall{Name: ToolSessionsHistory, Arguments: map[string]any{"session_id": mine.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}

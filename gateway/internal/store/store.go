@@ -234,6 +234,10 @@ type Memory struct {
 	Kind      string    `json:"kind"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
+	// CustomerKey scopes a note written in a channel thread to that customer
+	// (see CustomerKeyForLabel). Empty for web/API sessions. Derived from the
+	// session on write; callers cannot set it.
+	CustomerKey string `json:"customer_key,omitempty"`
 }
 
 // SearchHit is one FTS5 / substring match.
@@ -1194,6 +1198,7 @@ func (s *Store) PutMemory(m Memory) (*Memory, error) {
 	}
 	m.ID = s.nextID()
 	m.CreatedAt = time.Now().UTC()
+	m.CustomerKey = CustomerKeyForLabel(sess.Label)
 	cp := m
 	s.memories[cp.SessionID] = append(s.memories[cp.SessionID], &cp)
 	return &cp, nil
@@ -1351,17 +1356,19 @@ func (s *Store) SaveSummary(sessionID, body string) (*Memory, error) {
 		if list[i] != nil && list[i].Kind == KindEpisodic {
 			list[i].Body = body
 			list[i].CreatedAt = time.Now().UTC()
+			list[i].CustomerKey = CustomerKeyForLabel(sess.Label)
 			cp := *list[i]
 			return &cp, nil
 		}
 	}
 	m := Memory{
-		ID:        s.nextID(),
-		TenantID:  NormalizeTenant(sess.TenantID),
-		SessionID: sessionID,
-		Kind:      KindEpisodic,
-		Body:      body,
-		CreatedAt: time.Now().UTC(),
+		ID:          s.nextID(),
+		TenantID:    NormalizeTenant(sess.TenantID),
+		SessionID:   sessionID,
+		Kind:        KindEpisodic,
+		Body:        body,
+		CreatedAt:   time.Now().UTC(),
+		CustomerKey: CustomerKeyForLabel(sess.Label),
 	}
 	s.memories[sessionID] = append(s.memories[sessionID], &m)
 	cp := m

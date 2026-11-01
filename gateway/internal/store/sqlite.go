@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -129,6 +130,7 @@ func (s *SQLiteStore) migrate() error {
 			body TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			tenant_id TEXT NOT NULL DEFAULT 'default',
+			customer_key TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY(session_id) REFERENCES sessions(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id, created_at)`,
@@ -364,6 +366,9 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_teams_tenant ON teams(tenant_id)`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id)`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_providers_tenant ON llm_providers(tenant_id)`)
+	if err := s.migrateMemoryCustomerKey(); err != nil {
+		return err
+	}
 	s.initFTS()
 	s.initVaultFTS()
 	s.initKGFTS()
@@ -1174,8 +1179,9 @@ func (s *SQLiteStore) PutMemory(m Memory) (*Memory, error) {
 	}
 	m.ID = newID()
 	m.CreatedAt = time.Now().UTC()
-	_, err = s.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id) VALUES(?,?,?,?,?,?)`,
-		m.ID, m.SessionID, m.Kind, m.Body, formatTime(m.CreatedAt), m.TenantID)
+	m.CustomerKey = CustomerKeyForLabel(sess.Label)
+	_, err = s.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+		m.ID, m.SessionID, m.Kind, m.Body, formatTime(m.CreatedAt), m.TenantID, m.CustomerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1191,7 +1197,7 @@ func (s *SQLiteStore) ListMemories(sessionID string) ([]*Memory, error) {
 	if cnt == 0 {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
+	rows, err := s.db.Query(`SELECT id, session_id, kind, body, created_at, tenant_id, customer_key FROM memories WHERE session_id=? ORDER BY created_at`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -1217,7 +1223,7 @@ func (s *SQLiteStore) GetMemory(id string) (*Memory, error) {
 	if id == "" {
 		return nil, ErrNotFound
 	}
-	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id, customer_key FROM memories WHERE id=?`, id)
 	m, err := scanMemory(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -1278,7 +1284,7 @@ func (s *SQLiteStore) QueryMemories(q MemoryQuery) ([]*Memory, error) {
 	if kind != "" {
 		kind = NormalizeMemoryKind(kind)
 	}
-	rows, err := s.db.Query(`SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id
+	rows, err := s.db.Query(`SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
 		FROM memories m INNER JOIN sessions s ON s.id = m.session_id
 		WHERE (? = '' OR m.session_id = ?)
 		AND (? = '' OR s.agent_id = ?)
@@ -1314,12 +1320,13 @@ func (s *SQLiteStore) SaveSummary(sessionID, body string) (*Memory, error) {
 	if err != nil {
 		return nil, errors.New("session not found")
 	}
-	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id, customer_key FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
 	existing, err := scanMemory(row)
 	if err == nil && existing != nil {
 		existing.Body = body
 		existing.CreatedAt = time.Now().UTC()
-		_, err = s.db.Exec(`UPDATE memories SET body=?, created_at=? WHERE id=?`, existing.Body, formatTime(existing.CreatedAt), existing.ID)
+		existing.CustomerKey = CustomerKeyForLabel(sess.Label)
+		_, err = s.db.Exec(`UPDATE memories SET body=?, created_at=?, customer_key=? WHERE id=?`, existing.Body, formatTime(existing.CreatedAt), existing.CustomerKey, existing.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -1339,7 +1346,7 @@ func (s *SQLiteStore) LatestSummary(sessionID string) (*Memory, error) {
 	if cnt == 0 {
 		return nil, ErrNotFound
 	}
-	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
+	row := s.db.QueryRow(`SELECT id, session_id, kind, body, created_at, tenant_id, customer_key FROM memories WHERE session_id=? AND kind=? ORDER BY created_at DESC LIMIT 1`, sessionID, KindEpisodic)
 	m, err := scanMemory(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -1412,10 +1419,62 @@ func (s *SQLiteStore) searchInstr(q string) ([]SearchHit, error) {
 func scanMemory(sc scanner) (*Memory, error) {
 	var m Memory
 	var ts, tenant string
-	if err := sc.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts, &tenant); err != nil {
+	var customer sql.NullString
+	if err := sc.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts, &tenant, &customer); err != nil {
 		return nil, err
 	}
 	m.TenantID = NormalizeTenant(tenant)
+	m.CustomerKey = customer.String
 	m.CreatedAt = parseTime(ts)
 	return &m, nil
+}
+
+// migrateMemoryCustomerKey adds memories.customer_key on upgraded SQLite
+// databases (fresh ones get it from CREATE TABLE), indexes it, and backfills
+// legacy channel notes. Idempotent; errors are returned because every memory
+// query reads the column.
+func (s *SQLiteStore) migrateMemoryCustomerKey() error {
+	has, err := s.hasColumn("memories", "customer_key")
+	if err != nil {
+		return fmt.Errorf("memories.customer_key check: %w", err)
+	}
+	if !has {
+		if _, err := s.db.Exec(`ALTER TABLE memories ADD COLUMN customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("memories.customer_key add: %w", err)
+		}
+	}
+	return s.finishMemoryCustomerKey()
+}
+
+// finishMemoryCustomerKey is the dialect-neutral tail shared with Postgres.
+func (s *SQLiteStore) finishMemoryCustomerKey() error {
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_customer ON memories(tenant_id, customer_key)`); err != nil {
+		return fmt.Errorf("idx_memories_customer: %w", err)
+	}
+	res, err := s.db.Exec(customerKeyBackfillSQL())
+	if err != nil {
+		return fmt.Errorf("memories.customer_key backfill: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("goso store: backfilled customer_key on %d channel memory notes", n)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) hasColumn(table, column string) (bool, error) {
+	rows, err := s.db.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if strings.EqualFold(name, column) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

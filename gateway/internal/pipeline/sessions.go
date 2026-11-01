@@ -50,8 +50,9 @@ func SessionToolSpecs() []llm.ToolSpec {
 	}
 }
 
-// DispatchSessionTool runs sessions_list / sessions_history jailed to tenant.
-func DispatchSessionTool(st store.StoreIface, tenant string, call llm.ToolCall) (string, error) {
+// DispatchSessionTool runs sessions_list / sessions_history jailed to tenant,
+// and for channel callers to their own agent + customer (see toolScope).
+func DispatchSessionTool(st store.StoreIface, tenant, callerSessionID string, call llm.ToolCall) (string, error) {
 	if st == nil {
 		return `{"error":"store required"}`, errors.New("store required")
 	}
@@ -60,25 +61,26 @@ func DispatchSessionTool(st store.StoreIface, tenant string, call llm.ToolCall) 
 		name = t
 	}
 	tenant = store.NormalizeTenant(tenant)
+	sc := scopeForCaller(st, callerSessionID)
 	switch name {
 	case ToolSessionsList:
-		return dispatchSessionsList(st, tenant)
+		return dispatchSessionsList(st, tenant, sc)
 	case ToolSessionsHistory:
 		sid := argString(call.Arguments, "session_id")
 		if sid == "" {
 			return `{"error":"session_id is required"}`, errors.New("session_id is required")
 		}
-		return dispatchSessionsHistory(st, tenant, sid)
+		return dispatchSessionsHistory(st, tenant, sid, sc)
 	default:
 		return `{"error":"unknown tool"}`, errors.New("unknown tool")
 	}
 }
 
-func dispatchSessionsList(st store.StoreIface, tenant string) (string, error) {
+func dispatchSessionsList(st store.StoreIface, tenant string, sc toolScope) (string, error) {
 	all := st.ListSessions()
 	items := make([]sessionListItem, 0, len(all))
 	for _, s := range all {
-		if s == nil || !store.SameTenant(s.TenantID, tenant) {
+		if s == nil || !store.SameTenant(s.TenantID, tenant) || !sc.sessionVisible(s) {
 			continue
 		}
 		items = append(items, sessionListItem{
@@ -104,9 +106,9 @@ func dispatchSessionsList(st store.StoreIface, tenant string) (string, error) {
 	return string(b), nil
 }
 
-func dispatchSessionsHistory(st store.StoreIface, tenant, sessionID string) (string, error) {
+func dispatchSessionsHistory(st store.StoreIface, tenant, sessionID string, sc toolScope) (string, error) {
 	sess, err := st.GetSession(sessionID)
-	if err != nil || sess == nil || !store.SameTenant(sess.TenantID, tenant) {
+	if err != nil || sess == nil || !store.SameTenant(sess.TenantID, tenant) || !sc.sessionVisible(sess) {
 		return `{"error":"not found"}`, store.ErrNotFound
 	}
 	raw, err := st.ListMessages(sessionID)

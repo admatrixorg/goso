@@ -75,6 +75,14 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_relations ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`)
+	// Every memory query reads customer_key, so this one must not fail silently
+	// (lesson from the SQLite-only columns that took the bridge down).
+	if _, err := s.db.db.Exec(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("postgres migrate memories.customer_key: %w", err)
+	}
+	if err := s.finishMemoryCustomerKey(); err != nil {
+		return fmt.Errorf("postgres migrate: %w", err)
+	}
 	s.tryVector()
 	return nil
 }
@@ -166,6 +174,7 @@ var postgresSchema = []string{
 		body TEXT NOT NULL,
 		created_at TEXT NOT NULL,
 		tenant_id TEXT NOT NULL DEFAULT 'default',
+		customer_key TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY(session_id) REFERENCES sessions(id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id, created_at)`,

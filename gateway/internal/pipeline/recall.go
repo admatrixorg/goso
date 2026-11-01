@@ -16,7 +16,8 @@ import (
 // Cross-session recall with admission control (SPEC 132).
 //
 // Before the prompt is built, the latest user text is matched against L1 notes
-// of the same tenant + agent written in other sessions. Admission: skip
+// of the same tenant + agent written in other sessions; in channel sessions
+// only notes of the same customer key (see store.CustomerKeyForLabel). Admission: skip
 // trivial turns (greetings/acks), keep only candidates scoring at least
 // recallRelative of the best one, cap items and runes. Zero injection is a
 // valid outcome and is logged, never silent.
@@ -142,13 +143,15 @@ func (r *Runner) recall(st *State, userText string) (string, int) {
 		ExcludeSession: st.SessionID,
 		Query:          userText,
 		Limit:          recallCandidates,
+		CustomerScoped: st.Channel,
+		CustomerKey:    st.CustomerKey,
 	})
 	if err != nil {
 		log.Printf("goso memory: recall error session=%s: %v", st.SessionID, err)
 		return "", 0
 	}
 	note, n := BuildRecallNote(hits, RecallBudget())
-	log.Printf("goso memory: recall session=%s agent=%s candidates=%d injected=%d runes=%d",
-		st.SessionID, st.AgentID, len(hits), n, utf8.RuneCountInString(note))
+	log.Printf("goso memory: recall session=%s agent=%s customer_scoped=%t candidates=%d injected=%d runes=%d",
+		st.SessionID, st.AgentID, st.Channel, len(hits), n, utf8.RuneCountInString(note))
 	return note, n
 }

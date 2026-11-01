@@ -154,13 +154,13 @@ func TestMemoryExpand_SupersededIsNotCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := llm.ToolCall{ID: "x", Name: ToolMemoryExpand, Arguments: map[string]any{"id": e.ID}}
-	if out, err := DispatchMemoryTool(st, store.DefaultTenant, call); err != nil || !strings.Contains(out, "Old Price") {
+	if out, err := DispatchMemoryTool(st, store.DefaultTenant, "", call); err != nil || !strings.Contains(out, "Old Price") {
 		t.Fatalf("current entity must expand: %v %s", err, out)
 	}
 	if err := st.SupersedeKGEntity(store.DefaultTenant, e.ID, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := DispatchMemoryTool(st, store.DefaultTenant, call); err == nil || !strings.Contains(out, "superseded") {
+	if out, err := DispatchMemoryTool(st, store.DefaultTenant, "", call); err == nil || !strings.Contains(out, "superseded") {
 		t.Fatalf("superseded entity must not be served to the agent: %v %s", err, out)
 	}
 }
