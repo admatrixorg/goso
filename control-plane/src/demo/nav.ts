@@ -15,8 +15,8 @@ export function demoOverviewItems(locale: Locale): { id: "home" | "tasks" | "crm
   return [
     { id: "home", label: en ? "Home" : "Trang chủ", ic: "dash" },
     { id: "tasks", label: en ? "My work" : "Việc của tôi", ic: "check" },
-    { id: "crm", label: en ? "Overview" : "Tổng quan", ic: "gauge" },
-    { id: "meetings", label: en ? "Meetings" : "Cuộc họp", ic: "mic" },
+    { id: "crm", label: en ? "Overview" : "Tổng quan", ic: "layout" },
+    { id: "meetings", label: en ? "Meetings" : "Cuộc họp", ic: "video" },
   ];
 }
 

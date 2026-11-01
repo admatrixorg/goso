@@ -217,7 +217,7 @@ export function LogsPage() {
 
   return (
     <PageChrome
-      icon="list"
+      icon="scroll"
       title={t("logs.title")}
       description={t("logs.desc")}
       primary={primary}

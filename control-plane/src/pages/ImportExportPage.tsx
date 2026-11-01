@@ -295,7 +295,7 @@ export function ImportExportPage() {
 
   return (
     <PageChrome
-      icon="download"
+      icon="swap"
       title={t("impexp.title")}
       description={t("impexp.desc")}
       primary={

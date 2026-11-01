@@ -482,7 +482,7 @@ export const SessionsPage = forwardRef<
               setSearchIdx(0);
             }}
           >
-            <Icon name="search" size={15} />
+            <Icon name="search" size={16} />
           </button>
         </div>
         {formVisible ? <div className="z-gs-form">{createFields()}</div> : null}
@@ -567,7 +567,7 @@ export const SessionsPage = forwardRef<
 
   return (
     <PageChrome
-      icon="list"
+      icon="history"
       title={t("sessions.title")}
       description={t("sessions.desc")}
       primary={

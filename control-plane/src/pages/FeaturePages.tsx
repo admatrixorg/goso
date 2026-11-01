@@ -42,7 +42,7 @@ export function DecisionPage() {
   const { t } = useI18n();
   const [tab, setTab] = useState(0);
   return (
-    <PageChrome icon="shield" title={t("nav.decision")} description={t("feature.decision.desc")}>
+    <PageChrome icon="gavel" title={t("nav.decision")} description={t("feature.decision.desc")}>
       <div className="z-seg" role="tablist">
         {DECISION_TABS.map((key, i) => (
           <button key={key} type="button" role="tab" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>
@@ -64,7 +64,7 @@ const FLOWS: MsgKey[] = ["feature.flow.in", "feature.flow.tool", "feature.flow.r
 export function DecisionFlowPage() {
   const { t } = useI18n();
   return (
-    <PageChrome icon="sitemap" title={t("nav.decisionFlow")} description={t("feature.flow.desc")}>
+    <PageChrome icon="branch" title={t("nav.decisionFlow")} description={t("feature.flow.desc")}>
       <div className="z-flow-grid">
         {FLOWS.map((key) => (
           <Card key={key}>
@@ -81,7 +81,7 @@ export function HooksPage() {
   const { t } = useI18n();
   return (
     <div>
-      <PageChrome icon="hook" title={t("nav.hooks")} description={t("feature.hooks.desc")}>
+      <PageChrome icon="webhook" title={t("nav.hooks")} description={t("feature.hooks.desc")}>
         <EmptyState>{t("feature.hooks.empty")}</EmptyState>
       </PageChrome>
       <div style={{ padding: "0 22px 8px", fontSize: 13, fontWeight: 600 }}>{t("feature.hooks.webhooks")}</div>
@@ -149,7 +149,7 @@ export function MeetingsLivePage() {
 export function BackupPage() {
   const { t } = useI18n();
   return (
-    <PageChrome icon="download" title={t("nav.backup")} description={t("feature.backup.desc")}>
+    <PageChrome icon="archive" title={t("nav.backup")} description={t("feature.backup.desc")}>
       <BackupPanel />
     </PageChrome>
   );

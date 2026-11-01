@@ -195,7 +195,7 @@ export function ApiKeysPage() {
 
   return (
     <PageChrome
-      icon="lock"
+      icon="key"
       title={t("apikeys.title")}
       description={t("apikeys.desc")}
       primary={

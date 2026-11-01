@@ -137,7 +137,7 @@ export function ApprovalsPage() {
 
   return (
     <PageChrome
-      icon="shield"
+      icon="shield-check"
       title={t("approvals.title")}
       description={t("approvals.desc")}
       primary={

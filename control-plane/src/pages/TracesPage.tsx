@@ -180,7 +180,7 @@ export function TracesPage() {
 
   return (
     <PageChrome
-      icon="history"
+      icon="scan"
       title={t("traces.title")}
       description={t("traces.desc")}
       primary={

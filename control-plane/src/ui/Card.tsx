@@ -28,7 +28,7 @@ export function TableScroll({ children }: { children?: ReactNode }) {
 
 export function CardHeader({
   icon,
-  iconColor = "var(--accent)",
+  iconColor = "var(--text-2)",
   title,
   meta,
   style,
@@ -56,7 +56,7 @@ export function CardHeader({
     >
       {icon ? (
         <span style={{ color: iconColor, display: "flex" }}>
-          <Icon name={icon} size={15} />
+          <Icon name={icon} size={16} />
         </span>
       ) : null}
       <span>{title}</span>

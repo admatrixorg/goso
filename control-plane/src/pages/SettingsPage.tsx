@@ -417,7 +417,7 @@ export function SettingsPage({ dark, onToggleTheme }: { dark: boolean; onToggleT
 
   return (
     <PageChrome
-      icon="gear"
+      icon="settings"
       title={t("nav.config")}
       description={t("settings.desc")}
       primary={

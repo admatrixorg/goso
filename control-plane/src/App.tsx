@@ -38,6 +38,7 @@ import { StoragePage } from "./pages/StoragePage";
 import { BackupPage, DecisionFlowPage, DecisionPage, HooksPage, MeetingsLivePage } from "./pages/FeaturePages";
 import { hashForTab, parseHash, type Tab } from "./api/hash-route";
 import { Icon, type IconName } from "./ui/Icon";
+import { navIcon } from "./ui/nav-icons";
 import { CommandPalette } from "./ui/CommandPalette";
 import { GatewayStatus } from "./ui/GatewayStatus";
 import { isDemoMode } from "./demo/mode";
@@ -69,75 +70,68 @@ function visibleTabItems(
 }
 
 function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: { id: Tab; label: string; ic: IconName }[] }[] {
+  const row = (id: Tab, label: string) => ({ id, label, ic: navIcon(id) });
   return [
     {
       group: t("nav.group.core"),
-      items: [
-        { id: "crm", label: t("nav.overview"), ic: "gauge" },
-        { id: "chat", label: t("nav.chat"), ic: "msg" },
-        { id: "agents", label: t("nav.agents"), ic: "bolt" },
-      ],
+      items: [row("crm", t("nav.overview")), row("chat", t("nav.chat")), row("agents", t("nav.agents"))],
     },
     {
       group: t("nav.group.conversations"),
-      items: [
-        { id: "sessions", label: t("nav.sessions"), ic: "list" },
-        { id: "pending", label: t("nav.pending"), ic: "hourglass" },
-        { id: "contacts", label: t("nav.contacts"), ic: "user" },
-      ],
+      items: [row("sessions", t("nav.sessions")), row("pending", t("nav.pending")), row("contacts", t("nav.contacts"))],
     },
     {
       group: t("nav.group.connectivity"),
       items: [
-        { id: "channels", label: t("nav.channels"), ic: "device" },
-        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
-        { id: "nodes", label: t("nav.nodes"), ic: "device" },
-        { id: "workstations", label: t("nav.workstations"), ic: "cloud" },
+        row("channels", t("nav.channels")),
+        row("connectors", t("nav.connectors")),
+        row("nodes", t("nav.nodes")),
+        row("workstations", t("nav.workstations")),
       ],
     },
     {
       group: t("nav.group.capabilities"),
       items: [
-        { id: "skills", label: t("nav.skills"), ic: "doc" },
-        { id: "decision", label: t("nav.decision"), ic: "shield" },
-        { id: "decisionFlow", label: t("nav.decisionFlow"), ic: "sitemap" },
-        { id: "tools", label: t("nav.tools"), ic: "build" },
-        { id: "mcp", label: t("nav.mcp"), ic: "hook" },
-        { id: "tts", label: t("nav.tts"), ic: "mic" },
-        { id: "cron", label: t("nav.cron"), ic: "timer" },
-        { id: "hooks", label: t("nav.hooks"), ic: "hook" },
+        row("skills", t("nav.skills")),
+        row("decision", t("nav.decision")),
+        row("decisionFlow", t("nav.decisionFlow")),
+        row("tools", t("nav.tools")),
+        row("mcp", t("nav.mcp")),
+        row("tts", t("nav.tts")),
+        row("cron", t("nav.cron")),
+        row("hooks", t("nav.hooks")),
       ],
     },
     {
       group: t("nav.group.data"),
       items: [
-        { id: "memory", label: t("nav.memory"), ic: "inbox" },
-        { id: "vault", label: t("nav.vault"), ic: "doc" },
-        { id: "meetings", label: t("nav.meetings"), ic: "mic" },
-        { id: "kg", label: t("nav.kg"), ic: "sitemap" },
-        { id: "storage", label: t("nav.storage"), ic: "doc" },
+        row("memory", t("nav.memory")),
+        row("vault", t("nav.vault")),
+        row("meetings", t("nav.meetings")),
+        row("kg", t("nav.kg")),
+        row("storage", t("nav.storage")),
       ],
     },
     {
       group: t("nav.group.monitoring"),
       items: [
-        { id: "traces", label: t("nav.traces"), ic: "history" },
-        { id: "events", label: t("nav.events"), ic: "history" },
-        { id: "activity", label: t("nav.activity"), ic: "shield" },
-        { id: "logs", label: t("nav.logs"), ic: "list" },
+        row("traces", t("nav.traces")),
+        row("events", t("nav.events")),
+        row("activity", t("nav.activity")),
+        row("logs", t("nav.logs")),
       ],
     },
     {
       group: t("nav.group.system"),
       items: [
-        { id: "tenants", label: t("nav.tenants"), ic: "layers" },
-        { id: "providers", label: t("nav.providers"), ic: "bolt" },
-        { id: "apikeys", label: t("nav.apikeys"), ic: "lock" },
-        { id: "packages", label: t("nav.packages"), ic: "build" },
-        { id: "settings", label: t("nav.config"), ic: "gear" },
-        { id: "approvals", label: t("nav.approvals"), ic: "shield" },
-        { id: "impexp", label: t("nav.impexp"), ic: "download" },
-        { id: "backup", label: t("nav.backup"), ic: "history" },
+        row("tenants", t("nav.tenants")),
+        row("providers", t("nav.providers")),
+        row("apikeys", t("nav.apikeys")),
+        row("packages", t("nav.packages")),
+        row("settings", t("nav.config")),
+        row("approvals", t("nav.approvals")),
+        row("impexp", t("nav.impexp")),
+        row("backup", t("nav.backup")),
       ],
     },
   ];
@@ -266,14 +260,14 @@ export default function App() {
         <div className="z-chrome-actions">
           <LangToggle locale={locale} setLocale={setLocale} />
           <span className="z-gbtn" title={t("chrome.zone")}>
-            <Icon name="clock" size={13} />
+            <Icon name="clock" size={16} />
             <span className="z-wide-only">{zoneLabel}</span>
           </span>
           <button type="button" className="z-gbtn" aria-label={t("chrome.system")} title={t("chrome.system")} onClick={() => go("settings")}>
-            <Icon name="gear" size={14} />
+            <Icon name="settings" size={16} />
           </button>
           <button type="button" className="z-gbtn" onClick={toggle} aria-label={dark ? t("chrome.dark") : t("chrome.light")}>
-            {dark ? <Icon name="sun" size={14} /> : <ThemeMoon />}
+            {dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />}
           </button>
           <AccountMenu
             open={accountOpen}
@@ -343,7 +337,7 @@ export default function App() {
                       transition: "background var(--dur-control) var(--ease-standard), color var(--dur-control) var(--ease-standard)",
                     }}
                   >
-                    <Icon name={i.ic} size={15} />
+                    <Icon name={i.ic} size={16} />
                     <span className="z-wide-only" style={{ flex: 1 }}>{i.label}</span>
                   </button>
                 );
@@ -528,7 +522,7 @@ function AccountMenu({
   return (
     <div className="z-account">
       <button type="button" className="z-gbtn" aria-label={label} aria-expanded={open} onClick={onToggle}>
-        <Icon name="user" size={14} />
+        <Icon name="user" size={16} />
         <span className="z-wide-only">{label}</span>
       </button>
       {open ? (
@@ -561,16 +555,8 @@ function LangToggle({ locale, setLocale }: { locale: Locale; setLocale: (l: Loca
   const next = locale === "vi" ? "en" : "vi";
   return (
     <button type="button" className="z-gbtn" aria-label={t("chrome.lang")} title={t("chrome.lang")} onClick={() => setLocale(next)}>
-      <Icon name="sitemap" size={13} />
+      <Icon name="languages" size={16} />
       <span className="z-wide-only">{locale === "vi" ? "Tiếng Việt" : "English"}</span>
     </button>
-  );
-}
-
-function ThemeMoon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-    </svg>
   );
 }

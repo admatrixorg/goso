@@ -17,21 +17,9 @@ export function SectionHeader({
   return (
     <div style={{ display: "flex", gap: "var(--space-9)", alignItems: "flex-start", flexWrap: "wrap", minWidth: 0, ...style }} {...rest}>
       {icon ? (
-        <div
-          style={{
-            width: "var(--size-icon-badge)",
-            height: "var(--size-icon-badge)",
-            flex: "none",
-            borderRadius: "var(--radius-2xl)",
-            background: "var(--accent)",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon name={icon} size={22} />
-        </div>
+        <span style={{ color: "var(--text-2)", display: "flex", flex: "none", marginTop: 2 }}>
+          <Icon name={icon} size={20} />
+        </span>
       ) : null}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: "var(--fs-page-title)", fontWeight: 700, letterSpacing: "var(--ls-title)" }}>{title}</div>

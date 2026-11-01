@@ -11,7 +11,7 @@ export function MeetingsPage() {
   return (
     <div style={{ padding: "14px 22px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionHeader
-        icon="mic"
+        icon="video"
         title={d("meetings.title")}
         description={d("meetings.desc")}
         actions={

@@ -277,7 +277,7 @@ export function VaultPage() {
 
   return (
     <PageChrome
-      icon="doc"
+      icon="vault"
       title={t("vault.title")}
       description={t("vault.desc")}
       primary={

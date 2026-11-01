@@ -327,7 +327,7 @@ export function MemoryPage() {
 
   return (
     <PageChrome
-      icon="inbox"
+      icon="brain"
       title={t("memory.title")}
       description={t("memory.desc")}
       primary={

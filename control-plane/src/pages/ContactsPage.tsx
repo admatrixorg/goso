@@ -190,7 +190,7 @@ export function ContactsPage() {
 
   return (
     <PageChrome
-      icon="user"
+      icon="contact"
       title={t("contacts.title")}
       description={t("contacts.desc")}
       primary={

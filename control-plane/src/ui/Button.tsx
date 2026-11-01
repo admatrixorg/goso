@@ -46,7 +46,7 @@ export function Button({
       }}
       {...rest}
     >
-      {icon ? <Icon name={icon} size={14} /> : null}
+      {icon ? <Icon name={icon} size={16} /> : null}
       {children}
     </button>
   );

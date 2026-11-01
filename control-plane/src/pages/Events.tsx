@@ -298,7 +298,7 @@ export function EventsPage() {
 
   return (
     <PageChrome
-      icon="pulse"
+      icon="rss"
       title={t("events.title")}
       description={t("events.desc")}
       primary={primary}
