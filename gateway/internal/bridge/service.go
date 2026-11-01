@@ -164,7 +164,20 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 	if err := s.ensureSession(ten.GosoID, &ag, model, system, in); err != nil {
 		return ReplyOutput{}, err
 	}
+	// SPEC 132 §bridge: this conversation's session, or "" when memory is off/unscoped.
+	sid := s.memorySession(ag.GosoAgentID, in)
 
+	// SPEC 132 §bridge: prior turns of this conversation ride inside the one
+	// system message, right after the prompt and never mid-history. Some
+	// OpenAI-compatible routers drop a second system message outright
+	// (9router/gcli, measured 01/11/2026), so the note is merged, not appended.
+	if note := s.memoryNote(sid); note != "" {
+		if system != "" {
+			system += "\n\n" + note
+		} else {
+			system = note
+		}
+	}
 	msgs := make([]llm.Message, 0, len(in.History)+2)
 	if system != "" {
 		msgs = append(msgs, llm.Message{Role: "system", Content: system})
@@ -212,6 +225,7 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		return ReplyOutput{}, err
 	}
 	s.appendTurn(ag.GosoAgentID, in, res.Text)
+	s.scheduleSummary(sid, prov, model, ag)
 	stop := res.StopReason
 	if stop == "" {
 		stop = "stop"

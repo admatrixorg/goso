@@ -391,6 +391,9 @@ func (s *SQLiteStore) initFTS() {
 			DELETE FROM memory_fts WHERE id = old.id;
 			INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, new.kind, new.body);
 		END`,
+		`CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+			DELETE FROM memory_fts WHERE id = old.id;
+		END`,
 		`CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
 			INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, 'message', new.content);
 		END`,

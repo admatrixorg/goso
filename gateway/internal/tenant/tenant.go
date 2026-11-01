@@ -47,6 +47,17 @@ func Resolve(r *http.Request) string {
 	return id
 }
 
+// Invalid reports a request that names a tenant which is not a valid id
+// while multi-tenant is on. Callers fail closed (400) instead of serving
+// the default tenant's data under a mistyped header (SPEC 132).
+func Invalid(r *http.Request) bool {
+	if r == nil || !Enabled() {
+		return false
+	}
+	raw := strings.TrimSpace(r.Header.Get(Header))
+	return raw != "" && !store.TenantOK(raw)
+}
+
 func isAdmin(r *http.Request) bool {
 	admin := strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN"))
 	if admin == "" {
