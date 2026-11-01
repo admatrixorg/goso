@@ -156,20 +156,7 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 		return ""
 	}
 	sess := t.ensureSession(agent.ID, chatID)
-	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
-	provider := resolveInboundLLM(t.Store, agent, t.LLM)
-	history, _ := t.Store.ListMessages(sess.ID)
-	var msgs []llm.Message
-	for _, m := range history {
-		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
-	}
-	reply, usage, err := llm.ChatUsage(ctx, provider, msgs)
-	if err != nil {
-		reply = fmt.Sprintf("LLM error: %v", err)
-	} else {
-		trackUsage(t.Meter, agent.ID, provider.Name(), usage)
-	}
-	_, _ = t.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
+	reply := answerTurn(ctx, t.Store, agent, sess, t.LLM, t.Meter, text)
 	if err := sendFn(ctx, chatID, reply); err != nil {
 		return err.Error()
 	}

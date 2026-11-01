@@ -85,11 +85,22 @@ func TestBridgeMemoryPerConversation(t *testing.T) {
 	for i := 1; i <= pipeline.SummarizeMessageMin/2; i++ {
 		reply("c1", i)
 	}
+	// Short turns leave a compact note right away; the LLM summary replaces
+	// it in place (one note per session) once the session reaches
+	// SummarizeMessageMin messages.
+	summarised := func() bool {
+		for _, sess := range st.ListSessions() {
+			if sum, _ := st.LatestSummary(sess.ID); sum != nil && strings.Contains(sum.Body, "150 triệu") {
+				return true
+			}
+		}
+		return false
+	}
 	deadline := time.Now().Add(3 * time.Second)
-	for memories() == 0 && time.Now().Before(deadline) {
+	for !summarised() && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if n := memories(); n != 1 {
+	if n := memories(); n != 1 || !summarised() {
 		t.Fatalf("c1 summary expected, memories=%d", n)
 	}
 	reply("c1", pipeline.SummarizeMessageMin/2+1)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -66,21 +67,7 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 	}
 	sess := ensureLabeledSession(d.Store, agent.ID, agentKey+":"+dest)
 
-	_, _ = d.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
-
-	provider := resolveInboundLLM(d.Store, agent, d.LLM)
-	history, _ := d.Store.ListMessages(sess.ID)
-	var msgs []llm.Message
-	for _, m := range history {
-		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
-	}
-	reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
-	if err != nil {
-		reply = fmt.Sprintf("LLM error: %v", err)
-	} else {
-		trackUsage(d.Meter, agent.ID, provider.Name(), usage)
-	}
-	_, _ = d.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
+	reply := answerTurn(r.Context(), d.Store, agent, sess, d.LLM, d.Meter, text)
 
 	if d.Sender != nil {
 		if err := d.Sender(r.Context(), dest, reply); err != nil {
@@ -89,6 +76,34 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		}
 	}
 	writeOK(w)
+}
+
+// answerTurn records one inbound channel message, asks the agent's LLM and
+// records the reply. The prompt is one optional system message
+// (pipeline.ChannelSystem: agent instructions, this customer's memory,
+// bootstrap) followed by the whole thread. Memory never blocks the reply: a
+// recall failure only drops the note. LLM errors become the reply text, as
+// before.
+func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) string {
+	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
+
+	provider := resolveInboundLLM(st, agent, fallback)
+	history, _ := st.ListMessages(sess.ID)
+	msgs := make([]llm.Message, 0, len(history)+1)
+	if sys := pipeline.ChannelSystem(st, agent, sess, text); sys != "" {
+		msgs = append(msgs, llm.Message{Role: "system", Content: sys})
+	}
+	for _, m := range history {
+		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
+	}
+	reply, usage, err := llm.ChatUsage(ctx, provider, msgs)
+	if err != nil {
+		reply = fmt.Sprintf("LLM error: %v", err)
+	} else if agent != nil {
+		trackUsage(meter, agent.ID, provider.Name(), usage)
+	}
+	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
+	return reply
 }
 
 func ensureNamedAgent(st store.StoreIface, key, display string) *store.Agent {

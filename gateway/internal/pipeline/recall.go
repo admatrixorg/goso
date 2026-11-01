@@ -130,28 +130,42 @@ func BuildRecallNote(hits []store.RecallHit, budget int) (string, int) {
 
 // recall returns the admitted note for this turn and how many items it holds.
 func (r *Runner) recall(st *State, userText string) (string, int) {
-	if r == nil || r.Store == nil || st == nil || st.Mode == ModeNone || !RecallEnabled() {
+	if r == nil || st == nil || st.Mode == ModeNone {
 		return "", 0
 	}
-	if IsTrivialQuery(userText) {
-		log.Printf("goso memory: recall session=%s agent=%s skipped=trivial", st.SessionID, st.AgentID)
-		return "", 0
-	}
-	hits, err := r.Store.RecallMemories(store.RecallQuery{
+	return RecallFor(r.Store, store.RecallQuery{
 		TenantID:       st.TenantID,
 		AgentID:        st.AgentID,
 		ExcludeSession: st.SessionID,
 		Query:          userText,
-		Limit:          recallCandidates,
 		CustomerScoped: st.Channel,
 		CustomerKey:    st.CustomerKey,
 	})
+}
+
+// RecallFor runs admission-controlled recall for one turn: q.ExcludeSession
+// is the current session, q.Query the latest user text. It is shared by the
+// agent runner, the channel handlers and the Omni bridge so every path admits
+// and logs the same way. It never fails the turn: a store error is logged and
+// yields no note.
+func RecallFor(s store.StoreIface, q store.RecallQuery) (string, int) {
+	if s == nil || !RecallEnabled() {
+		return "", 0
+	}
+	if IsTrivialQuery(q.Query) {
+		log.Printf("goso memory: recall session=%s agent=%s skipped=trivial", q.ExcludeSession, q.AgentID)
+		return "", 0
+	}
+	if q.Limit <= 0 {
+		q.Limit = recallCandidates
+	}
+	hits, err := s.RecallMemories(q)
 	if err != nil {
-		log.Printf("goso memory: recall error session=%s: %v", st.SessionID, err)
+		log.Printf("goso memory: recall error session=%s: %v", q.ExcludeSession, err)
 		return "", 0
 	}
 	note, n := BuildRecallNote(hits, RecallBudget())
 	log.Printf("goso memory: recall session=%s agent=%s customer_scoped=%t candidates=%d injected=%d runes=%d",
-		st.SessionID, st.AgentID, st.Channel, len(hits), n, utf8.RuneCountInString(note))
+		q.ExcludeSession, q.AgentID, q.CustomerScoped, len(hits), n, utf8.RuneCountInString(note))
 	return note, n
 }
