@@ -248,7 +248,7 @@ export function ConnectorPanel({ variant }: { variant: "mcp" | "connectors" }) {
 
   return (
     <PageChrome
-      icon="hook"
+      icon={isMcp ? "plug-zap" : "plug"}
       title={isMcp ? t("functions.mcp.title") : t("connectors.title")}
       description={isMcp ? t("functions.mcp.desc") : t("connectors.desc")}
       primary={

@@ -233,7 +233,7 @@ export function WorkstationsPage() {
 
   return (
     <PageChrome
-      icon="cloud"
+      icon="monitor"
       title={t("ws.title")}
       description={t("ws.desc")}
       primary={

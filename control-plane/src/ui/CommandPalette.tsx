@@ -154,7 +154,7 @@ export function CommandPalette<T extends string>({
             }}
           >
             <span data-ig-part="">
-              <Icon name="search" size={14} />
+              <Icon name="search" size={16} />
             </span>
             <input
               ref={inputRef}
@@ -199,7 +199,7 @@ export function CommandPalette<T extends string>({
                     fontWeight: on ? 600 : 400,
                   }}
                 >
-                  {it.ic ? <Icon name={it.ic} size={15} /> : null}
+                  {it.ic ? <Icon name={it.ic} size={16} /> : null}
                   <span style={{ flex: 1 }}>{it.label}</span>
                 </button>
               );

@@ -123,7 +123,7 @@ export function ActivityPage() {
 
   return (
     <PageChrome
-      icon="shield"
+      icon="activity"
       title={t("activity.title")}
       description={t("activity.desc")}
       primary={

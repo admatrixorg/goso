@@ -197,7 +197,7 @@ export function StoragePage() {
 
   return (
     <PageChrome
-      icon="doc"
+      icon="hard-drive"
       title={t("storage.title")}
       description={t("storage.desc")}
       primary={

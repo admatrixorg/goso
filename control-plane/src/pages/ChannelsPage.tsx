@@ -357,7 +357,7 @@ export function ChannelsPage() {
 
   return (
     <PageChrome
-      icon="hook"
+      icon="radio"
       title={t("channels.title")}
       description={t("channels.desc")}
       primary={

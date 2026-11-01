@@ -219,7 +219,7 @@ export function WebhooksPage() {
 
   return (
     <PageChrome
-      icon="hook"
+      icon="webhook"
       title={t("webhooks.title")}
       description={t("webhooks.desc")}
       primary={

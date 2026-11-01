@@ -238,7 +238,7 @@ export function TenantsPage() {
 
   return (
     <PageChrome
-      icon="layers"
+      icon="building"
       title={t("tenants.title")}
       description={t("tenants.desc")}
       primary={

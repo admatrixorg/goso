@@ -122,7 +122,7 @@ export function PendingPage() {
 
   return (
     <PageChrome
-      icon="hourglass"
+      icon="inbox"
       title={t("pending.title")}
       description={t("pending.desc")}
       primary={

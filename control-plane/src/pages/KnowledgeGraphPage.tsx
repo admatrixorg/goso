@@ -174,7 +174,7 @@ export function KnowledgeGraphPage() {
 
   return (
     <PageChrome
-      icon="sitemap"
+      icon="share"
       title={t("kg.title")}
       description={t("kg.desc")}
       primary={

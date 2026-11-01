@@ -183,7 +183,7 @@ export function ProvidersPage() {
 
   return (
     <PageChrome
-      icon="bolt"
+      icon="cpu"
       title={t("providers.title")}
       description={t("providers.desc")}
       primary={

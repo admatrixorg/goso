@@ -137,7 +137,7 @@ function SkillsSurface() {
 
   return (
     <PageChrome
-      icon="doc"
+      icon="sparkles"
       title={t("functions.skills.title")}
       description={t("functions.skills.desc")}
       primary={
@@ -336,7 +336,7 @@ function ToolsSurface() {
 
   return (
     <PageChrome
-      icon="build"
+      icon="wrench"
       title={t("functions.tools.title")}
       description={t("functions.tools.desc")}
       primary={
@@ -589,7 +589,7 @@ function CronSurface() {
 
   return (
     <PageChrome
-      icon="timer"
+      icon="calendar-clock"
       title={t("functions.cron.title")}
       description={t("functions.cron.desc")}
       primary={

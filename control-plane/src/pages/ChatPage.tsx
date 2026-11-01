@@ -542,7 +542,7 @@ export function ChatPage({
                         void navigator.clipboard?.writeText(m.content).catch(() => undefined);
                       }}
                     >
-                      <Icon name="doc" size={14} />
+                      <Icon name="doc" size={16} />
                     </button>
                   </div>
                 ) : null}
@@ -686,7 +686,7 @@ export function ChatPage({
               disabled={!sessionId || savingMeta || (!sending && !input.trim() && chips.length === 0)}
               onClick={() => (sending ? stop() : void send())}
             >
-              {sending ? <StopMark /> : <Icon name="arrow-up" size={15} />}
+              {sending ? <StopMark /> : <Icon name="arrow-up" size={16} />}
             </button>
           </div>
         </div>

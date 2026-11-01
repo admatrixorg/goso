@@ -219,7 +219,7 @@ export function TTSPage() {
 
   return (
     <PageChrome
-      icon="mic"
+      icon="waveform"
       title={t("tts.title")}
       description={t("tts.desc")}
       primary={

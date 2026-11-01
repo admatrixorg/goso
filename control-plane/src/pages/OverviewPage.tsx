@@ -139,7 +139,7 @@ export function OverviewPage() {
 
   return (
     <PageChrome
-      icon="gauge"
+      icon="layout"
       title={t("overview.title")}
       description={t("overview.desc")}
       refresh={

@@ -241,7 +241,7 @@ export function AgentsPage() {
 
   return (
     <PageChrome
-      icon="bolt"
+      icon="bot"
       title={t("agents.title")}
       description={t("agents.desc")}
       primary={

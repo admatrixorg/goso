@@ -37,20 +37,8 @@ export function KpiCard({
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-8)" }}>
         <div style={{ flex: 1, fontSize: "var(--fs-table)", color: "var(--text-2)" }}>{label}</div>
         {icon ? (
-          <span
-            style={{
-              width: "var(--size-icon-chip)",
-              height: "var(--size-icon-chip)",
-              flex: "none",
-              borderRadius: "var(--radius-lg)",
-              background: tintBg,
-              color: tint,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name={icon} size={14} />
+          <span style={{ color: "var(--text-2)", display: "flex", flex: "none" }}>
+            <Icon name={icon} size={16} />
           </span>
         ) : null}
       </div>

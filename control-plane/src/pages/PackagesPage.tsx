@@ -277,7 +277,7 @@ export function PackagesPage() {
 
   return (
     <PageChrome
-      icon="build"
+      icon="package"
       title={t("pkg.title")}
       description={t("pkg.desc")}
       primary={

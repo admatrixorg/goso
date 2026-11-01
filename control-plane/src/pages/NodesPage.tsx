@@ -181,7 +181,7 @@ export function NodesPage() {
 
   return (
     <PageChrome
-      icon="device"
+      icon="network"
       title={t("nodes.title")}
       description={t("nodes.desc")}
       primary={
