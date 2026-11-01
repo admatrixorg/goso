@@ -73,7 +73,7 @@ export function TasksPage({ onChat }: { onChat: () => void }) {
             N
           </span>
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>Nguyên Crypto</span>
+            <span style={{ display: "block", fontWeight: 600, fontSize: 12.5 }}>Đại lý Bình Dương</span>
             <span style={{ display: "block", fontSize: 11.5, color: "var(--text-3)" }}>phải rồi em</span>
           </span>
           <Badge tone="accent">Mới</Badge>

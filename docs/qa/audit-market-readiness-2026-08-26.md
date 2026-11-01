@@ -74,7 +74,7 @@ Org header used: test-a `01a01fe5-704c-7375-aa1f-6e50a9d0296d`.
 | `GET :8089/api/crm/ai/drafts` | 200 | `[]` |
 | `GET :8089/api/crm/metrics` **no** `X-Org-ID` | 400 | `{"error":"org id is required"}` |
 | `GET :3000/` | 200 | `<title>ZAgent — GOSO Control Plane</title>`, `lang="vi"`, assets 200 |
-| Bundled CP JS `index-jnNL9n21.js` | — | `DEMO` appears 8 times; mock fixture “Vinh Phát” / “Dat Nguyen Ai” present; also `crm/metrics` + `healthz` (live client, not mock) |
+| Bundled CP JS `index-jnNL9n21.js` | — | `DEMO` appears 8 times; the mock fixture at that date used personal names and phone numbers (removed 2026-11-01; fixtures are now Minh An (demo) only); also `crm/metrics` + `healthz` (live client, not mock) |
 
 **Stopped** `:8089` and `:3000` after the curls. `lsof` confirmed both ports free.
 
@@ -127,11 +127,11 @@ File header: “Wireframe-shaped DEMO fixtures. Not live CRM.” `DemoBadge` = w
 | Fixture / screen | What the user sees | Persist? |
 |------------------|--------------------|----------|
 | `meetSources` | Meet/Zoom “Đã kết nối”, Ghi âm “Chưa bật” | No — Settings says “chưa persist” |
-| `recentMeetings` / `allMeetings` | Họp Vinh Phát, Hòa An, An Tâm, … | No |
+| `recentMeetings` / `allMeetings` | Họp mẫu (sau 2026-11-01: chỉ Minh An (demo)) | No |
 | `inbox`, `weekStats`, `agentChips` | Home inbox + weekly numbers + chip prompts | No |
 | `taskKpis` (CHƯA REP=1, KH CỦA TÔI=461, …) | Việc của tôi KPI | No — **conflicts with live CRM unreplied** if both shown |
 | `taskTimeline` | 09:12 duyệt đề xuất, … | No |
-| `friends` (Dat Nguyen Ai, Phan Duy, …) | Bạn bè; copy “không gọi Zalo” | No |
+| `friends` | Bạn bè mẫu Minh An (demo); copy “không gọi Zalo”. Bản cũ có tên và số điện thoại thật, đã gỡ 2026-11-01. | No |
 | `mkMenu` (8 labels) | Marketing sidebar; only “Tệp khách hàng” pane; “Tạo tệp không ghi DB” | No |
 | HomePage, MeetingsPage, TasksPage, FriendsPage, CalendarPage (0 lịch), GalleryPage (empty), MarketingPage, Settings sources | All `DemoBadge` | No |
 | CP top “Gateway” green dot | Static chrome, not a `/healthz` probe of the gateway | No |
@@ -185,7 +185,7 @@ Locked SPECs describe an MVP platform, not a full CRM. Checked AC in the spec fi
 
 1. **CRM HTTP is unauthenticated.** `X-Org-ID` is a tenant selector, not a credential. This pass: any client that sends test-a’s UUID gets 200 metrics. Gateway Bearer does not wrap goso-crm. Until org auth (token/session/mTLS) exists, this cannot face a network that is not a laptop loopback.
 
-2. **The product the wireframes sell is still DEMO.** 13 settings pages → 3 stubs; 7 marketing tabs → 1 empty pane; heatmap absent; Home/Việc/Họp/Bạn bè/Lịch/Kho ảnh/Nguồn họp are `mock.ts`. A buyer clicking those screens sees numbers (461 KH, họp Vinh Phát) that are fiction. Shipping that as a CRM is a trust failure even with badges.
+2. **The product the wireframes sell is still DEMO.** 13 settings pages → 3 stubs; 7 marketing tabs → 1 empty pane; heatmap absent; Home/Việc/Họp/Bạn bè/Lịch/Kho ảnh/Nguồn họp are `mock.ts`. A buyer clicking those screens sees fiction. Shipping that as a CRM is a trust failure even with badges. Fixtures are Minh An (demo) only.
 
 3. **Cannot operate or onboard a real customer.** No CRM backup/restore; no production monitoring/alerting; meeting sources and Zalo nicks do not persist; live path still depends on OrbStack Prisma schema + synthetic seed, not a first-run wizard. Docker compose is a lab, not a paid tenant.
 

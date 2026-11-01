@@ -18,8 +18,8 @@ export function FriendsPage() {
             PN
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>Phan Nhung</div>
-            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>0918287799</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>Đại lý Bình Dương</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>Minh An (demo)</div>
           </div>
         </div>
         <div style={{ marginTop: "auto", fontSize: 11, color: "var(--text-3)" }}>

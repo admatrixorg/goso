@@ -36,7 +36,7 @@ Decision, Decision Flow, and Cuộc họp use the prototype layout with an empty
 | 136 | 3 | Project inside Trò chuyện, plus the rest of the conversation menu and search. | Sessions have label, agent, model override, and (from this branch) `archived`. Search, rename, archive, restore, delete already call that API. There is no `project` table and no project-scoped memory. | Project list above Gần đây, project screen (instructions, files or connector folder, members, meetings, project knowledge, close), `project_id` on the session, memory precedence user > project > team > agent > tenant. Enable “Thêm vào project” / “Bỏ khỏi project”. No project picker in the composer. | A chat inside “Mở kênh đại lý miền Tây” uses that project’s 9% discount, not the company 10%. Closing the project archives its facts and queues a lesson on Phê duyệt. Search covers recent, every project, and archived. Delete still confirms and does not delete extracted memory. | 134 (project scope). 135 for “trỏ thư mục Drive/Lark”. Menu items that only need the session API are already done. |
 | 137 | 4 | One Phê duyệt queue (shell, browser send, Decision R2/R3, knowledge promotion) and the remaining HỆ THỐNG gaps against the live gateway. | Approvals page and API for tool/shell-style approvals. Tenants, providers, API keys, packages, config, import/export, backup, and Nhật ký are real pages. Account menu links to Tổ chức and API Keys. Hooks have no registry. Decision is an empty page. | Four approval kinds in one list. Provider notes for personal-subscription OAuth (do not enable them for customers). Optional user/agent counts on Tổ chức if the API grows them. Daily backup schedule only when the gateway can store it. Do not invent the 23-provider catalog. | A shell approval and a “nâng tri thức” row are distinguishable and can be approved or refused. Refusing does not count as an answer edit. Nhật ký still tails the real log. A provider that is not configured stays off, with no sample spend. | 134–136 for the knowledge-promotion kind and Decision R2/R3. Shell approvals can be grouped earlier. |
 | 138 | 5 | Cuộc họp. Meet + uploaded audio first. Meeting bot only after a Vietnamese transcript trial. | Nothing. The live Cuộc họp page is an empty layout: upload refuses because there is no speech-to-text service, and it does not create a sample meeting. Connectors have no `meet` kind. | `meetings/<date>-<name>.md`, idempotency key `source + source_meeting_id`, summary / decisions / tasks / entities, reconciliation labels, review-before-save, consent checkbox that is required, viewer set = attendees + project members. | Re-sync overwrites the same file, not a second one. A decision that disagrees with the project fact is labeled, not silently applied. Upload without the consent check is rejected. No fake “46 phút” row. Chat can answer “họp giao ban tuần 44 chốt gì?” only after a real meeting is stored. | 134, 135 (Meet/Zoom connectors), 136 if a meeting is attached to a project. |
-| 139 | 6 | Entity profile (two parts) on the knowledge graph, OKF export/import, issued-document lifecycle. | Knowledge graph page and vault files exist. No profile page, no OKF package type, no draft → issued → superseded lifecycle. | Profile opened from a graph node: a rewritten summary plus an append-only timeline (meetings, superseded facts, connector docs). Import/Export kind “Kho tri thức (OKF)”. Issued docs answer by effective date. Keep `[[wikilink]]` inside; convert only on OKF export **if Dat confirms §13**. | “Đại lý Cần Thơ 1 hiện thế nào?” returns a short summary and a timeline with sources. An issued policy for September is not used for an October order. Empty graph stays empty. | 134, 135, 138. Blocked on the §13 choices below. |
+| 139 | 6 | Entity profile as its own page (option B), OKF export/import, issued-document lifecycle. | Knowledge graph page and vault files exist. No `#entity/<slug>` page, no OKF package type, no draft → issued → superseded lifecycle. | **Do not** build `people/` `companies/` `concepts/` folders. Route `#entity/<slug>` (example `#entity/dai-ly-can-tho-1`) with **no sidebar item**. Entry points: Knowledge Graph, Cuộc họp › Người và tổ chức (“Xem hồ sơ”), a chat citation whose source is a profile, entity names in replies, a pasted share link. Page: title + type (Người / Tổ chức / Khái niệm) · Tổng hợp · Dòng thời gian · Liên quan. **Implementation note:** Tổng hợp and Dòng thời gian are views over Memory Facts, not a separate store. Start with Tổ chức. Gate auto-stubs (a name seen in ≥2 sources, or confirmed by a person) until episodic extraction stops emitting junk tokens such as “The” / “When”. New names that pass the gate get an empty profile. A contradiction is a dispute label. Each row’s visibility follows the source scope (v2 §4.4). Wikilink: keep `[[wikilink]]` in Vault; OKF export rewrites to `[name](path.md)`; OKF import leaves standard links as they are. | “Đại lý Cần Thơ 1 hiện thế nào?” returns a 3-line summary and 3 sourced timeline points. An issued policy for September is not used for an October order. | 134 (facts + extraction quality), 135, 138. |
 
 ## Not in this queue
 
@@ -44,17 +44,33 @@ User-Chrome extension and 8-character pairing, SME billing, and the Lark routing
 
 ## Definition of done
 
-Each SPEC names the page and API it changes, keeps vi and en, and states the empty and error cases. Gateway tests for store or HTTP changes. `npm test` and `npm run verify` in `control-plane/` for UI changes. No secret in a response body.
+Each SPEC names the page and API it changes, keeps vi and en, and states the empty and error cases. Gateway tests for store or HTTP changes. `npm test` and `npm run verify` in `control-plane/` for UI changes. Before a UI PR is called mergeable, `npm run qa:tabs` is green against a running gateway and control plane (`docs/qa/qa-tabs.md`). No secret in a response body. One spec item per PR after SPEC 132 and the current PR #3.
 
-## Decisions that block work (v2 §13)
+## Decisions closed on 2026-11-01 (v2 §8, §9.1, §12)
 
-1. Entity profile: inside Knowledge Graph (v2 proposal) or its own tab. SPEC 139 assumes the graph until Dat says otherwise.
-2. `[[wikilink]]` on OKF export: keep inside, convert only in the export package, or convert in storage too.
-3. Vietnamese transcript trial (three real meetings per tool) and legal confirmation before any meeting bot. SPEC 138 does not start the bot.
-4. Whether GoClaw 3.14 already has project-scoped memory. This queue assumes it does not; 134 adds it. Confirm before building a second scope model.
-5. Official Lark logo. Do not draw a stand-in mark and call it Lark.
-6. GoClaw LICENSE is still unread. `mcp/LICENSE` is not that grant. No license change in these SPECs.
+| Decision | What was closed |
+|---|---|
+| Entity vault is option B | Own page `#entity/<slug>`, no sidebar item. Knowledge Graph is one entry point among others. Views over Memory Facts, not a new store. Tổ chức first. Auto-stubs gated until extraction is fixed. |
+| Wikilinks | Keep `[[wikilink]]` inside Goso/Vault. Convert to `[name](path.md)` only in an OKF export. Import does not convert back. |
+| Merge order | Merge SPEC 132 (PR #1) and PR #3 first, then SPEC 134. One PR per spec item after that. |
+
+## PR acceptance (v2 §13, 2026-11-01)
+
+A PR can be merged only when all three hold. Missing one means no merge. The checklist is `.github/PULL_REQUEST_TEMPLATE.md`.
+
+1. The PR description has side-by-side screenshots of the HTML prototype and real Goso for every tab that PR changes.
+2. `npm run qa:tabs` is green: no “chưa dựng” screen, no console error, no failed request the page depends on, and the chat flows work (send, agent/model, @mention, search, rename / archive / restore).
+3. No real MQ Capital or customer data in code, examples, or screenshots. Minh An (demo) only.
+
+“Chưa có dữ liệu”, “Chưa có cuộc họp”, and “Chưa có hook” are honest empty states. They are not the “chưa dựng” marker. Decision, Decision Flow, and Cuộc họp on PR #3 are those empty states. If a reviewer treats any unfinished surface as “chưa dựng”, take those three items out of PR #3 and ship them with their own SPECs.
+
+## Still pending (v2 §14)
+
+1. **GoClaw license, top priority.** This tree has `mcp/LICENSE` only. A written answer from the GoClaw team is required before commercial sale. Dat has drafted an Appendix A question letter. No license change until that answer exists.
+2. Vietnamese transcription trial and recording-consent legal check. Blocks the Cuộc họp phase (SPEC 138) only.
+3. Whether GoClaw 3.14 already has project-scoped memory. This queue assumes it does not; SPEC 134 adds it. Confirm before building a second scope model.
+4. Official Lark logo. Do not draw a stand-in and call it Lark.
 
 ## What to start next
 
-**SPEC 134**, stacked on SPEC 132 if 132 is still unmerged. Dirty memory makes Connector citations, Project precedence, meetings, and entity profiles lie. Do not start 135’s fact updates before 134. A connector OAuth spike can be sketched beside 134; it should not write facts yet.
+Merge **SPEC 132 (PR #1)** and **PR #3** once each is green under the three rules above. Then **SPEC 134**, one PR, stacked on 132. Dirty memory makes Connector citations, Project precedence, meetings, and entity profiles lie. Do not start 135’s fact updates before 134.

@@ -1,6 +1,6 @@
 # Gap — GOSO combined spec 2026-10-31 (§0–§14)
 
-Date: 2026-10-31. Source: `GOSO-SPEC-2026-10-31` (Trần Hoàng Quân / MQ Capital), product + UI spec for Goso as Company Brain on GoClaw 3.14.
+Date: 2026-10-31. Source: `GOSO-SPEC-2026-10-31`, product + UI spec for Goso as Company Brain on GoClaw 3.14. Sample company in later specs is Minh An (demo), not a customer record.
 Checkout surveyed: `main` at `012858a` (SPEC 131 merged). SPEC 132 (`origin/admatrixmdp/spec132-memory-revive`, 6 commits: cross-session recall, episodic prune, KG supersede, tenant fail-closed) is **not merged**. This gap does not vendor that branch.
 
 Status words: **Có** = the operator surface or gateway behavior exists and matches the spec's intent. **Một phần** = a live page or API exists but misses the spec's contract. **Thiếu** = no corresponding implementation.
