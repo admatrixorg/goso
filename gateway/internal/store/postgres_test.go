@@ -123,9 +123,9 @@ func TestOpenSQLiteStillRefusesPostgresDSN(t *testing.T) {
 }
 
 func TestPostgresRoundTrip(t *testing.T) {
-	dsn := strings.TrimSpace(os.Getenv("GOSO_TEST_DATABASE_URL"))
+	dsn := postgresTestDSN()
 	if dsn == "" {
-		t.Skip("GOSO_TEST_DATABASE_URL unset")
+		t.Skip("GOSO_TEST_POSTGRES_DSN unset")
 	}
 	t.Setenv("GOSO_DATABASE_URL", "")
 	st, err := OpenPostgres(dsn)

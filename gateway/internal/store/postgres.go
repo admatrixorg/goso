@@ -59,6 +59,13 @@ func (s *PostgresStore) migratePostgres() error {
 			return fmt.Errorf("postgres migrate: %w", err)
 		}
 	}
+	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model_override TEXT DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS provider_override TEXT DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false`)
+	_, _ = s.db.db.Exec(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS mention_agent_id TEXT DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS model TEXT DEFAULT ''`)
+	_, _ = s.db.db.Exec(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
@@ -112,6 +119,9 @@ var postgresSchema = []string{
 		created_at TEXT NOT NULL,
 		tenant_id TEXT NOT NULL DEFAULT 'default',
 		prompt_mode TEXT NOT NULL DEFAULT '',
+		model_override TEXT DEFAULT '',
+		provider_override TEXT DEFAULT '',
+		archived BOOLEAN NOT NULL DEFAULT false,
 		FOREIGN KEY(agent_id) REFERENCES agents(id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)`,
@@ -122,6 +132,10 @@ var postgresSchema = []string{
 		role TEXT NOT NULL,
 		content TEXT NOT NULL,
 		created_at TEXT NOT NULL,
+		agent_id TEXT DEFAULT '',
+		mention_agent_id TEXT DEFAULT '',
+		model TEXT DEFAULT '',
+		provider TEXT DEFAULT '',
 		FOREIGN KEY(session_id) REFERENCES sessions(id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)`,
