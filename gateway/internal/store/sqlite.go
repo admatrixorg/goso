@@ -677,12 +677,8 @@ func (s *SQLiteStore) CreateSession(sess Session) (*Session, error) {
 	}
 	sess.ID = newID()
 	sess.CreatedAt = time.Now().UTC()
-	archived := 0
-	if sess.Archived {
-		archived = 1
-	}
 	_, err = s.db.Exec(`INSERT INTO sessions(id, agent_id, label, created_at, tenant_id, prompt_mode, model_override, provider_override, archived) VALUES(?,?,?,?,?,?,?,?,?)`,
-		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode, sess.ModelOverride, sess.ProviderOverride, archived)
+		sess.ID, sess.AgentID, sess.Label, formatTime(sess.CreatedAt), sess.TenantID, sess.PromptMode, sess.ModelOverride, sess.ProviderOverride, s.archivedArg(sess.Archived))
 	if err != nil {
 		return nil, err
 	}
@@ -747,12 +743,8 @@ func (s *SQLiteStore) UpdateSession(sess Session) (*Session, error) {
 	if sess.TouchArchive {
 		cur.Archived = sess.Archived
 	}
-	archived := 0
-	if cur.Archived {
-		archived = 1
-	}
 	_, err = s.db.Exec(`UPDATE sessions SET prompt_mode=?, agent_id=?, model_override=?, provider_override=?, label=?, archived=? WHERE id=?`,
-		cur.PromptMode, cur.AgentID, cur.ModelOverride, cur.ProviderOverride, cur.Label, archived, cur.ID)
+		cur.PromptMode, cur.AgentID, cur.ModelOverride, cur.ProviderOverride, cur.Label, s.archivedArg(cur.Archived), cur.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -795,15 +787,53 @@ type sessionScanner interface {
 	Scan(dest ...any) error
 }
 
+// archivedArg is 0/1 for SQLite INTEGER and a bool for Postgres BOOLEAN.
+func (s *SQLiteStore) archivedArg(v bool) any {
+	if s != nil && s.pg {
+		return v
+	}
+	if v {
+		return 1
+	}
+	return 0
+}
+
+// sqlBool scans SQLite 0/1 and Postgres true/false into one bool.
+type sqlBool struct{ v bool }
+
+func (b *sqlBool) Scan(src any) error {
+	switch x := src.(type) {
+	case nil:
+		b.v = false
+	case bool:
+		b.v = x
+	case int64:
+		b.v = x != 0
+	case int32:
+		b.v = x != 0
+	case int:
+		b.v = x != 0
+	case []byte:
+		s := strings.TrimSpace(string(x))
+		b.v = s == "1" || strings.EqualFold(s, "t") || strings.EqualFold(s, "true")
+	case string:
+		s := strings.TrimSpace(x)
+		b.v = s == "1" || strings.EqualFold(s, "t") || strings.EqualFold(s, "true")
+	default:
+		return fmt.Errorf("archived: unsupported %T", src)
+	}
+	return nil
+}
+
 func scanSessionRow(row sessionScanner) (*Session, error) {
 	var sess Session
 	var ts, tenant string
-	var archived int
+	var archived sqlBool
 	if err := row.Scan(&sess.ID, &sess.AgentID, &sess.Label, &ts, &tenant, &sess.PromptMode, &sess.ModelOverride, &sess.ProviderOverride, &archived); err != nil {
 		return nil, err
 	}
 	sess.TenantID = NormalizeTenant(tenant)
-	sess.Archived = archived != 0
+	sess.Archived = archived.v
 	sess.CreatedAt = parseTime(ts)
 	return &sess, nil
 }
