@@ -18,11 +18,11 @@ func TestExtractEntityNames(t *testing.T) {
 
 func TestDispatchMemoryTool_FailClosed(t *testing.T) {
 	st := store.New()
-	_, err := DispatchMemoryTool(st, store.DefaultTenant, llm.ToolCall{Name: ToolMemorySearch, Arguments: map[string]any{"query": "  "}})
+	_, err := DispatchMemoryTool(st, store.DefaultTenant, "", llm.ToolCall{Name: ToolMemorySearch, Arguments: map[string]any{"query": "  "}})
 	if err == nil {
 		t.Fatal("empty query must fail")
 	}
-	_, err = DispatchMemoryTool(st, store.DefaultTenant, llm.ToolCall{Name: ToolMemoryExpand, Arguments: map[string]any{"id": ""}})
+	_, err = DispatchMemoryTool(st, store.DefaultTenant, "", llm.ToolCall{Name: ToolMemoryExpand, Arguments: map[string]any{"id": ""}})
 	if err == nil {
 		t.Fatal("empty id must fail")
 	}

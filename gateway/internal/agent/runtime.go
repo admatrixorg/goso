@@ -585,10 +585,11 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		}
 		var body string
 		var err error
+		caller := callMetaFrom(ctx).SessionID
 		if pipeline.IsMemoryTool(call.Name) {
-			body, err = pipeline.DispatchMemoryTool(a.rt.Store, tid, call)
+			body, err = pipeline.DispatchMemoryTool(a.rt.Store, tid, caller, call)
 		} else {
-			body, err = pipeline.DispatchSessionTool(a.rt.Store, tid, call)
+			body, err = pipeline.DispatchSessionTool(a.rt.Store, tid, caller, call)
 		}
 		failed := err != nil
 		if a.rt.Store != nil {

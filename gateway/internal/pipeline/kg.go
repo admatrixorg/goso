@@ -29,7 +29,8 @@ func MemoryToolSpecs() []llm.ToolSpec {
 }
 
 // DispatchMemoryTool runs memory_search / memory_expand for the calling tenant.
-func DispatchMemoryTool(st store.StoreIface, tenant string, call llm.ToolCall) (string, error) {
+// callerSessionID scopes channel sessions to their own customer (see toolScope).
+func DispatchMemoryTool(st store.StoreIface, tenant, callerSessionID string, call llm.ToolCall) (string, error) {
 	if st == nil {
 		return `{"error":"store required"}`, errors.New("store required")
 	}
@@ -47,6 +48,15 @@ func DispatchMemoryTool(st store.StoreIface, tenant string, call llm.ToolCall) (
 		hits, err := st.SearchProgressive(q, tenant)
 		if err != nil {
 			return `{"error":` + jsonQuote(err.Error()) + `}`, err
+		}
+		if sc := scopeForCaller(st, callerSessionID); sc.channel {
+			kept := hits[:0]
+			for _, h := range hits {
+				if sc.hitVisible(st, h) {
+					kept = append(kept, h)
+				}
+			}
+			hits = kept
 		}
 		if hits == nil {
 			hits = []store.KGSearchHit{}
@@ -66,6 +76,11 @@ func DispatchMemoryTool(st store.StoreIface, tenant string, call llm.ToolCall) (
 			return `{"error":` + jsonQuote(err.Error()) + `}`, err
 		}
 		if exp == nil || exp.Entity == nil || !store.SameTenant(exp.Entity.TenantID, tenant) {
+			return `{"error":"not found"}`, store.ErrNotFound
+		}
+		// Extracted entities carry no customer scope; channel callers only
+		// expand curated ones.
+		if sc := scopeForCaller(st, callerSessionID); sc.channel && exp.Entity.Source == store.KGSourceExtracted {
 			return `{"error":"not found"}`, store.ErrNotFound
 		}
 		// Agents never read a superseded fact as current (SPEC 132).

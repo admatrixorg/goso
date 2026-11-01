@@ -35,8 +35,10 @@ import (
 // EchoSummary).
 //
 // Scope: external channel threads (zalo-personal:, zalo-oa:, telegram:, …)
-// are skipped. One channel agent serves every customer, and cross-session
-// recall is agent-scoped, so a note from customer A would reach customer B.
+// are flushed too. The store stamps their notes with the customer key (the
+// session label, store.CustomerKeyForLabel), and channel recall only matches
+// the same agent + customer key, so customer A's note never reaches customer
+// B. A channel session with no usable key is skipped (fail closed).
 // The Omni bridge has its own per-conversation memory and does not run this.
 const (
 	IdleFlushDefault = 10 * time.Minute
@@ -50,11 +52,6 @@ const (
 	idleSummaryTimeout = 60 * time.Second
 	compactUserTurns   = 3
 )
-
-// channelLabelPrefixes mark sessions created by external channels.
-var channelLabelPrefixes = []string{
-	"zalo-personal:", "zalo-oa:", "telegram:", "discord:", "slack:", "feishu:", "whatsapp:",
-}
 
 // IdleFlushAfter is GOSO_MEMORY_IDLE_FLUSH: a Go duration ("10m", "90s") or
 // whole minutes ("10"). Empty means IdleFlushDefault; 0/off/false disables.
@@ -84,15 +81,16 @@ func IdleFlushAfter() time.Duration {
 
 // IsChannelSession reports sessions owned by an external channel thread.
 func IsChannelSession(sess *store.Session) bool {
+	return sess != nil && store.IsChannelLabel(sess.Label)
+}
+
+// CustomerKey is the customer scope of a session: the channel thread label,
+// or "" for web/API sessions.
+func CustomerKey(sess *store.Session) string {
 	if sess == nil {
-		return false
+		return ""
 	}
-	for _, p := range channelLabelPrefixes {
-		if strings.HasPrefix(sess.Label, p) {
-			return true
-		}
-	}
-	return false
+	return store.CustomerKeyForLabel(sess.Label)
 }
 
 // IdleFlusher writes L1 notes for sessions that went idle.
@@ -207,8 +205,11 @@ func (f *IdleFlusher) activity(since time.Time) ([]store.SessionActivity, error)
 // Returns true when a note was written.
 func (f *IdleFlusher) flush(ctx context.Context, sessionID string, cutoff time.Time) (bool, error) {
 	sess, err := f.Store.GetSession(sessionID)
-	if err != nil || sess == nil || sess.Archived || IsChannelSession(sess) {
+	if err != nil || sess == nil || sess.Archived {
 		return false, nil
+	}
+	if IsChannelSession(sess) && CustomerKey(sess) == "" {
+		return false, nil // channel thread without an id: nothing to scope to
 	}
 	raw, err := f.Store.ListMessages(sessionID)
 	if err != nil {
@@ -247,8 +248,8 @@ func (f *IdleFlusher) flush(ctx context.Context, sessionID string, cutoff time.T
 	if _, err := f.Store.SaveSummary(sessionID, text); err != nil {
 		return false, err
 	}
-	log.Printf("goso memory: idle flush session=%s agent=%s messages=%d mode=%s runes=%d",
-		sessionID, sess.AgentID, len(raw), mode, utf8.RuneCountInString(text))
+	log.Printf("goso memory: idle flush session=%s agent=%s channel=%t messages=%d mode=%s runes=%d",
+		sessionID, sess.AgentID, IsChannelSession(sess), len(raw), mode, utf8.RuneCountInString(text))
 	return true, nil
 }
 

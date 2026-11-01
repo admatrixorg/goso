@@ -64,6 +64,10 @@ type State struct {
 	Provider       llm.Provider
 	// RecallNote is the admitted prior-session memory for this turn (SPEC 132).
 	RecallNote string
+	// Channel is set for external channel threads (zalo-personal:, …). Their
+	// memory is scoped to CustomerKey; web/API sessions recall agent-wide.
+	Channel     bool
+	CustomerKey string
 }
 
 // Result is returned to Runtime.Chat.
@@ -224,7 +228,11 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 
 	r.memory(ctx, st)
 	r.summarize(ctx, st)
-	extractKG(r.Store, st.SessionID, st.Reply)
+	if !st.Channel {
+		// KG entities are tenant-wide with no customer scope; never derive them
+		// from a customer's channel thread.
+		extractKG(r.Store, st.SessionID, st.Reply)
+	}
 	r.Hooks.Fire(ctx, Event{Name: Stop, SessionID: st.SessionID, AgentID: st.AgentID})
 	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces}
 	return res, nil
@@ -239,7 +247,8 @@ func (r *Runner) loadContext(sessionID string, mode Mode) (*State, error) {
 	if id := strings.TrimSpace(r.TurnAgentID); id != "" {
 		agentID = id
 	}
-	st := &State{SessionID: sessionID, AgentID: agentID, TenantID: sess.TenantID, Mode: mode}
+	st := &State{SessionID: sessionID, AgentID: agentID, TenantID: sess.TenantID, Mode: mode,
+		Channel: IsChannelSession(sess), CustomerKey: CustomerKey(sess)}
 	if a, err := r.Store.GetAgent(agentID); err == nil && a != nil {
 		st.DisplayName = a.DisplayName
 		st.Instructions = a.Instructions

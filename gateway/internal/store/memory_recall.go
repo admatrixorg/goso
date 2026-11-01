@@ -13,12 +13,18 @@ import (
 // RecallQuery selects L1 notes written in other sessions of the same tenant
 // (and agent, when set) that lexically match Query. The pipeline uses it to
 // inject prior-session memory; tenant scoping is mandatory at this layer.
+//
+// CustomerScoped is set for channel sessions: only notes stamped with the same
+// non-empty CustomerKey (and the same agent) match. Unscoped notes never do,
+// and an empty CustomerKey matches nothing (fail closed).
 type RecallQuery struct {
 	TenantID       string
 	AgentID        string
 	ExcludeSession string
 	Query          string
 	Limit          int
+	CustomerScoped bool
+	CustomerKey    string
 }
 
 // RecallHit is one candidate. Score is positive and higher is better, but it
@@ -95,7 +101,7 @@ func sortRecall(hits []RecallHit, limit int) []RecallHit {
 // RecallMemories (in-memory store): token overlap over notes of other sessions.
 func (s *Store) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 	toks := RecallTokens(q.Query)
-	if len(toks) == 0 {
+	if len(toks) == 0 || (q.CustomerScoped && (q.CustomerKey == "" || strings.TrimSpace(q.AgentID) == "")) {
 		return []RecallHit{}, nil
 	}
 	tenant := NormalizeTenant(q.TenantID)
@@ -120,6 +126,9 @@ func (s *Store) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 		}
 		for _, m := range list {
 			if m == nil || !SameTenant(m.TenantID, tenant) || !recallKindOK(m.Kind) {
+				continue
+			}
+			if q.CustomerScoped && m.CustomerKey != q.CustomerKey {
 				continue
 			}
 			if sc := lexicalScore(m.Body, toks); sc > 0 {
@@ -154,7 +163,7 @@ func (s *Store) PruneEpisodic(before time.Time) (int, error) {
 // otherwise a bounded scan scored by token overlap (Postgres path too).
 func (s *SQLiteStore) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 	toks := RecallTokens(q.Query)
-	if len(toks) == 0 {
+	if len(toks) == 0 || (q.CustomerScoped && (q.CustomerKey == "" || strings.TrimSpace(q.AgentID) == "")) {
 		return []RecallHit{}, nil
 	}
 	tenant := NormalizeTenant(q.TenantID)
@@ -164,20 +173,34 @@ func (s *SQLiteStore) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 		limit = recallDefaultLimit
 	}
 	if s.fts {
-		if hits, err := s.recallFTS(tenant, agent, q.ExcludeSession, toks, limit); err == nil {
+		if hits, err := s.recallFTS(q, tenant, agent, toks, limit); err == nil {
 			return hits, nil
 		}
 	}
-	return s.recallScan(tenant, agent, q.ExcludeSession, toks, limit)
+	return s.recallScan(q, tenant, agent, toks, limit)
 }
 
-func (s *SQLiteStore) recallFTS(tenant, agent, exclude string, toks []string, limit int) ([]RecallHit, error) {
+// recallScope appends the agent and customer filters shared by both paths.
+func recallScope(query string, args []any, q RecallQuery, agent string) (string, []any) {
+	if agent != "" {
+		query += ` AND sess.agent_id = ?`
+		args = append(args, agent)
+	}
+	if q.CustomerScoped {
+		query += ` AND m.customer_key = ?`
+		args = append(args, q.CustomerKey)
+	}
+	return query, args
+}
+
+func (s *SQLiteStore) recallFTS(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, error) {
+	exclude := q.ExcludeSession
 	parts := make([]string, 0, len(toks))
 	for _, t := range toks {
 		parts = append(parts, `"`+strings.ReplaceAll(t, `"`, `""`)+`"`)
 	}
 	match := strings.Join(parts, " OR ")
-	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, bm25(memory_fts)
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key, bm25(memory_fts)
 		FROM memory_fts
 		JOIN memories m ON m.id = memory_fts.id
 		JOIN sessions sess ON sess.id = m.session_id
@@ -186,10 +209,7 @@ func (s *SQLiteStore) recallFTS(tenant, agent, exclude string, toks []string, li
 		AND m.kind IN (?, ?)
 		AND m.session_id <> ?`
 	args := []any{match, tenant, tenant, KindEpisodic, KindDurable, exclude}
-	if agent != "" {
-		query += ` AND sess.agent_id = ?`
-		args = append(args, agent)
-	}
+	query, args = recallScope(query, args, q, agent)
 	query += ` ORDER BY bm25(memory_fts) LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.db.Query(query, args...)
@@ -200,30 +220,29 @@ func (s *SQLiteStore) recallFTS(tenant, agent, exclude string, toks []string, li
 	var hits []RecallHit
 	for rows.Next() {
 		var m Memory
-		var ts, tn string
+		var ts, tn, ck string
 		var rank float64
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts, &tn, &rank); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Kind, &m.Body, &ts, &tn, &ck, &rank); err != nil {
 			continue
 		}
 		m.TenantID = NormalizeTenant(tn)
+		m.CustomerKey = ck
 		m.CreatedAt = parseTime(ts)
 		hits = append(hits, RecallHit{Memory: m, Score: -rank})
 	}
 	return sortRecall(hits, limit), nil
 }
 
-func (s *SQLiteStore) recallScan(tenant, agent, exclude string, toks []string, limit int) ([]RecallHit, error) {
-	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id
+func (s *SQLiteStore) recallScan(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, error) {
+	exclude := q.ExcludeSession
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
 		FROM memories m
 		JOIN sessions sess ON sess.id = m.session_id
 		WHERE m.tenant_id = ? AND sess.tenant_id = ?
 		AND m.kind IN (?, ?)
 		AND m.session_id <> ?`
 	args := []any{tenant, tenant, KindEpisodic, KindDurable, exclude}
-	if agent != "" {
-		query += ` AND sess.agent_id = ?`
-		args = append(args, agent)
-	}
+	query, args = recallScope(query, args, q, agent)
 	query += ` ORDER BY m.created_at DESC LIMIT ?`
 	args = append(args, recallScanCap)
 	rows, err := s.db.Query(query, args...)

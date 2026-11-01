@@ -186,7 +186,7 @@ func TestIdleFlush_NewBatchRefreshesNote(t *testing.T) {
 	}
 }
 
-func TestIdleFlush_SkipsNoUserTextChannelArchivedAndOld(t *testing.T) {
+func TestIdleFlush_SkipsNoUserTextKeylessChannelArchivedAndOld(t *testing.T) {
 	for name, st := range idleStores(t) {
 		t.Run(name, func(t *testing.T) {
 			ag, _ := st.CreateAgent(store.Agent{AgentKey: "s-" + name})
@@ -194,7 +194,8 @@ func TestIdleFlush_SkipsNoUserTextChannelArchivedAndOld(t *testing.T) {
 			_, _ = st.AddMessage(store.Message{SessionID: botOnly.ID, Role: "assistant", Content: "xin chào"})
 			blank, _ := st.CreateSession(store.Session{AgentID: ag.ID})
 			_, _ = st.AddMessage(store.Message{SessionID: blank.ID, Role: "user", Content: "   "})
-			ch, _ := st.CreateSession(store.Session{AgentID: ag.ID, Label: "zalo-personal:123"})
+			// A channel label with no thread id has no customer key: skipped.
+			ch, _ := st.CreateSession(store.Session{AgentID: ag.ID, Label: "zalo-personal:"})
 			_, _ = st.AddMessage(store.Message{SessionID: ch.ID, Role: "user", Content: "số điện thoại của tôi"})
 			arch, _ := st.CreateSession(store.Session{AgentID: ag.ID})
 			_, _ = st.AddMessage(store.Message{SessionID: arch.ID, Role: "user", Content: "phiên đã lưu trữ"})
