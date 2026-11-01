@@ -5,6 +5,7 @@ package pipeline
 import (
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/guardrail"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -15,8 +16,9 @@ import (
 // system message after the first. Recall is scoped to the session's agent and
 // customer key (store.CustomerKeyForLabel) and fails closed: a session with no
 // customer key recalls nothing. The channel sends its whole thread as history,
-// so no same-session summary is added. Returns "" when there is nothing to
-// say, and the reply goes out exactly as before.
+// so no same-session summary is added. The no-invention guardrail
+// (guardrail.Reply) always closes the message, for every agent, so the result
+// is never empty.
 func ChannelSystem(st store.StoreIface, agent *store.Agent, sess *store.Session, userText string) string {
 	var parts []string
 	if agent != nil {
@@ -40,5 +42,5 @@ func ChannelSystem(st store.StoreIface, agent *store.Agent, sess *store.Session,
 			kept = append(kept, p)
 		}
 	}
-	return strings.Join(kept, "\n\n")
+	return guardrail.Append(strings.Join(kept, "\n\n"))
 }

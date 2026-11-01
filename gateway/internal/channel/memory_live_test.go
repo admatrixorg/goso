@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/mqglobal/goso/gateway/internal/guardrail"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -212,10 +213,12 @@ func TestChannelLiveReplySurvivesRecallError(t *testing.T) {
 		t.Fatalf("reply not sent: %q", sent)
 	}
 	msgs := rec.last(t)
-	if sys := systemOf(t, msgs); sys != "" {
-		t.Fatalf("no instructions, failed recall: want no system message, got %q", sys)
+	// No instructions and a failed recall: the system message is just the
+	// no-invention guardrail, then the thread.
+	if sys := systemOf(t, msgs); sys != guardrail.Reply {
+		t.Fatalf("no instructions, failed recall: want only the guardrail, got %q", sys)
 	}
-	if len(msgs) != 1 || msgs[0].Role != "user" {
+	if len(msgs) != 2 || msgs[1].Role != "user" {
 		t.Fatalf("prompt changed: %+v", msgs)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/guardrail"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -183,16 +184,17 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 			system = note
 		}
 	}
-	msgs := make([]llm.Message, 0, len(in.History)+2)
-	if system != "" {
-		msgs = append(msgs, llm.Message{Role: "system", Content: system})
+	if system == "" && len(in.History) == 0 && strings.TrimSpace(in.Prompt) == "" {
+		return ReplyOutput{}, badRequest("prompt is required")
 	}
+	// The no-invention guardrail closes the one system message for every
+	// agent, after prompt, knowledge and memory, so no agent prompt removes it.
+	system = guardrail.Append(system)
+	msgs := make([]llm.Message, 0, len(in.History)+2)
+	msgs = append(msgs, llm.Message{Role: "system", Content: system})
 	msgs = append(msgs, in.History...)
 	if strings.TrimSpace(in.Prompt) != "" {
 		msgs = append(msgs, llm.Message{Role: "user", Content: in.Prompt})
-	}
-	if len(msgs) == 0 {
-		return ReplyOutput{}, badRequest("prompt is required")
 	}
 
 	fn := s.Complete
