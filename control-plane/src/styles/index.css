@@ -559,6 +559,27 @@ body.dark .z-gs-err { color: #f87171; }
 }
 .z-gs-new:hover { background: var(--gs-hover); }
 .z-gs-sb h6 { margin: 8px 8px 2px; font-size: 10.5px; color: var(--gs-faint); font-weight: 500; }
+.z-gs-ph { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 2px; }
+.z-gs-ph h6 { margin: 0 8px; }
+.z-gs-ic-sm { width: 22px; height: 22px; }
+.z-gs-pj {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--gs-fg);
+  font-size: 12px;
+}
+.z-gs-pj svg { color: var(--gs-muted); flex: none; }
+.z-gs-pj span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.z-gs-pj:hover { background: var(--gs-hover); }
+.z-gs-pj.is-closed { opacity: 0.6; }
+.z-gs-pjc { color: var(--gs-muted); font-size: 11.5px; }
 .z-gs-cvw { position: relative; display: flex; align-items: center; border-radius: 7px; }
 .z-gs-cvw:hover, .z-gs-cvw:focus-within, .z-gs-cvw.is-on { background: var(--gs-hover); }
 .z-gs-cv {
