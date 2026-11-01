@@ -19,12 +19,14 @@ import (
 // Idle memory flush.
 //
 // SummarizeStage writes the L1 note only once a session reaches
-// SummarizeMessageMin messages or the caller sends summarize=1, so short
+// SummarizeMessageMin conversation turns or the caller sends summarize=1, so short
 // sessions were never remembered. The idle flush writes the note for a session
 // that has been quiet for GOSO_MEMORY_IDLE_FLUSH, whatever its length.
 //
 // Idempotent and restart-safe without extra state: a session needs a flush
-// only while its last message is newer than its episodic note (SaveSummary
+// only while its last conversation turn (user/assistant, see
+// IsConversationTurn; tool and event rows do not count) is newer than its
+// episodic note (SaveSummary
 // keeps one note per session and stamps it with the write time). After a
 // flush the note is newer, so the next sweep skips it until a new message
 // arrives. A restart simply re-derives that from the database.
@@ -52,6 +54,12 @@ const (
 	idleSummaryTimeout = 60 * time.Second
 	compactUserTurns   = 3
 )
+
+// idleFirstSweepDelay is when the first sweep runs after start. It is kept off
+// the 60 s mark where PruneLoop runs its first prune (pruneStartDelay), so the
+// two memory writers do not hit the SQLite file in the same instant; later
+// sweeps stay 30 s out of phase with the 6 h prune ticks. A var for tests.
+var idleFirstSweepDelay = 90 * time.Second
 
 // IdleFlushAfter is GOSO_MEMORY_IDLE_FLUSH: a Go duration ("10m", "90s") or
 // whole minutes ("10"). Empty means IdleFlushDefault; 0/off/false disables.
@@ -248,8 +256,8 @@ func (f *IdleFlusher) flush(ctx context.Context, sessionID string, cutoff time.T
 	if _, err := f.Store.SaveSummary(sessionID, text); err != nil {
 		return false, err
 	}
-	log.Printf("goso memory: idle flush session=%s agent=%s channel=%t messages=%d mode=%s runes=%d",
-		sessionID, sess.AgentID, IsChannelSession(sess), len(raw), mode, utf8.RuneCountInString(text))
+	log.Printf("goso memory: idle flush session=%s agent=%s channel=%t messages=%d turns=%d mode=%s runes=%d",
+		sessionID, sess.AgentID, IsChannelSession(sess), len(raw), ConversationTurns(raw), mode, utf8.RuneCountInString(text))
 	return true, nil
 }
 
@@ -300,10 +308,12 @@ func compactNote(msgs []llm.Message) (string, string) {
 	return strings.Join(lines, "\n"), "compact"
 }
 
+// lastMessageAt is the time of the last conversation turn in raw (tool calls,
+// tool results and events are ignored, like in the SummarizeMessageMin count).
 func lastMessageAt(raw []*store.Message) time.Time {
 	var last time.Time
 	for _, m := range raw {
-		if m != nil && m.CreatedAt.After(last) {
+		if IsConversationTurn(m) && m.CreatedAt.After(last) {
 			last = m.CreatedAt
 		}
 	}
@@ -325,7 +335,18 @@ func IdleFlushLoop(ctx context.Context, st store.StoreIface, fallback llm.Provid
 		every = time.Second
 	}
 	f := &IdleFlusher{Store: st, Fallback: fallback, Idle: idle}
-	log.Printf("goso memory: idle flush on, idle=%s sweep=%s", idle, every)
+	log.Printf("goso memory: idle flush on, idle=%s sweep=%s first=%s", idle, every, idleFirstSweepDelay)
+	sweep := func() {
+		if n := f.Sweep(ctx); n > 0 {
+			log.Printf("goso memory: idle flush wrote %d notes", n)
+		}
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(idleFirstSweepDelay):
+	}
+	sweep()
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -333,9 +354,7 @@ func IdleFlushLoop(ctx context.Context, st store.StoreIface, fallback llm.Provid
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if n := f.Sweep(ctx); n > 0 {
-				log.Printf("goso memory: idle flush wrote %d notes", n)
-			}
+			sweep()
 		}
 	}
 }

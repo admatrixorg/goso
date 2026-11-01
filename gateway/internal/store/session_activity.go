@@ -31,6 +31,11 @@ var (
 	_ ActivityLister = (*SQLiteStore)(nil)
 )
 
+// activityRole keeps the activity prefilter on conversation rows: tool
+// results and events never make a session look newer than its note. (The
+// exact per-turn check is pipeline.IsConversationTurn.)
+func activityRole(role string) bool { return role == "user" || role == "assistant" }
+
 // SessionActivity implements ActivityLister for the memory store.
 func (s *Store) SessionActivity(since time.Time) ([]SessionActivity, error) {
 	s.mu.RLock()
@@ -42,11 +47,11 @@ func (s *Store) SessionActivity(since time.Time) ([]SessionActivity, error) {
 		}
 		var last time.Time
 		for _, m := range msgs {
-			if m != nil && m.CreatedAt.After(last) {
+			if m != nil && activityRole(m.Role) && m.CreatedAt.After(last) {
 				last = m.CreatedAt
 			}
 		}
-		if last.Before(since) {
+		if last.IsZero() || last.Before(since) {
 			continue
 		}
 		a := SessionActivity{SessionID: id, LastMessageAt: last}
@@ -69,6 +74,7 @@ func (s *SQLiteStore) SessionActivity(since time.Time) ([]SessionActivity, error
 			(SELECT MAX(e.created_at) FROM memories e WHERE e.session_id = m.session_id AND e.kind = ?)
 		FROM messages m
 		JOIN sessions sess ON sess.id = m.session_id
+		WHERE m.role IN ('user', 'assistant')
 		GROUP BY m.session_id
 		HAVING MAX(m.created_at) >= ?`, KindEpisodic, formatTime(since.Add(-time.Second)))
 	if err != nil {

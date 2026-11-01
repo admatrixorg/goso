@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -46,8 +47,10 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 			_ = fmt.Sprintf("%s", dir)
 		}
 	}
-	dsn := path
 	// modernc.org/sqlite uses file: URI; plain path also works for file.
+	// sqliteDSN adds busy_timeout (and WAL for files) on every pooled
+	// connection, so concurrent writers wait instead of failing SQLITE_BUSY.
+	dsn := sqliteDSN(path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -62,6 +65,53 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// SQLiteBusyTimeoutMS is how long a SQLite connection waits for a lock held by
+// another writer (prune, idle flush, chat turns) before returning SQLITE_BUSY.
+const SQLiteBusyTimeoutMS = 5000
+
+// sqliteDSN returns path with per-connection pragmas for the modernc driver.
+// database/sql pools connections, so a one-off `PRAGMA busy_timeout` Exec
+// would only configure one of them; DSN pragmas run on every new connection.
+//
+//   - busy_timeout(5000): wait up to 5 s for a lock instead of SQLITE_BUSY.
+//   - journal_mode(WAL) for file databases: readers do not block the writer.
+//     GOSO_SQLITE_WAL=0 keeps the file's current journal mode.
+//   - _txlock=immediate: transactions take the write lock at BEGIN, so a
+//     read-then-write transaction waits on busy_timeout instead of failing
+//     on lock upgrade.
+//
+// Keys already present in path are left alone.
+func sqliteDSN(path string) string {
+	lower := strings.ToLower(path)
+	memory := path == ":memory:" || strings.Contains(lower, ":memory:") || strings.Contains(lower, "mode=memory")
+	var add []string
+	if !strings.Contains(lower, "busy_timeout") && !strings.Contains(lower, "_timeout=") {
+		add = append(add, fmt.Sprintf("_pragma=busy_timeout(%d)", SQLiteBusyTimeoutMS))
+	}
+	if !memory && !strings.Contains(lower, "journal_mode") && !strings.Contains(lower, "_journal=") && sqliteWALEnabled() {
+		add = append(add, "_pragma=journal_mode(WAL)")
+	}
+	if !strings.Contains(lower, "_txlock") {
+		add = append(add, "_txlock=immediate")
+	}
+	if len(add) == 0 {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + strings.Join(add, "&")
+}
+
+func sqliteWALEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GOSO_SQLITE_WAL"))) {
+	case "0", "off", "false", "no":
+		return false
+	}
+	return true
 }
 
 func (s *SQLiteStore) migrate() error {

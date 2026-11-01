@@ -11,8 +11,40 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-// SummarizeMessageMin is the message-count threshold that triggers L1 summarize.
+// SummarizeMessageMin is the conversation-turn threshold that triggers L1
+// summarize. Only real user/assistant turns count (ConversationTurns): tool
+// calls, tool results, system and event rows do not, so an agent that uses
+// tools does not summarise after two or three exchanges.
 const SummarizeMessageMin = 12
+
+// IsConversationTurn reports a stored message that is a real conversation
+// turn: a non-blank user message, or a non-blank assistant reply that is not
+// a tool-call request. Tool results, system and event rows are not turns.
+func IsConversationTurn(m *store.Message) bool {
+	if m == nil || strings.TrimSpace(m.Content) == "" {
+		return false
+	}
+	switch m.Role {
+	case "user":
+		return true
+	case "assistant":
+		_, _, isToolCall := decodeAssistant(m.Content)
+		return !isToolCall
+	default:
+		return false
+	}
+}
+
+// ConversationTurns counts the real user/assistant turns in raw.
+func ConversationTurns(raw []*store.Message) int {
+	n := 0
+	for _, m := range raw {
+		if IsConversationTurn(m) {
+			n++
+		}
+	}
+	return n
+}
 
 const summaryRuneLimit = 500
 
@@ -25,7 +57,7 @@ func MemoryStage(_ store.StoreIface) StageFunc {
 }
 
 // SummarizeStage writes an L1 episodic summary when the session has at least
-// SummarizeMessageMin messages or the caller set summarize=1.
+// SummarizeMessageMin conversation turns or the caller set summarize=1.
 func SummarizeStage(st store.StoreIface) StageFunc {
 	return func(ctx context.Context, s *State) error {
 		if st == nil || s == nil || s.SessionID == "" {
@@ -35,7 +67,7 @@ func SummarizeStage(st store.StoreIface) StageFunc {
 		if err != nil {
 			return err
 		}
-		if !s.ForceSummarize && len(raw) < SummarizeMessageMin {
+		if !s.ForceSummarize && ConversationTurns(raw) < SummarizeMessageMin {
 			return nil
 		}
 		msgs := ToLLM(raw)
