@@ -67,7 +67,7 @@ Commands:
   version    Print version (JSON)
   doctor     Run health checks (JSON)
   gateway    Start HTTP gateway (SPEC 006)
-  bridge     Omni-Core AI bridge on GOSO_PORT (default 8088): gRPC + POST /v1/chat/reply
+  bridge     Omni-Core AI bridge on GOSO_PORT (default 8088): gRPC + POST /v1/chat/reply and SSE POST /v1/chat/reply/stream (also /v1/chat/stream)
   restore    Restore a VACUUM INTO snapshot to a temp db (optional --apply)
   help       Show this help
 

@@ -3,6 +3,7 @@
 package bridge
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -1000,6 +1001,196 @@ func TestKnowledgeMaxBytes(t *testing.T) {
 	ag.HarnessConfigJSON = ""
 	if knowledgeMaxBytes(ag) != 80 {
 		t.Fatalf("params %d", knowledgeMaxBytes(ag))
+	}
+}
+
+// coreStreamEvent matches omni-core harness.streamEvent (staging goso_http_stream.go).
+type coreStreamEvent struct {
+	Delta      string `json:"delta"`
+	IsFinished bool   `json:"is_finished"`
+	Finished   bool   `json:"isFinished"`
+	StopReason string `json:"stop_reason"`
+	ReplyText  string `json:"reply_text"`
+	DelayMS    int64  `json:"delay_ms"`
+}
+
+// parseCoreSSE is the consumeStream loop from omni-core: event: lines are
+// skipped, each data: line is JSON, reply_text is appended only when no delta
+// has been accumulated yet, and is_finished does not add text.
+func parseCoreSSE(body string) (text string, finals int, delay int64, stop string, err error) {
+	sc := bufio.NewScanner(strings.NewReader(body))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var b strings.Builder
+	used := false
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, ":") || strings.HasPrefix(line, "event:") {
+			continue
+		}
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok {
+			continue
+		}
+		data = strings.TrimSpace(data)
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var ev coreStreamEvent
+		if json.Unmarshal([]byte(data), &ev) != nil {
+			if used {
+				return b.String(), finals, delay, stop, errors.New("goso stream: invalid event")
+			}
+			return "", 0, 0, "", errors.New("invalid before delta")
+		}
+		if ev.DelayMS != 0 {
+			delay = ev.DelayMS
+		}
+		if ev.StopReason != "" {
+			stop = ev.StopReason
+		}
+		piece := ev.Delta
+		if piece == "" && ev.ReplyText != "" && b.Len() == 0 {
+			piece = ev.ReplyText
+		}
+		if piece != "" {
+			used = true
+			b.WriteString(piece)
+		}
+		if ev.IsFinished || ev.Finished {
+			used = true
+			finals++
+		}
+	}
+	if !used {
+		return "", 0, 0, "", errors.New("no delta")
+	}
+	return b.String(), finals, delay, stop, sc.Err()
+}
+
+func TestHTTPAndGRPCStream(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+
+	var streams []bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.Unmarshal(b, &body)
+		streams = append(streams, body.Stream)
+		if !body.Stream {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"unary ok"}}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"xin \"}}]}\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"chao\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(upstream.Close)
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-stream"
+		model   = "gcli/grok-4.5-high"
+	)
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: newMem(), Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"stream","harness_type":"GOSO","model_name":"` + model + `"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"` + model + `","prompt":"hello"}`)
+
+	unary := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if unary.StatusCode != 200 || !strings.Contains(unary.Body, `"reply_text":"unary ok"`) || strings.Contains(unary.Body, "event:") {
+		t.Fatalf("unary %d %s", unary.StatusCode, unary.Body)
+	}
+	if len(streams) != 1 || streams[0] {
+		t.Fatalf("unary stream flag %v", streams)
+	}
+
+	for _, path := range []string{"/v1/chat/reply/stream", "/v1/chat/stream"} {
+		req, err := http.NewRequest(http.MethodPost, base+path, bytes.NewReader(reply))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stamp(req.Header, svc.Secret, tenant, reply)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		sse := string(raw)
+		if res.StatusCode != 200 || !strings.Contains(res.Header.Get("Content-Type"), "text/event-stream") {
+			t.Fatalf("%s status %d type %s body %s", path, res.StatusCode, res.Header.Get("Content-Type"), sse)
+		}
+		text, finals, _, stop, err := parseCoreSSE(sse)
+		if err != nil {
+			t.Fatalf("%s parse %v body %s", path, err, sse)
+		}
+		if text != "xin chao" || finals != 1 || stop != "stop" {
+			t.Fatalf("%s core parse text %q finals %d stop %q body %s", path, text, finals, stop, sse)
+		}
+		if strings.Contains(text, "xin chaoxin chao") || len(text) != len("xin chao") {
+			t.Fatalf("%s duplicated reply %q", path, text)
+		}
+	}
+	if len(streams) != 3 || !streams[1] || !streams[2] {
+		t.Fatalf("sse upstream %v", streams)
+	}
+
+	h2 := h2cHTTPClient()
+	sclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.StreamReplyChunk](h2, base+procStream, connect.WithGRPC())
+	sreq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId: agentID, TenantId: tenant, Model: model, Prompt: "grpc-stream",
+	})
+	stamp(sreq.Header(), svc.Secret, tenant, []byte("grpc-stream"))
+	stream, err := sclient.CallServerStream(context.Background(), sreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streamed string
+	finished := false
+	for stream.Receive() {
+		streamed += stream.Msg().GetDelta()
+		if stream.Msg().GetIsFinished() {
+			finished = true
+			if stream.Msg().GetStopReason() == "" {
+				t.Fatal("missing stop reason")
+			}
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if streamed != "xin chao" || !finished || len(streams) != 4 || !streams[3] {
+		t.Fatalf("grpc %q finished=%v flags=%v", streamed, finished, streams)
+	}
+
+	bad := doSigned(t, http.MethodPost, base+"/v1/chat/reply/stream", "wrong-secret", tenant, reply)
+	if bad.StatusCode != http.StatusUnauthorized || strings.Contains(bad.Body, "event:") || !strings.Contains(bad.Body, `"error"`) {
+		t.Fatalf("bad sig %d %s", bad.StatusCode, bad.Body)
 	}
 }
 

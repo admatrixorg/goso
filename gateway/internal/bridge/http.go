@@ -5,6 +5,7 @@ package bridge
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -41,39 +42,109 @@ func (s *Service) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Service) handleReply(w http.ResponseWriter, r *http.Request) {
-	body, err := s.readBody(r)
+	in, err := s.readReply(r)
 	if err != nil {
 		writeErr(w, err)
 		return
-	}
-	if err := s.verify(r.Header, body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	tenantID := strings.TrimSpace(r.Header.Get(headerTenant))
-	if tenantID == "" {
-		writeErr(w, unauthorized("missing x-goclaw-tenant"))
-		return
-	}
-	in, err := parseReplyBody(body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if in.TenantID != "" && in.TenantID != tenantID {
-		writeErr(w, unauthorized("tenant mismatch"))
-		return
-	}
-	in.TenantID = tenantID
-	if strings.TrimSpace(in.AgentID) == "" {
-		in.AgentID = strings.TrimSpace(r.Header.Get(headerAgent))
 	}
 	out, err := s.Reply(r.Context(), in, nil)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, http.StatusOK, replyJSON(out))
+}
+
+// handleReplyStream serves POST /v1/chat/reply/stream (the path omni-core
+// calls) and POST /v1/chat/stream. Auth and JSON body match POST /v1/chat/reply.
+// The response is text/event-stream. Core ignores event: lines and reads each
+// data: JSON object (delta, is_finished, stop_reason; reply_text only if no
+// delta has been seen yet). POST /v1/chat/reply stays JSON.
+func (s *Service) handleReplyStream(w http.ResponseWriter, r *http.Request) {
+	in, err := s.readReply(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	started := false
+	start := func() {
+		if started {
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		started = true
+	}
+	out, err := s.Reply(r.Context(), in, func(delta string) {
+		if delta == "" {
+			return
+		}
+		start()
+		_ = writeSSE(w, "delta", map[string]any{
+			"delta":       delta,
+			"chunk_text":  delta,
+			"is_finished": false,
+		})
+	})
+	if err != nil {
+		if !started {
+			writeErr(w, err)
+			return
+		}
+		_ = writeSSE(w, "error", streamErrPayload(err))
+		return
+	}
+	if !started && out.ReplyText != "" {
+		start()
+		_ = writeSSE(w, "delta", map[string]any{
+			"delta":       out.ReplyText,
+			"chunk_text":  out.ReplyText,
+			"is_finished": false,
+		})
+	}
+	start()
+	_ = writeSSE(w, "done", map[string]any{
+		"reply_text":        out.ReplyText,
+		"chunk_text":        "",
+		"is_finished":       true,
+		"stop_reason":       out.StopReason,
+		"prompt_tokens":     out.PromptTokens,
+		"completion_tokens": out.CompletionTokens,
+		"latency_ms":        out.LatencyMS,
+		"delay_ms":          out.DelayMS,
+	})
+}
+
+func (s *Service) readReply(r *http.Request) (ReplyInput, error) {
+	body, err := s.readBody(r)
+	if err != nil {
+		return ReplyInput{}, err
+	}
+	if err := s.verify(r.Header, body); err != nil {
+		return ReplyInput{}, err
+	}
+	tenantID := strings.TrimSpace(r.Header.Get(headerTenant))
+	if tenantID == "" {
+		return ReplyInput{}, unauthorized("missing x-goclaw-tenant")
+	}
+	in, err := parseReplyBody(body)
+	if err != nil {
+		return ReplyInput{}, err
+	}
+	if in.TenantID != "" && in.TenantID != tenantID {
+		return ReplyInput{}, unauthorized("tenant mismatch")
+	}
+	in.TenantID = tenantID
+	if strings.TrimSpace(in.AgentID) == "" {
+		in.AgentID = strings.TrimSpace(r.Header.Get(headerAgent))
+	}
+	return in, nil
+}
+
+func replyJSON(out ReplyOutput) map[string]any {
+	return map[string]any{
 		"reply_text":        out.ReplyText,
 		"attachment_url":    "",
 		"attachment_kind":   "",
@@ -82,7 +153,39 @@ func (s *Service) handleReply(w http.ResponseWriter, r *http.Request) {
 		"completion_tokens": out.CompletionTokens,
 		"latency_ms":        out.LatencyMS,
 		"stop_reason":       out.StopReason,
-	})
+	}
+}
+
+func writeSSE(w http.ResponseWriter, event string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b); err != nil {
+		return err
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	return nil
+}
+
+func streamErrPayload(err error) map[string]any {
+	msg := "internal error"
+	body := map[string]any{"error": msg, "is_finished": true}
+	var be *Error
+	if errors.As(err, &be) && be != nil {
+		if be.Msg != "" {
+			body["error"] = be.Msg
+		}
+		if be.Code != "" {
+			body["code"] = be.Code
+		}
+		if be.Upstream != 0 {
+			body["upstream_status"] = be.Upstream
+		}
+	}
+	return body
 }
 
 func parseReplyBody(body []byte) (ReplyInput, error) {
