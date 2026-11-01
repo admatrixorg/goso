@@ -4,6 +4,7 @@ package bridge
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/url"
 	"strings"
@@ -131,10 +132,11 @@ func (s *Service) memoryNote(sess *store.Session, prompt string) string {
 			parts = append(parts, note)
 		}
 	}
+	// ErrNotFound is the normal first turn of a session: no note written yet.
 	sum, err := s.Store.LatestSummary(sess.ID)
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		log.Printf("goso memory: bridge note session=%s error=%v", sess.ID, err)
-	} else if sum != nil && strings.TrimSpace(sum.Body) != "" {
+	} else if err == nil && sum != nil && strings.TrimSpace(sum.Body) != "" {
 		parts = append(parts, pipeline.PreviousSummaryPrefix+strings.TrimSpace(sum.Body))
 	}
 	if len(parts) == 0 {
