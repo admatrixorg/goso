@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { closedProjects, runningProjects } from "../api/chat-projects";
 import { api, PROMPT_MODES, type Agent, type Session } from "../api/client";
 import { confirmNamed } from "../api/confirm";
 import {
@@ -32,6 +33,14 @@ import { StatusLine, formatPublicError } from "../ui/StatusLine";
 export type SessionsPageHandle = {
   focusCreate: () => void;
 };
+
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+    </svg>
+  );
+}
 
 function promptModeKey(mode: string): MsgKey {
   if (mode === "task") return "promptMode.task";
@@ -74,6 +83,7 @@ export const SessionsPage = forwardRef<
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchIdx, setSearchIdx] = useState(0);
+  const [showClosedProjects, setShowClosedProjects] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const createBoxRef = useRef<HTMLDivElement>(null);
   const agentSelectRef = useRef<HTMLSelectElement>(null);
@@ -485,6 +495,33 @@ export const SessionsPage = forwardRef<
         {formVisible ? <div className="z-gs-form">{createFields()}</div> : null}
         {state.kind === "error" || state.kind === "permission" ? <p className="z-gs-note">{errText}</p> : null}
         {formErr ? <p className="z-gs-note">{formErr}</p> : null}
+        <div className="z-gs-ph">
+          <h6>{t("chat.projects")}</h6>
+          <button type="button" className="z-gs-ic z-gs-ic-sm" aria-label={t("chat.projectNew")} title={t("chat.projectNew")}>
+            <Icon name="plus" size={13} />
+          </button>
+        </div>
+        {runningProjects().map((project) => (
+          <button key={project.id} type="button" className="z-gs-pj">
+            <FolderIcon />
+            <span>{project.name}</span>
+          </button>
+        ))}
+        {closedProjects().length ? (
+          <button type="button" className="z-gs-cv z-gs-pjc" onClick={() => setShowClosedProjects((v) => !v)}>
+            {showClosedProjects
+              ? t("chat.projectsHideClosed")
+              : t("chat.projectsClosed", { n: closedProjects().length })}
+          </button>
+        ) : null}
+        {showClosedProjects
+          ? closedProjects().map((project) => (
+              <button key={project.id} type="button" className="z-gs-pj is-closed">
+                <FolderIcon />
+                <span>{project.name}</span>
+              </button>
+            ))
+          : null}
         {state.showItems && recent.length ? <h6>{t("chat.recent")}</h6> : null}
         {state.showItems ? recent.map(row) : null}
         {archived.length ? (
