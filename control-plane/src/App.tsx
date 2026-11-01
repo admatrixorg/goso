@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentsPage } from "./pages/AgentsPage";
 import { SessionsPage, type SessionsPageHandle } from "./pages/SessionsPage";
 import { ChatPage } from "./pages/ChatPage";
@@ -27,7 +27,6 @@ import { VaultPage } from "./pages/VaultPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
-import { WebhooksPage } from "./pages/WebhooksPage";
 import { TracesPage } from "./pages/TracesPage";
 import { PendingPage } from "./pages/PendingPage";
 import { ContactsPage } from "./pages/ContactsPage";
@@ -36,28 +35,21 @@ import { WorkstationsPage } from "./pages/WorkstationsPage";
 import { TTSPage } from "./pages/TTSPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { StoragePage } from "./pages/StoragePage";
+import { BackupPage, DecisionFlowPage, DecisionPage, HooksPage, MeetingsLivePage } from "./pages/FeaturePages";
 import { hashForTab, parseHash, type Tab } from "./api/hash-route";
 import { Icon, type IconName } from "./ui/Icon";
-import { Avatar } from "./ui/Avatar";
 import { CommandPalette } from "./ui/CommandPalette";
 import { GatewayStatus } from "./ui/GatewayStatus";
 import { isDemoMode } from "./demo/mode";
-import { demoOverviewItems, demoTop, demoWorkExtra } from "./demo/nav";
+import { demoOverviewItems, demoWorkExtra } from "./demo/nav";
 import { useI18n, type Locale } from "./i18n";
 import { clearSelectedSession, readSelectedSession, writeSelectedSession } from "./api/sessions";
+import { TENANT_STORAGE_KEY } from "./api/client";
+import { tenantsApi, type Tenant } from "./api/tenants";
 
 const DEMO = isDemoMode();
 
 export type { Tab };
-
-function liveTop(t: (k: "nav.overview" | "nav.chat" | "nav.connectors" | "nav.events") => string): { id: Tab; label: string }[] {
-  return [
-    { id: "crm", label: t("nav.overview") },
-    { id: "chat", label: t("nav.chat") },
-    { id: "connectors", label: t("nav.connectors") },
-    { id: "events", label: t("nav.events") },
-  ];
-}
 
 function visibleTabItems(
   side: { items: { id: Tab; label: string; ic: IconName }[] }[],
@@ -82,10 +74,8 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       group: t("nav.group.core"),
       items: [
         { id: "crm", label: t("nav.overview"), ic: "gauge" },
-        { id: "heatmap", label: t("nav.heatmap"), ic: "report" },
         { id: "chat", label: t("nav.chat"), ic: "msg" },
         { id: "agents", label: t("nav.agents"), ic: "bolt" },
-        { id: "teams", label: t("nav.teams"), ic: "layers" },
       ],
     },
     {
@@ -94,13 +84,13 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "sessions", label: t("nav.sessions"), ic: "list" },
         { id: "pending", label: t("nav.pending"), ic: "hourglass" },
         { id: "contacts", label: t("nav.contacts"), ic: "user" },
-        { id: "marketing", label: t("nav.marketing"), ic: "mega" },
       ],
     },
     {
       group: t("nav.group.connectivity"),
       items: [
         { id: "channels", label: t("nav.channels"), ic: "device" },
+        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
         { id: "nodes", label: t("nav.nodes"), ic: "device" },
         { id: "workstations", label: t("nav.workstations"), ic: "cloud" },
       ],
@@ -109,12 +99,13 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       group: t("nav.group.capabilities"),
       items: [
         { id: "skills", label: t("nav.skills"), ic: "doc" },
+        { id: "decision", label: t("nav.decision"), ic: "shield" },
+        { id: "decisionFlow", label: t("nav.decisionFlow"), ic: "sitemap" },
         { id: "tools", label: t("nav.tools"), ic: "build" },
         { id: "mcp", label: t("nav.mcp"), ic: "hook" },
         { id: "tts", label: t("nav.tts"), ic: "mic" },
         { id: "cron", label: t("nav.cron"), ic: "timer" },
-        { id: "webhooks", label: t("nav.webhooks"), ic: "hook" },
-        { id: "connectors", label: t("nav.connectors"), ic: "hook" },
+        { id: "hooks", label: t("nav.hooks"), ic: "hook" },
       ],
     },
     {
@@ -122,6 +113,7 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
       items: [
         { id: "memory", label: t("nav.memory"), ic: "inbox" },
         { id: "vault", label: t("nav.vault"), ic: "doc" },
+        { id: "meetings", label: t("nav.meetings"), ic: "mic" },
         { id: "kg", label: t("nav.kg"), ic: "sitemap" },
         { id: "storage", label: t("nav.storage"), ic: "doc" },
       ],
@@ -145,9 +137,20 @@ function liveSide(t: ReturnType<typeof useI18n>["t"]): { group: string; items: {
         { id: "settings", label: t("nav.config"), ic: "gear" },
         { id: "approvals", label: t("nav.approvals"), ic: "shield" },
         { id: "impexp", label: t("nav.impexp"), ic: "download" },
+        { id: "backup", label: t("nav.backup"), ic: "history" },
       ],
     },
   ];
+}
+
+function localZoneLabel(): string {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const city = zone.split("/").pop()?.replace(/_/g, " ");
+    return city ? `Auto (${city})` : "Auto (Local)";
+  } catch {
+    return "Auto (Local)";
+  }
 }
 
 function useTheme() {
@@ -184,10 +187,9 @@ export default function App() {
   const { dark, toggle } = useTheme();
   const [q, setQ] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const skipHeaderFocus = useRef(false);
-  const headerSearchRef = useRef<HTMLInputElement>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const zoneLabel = useMemo(() => localZoneLabel(), []);
 
-  const top = DEMO ? [...demoTop(locale), ...liveTop(t)] : liveTop(t);
   const liveGroups = liveSide(t);
   const side = DEMO
     ? liveGroups.map((group, index) => {
@@ -249,162 +251,53 @@ export default function App() {
   const closePalette = useCallback(() => {
     setPaletteOpen(false);
     setQ("");
-    skipHeaderFocus.current = true;
-    headerSearchRef.current?.blur();
-    window.setTimeout(() => {
-      skipHeaderFocus.current = false;
-    }, 0);
   }, []);
   const paletteItems = visibleTabItems(side, t("nav.settings"));
+  const pageLabel = paletteItems.find((item) => item.id === tab)?.label;
+
+  useEffect(() => {
+    document.title = pageLabel ? `${pageLabel} — Goso` : "Goso";
+  }, [pageLabel]);
 
   return (
     <div className="z-shell">
-      <div className="z-topbar">
-        <div className="z-brand">
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 8,
-              background: "var(--accent)",
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 600,
-              fontSize: 14,
-            }}
-          >
-            Z
-          </div>
-          <div className="z-wide-only" style={{ fontWeight: 600, fontSize: 14, letterSpacing: "-.2px", color: "var(--text)" }}>ZAgent</div>
-        </div>
-        <div className="z-top-tabs">
-        {top.map((it) => {
-          const on = tab === it.id;
-          return (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => go(it.id)}
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: "8px 12px",
-                fontSize: 13,
-                fontWeight: on ? 600 : 500,
-                color: on ? "var(--text)" : "var(--text-3)",
-                borderBottom: `2px solid ${on ? "var(--accent)" : "transparent"}`,
-                marginBottom: -8,
-                borderRadius: 0,
-                transition: "color var(--dur-control) var(--ease-standard), border-color var(--dur-control) var(--ease-standard)",
-              }}
-            >
-              {it.label}
-            </button>
-          );
-        })}
-        </div>
+      <header className="z-topbar">
         <div className="z-topbar-spacer" />
         <div className="z-chrome-actions">
-          <GatewayStatus />
-          <div
-            data-ig="search"
-            className="z-header-search"
-            style={{
-              background: "var(--surface-2)",
-              borderRadius: 8,
-              padding: "6px 12px",
-              color: "var(--text-4)",
-              fontSize: 12.5,
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            <Icon name="search" size={13} />
-            <input
-              ref={headerSearchRef}
-              className="z-field"
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPaletteOpen(true);
-              }}
-              onFocus={() => {
-                if (skipHeaderFocus.current) return;
-                openPalette();
-              }}
-              placeholder={t("chrome.search")}
-              aria-label={t("chrome.search")}
-              aria-expanded={paletteOpen}
-              aria-haspopup="dialog"
-              autoComplete="off"
-              spellCheck={false}
-              style={{ border: "none", background: "transparent", padding: 0, minHeight: 0, width: "100%" }}
-            />
-          </div>
           <LangToggle locale={locale} setLocale={setLocale} />
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={dark ? t("chrome.dark") : t("chrome.light")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              border: "1px solid var(--border)",
-              borderRadius: 999,
-              padding: "4px 12px",
-              fontSize: 12,
-              fontWeight: 500,
-              color: "var(--text-2)",
-              background: "var(--card)",
-            }}
-          >
-            ◐ <span className="z-wide-only">{dark ? t("chrome.dark") : t("chrome.light")}</span>
-          </button>
-          <span data-ig="bell" style={{ position: "relative", color: "var(--text-2)", display: "flex", alignItems: "center" }}>
-            <span data-ig-part="">
-              <Icon name="bell" size={15} />
-            </span>
+          <span className="z-gbtn" title={t("chrome.zone")}>
+            <Icon name="clock" size={13} />
+            <span className="z-wide-only">{zoneLabel}</span>
           </span>
-          <Avatar initials="G" size={27} />
+          <button type="button" className="z-gbtn" aria-label={t("chrome.system")} title={t("chrome.system")} onClick={() => go("settings")}>
+            <Icon name="gear" size={14} />
+          </button>
+          <button type="button" className="z-gbtn" onClick={toggle} aria-label={dark ? t("chrome.dark") : t("chrome.light")}>
+            {dark ? <Icon name="sun" size={14} /> : <ThemeMoon />}
+          </button>
+          <AccountMenu
+            open={accountOpen}
+            label={t("chrome.account")}
+            orgLabel={t("chrome.account.org")}
+            keysLabel={t("chrome.account.keys")}
+            logoutLabel={t("chrome.account.logout")}
+            onToggle={() => setAccountOpen((v) => !v)}
+            onClose={() => setAccountOpen(false)}
+            onOrg={() => {
+              setAccountOpen(false);
+              go("tenants");
+            }}
+            onKeys={() => {
+              setAccountOpen(false);
+              go("apikeys");
+            }}
+          />
         </div>
-      </div>
+      </header>
 
       <div className="z-body">
         <nav className="z-sidebar" aria-label={t("chrome.nav")}>
-          <button
-            type="button"
-            data-ig="search"
-            className="z-nav-search"
-            onClick={openPalette}
-            aria-haspopup="dialog"
-            aria-expanded={paletteOpen}
-            aria-label={t("chrome.quickSearch")}
-            title={t("chrome.quickSearch")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 9,
-              padding: "7px 10px",
-              fontSize: 12.5,
-              color: "var(--text-4)",
-              minHeight: 34,
-              textAlign: "left",
-            }}
-          >
-            <span className="z-narrow-only">
-              <Icon name="search" size={15} />
-            </span>
-            <span className="z-wide-only" style={{ flex: 1 }}>{t("chrome.quickSearch")}</span>
-            <span className="z-wide-only" style={{ fontSize: 11, color: "var(--text-4)", fontWeight: 500 }}>⌘K</span>
-          </button>
+          <div className="z-nav-scroll">
           {side.map((g) => {
             const items = g.items;
             if (!items.length) return null;
@@ -413,9 +306,9 @@ export default function App() {
               <div
                 className="z-nav-group"
                 style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: ".7px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: ".06em",
                   color: "var(--text-3)",
                   padding: "0 10px 6px",
                 }}
@@ -458,48 +351,24 @@ export default function App() {
             </div>
             );
           })}
-          <div style={{ flex: 1 }} />
-          <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 8 }}>
-            <div
-              className="z-nav-foot"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                minHeight: 34,
-                padding: "7px 10px",
-                borderRadius: 8,
-                fontSize: 12.5,
-                color: "var(--text-2)",
-              }}
-            >
-              <span
-                style={{
-                  width: 19,
-                  height: 19,
-                  borderRadius: 5,
-                  background: "var(--accent)",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  flex: "none",
-                }}
-              >
-                G
-              </span>
-              <span className="z-wide-only" style={{ flex: 1 }}>GOSO</span>
+          </div>
+          <div className="z-org">
+            <div className="z-org-row">
+              <span className="z-wide-only">GOSO</span>
             </div>
+            <GatewayStatus quiet />
           </div>
         </nav>
 
         <div className="z-main">
           {DEMO && tab === "home" && <HomePage onMeetings={() => go("meetings")} onChat={() => go("chat")} />}
-          {DEMO && tab === "meetings" && <MeetingsPage />}
+          {tab === "meetings" && (DEMO ? <MeetingsPage /> : <MeetingsLivePage />)}
           {DEMO && tab === "tasks" && <TasksPage onChat={() => go("chat")} />}
           {tab === "crm" && <OverviewPage />}
+          {tab === "decision" && <DecisionPage />}
+          {tab === "decisionFlow" && <DecisionFlowPage />}
+          {tab === "hooks" && <HooksPage />}
+          {tab === "backup" && <BackupPage />}
           {tab === "heatmap" && <HeatmapPage />}
           {tab === "agents" && <AgentsPage />}
           {tab === "sessions" && (
@@ -509,8 +378,11 @@ export default function App() {
                 pickSession(id, label);
                 go("chat");
               }}
-              onDeleted={dropSession}
-            />
+                  onDeleted={dropSession}
+                  onRenamed={(id, label) => {
+                    if (sessionId === id) pickSession(id, label);
+                  }}
+                />
           )}
           {tab === "chat" && (
             <div className="z-chat-split">
@@ -521,6 +393,9 @@ export default function App() {
                   selectedId={sessionId}
                   onPick={pickSession}
                   onDeleted={dropSession}
+                  onRenamed={(id, label) => {
+                    if (sessionId === id) pickSession(id, label);
+                  }}
                 />
               </div>
               <div className="z-chat-transcript">
@@ -546,7 +421,6 @@ export default function App() {
           {tab === "channels" && <ChannelsPage />}
           {tab === "nodes" && <NodesPage />}
           {tab === "workstations" && <WorkstationsPage />}
-          {tab === "webhooks" && <WebhooksPage />}
           {tab === "traces" && <TracesPage />}
           {tab === "pending" && <PendingPage />}
           {tab === "contacts" && <ContactsPage />}
@@ -578,46 +452,125 @@ export default function App() {
         onOpen={openPalette}
         onClose={closePalette}
         onPick={go}
+        suppressShortcut={tab === "chat"}
       />
     </div>
   );
 }
 
-function LangToggle({ locale, setLocale }: { locale: Locale; setLocale: (l: Locale) => void }) {
+function AccountMenu({
+  open,
+  label,
+  orgLabel,
+  keysLabel,
+  logoutLabel,
+  onToggle,
+  onClose,
+  onOrg,
+  onKeys,
+}: {
+  open: boolean;
+  label: string;
+  orgLabel: string;
+  keysLabel: string;
+  logoutLabel: string;
+  onToggle: () => void;
+  onClose: () => void;
+  onOrg: () => void;
+  onKeys: () => void;
+}) {
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [current, setCurrent] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let stop = false;
+    void tenantsApi
+      .list()
+      .then((j) => {
+        if (stop) return;
+        setTenants(j.tenants ?? []);
+        setCurrent(j.current?.name || j.current?.id || "");
+      })
+      .catch(() => {
+        if (!stop) setTenants([]);
+      });
+    const close = (e: PointerEvent) => {
+      const node = e.target as HTMLElement | null;
+      if (node?.closest?.(".z-account")) return;
+      onClose();
+    };
+    window.addEventListener("pointerdown", close);
+    return () => {
+      stop = true;
+      window.removeEventListener("pointerdown", close);
+    };
+  }, [open, onClose]);
+
+  function pickTenant(id: string) {
+    try {
+      localStorage.setItem(TENANT_STORAGE_KEY, id);
+    } catch {
+      /* private mode */
+    }
+    window.location.reload();
+  }
+
+  function logout() {
+    try {
+      localStorage.removeItem("goso_token");
+    } catch {
+      /* private mode */
+    }
+    onClose();
+    window.location.reload();
+  }
+
   return (
-    <div
-      role="group"
-      aria-label="Language"
-      style={{
-        display: "flex",
-        border: "1px solid var(--border)",
-        borderRadius: 999,
-        overflow: "hidden",
-        background: "var(--card)",
-      }}
-    >
-      {(["vi", "en"] as const).map((l) => {
-        const on = locale === l;
-        return (
-          <button
-            key={l}
-            type="button"
-            onClick={() => setLocale(l)}
-            aria-pressed={on}
-            style={{
-              border: "none",
-              padding: "4px 10px",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: ".4px",
-              background: on ? "var(--accent-soft)" : "transparent",
-              color: on ? "var(--accent)" : "var(--text-3)",
-            }}
-          >
-            {l.toUpperCase()}
+    <div className="z-account">
+      <button type="button" className="z-gbtn" aria-label={label} aria-expanded={open} onClick={onToggle}>
+        <Icon name="user" size={14} />
+        <span className="z-wide-only">{label}</span>
+      </button>
+      {open ? (
+        <div className="z-account-menu" role="menu">
+          {current ? <div className="z-account-current">{current}</div> : null}
+          {tenants.map((row) => (
+            <button key={row.id} type="button" role="menuitem" onClick={() => pickTenant(row.id)}>
+              {row.name || row.id}
+            </button>
+          ))}
+          {tenants.length ? <hr /> : null}
+          <button type="button" role="menuitem" onClick={onOrg}>
+            {orgLabel}
           </button>
-        );
-      })}
+          <button type="button" role="menuitem" onClick={onKeys}>
+            {keysLabel}
+          </button>
+          <hr />
+          <button type="button" role="menuitem" onClick={logout}>
+            {logoutLabel}
+          </button>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function LangToggle({ locale, setLocale }: { locale: Locale; setLocale: (l: Locale) => void }) {
+  const { t } = useI18n();
+  const next = locale === "vi" ? "en" : "vi";
+  return (
+    <button type="button" className="z-gbtn" aria-label={t("chrome.lang")} title={t("chrome.lang")} onClick={() => setLocale(next)}>
+      <Icon name="sitemap" size={13} />
+      <span className="z-wide-only">{locale === "vi" ? "Tiếng Việt" : "English"}</span>
+    </button>
+  );
+}
+
+function ThemeMoon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+    </svg>
   );
 }

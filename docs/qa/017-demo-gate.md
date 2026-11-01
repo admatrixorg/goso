@@ -7,7 +7,7 @@ Unset / `false` (default build) → those tabs **omitted** from nav; default tab
 
 ## Builds
 
-| Mode | JS | `Trang chủ` | `Vinh Phát` | `Tổng quan` |
+| Mode | JS | `Trang chủ` | `Minh An (demo)` | `Tổng quan` |
 |------|----|-------------|-------------|-------------|
 | `VITE_DEMO_MODE=false` `dist/assets/index-CyjaNoG8.js` (179 kB) | **absent** | **absent** | present |
 | `VITE_DEMO_MODE=true` `/tmp/cp-demo/.../index-BFl1jfup.js` (205 kB) | present | present | present |

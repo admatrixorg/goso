@@ -8,6 +8,7 @@ export type SessionLite = {
   agent_id: string;
   label?: string;
   prompt_mode?: string;
+  archived?: boolean;
   created_at?: string;
 };
 
@@ -84,6 +85,21 @@ export function sessionDisplayName(s: { id: string; label?: string }): string {
 /** Last-activity field available on session list JSON. No message_count in this API. */
 export function sessionActivityAt(s: { created_at?: string }): string {
   return (s.created_at || "").trim();
+}
+
+/** Recent rows first, then archived. Matches the visible name and the agent label. */
+export function searchConversations<T extends SessionLite>(
+  sessions: T[],
+  query: string,
+  agentName: (agentId: string) => string,
+): T[] {
+  const q = query.trim().toLowerCase();
+  const hit = sessions.filter((s) => {
+    if (!q) return true;
+    const hay = `${s.label || ""} ${s.id} ${agentName(s.agent_id)}`.toLowerCase();
+    return hay.includes(q);
+  });
+  return [...hit.filter((s) => !s.archived), ...hit.filter((s) => s.archived)];
 }
 
 export function filterSessions<T extends SessionLite>(

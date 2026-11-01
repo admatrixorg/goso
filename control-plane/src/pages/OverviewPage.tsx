@@ -20,6 +20,7 @@ import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
 import { StatusLine } from "../ui/StatusLine";
 import { CrmMetricsPage } from "./CrmMetrics";
+import { FoldedHeatmapLink } from "./FeaturePages";
 
 const KIND_KEY: Record<HealthKind, MsgKey> = {
   connected: "chrome.gateway.connected",
@@ -148,6 +149,7 @@ export function OverviewPage() {
       }
       data-overview={kind ?? "loading"}
     >
+      <FoldedHeatmapLink />
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Badge tone={kindTone(kind)} data-overview-health={kind ?? "checking"}>
           {kind == null ? t("common.loading") : `${t("overview.gateway")} · ${t(KIND_KEY[kind])}`}

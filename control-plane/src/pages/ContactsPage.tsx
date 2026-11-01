@@ -31,6 +31,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { PageChrome } from "../ui/PageChrome";
 import { PageStatus } from "../ui/PageStatus";
 import { StatusLine, formatPublicError } from "../ui/StatusLine";
+import { FoldedMarketingLink } from "./FeaturePages";
 
 type ConfirmKind = "merge" | "undo";
 
@@ -253,6 +254,7 @@ export function ContactsPage() {
         </>
       }
     >
+      <FoldedMarketingLink />
       <Card>
         <CardHeader icon="lock" title={t("contacts.how")} />
         <p style={{ margin: 0, padding: "0 16px 14px", fontSize: 12.5, color: "var(--text-3)", maxWidth: 720 }}>

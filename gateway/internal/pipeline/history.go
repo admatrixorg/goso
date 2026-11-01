@@ -44,7 +44,7 @@ func EncodeTool(toolCallID, content string) string {
 func ToLLM(msgs []*store.Message) []llm.Message {
 	out := make([]llm.Message, 0, len(msgs))
 	for _, m := range msgs {
-		if m == nil {
+		if m == nil || m.Role == "event" {
 			continue
 		}
 		lm := llm.Message{Role: m.Role, Content: m.Content}

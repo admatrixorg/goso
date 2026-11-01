@@ -84,6 +84,14 @@ type Runner struct {
 	Summarize      StageFunc
 	ForceSummarize bool
 	OnDelta        llm.StreamHandler
+	// TurnAgentID is the agent whose persona and tools run this turn (session agent, or one @ mention).
+	TurnAgentID string
+	// SessionAgentID is stamped on the user row so a later switch can draw "Chuyển sang".
+	SessionAgentID string
+	// MentionAgentID is set only when this turn's agent differs from the session agent.
+	MentionAgentID string
+	TurnModel      string
+	TurnProvider   string
 }
 
 // NewRunner fills defaults (max 20, cap 50, empty hooks).
@@ -154,7 +162,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 		r.Hooks.Fire(ctx, Event{Name: SessionStart, SessionID: st.SessionID, AgentID: st.AgentID})
 	}
 
-	if _, err := r.Store.AddMessage(store.Message{SessionID: sessionID, Role: "user", Content: userText}); err != nil {
+	if _, err := r.addTurnMessage(store.Message{SessionID: sessionID, Role: "user", Content: userText}); err != nil {
 		return nil, err
 	}
 	r.Hooks.Fire(ctx, Event{Name: UserPromptSubmit, SessionID: st.SessionID, AgentID: st.AgentID})
@@ -178,7 +186,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 		}
 		st.Reply = reply.Text
 		if len(reply.ToolCalls) == 0 {
-			_, _ = r.Store.AddMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: reply.Text})
+			_, _ = r.addTurnMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: reply.Text})
 			finished = true
 			break
 		}
@@ -197,7 +205,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 				}
 			}
 			st.Reply = text
-			_, _ = r.Store.AddMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: text})
+			_, _ = r.addTurnMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: text})
 			finished = true
 			break
 		}
@@ -208,7 +216,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 			text = MaxIterationsReply
 		}
 		st.Reply = text
-		_, _ = r.Store.AddMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: text})
+		_, _ = r.addTurnMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: text})
 	}
 
 	r.memory(ctx, st)
@@ -224,12 +232,16 @@ func (r *Runner) loadContext(sessionID string, mode Mode) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	st := &State{SessionID: sessionID, AgentID: sess.AgentID, TenantID: sess.TenantID, Mode: mode}
-	if a, err := r.Store.GetAgent(sess.AgentID); err == nil && a != nil {
+	agentID := sess.AgentID
+	if id := strings.TrimSpace(r.TurnAgentID); id != "" {
+		agentID = id
+	}
+	st := &State{SessionID: sessionID, AgentID: agentID, TenantID: sess.TenantID, Mode: mode}
+	if a, err := r.Store.GetAgent(agentID); err == nil && a != nil {
 		st.DisplayName = a.DisplayName
 		st.Instructions = a.Instructions
 	}
-	st.TeamNote = team.Note(r.Store, sess.AgentID)
+	st.TeamNote = team.Note(r.Store, agentID)
 	st.TeamFile = team.ReadTEAMFile()
 	return st, nil
 }
@@ -314,7 +326,7 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 			reply.ToolCalls[i].ID = fmt.Sprintf("call_%d_%d", iter, i)
 		}
 	}
-	_, _ = r.Store.AddMessage(store.Message{
+	_, _ = r.addTurnMessage(store.Message{
 		SessionID: st.SessionID,
 		Role:      "assistant",
 		Content:   EncodeAssistant(reply.Text, reply.ToolCalls),
@@ -388,6 +400,32 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 		err = nil
 	}
 	return pending, nil
+}
+
+func (r *Runner) addTurnMessage(m store.Message) (*store.Message, error) {
+	switch m.Role {
+	case "user":
+		if m.AgentID == "" {
+			m.AgentID = strings.TrimSpace(r.SessionAgentID)
+			if m.AgentID == "" {
+				m.AgentID = strings.TrimSpace(r.TurnAgentID)
+			}
+		}
+		if m.MentionAgentID == "" {
+			m.MentionAgentID = strings.TrimSpace(r.MentionAgentID)
+		}
+	case "assistant":
+		if m.AgentID == "" {
+			m.AgentID = strings.TrimSpace(r.TurnAgentID)
+		}
+		if m.Model == "" {
+			m.Model = strings.TrimSpace(r.TurnModel)
+		}
+		if m.Provider == "" {
+			m.Provider = strings.TrimSpace(r.TurnProvider)
+		}
+	}
+	return r.Store.AddMessage(m)
 }
 
 func isFirstUserTurn(st store.StoreIface, sessionID string) bool {

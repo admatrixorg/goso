@@ -17,10 +17,12 @@ import {
   filterSessions,
   normalizePromptMode,
   sessionActivityAt,
+  searchConversations,
   sessionDisplayName,
 } from "../api/sessions";
 import { useI18n, type MsgKey } from "../i18n";
 import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 import { Card, CardHeader, TableScroll } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { PageChrome } from "../ui/PageChrome";
@@ -45,8 +47,9 @@ export const SessionsPage = forwardRef<
     compact?: boolean;
     selectedId?: string;
     onDeleted?: (id: string) => void;
+    onRenamed?: (id: string, label: string) => void;
   }
->(function SessionsPage({ onPick, compact, selectedId, onDeleted }, ref) {
+>(function SessionsPage({ onPick, compact, selectedId, onDeleted, onRenamed }, ref) {
   const { t, locale } = useI18n();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -64,6 +67,14 @@ export const SessionsPage = forwardRef<
   const [createOpen, setCreateOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(SESSION_PAGE_SIZE);
+  const [menuFor, setMenuFor] = useState("");
+  const [renamingId, setRenamingId] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchIdx, setSearchIdx] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
   const createBoxRef = useRef<HTMLDivElement>(null);
   const agentSelectRef = useRef<HTMLSelectElement>(null);
   const busy = creating || Boolean(deletingId);
@@ -107,6 +118,39 @@ export const SessionsPage = forwardRef<
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!compact) return;
+    const open = () => {
+      setSearchOpen((v) => !v);
+      setSearchQ("");
+      setSearchIdx(0);
+    };
+    window.addEventListener("goso-chat-search", open);
+    return () => window.removeEventListener("goso-chat-search", open);
+  }, [compact]);
+
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!menuFor) return;
+    const close = (e: PointerEvent) => {
+      const node = e.target as HTMLElement | null;
+      if (node?.closest?.(".z-gs-menu, .z-gs-more")) return;
+      setMenuFor("");
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor("");
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuFor]);
 
   const visible = useMemo(
     () => filterSessions(sessions, { query, agentId: filterAgent }),
@@ -159,6 +203,34 @@ export const SessionsPage = forwardRef<
       const updated = await api.updateSession(id, { prompt_mode: mode });
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, prompt_mode: updated.prompt_mode || mode } : s)));
       setFormErr("");
+    } catch (e) {
+      setFormErr(formatPublicError(e));
+    }
+  }
+
+  async function rename(id: string) {
+    const next = renameValue.trim();
+    if (!next || busy) return;
+    try {
+      const updated = await api.updateSession(id, { label: next });
+      setSessions((prev) => prev.map((row) => (row.id === id ? { ...row, label: updated.label || next } : row)));
+      onRenamed?.(id, updated.label || next);
+      setRenamingId("");
+      setMenuFor("");
+      setFormErr("");
+    } catch (e) {
+      setFormErr(formatPublicError(e));
+    }
+  }
+
+  async function setArchived(s: Session, archived: boolean) {
+    if (busy) return;
+    try {
+      const updated = await api.updateSession(s.id, { archived });
+      setSessions((prev) => prev.map((row) => (row.id === s.id ? { ...row, archived: Boolean(updated.archived) } : row)));
+      setMenuFor("");
+      setFormErr("");
+      if (archived) setShowArchived(true);
     } catch (e) {
       setFormErr(formatPublicError(e));
     }
@@ -311,77 +383,181 @@ export const SessionsPage = forwardRef<
   }
 
   if (compact) {
+    const recent = sessions.filter((s) => !s.archived);
+    const archived = sessions.filter((s) => s.archived);
+    const hits = searchConversations(sessions, searchQ, (id) => agentLabel(agents, id));
+    const row = (s: Session) => {
+      const selected = Boolean(selectedId) && selectedId === s.id;
+      const named = sessionDisplayName(s);
+      return (
+        <div key={s.id} className={selected ? "z-gs-cvw is-on" : "z-gs-cvw"}>
+          {renamingId === s.id ? (
+            <input
+              className="z-gs-rename"
+              aria-label={t("chat.rename")}
+              value={renameValue}
+              placeholder={t("chat.renamePlaceholder")}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void rename(s.id);
+                if (e.key === "Escape") setRenamingId("");
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="z-gs-cv"
+              aria-current={selected ? "true" : undefined}
+              onClick={() => onPick(s.id, named)}
+            >
+              {named}
+            </button>
+          )}
+          <button
+            type="button"
+            className={menuFor === s.id ? "z-gs-more is-open" : "z-gs-more"}
+            aria-label={t("chat.more")}
+            aria-expanded={menuFor === s.id}
+            onClick={() => setMenuFor((cur) => (cur === s.id ? "" : s.id))}
+          >
+            ···
+          </button>
+          {menuFor === s.id ? (
+            <div className="z-gs-menu" role="menu">
+              <button
+                type="button"
+                onClick={() => {
+                  setRenamingId(s.id);
+                  setRenameValue(s.label || "");
+                  setMenuFor("");
+                }}
+              >
+                {t("chat.rename")}
+              </button>
+              <button type="button" disabled title={t("chat.projectLater")}>
+                {t("chat.addProject")}
+              </button>
+              {s.archived ? (
+                <button type="button" onClick={() => void setArchived(s, false)}>
+                  {t("chat.restore")}
+                </button>
+              ) : (
+                <button type="button" onClick={() => void setArchived(s, true)}>
+                  {t("chat.archive")}
+                </button>
+              )}
+              <button type="button" className="is-danger" onClick={() => void remove(s)}>
+                {t("common.delete")}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      );
+    };
     return (
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-chat-list="">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 4px 8px", flexWrap: "wrap" }}>
-          <b style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>{t("sessions.title")}</b>
-          <Button
-            variant="primary"
-            icon="plus"
+      <div className="z-gs-sb" data-chat-list="">
+        <div className="z-gs-top">
+          <button
+            type="button"
+            className="z-gs-new"
             onClick={() => {
               if (createBlocked) return;
               setCreateOpen(true);
             }}
             disabled={createBlocked}
-            style={{ padding: "4px 10px" }}
           >
-            {t("sessions.newChat")}
-          </Button>
-          <Button icon="refresh" iconGesture variant="ghost" onClick={() => void load()} style={{ padding: "4px 8px" }}>
-            {t("common.refresh")}
-          </Button>
+            {t("chat.newConv")}
+          </button>
+          <button
+            type="button"
+            className="z-gs-ic"
+            aria-label={t("chat.search")}
+            title={t("chat.searchHint")}
+            onClick={() => {
+              setSearchOpen(true);
+              setSearchQ("");
+              setSearchIdx(0);
+            }}
+          >
+            <Icon name="search" size={15} />
+          </button>
         </div>
-        {formVisible ? <div style={{ padding: "0 4px 4px" }}>{createFields()}</div> : null}
-        <div style={{ padding: "0 4px 4px" }}>{filterBar()}</div>
-        <PageStatus kind={state.kind} errorText={errText} staleAt={formatStaleAt(loadedAt, locale)} onReload={() => void load()} />
-        {formErr ? <StatusLine kind="error">{formErr}</StatusLine> : null}
-        {state.showItems
-          ? visible.map((s) => {
-              const selected = Boolean(selectedId) && selectedId === s.id;
-              const named = sessionDisplayName(s);
-              const activity = formatStaleAt(sessionActivityAt(s), locale);
-              return (
-                <div key={s.id} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+        {formVisible ? <div className="z-gs-form">{createFields()}</div> : null}
+        {state.kind === "error" || state.kind === "permission" ? <p className="z-gs-note">{errText}</p> : null}
+        {formErr ? <p className="z-gs-note">{formErr}</p> : null}
+        {state.showItems && recent.length ? <h6>{t("chat.recent")}</h6> : null}
+        {state.showItems ? recent.map(row) : null}
+        {archived.length ? (
+          <button type="button" className="z-gs-arch" onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? t("chat.hideArchived") : t("chat.archivedCount", { n: archived.length })}
+          </button>
+        ) : null}
+        {showArchived && archived.length ? <h6>{t("chat.archivedHead")}</h6> : null}
+        {showArchived ? archived.map(row) : null}
+        {state.showEmpty ? <p className="z-gs-note">{t("sessions.empty")}</p> : null}
+        {searchOpen ? (
+          <div className="z-gs-search" role="dialog" aria-label={t("chat.search")}>
+            <input
+              ref={searchRef}
+              className="z-field"
+              value={searchQ}
+              placeholder={t("chat.searchPlaceholder")}
+              aria-label={t("chat.search")}
+              onChange={(e) => {
+                setSearchQ(e.target.value);
+                setSearchIdx(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchOpen(false);
+                  return;
+                }
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSearchIdx((i) => Math.min(hits.length - 1, i + 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSearchIdx((i) => Math.max(0, i - 1));
+                } else if (e.key === "Enter" && hits[searchIdx]) {
+                  e.preventDefault();
+                  const hit = hits[searchIdx];
+                  onPick(hit.id, sessionDisplayName(hit));
+                  if (hit.archived) setShowArchived(true);
+                  setSearchOpen(false);
+                }
+              }}
+            />
+            <div className="z-gs-search-list">
+              {hits.length === 0 ? (
+                <p className="z-gs-note">{t("chat.searchEmpty")}</p>
+              ) : (
+                hits.map((hit, i) => (
                   <button
+                    key={hit.id}
                     type="button"
-                    aria-current={selected ? "true" : undefined}
-                    onClick={() => onPick(s.id, named)}
-                    style={{
-                      display: "block",
-                      textAlign: "left",
-                      background: selected ? "var(--accent-soft)" : "var(--card)",
-                      border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                      borderRadius: 11,
-                      padding: "10px 12px",
-                      flex: 1,
-                      minWidth: 0,
-                      transition: "background var(--dur-hover) var(--ease-standard), border-color var(--dur-hover) var(--ease-standard)",
+                    className={i === searchIdx ? "is-on" : ""}
+                    onMouseEnter={() => setSearchIdx(i)}
+                    onClick={() => {
+                      onPick(hit.id, sessionDisplayName(hit));
+                      if (hit.archived) setShowArchived(true);
+                      setSearchOpen(false);
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {named}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>
-                      {agentLabel(agents, s.agent_id)}
-                      {activity ? ` · ${activity}` : ""}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-4)", marginTop: 2 }}>{t("sessions.messagesUnavailable")}</div>
+                    <b>{sessionDisplayName(hit)}</b>
+                    <small>
+                      {hit.archived ? t("chat.whereArchived") : t("chat.whereRecent")}
+                      {" · "}
+                      {agentLabel(agents, hit.agent_id)}
+                    </small>
                   </button>
-                  <Button
-                    variant="ghost"
-                    disabled={busy || createBlocked}
-                    aria-label={t("sessions.deleteNamed", { name: named })}
-                    onClick={() => void remove(s)}
-                    style={{ padding: "4px 8px", alignSelf: "center" }}
-                  >
-                    {t("common.delete")}
-                  </Button>
-                </div>
-              );
-            })
-          : null}
-        {state.showEmpty ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.empty")}</EmptyState> : null}
-        {filteredEmpty ? <EmptyState style={{ padding: "16px 8px" }}>{t("sessions.emptyFilter")}</EmptyState> : null}
+                ))
+              )}
+            </div>
+            <button type="button" className="z-gs-arch" onClick={() => setSearchOpen(false)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }

@@ -141,13 +141,21 @@ func PublicGuardrails(g EvolutionGuardrails) EvolutionGuardrails {
 }
 
 // Session represents a conversation session.
+// Empty ModelOverride means the turn uses the effective agent's model ("Theo agent").
+// TouchModel is not persisted; callers set it when ModelOverride / ProviderOverride should be written.
 type Session struct {
-	ID         string    `json:"id"`
-	TenantID   string    `json:"tenant_id"`
-	AgentID    string    `json:"agent_id"`
-	Label      string    `json:"label,omitempty"`
-	PromptMode string    `json:"prompt_mode"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	AgentID          string    `json:"agent_id"`
+	Label            string    `json:"label,omitempty"`
+	PromptMode       string    `json:"prompt_mode"`
+	ModelOverride    string    `json:"model_override,omitempty"`
+	ProviderOverride string    `json:"provider_override,omitempty"`
+	Archived         bool      `json:"archived,omitempty"`
+	TouchModel       bool      `json:"-"`
+	TouchLabel       bool      `json:"-"`
+	TouchArchive     bool      `json:"-"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Cron job persistence (SPEC 054). Cap is store-side; empty list is a no-op for the runner.
@@ -165,12 +173,19 @@ type CronJob struct {
 }
 
 // Message represents a chat message.
+// Role "event" is a thread marker (agent switch) and is not sent to the model.
+// AgentID on a user row is the session agent; MentionAgentID is a one-message @ agent.
+// AgentID + Model on an assistant row is the "agent · model" caption.
 type Message struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	Role      string    `json:"role"` // user | assistant | tool
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	SessionID      string    `json:"session_id"`
+	Role           string    `json:"role"` // user | assistant | tool | event
+	Content        string    `json:"content"`
+	AgentID        string    `json:"agent_id,omitempty"`
+	MentionAgentID string    `json:"mention_agent_id,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	Provider       string    `json:"provider,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Memory kinds for L1 episodic notes, durable agent notes, and FTS message hits.
@@ -910,6 +925,23 @@ func (s *Store) UpdateSession(sess Session) (*Session, error) {
 		return nil, ErrNotFound
 	}
 	cur.PromptMode = sess.PromptMode
+	if id := strings.TrimSpace(sess.AgentID); id != "" && id != cur.AgentID {
+		ag, ok := s.agents[id]
+		if !ok || !SameTenant(ag.TenantID, cur.TenantID) {
+			return nil, errors.New("agent not found")
+		}
+		cur.AgentID = id
+	}
+	if sess.TouchModel {
+		cur.ModelOverride = strings.TrimSpace(sess.ModelOverride)
+		cur.ProviderOverride = strings.TrimSpace(sess.ProviderOverride)
+	}
+	if sess.TouchLabel {
+		cur.Label = strings.TrimSpace(sess.Label)
+	}
+	if sess.TouchArchive {
+		cur.Archived = sess.Archived
+	}
 	cp := *cur
 	return &cp, nil
 }

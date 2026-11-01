@@ -7,6 +7,7 @@ import {
   agentLabel,
   clearSelectedSession,
   filterSessions,
+  searchConversations,
   isGoneStatus,
   normalizePromptMode,
   parseSelectedSession,
@@ -45,6 +46,20 @@ test("filterSessions matches label, id, and agent", () => {
   assert.equal(filterSessions(rows, { agentId: "a1" }).length, 2);
   assert.equal(filterSessions(rows, { query: "s1", agentId: "a2" }).length, 0);
   assert.equal(filterSessions(rows, { query: "  ", agentId: "" }).length, 3);
+});
+
+test("searchConversations lists recent rows before archived ones", () => {
+  const named = [
+    { id: "a", agent_id: "ag1", label: "Giao ban tuần 44", archived: true },
+    { id: "b", agent_id: "ag2", label: "Hợp đồng đại lý" },
+    { id: "c", agent_id: "ag1", label: "Giao ban kho" },
+  ];
+  const names = (id: string) => (id === "ag1" ? "Cố vấn tài chính" : "Pháp chế");
+  assert.deepEqual(
+    searchConversations(named, "giao ban", names).map((s) => s.id),
+    ["c", "a"],
+  );
+  assert.deepEqual(searchConversations(named, "", names).map((s) => s.id), ["b", "c", "a"]);
 });
 
 test("session pagination recovers when the list shrinks after delete", () => {
