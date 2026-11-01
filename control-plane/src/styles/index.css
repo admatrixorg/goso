@@ -706,6 +706,59 @@ body.dark .z-gs-err { color: #f87171; }
   min-width: 0;
 }
 
+.z-meet {
+  padding: 20px 22px 32px;
+  min-height: 100%;
+  background: #fff;
+  color: #1d2433;
+  font-family: Inter, Roboto, "Open Sans", system-ui, sans-serif;
+}
+body.dark .z-meet { background: #0f1218; color: #e6e9ef; }
+.z-meet-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.z-meet-title { margin-right: auto; min-width: 0; }
+.z-meet-head h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.z-meet-head p { margin: 2px 0 0; color: #636b7d; font-size: 12px; max-width: 640px; }
+body.dark .z-meet-head p, body.dark .z-meet-sum, body.dark .z-meet-note, body.dark .z-meet-list { color: #9ba3b4; }
+.z-meet-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.z-meet-btn {
+  border: 1px solid #e8eaef;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: #fff;
+  color: #1d2433;
+}
+body.dark .z-meet-btn { background: #131720; color: #e6e9ef; border-color: #232936; }
+.z-meet-btn.is-pri { background: #2563eb; color: #fff; border-color: #2563eb; }
+body.dark .z-meet-btn.is-pri { background: #5b8cff; color: #0b1020; border-color: #5b8cff; }
+.z-meet-sum { margin: 14px 0 0; font-size: 12.5px; color: #636b7d; }
+.z-meet-note { margin: 8px 0 0; font-size: 12.5px; color: #636b7d; }
+.z-meet-upload {
+  margin-top: 12px;
+  border: 1px solid #e8eaef;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+body.dark .z-meet-upload, body.dark .z-meet-list { background: #131720; border-color: #232936; }
+.z-meet-upload label { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.z-meet-list {
+  margin-top: 14px;
+  border: 1px solid #e8eaef;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #636b7d;
+  font-size: 13px;
+}
+
 @media (max-width: 899px) {
   .z-narrow-only { display: flex; }
   .z-wide-only { display: none !important; }

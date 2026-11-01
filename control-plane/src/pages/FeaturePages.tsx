@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useI18n, type MsgKey } from "../i18n";
-import { Button } from "../ui/Button";
 import { Card, CardHeader } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { PageChrome } from "../ui/PageChrome";
@@ -98,47 +97,52 @@ export function MeetingsLivePage() {
   const [consent, setConsent] = useState(false);
   const [note, setNote] = useState("");
   return (
-    <PageChrome
-      icon="mic"
-      title={t("nav.meetings")}
-      description={t("feature.meetings.desc")}
-      primary={
-        <>
-          <Button icon="gear" onClick={() => setSettings((v) => !v)}>
+    <div className="z-meet">
+      <header className="z-meet-head">
+        <div className="z-meet-title">
+          <h1>{t("nav.meetings")}</h1>
+          <p>{t("feature.meetings.desc")}</p>
+        </div>
+        <div className="z-meet-acts">
+          <button type="button" className="z-meet-btn" onClick={() => setSettings((v) => !v)}>
             {t("feature.meetings.settings")}
-          </Button>
-          <Button variant="primary" icon="plus" onClick={() => { setUpload((v) => !v); setNote(""); }}>
-            {t("feature.meetings.upload")}
-          </Button>
-        </>
-      }
-    >
-      <p className="z-fold">
-        {t("feature.meetings.sources")} <a href="#/connectors">{t("feature.meetings.openConnectors")}</a>
-      </p>
-      {settings ? <p className="z-fold">{t("feature.meetings.settingsNote")}</p> : null}
-      {upload ? (
-        <Card>
-          <form
-            style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              setNote(consent ? t("feature.meetings.noAsr") : t("feature.meetings.needConsent"));
+          </button>
+          <button
+            type="button"
+            className="z-meet-btn is-pri"
+            onClick={() => {
+              setUpload((v) => !v);
+              setNote("");
             }}
           >
-            <label className="z-fold" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-              <span>{t("feature.meetings.consent")}</span>
-            </label>
-            <Button variant="primary" type="submit">
-              {t("feature.meetings.upload")}
-            </Button>
-            {note ? <p className="z-fold">{note}</p> : null}
-          </form>
-        </Card>
+            + {t("feature.meetings.upload")}
+          </button>
+        </div>
+      </header>
+      <p className="z-meet-sum">
+        {t("feature.meetings.sources")} <a href="#/connectors">{t("feature.meetings.openConnectors")}</a>
+      </p>
+      {settings ? <p className="z-meet-note">{t("feature.meetings.settingsNote")}</p> : null}
+      {upload ? (
+        <form
+          className="z-meet-upload"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setNote(consent ? t("feature.meetings.noAsr") : t("feature.meetings.needConsent"));
+          }}
+        >
+          <label>
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            <span>{t("feature.meetings.consent")}</span>
+          </label>
+          <button type="submit" className="z-meet-btn is-pri">
+            {t("feature.meetings.upload")}
+          </button>
+          {note ? <p className="z-meet-note">{note}</p> : null}
+        </form>
       ) : null}
-      <EmptyState>{t("feature.meetings.empty")}</EmptyState>
-    </PageChrome>
+      <div className="z-meet-list">{t("feature.meetings.empty")}</div>
+    </div>
   );
 }
 
