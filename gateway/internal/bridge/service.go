@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,7 +152,7 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 	system := firstNonEmpty(in.SystemPrompt, ag.SystemPrompt)
 	if docs, err := cat.ListKnowledge(in.TenantID, agentID); err != nil {
 		return ReplyOutput{}, err
-	} else if extra := knowledgePrompt(docs); extra != "" {
+	} else if extra := knowledgePrompt(docs, knowledgeMaxBytes(ag)); extra != "" {
 		if system != "" {
 			system += "\n\n" + extra
 		} else {
@@ -406,13 +407,67 @@ func (s *Service) appendTurn(gosoAgentID string, in ReplyInput, reply string) {
 	}
 }
 
-func knowledgePrompt(docs []KnowledgeDoc) string {
+// defaultKnowledgeBytes is the prompt cap for synced knowledge (32KiB).
+const defaultKnowledgeBytes = 32 << 10
+
+// knowledgeMaxBytes is the per-agent cap, then GOSO_KNOWLEDGE_MAX_BYTES, else 32KiB.
+// A non-positive value falls through to the next source. The default stays 32KiB.
+func knowledgeMaxBytes(ag Agent) int {
+	if n := configPositiveInt(ag.HarnessConfigJSON, "knowledge_max_bytes"); n > 0 {
+		return n
+	}
+	if n := configPositiveInt(ag.ParamsJSON, "knowledge_max_bytes"); n > 0 {
+		return n
+	}
+	return positiveIntEnv("GOSO_KNOWLEDGE_MAX_BYTES", defaultKnowledgeBytes)
+}
+
+func configPositiveInt(raw string, keys ...string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "{}" || raw == `""` {
+		return 0
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return 0
+	}
+	for _, k := range keys {
+		switch v := m[k].(type) {
+		case float64:
+			if v > 0 && v < 1<<31 {
+				return int(v)
+			}
+		case string:
+			n, err := strconv.Atoi(strings.TrimSpace(v))
+			if err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+func positiveIntEnv(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	return n
+}
+
+func knowledgePrompt(docs []KnowledgeDoc, capBytes int) string {
 	if len(docs) == 0 {
 		return ""
 	}
+	if capBytes <= 0 {
+		capBytes = defaultKnowledgeBytes
+	}
 	var b strings.Builder
 	b.WriteString("# Knowledge")
-	const capBytes = 32 << 10
 	for _, d := range docs {
 		content := strings.TrimSpace(d.Content)
 		if content == "" {
