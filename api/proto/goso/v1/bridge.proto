@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package goso.v1;
+
+option go_package = "github.com/mqglobal/goso/gateway/internal/bridge/gosov1;gosov1";
+
+// GOSOBridgeService is the Omni-Core → GOSO reply bridge.
+// Wire-compatible with omni-core api/proto/goso/v1/bridge.proto.
+service GOSOBridgeService {
+  rpc GenerateReply (GenerateReplyRequest) returns (GenerateReplyResponse);
+  rpc StreamReply (GenerateReplyRequest) returns (stream StreamReplyChunk);
+  rpc CheckHealth (HealthRequest) returns (HealthResponse);
+}
+
+message GenerateReplyRequest {
+  string session_id = 1;
+  string tenant_id = 2;
+  string channel_account_id = 3;
+  string contact_id = 4;
+  string prompt = 5;
+  string model = 6;
+  repeated ChatHistoryMessage history = 7;
+  map<string, string> metadata = 8;
+  string system_prompt = 9;
+  double temperature = 10;
+}
+
+message ChatHistoryMessage {
+  string role = 1;
+  string content = 2;
+  int64 timestamp = 3;
+}
+
+message GenerateReplyResponse {
+  string reply_text = 1;
+  int64 prompt_tokens = 2;
+  int64 completion_tokens = 3;
+  int64 latency_ms = 4;
+  string stop_reason = 5;
+  string attachment_url = 6;
+  string attachment_kind = 7;
+  int64 delay_ms = 8;
+}
+
+message StreamReplyChunk {
+  string delta = 1;
+  bool is_finished = 2;
+  string stop_reason = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+}

@@ -10,6 +10,12 @@ rules:
     paths:
       exclude:
         - "**/*.md"
+        # Fake OPENSSH headers in rejection tests (header only, or header plus the literal AAAA). Not a blanket test exclude.
+        - "control-plane/src/api/workstations-ops.test.ts"
+        - "gateway/internal/workstation/workstations_test.go"
+        - "gateway/internal/httpapi/handlers_storage_test.go"
+        - "gateway/internal/httpapi/handlers_workstations_test.go"
+        - "gateway/internal/storage/storage_test.go"
     pattern-regex: "-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"
 
   - id: goso.aws-access-key
@@ -29,6 +35,8 @@ rules:
     paths:
       exclude:
         - "**/*.md"
+        # Alphabet placeholder asserted to be redacted. Not a blanket test exclude.
+        - "gateway/internal/eventstore/store_test.go"
     pattern-regex: "sk-(?:proj-|ant-)?[A-Za-z0-9]{20,}"
 
   - id: goso.github-pat

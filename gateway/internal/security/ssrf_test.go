@@ -78,6 +78,40 @@ func TestCheckURL_DNSLoopbackBlocked(t *testing.T) {
 	}
 }
 
+func TestCheckURL_AllowHostsExact(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "1")
+	t.Setenv("GOSO_SSRF_ALLOW_HOSTS", "9router, Other.Host:8443")
+	orig := lookupIP
+	t.Cleanup(func() { lookupIP = orig })
+	lookupIP = func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("10.1.2.3")}, nil
+	}
+	if err := CheckURL("http://9router:20128/v1/chat/completions"); err != nil {
+		t.Fatalf("allowed host any port: %v", err)
+	}
+	if err := CheckURL("http://9ROUTER/v1"); err != nil {
+		t.Fatalf("host match is case-insensitive: %v", err)
+	}
+	if err := CheckURL("https://other.host:8443/x"); err != nil {
+		t.Fatalf("host:port: %v", err)
+	}
+	blocked := []string{
+		"http://other.host:443/x",
+		"http://other.host/x",
+		"http://evil9router/x",
+		"http://9router.internal/x",
+		"http://not.9router/x",
+		"http://9router.evil.com/x",
+		"http://127.0.0.1/x",
+		"http://10.1.2.3/x",
+	}
+	for _, u := range blocked {
+		if err := CheckURL(u); err == nil {
+			t.Fatalf("expected block %s", u)
+		}
+	}
+}
+
 func TestGuardClient_Redirect(t *testing.T) {
 	t.Setenv("GOSO_SSRF", "1")
 	c := &http.Client{}

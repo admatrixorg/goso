@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,33 @@ import (
 )
 
 const probeTimeout = 20 * time.Second
+
+// ChatTimeout parses GOSO_LLM_TIMEOUT (seconds or a Go duration). Default 120s.
+// Chat calls no longer use it as http.Client.Timeout; see ResponseHeaderTimeout.
+func ChatTimeout() time.Duration {
+	return parseDurationEnv("GOSO_LLM_TIMEOUT", 120*time.Second)
+}
+
+// ResponseHeaderTimeout is how long a chat call waits for upstream status
+// and headers. GOSO_LLM_RESPONSE_HEADER_TIMEOUT is seconds ("180") or a Go
+// duration ("90s"). Default 180s. The body is bounded by the request context.
+func ResponseHeaderTimeout() time.Duration {
+	return parseDurationEnv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", 180*time.Second)
+}
+
+func parseDurationEnv(key string, def time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+		return d
+	}
+	return def
+}
 
 // TestResult is the public payload of POST /api/providers/{name}/test.
 // Never includes api_key. ok is true only after a real probe succeeds.

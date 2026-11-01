@@ -215,8 +215,44 @@ func TestSQLiteStore_PromptModeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.PromptMode != "task" {
-		t.Fatalf("persisted prompt_mode %q", again.PromptMode)
+	if again.PromptMode != "task" || again.Archived || again.Label != "" {
+		t.Fatalf("persisted prompt_mode %q archived=%v label=%q", again.PromptMode, again.Archived, again.Label)
+	}
+}
+
+func TestSQLiteStore_SessionRenameAndArchive(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenSQLite(filepath.Join(dir, "arch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	a, err := s.CreateAgent(Agent{AgentKey: "tc", DisplayName: "Cố vấn tài chính"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s.CreateSession(Session{AgentID: a.ID, Label: "Giao ban"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd := *sess
+	upd.TouchLabel = true
+	upd.Label = "Giao ban tuần 44"
+	upd.TouchArchive = true
+	upd.Archived = true
+	got, err := s.UpdateSession(upd)
+	if err != nil || got.Label != "Giao ban tuần 44" || !got.Archived {
+		t.Fatalf("update %#v %v", got, err)
+	}
+	mode := *got
+	mode.TouchLabel = false
+	mode.TouchArchive = false
+	mode.Label = ""
+	mode.Archived = false
+	mode.PromptMode = "minimal"
+	kept, err := s.UpdateSession(mode)
+	if err != nil || kept.Label != "Giao ban tuần 44" || !kept.Archived || kept.PromptMode != "minimal" {
+		t.Fatalf("prompt patch %#v %v", kept, err)
 	}
 }
 
@@ -424,5 +460,58 @@ func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
 	none, err := s.SearchVault("zzzz-absent")
 	if err != nil || none == nil || len(none) != 0 {
 		t.Fatalf("empty %v %#v", err, none)
+	}
+}
+
+func TestSQLiteStore_SessionModelAndMessageCaption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "turn.db")
+	s1, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s1.CreateAgent(Agent{AgentKey: "a", DisplayName: "A", Model: "grok-4.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s1.CreateAgent(Agent{AgentKey: "b", DisplayName: "B", Model: "gpt-4o"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s1.CreateSession(Session{AgentID: a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd := *sess
+	upd.AgentID = b.ID
+	upd.TouchModel = true
+	upd.ModelOverride = "gpt-4o"
+	upd.ProviderOverride = "openai"
+	got, err := s1.UpdateSession(upd)
+	if err != nil || got.AgentID != b.ID || got.ModelOverride != "gpt-4o" || got.ProviderOverride != "openai" {
+		t.Fatalf("update %#v %v", got, err)
+	}
+	if _, err := s1.AddMessage(Message{SessionID: sess.ID, Role: "user", Content: "@B", AgentID: a.ID, MentionAgentID: b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.AddMessage(Message{SessionID: sess.ID, Role: "assistant", Content: "ok", AgentID: b.ID, Model: "gpt-4o", Provider: "openai"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.AddMessage(Message{SessionID: sess.ID, Role: "event", AgentID: b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_ = s1.Close()
+	s2, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	again, err := s2.GetSession(sess.ID)
+	if err != nil || again.ModelOverride != "gpt-4o" || again.AgentID != b.ID {
+		t.Fatalf("reopen session %#v %v", again, err)
+	}
+	msgs, err := s2.ListMessages(sess.ID)
+	if err != nil || len(msgs) != 3 || msgs[0].MentionAgentID != b.ID || msgs[1].Model != "gpt-4o" || msgs[2].Role != "event" {
+		t.Fatalf("reopen messages %#v %v", msgs, err)
 	}
 }

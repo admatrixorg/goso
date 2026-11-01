@@ -119,6 +119,33 @@ test("demo tabs parse only in demo mode", () => {
   }
 });
 
+test("v2 aliases rewrite onto the canonical tab", () => {
+  const cases: Array<[string, Tab, string]> = [
+    ["#projects", "chat", "#/chat"],
+    ["#/projects", "chat", "#/chat"],
+    ["#agent-team", "agents", "#/agents"],
+    ["#agent-link", "agents", "#/agents"],
+    ["#agent-setting", "agents", "#/agents"],
+    ["#meetings", "meetings", "#/meetings"],
+    ["#api-keys", "apikeys", "#/apikeys"],
+    ["#import-export", "impexp", "#/impexp"],
+    ["#backup-restore", "backup", "#/backup"],
+    ["#kgraph", "kg", "#/kg"],
+    ["#webhooks", "hooks", "#/hooks"],
+    ["#decision-flow", "decisionFlow", "#/decision-flow"],
+  ];
+  for (const [hash, tab, canonical] of cases) {
+    const p = parseHash(hash);
+    assert.equal(p.tab, tab, hash);
+    assert.equal(p.canonical, canonical, hash);
+    assert.equal(p.rewrite, hash.replace(/^#\/?/, "") !== canonical.slice(2), hash);
+    assert.equal(p.unknown, false, hash);
+  }
+  assert.equal(parseHash("#/heatmap").tab, "heatmap");
+  assert.equal(parseHash("#/teams").tab, "teams");
+  assert.equal(parseHash("#/marketing").tab, "marketing");
+});
+
 test("functions segment is a tools alias", () => {
   const p = parseHash("#/functions");
   assert.equal(p.tab, "tools");

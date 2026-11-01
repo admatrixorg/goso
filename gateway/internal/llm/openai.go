@@ -23,6 +23,10 @@ type OpenAI struct {
 	Label         string // named provider; empty → "openai"
 	Stream        bool   // when true, send stream=true and parse SSE
 	AllowEmptyKey bool   // router9 may omit Authorization
+	// Temperature, when non-nil, is sent as the sampling temperature (including 0).
+	Temperature *float64
+	// MaxTokens, when non-nil and positive, is sent as max_tokens.
+	MaxTokens *int
 }
 
 func (o *OpenAI) Name() string {
@@ -93,6 +97,12 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 		"model":    model,
 		"messages": openaiMessages(messages),
 	}
+	if o.Temperature != nil {
+		payload["temperature"] = *o.Temperature
+	}
+	if o.MaxTokens != nil && *o.MaxTokens > 0 {
+		payload["max_tokens"] = *o.MaxTokens
+	}
 	if ts := openaiTools(tools); len(ts) > 0 {
 		payload["tools"] = ts
 	}
@@ -103,45 +113,74 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 	if err != nil {
 		return Reply{}, Usage{}, err
 	}
-	timeout := 30 * time.Second
-	if o.Label == "router9" {
-		timeout = 120 * time.Second
-	}
 	endpoint := chatCompletionsURL(base)
 	if err := checkEndpoint(endpoint); err != nil {
 		return Reply{}, Usage{}, err
 	}
-	client := guardedClient(o.Client, timeout)
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
-	if err != nil {
-		return Reply{}, Usage{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if o.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+o.APIKey)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return Reply{}, Usage{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(resp.Body)
-		return Reply{}, Usage{}, fmt.Errorf("%s %d: %s", o.Name(), resp.StatusCode, string(b))
-	}
-	if stream {
-		reply, u, err := readOpenAIStreamOrJSON(resp, onDelta)
+	client := chatClient(o.Client)
+	var reply Reply
+	var usage Usage
+	err = withAttempts(ctx, func(int) (bool, time.Duration, bool, error) {
+		req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 		if err != nil {
-			return Reply{}, Usage{}, err
+			return false, 0, false, err
 		}
-		return reply, fallbackUsage(messages, reply.Text, u.PromptTokens, u.CompletionTokens), nil
-	}
-	b, _ := io.ReadAll(resp.Body)
-	reply, promptTok, completionTok, err := parseOpenAIChat(b)
+		req.Header.Set("Content-Type", "application/json")
+		if o.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+o.APIKey)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, 0, false, err
+			}
+			return retryableNetErr(err), 0, false, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			uerr := &UpstreamError{Provider: o.Name(), Status: resp.StatusCode, Detail: clipDetail(string(b))}
+			if !retryableStatus(resp.StatusCode) {
+				return false, 0, false, uerr
+			}
+			if d, ok := retryAfterDelay(resp.Header, time.Now()); ok {
+				return true, d, true, uerr
+			}
+			return true, 0, false, uerr
+		}
+		if stream {
+			var emitted bool
+			reply, usage, err = readOpenAIStreamOrJSON(resp, func(delta string) {
+				if delta != "" {
+					emitted = true
+				}
+				emitDelta(onDelta, delta)
+			})
+			if err != nil && !emitted && retryableNetErr(err) {
+				return true, 0, false, err
+			}
+			if err != nil {
+				return false, 0, false, err
+			}
+			usage = fallbackUsage(messages, reply.Text, usage.PromptTokens, usage.CompletionTokens)
+			return false, 0, false, nil
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return retryableNetErr(err), 0, false, err
+		}
+		parsed, promptTok, completionTok, err := parseOpenAIChat(b)
+		if err != nil {
+			return false, 0, false, err
+		}
+		reply = parsed
+		usage = fallbackUsage(messages, reply.Text, promptTok, completionTok)
+		return false, 0, false, nil
+	})
 	if err != nil {
 		return Reply{}, Usage{}, err
 	}
-	return reply, fallbackUsage(messages, reply.Text, promptTok, completionTok), nil
+	return reply, usage, nil
 }
 
 // readOpenAIStreamOrJSON parses a streamed 200. Native SSE is consumed as

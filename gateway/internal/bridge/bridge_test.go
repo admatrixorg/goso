@@ -1,0 +1,1311 @@
+// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+
+package bridge
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	gosov1 "github.com/mqglobal/goso/gateway/internal/bridge/gosov1"
+	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/secrets"
+	"github.com/mqglobal/goso/gateway/internal/store"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+)
+
+func TestVerifySignature(t *testing.T) {
+	secret := "secret123"
+	body := []byte(`{"prompt":"hi"}`)
+	now := time.Unix(1_700_000_000, 0)
+	ts := strconv.FormatInt(now.Unix(), 10)
+	good := sign(secret, ts, body)
+
+	if err := verifySignature(secret, ts, good, "", body, now, defaultSkew); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySignature(secret, "", good, "", body, now, defaultSkew); !errors.Is(err, errMissingSig) {
+		t.Fatalf("missing: %v", err)
+	}
+	if err := verifySignature(secret, ts, "", "", body, now, defaultSkew); !errors.Is(err, errMissingSig) {
+		t.Fatalf("blank sig: %v", err)
+	}
+	if err := verifySignature("", ts, good, "", body, now, defaultSkew); !errors.Is(err, errMissingSig) {
+		t.Fatalf("no server secret: %v", err)
+	}
+	if err := verifySignature(secret, ts, sign("other", ts, body), "", body, now, defaultSkew); !errors.Is(err, errBadSig) {
+		t.Fatalf("bad sig: %v", err)
+	}
+	if err := verifySignature(secret, ts, good, "", []byte(`{"prompt":"no"}`), now, defaultSkew); !errors.Is(err, errBadSig) {
+		t.Fatalf("tampered: %v", err)
+	}
+	old := strconv.FormatInt(now.Add(-10*time.Minute).Unix(), 10)
+	if err := verifySignature(secret, old, sign(secret, old, body), "", body, now, defaultSkew); !errors.Is(err, errExpired) {
+		t.Fatalf("expired: %v", err)
+	}
+	nonce := "abc"
+	dotted := ts + "." + nonce + "." + string(body)
+	if err := verifySignature(secret, ts, sign(secret, dotted, nil), nonce, body, now, defaultSkew); err != nil {
+		t.Fatalf("nonce form: %v", err)
+	}
+}
+
+func TestMapTenant(t *testing.T) {
+	id := "00000000-0000-0000-0000-000000000001"
+	if MapTenantID(id) != id {
+		t.Fatalf("uuid changed: %s", MapTenantID(id))
+	}
+	a := MapTenantID("@@@")
+	b := MapTenantID("###")
+	if a == b || a == store.DefaultTenant || b == store.DefaultTenant {
+		t.Fatalf("collision or default: %s %s", a, b)
+	}
+	if !store.TenantOK(a) || MapTenantID("@@@") != a {
+		t.Fatalf("unstable %s", a)
+	}
+	cat := newMem()
+	first, err := cat.EnsureTenant(id)
+	if err != nil || !first.Created || first.GosoID != id {
+		t.Fatalf("first %+v %v", first, err)
+	}
+	second, err := cat.EnsureTenant(id)
+	if err != nil || second.Created || second.GosoID != id {
+		t.Fatalf("second %+v %v", second, err)
+	}
+	weird, err := cat.EnsureTenant("@@@")
+	if err != nil || weird.GosoID != a {
+		t.Fatalf("weird %+v %v", weird, err)
+	}
+}
+
+func TestSQLCatalogSealsKey(t *testing.T) {
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	st, err := store.OpenSQLite(filepath.Join(t.TempDir(), "goso.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	cat, err := OpenCatalog(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const apiKey = "sk-bridge-test-key-9f3a"
+	tenant := "00000000-0000-0000-0000-000000000001"
+	ten, err := cat.EnsureTenant(tenant)
+	if err != nil || !ten.Created || ten.GosoID != tenant {
+		t.Fatalf("tenant %+v %v", ten, err)
+	}
+	again, err := cat.EnsureTenant(tenant)
+	if err != nil || again.Created {
+		t.Fatalf("second %+v %v", again, err)
+	}
+	if err := cat.PutProvider(Provider{
+		TenantID: tenant,
+		ID:       "prov-1",
+		Name:     "core",
+		Type:     "openai",
+		BaseURL:  "https://zztest.invalid/v1",
+		Models:   []string{"gpt-4o-mini"},
+		Active:   true,
+		APIKey:   apiKey,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, _ := st.SQL()
+	var ct string
+	if err := db.QueryRow(`SELECT key_ct FROM omni_providers WHERE provider_id=?`, "prov-1").Scan(&ct); err != nil {
+		t.Fatal(err)
+	}
+	if ct == "" || strings.Contains(ct, apiKey) {
+		t.Fatal("api key stored in the clear")
+	}
+	got, err := cat.GetProvider(tenant, "prov-1")
+	if err != nil || got.APIKey != apiKey || !got.KeySet {
+		t.Fatalf("round trip key=%q set=%v err=%v", got.APIKey, got.KeySet, err)
+	}
+	if err := cat.PutProvider(Provider{
+		TenantID: tenant,
+		ID:       "prov-1",
+		Name:     "core",
+		Type:     "openai",
+		BaseURL:  "https://zztest.invalid/v1",
+		Models:   []string{"gpt-4o-mini"},
+		Active:   true,
+		APIKey:   apiKey,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.ReplaceKnowledge(tenant, "agent-1", []KnowledgeDoc{{
+		ID: "d1", FileName: "SOUL.md", MimeType: "text/markdown", FileSize: 5, Content: "hello",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := cat.ListKnowledge(tenant, "agent-1")
+	if err != nil || len(docs) != 1 || docs[0].FileName != "SOUL.md" || docs[0].Content != "hello" {
+		t.Fatalf("knowledge %+v %v", docs, err)
+	}
+}
+
+func TestPostgresPlaceholders(t *testing.T) {
+	c := &sqlCatalog{pg: true}
+	got := c.q(`SELECT * FROM t WHERE a=? AND b=?`)
+	if got != `SELECT * FROM t WHERE a=$1 AND b=$2` {
+		t.Fatal(got)
+	}
+}
+
+func TestDefaultCompleteEcho(t *testing.T) {
+	res, err := DefaultComplete(context.Background(), Completion{
+		Type:     "echo",
+		Messages: []llm.Message{{Role: "user", Content: "ping"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Text != "echo: ping" || res.StopReason != "stop" {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestValidateRuntime(t *testing.T) {
+	t.Setenv("GOSO_ENV", "production")
+	t.Setenv("GOSO_SHARED_SECRET", "")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	if err := ValidateRuntime(); err == nil || !strings.Contains(err.Error(), "GOSO_SHARED_SECRET") {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_SHARED_SECRET", "s3cret")
+	t.Setenv("GOSO_MASTER_KEY", "nope")
+	if err := ValidateRuntime(); err == nil || !strings.Contains(err.Error(), "GOSO_MASTER_KEY") {
+		t.Fatal(err)
+	}
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	if err := ValidateRuntime(); err == nil || !strings.Contains(err.Error(), "GOSO_DATABASE_URL") {
+		t.Fatal(err)
+	}
+}
+
+func TestBridgeHTTPAndGRPC(t *testing.T) {
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	cat := newMem()
+	fake := &fakeLLM{text: "xin chao tu goso"}
+	svc := &Service{
+		Secret:   "test-secret",
+		Version:  "test",
+		Catalog:  cat,
+		Store:    store.New(),
+		Complete: fake.Complete,
+	}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		provID  = "b9d32e4b-28a5-4dcc-9134-39a9a84017bf"
+		agentID = "a2ffb11d-9a4c-40f9-a2e4-c57dbe834cb0"
+		apiKey  = "sk-bridge-test-key-9f3a"
+	)
+
+	provBody := []byte(`{"name":"ZZTEST-provider-core","provider_type":"openai","base_url":"https://zztest.invalid/v1","api_key":"` + apiKey + `","models":["gpt-4o-mini"],"is_active":true}`)
+	res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/"+provID, svc.Secret, tenant, provBody)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("put provider %d %s", res.StatusCode, res.Body)
+	}
+	if strings.Contains(res.Body, apiKey) {
+		t.Fatal("response leaked api key")
+	}
+	for _, row := range cat.providers {
+		if row.APIKey != "" || strings.Contains(string(row.ct), apiKey) {
+			t.Fatal("catalog stored plaintext api key")
+		}
+	}
+
+	// Omitted api_key keeps the sealed key.
+	keep := []byte(`{"name":"ZZTEST-provider-core","provider_type":"openai","base_url":"https://zztest.invalid/v1","models":["gpt-4o-mini"]}`)
+	res = doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/"+provID, svc.Secret, tenant, keep)
+	if res.StatusCode != http.StatusOK || !strings.Contains(res.Body, `"api_key_set":true`) {
+		t.Fatalf("keep key %d %s", res.StatusCode, res.Body)
+	}
+	got, err := cat.GetProvider(tenant, provID)
+	if err != nil || got.APIKey != apiKey {
+		t.Fatalf("kept key %q %v", got.APIKey, err)
+	}
+
+	agentBody := []byte(`{"name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","provider_id":"` + provID + `","model_name":"gpt-4o-mini","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5,"status":"ACTIVE"}`)
+	res = doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agentBody)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("put agent %d %s", res.StatusCode, res.Body)
+	}
+
+	// Unsigned and bad signatures never reach the model.
+	before := fake.calls()
+	plain, err := http.Post(base+"/v1/chat/reply", "application/json", strings.NewReader(`{"agent_id":"`+agentID+`","prompt":"no"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainBody, _ := io.ReadAll(plain.Body)
+	_ = plain.Body.Close()
+	if plain.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unsigned %d %s", plain.StatusCode, plainBody)
+	}
+	bad := doSigned(t, http.MethodPost, base+"/v1/chat/reply", "wrong", tenant, []byte(`{"agent_id":"`+agentID+`","prompt":"no"}`))
+	if bad.StatusCode != http.StatusUnauthorized || fake.calls() != before {
+		t.Fatalf("bad sig status=%d calls=%d", bad.StatusCode, fake.calls())
+	}
+	mismatch := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/"+provID, svc.Secret, "other-tenant", provBody)
+	if mismatch.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("tenant mismatch %d %s", mismatch.StatusCode, mismatch.Body)
+	}
+
+	replyBody := []byte(`{"agent_id":"` + agentID + `","model":"gpt-4o-mini","system_prompt":"Ban la tro ly","temperature":0.2,"prompt":"xin chao","history":[{"Role":"user","Content":"truoc","Timestamp":1}]}`)
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reply %d %s", res.StatusCode, res.Body)
+	}
+	var reply struct {
+		ReplyText string `json:"reply_text"`
+		DelayMS   int64  `json:"delay_ms"`
+	}
+	if err := json.Unmarshal([]byte(res.Body), &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.ReplyText != "xin chao tu goso" {
+		t.Fatalf("reply %q", reply.ReplyText)
+	}
+	last := fake.snapshot()
+	if last.APIKey != apiKey || last.Model != "gpt-4o-mini" || last.BaseURL != "https://zztest.invalid/v1" || last.Type != "openai" {
+		t.Fatalf("provider routing type=%s model=%s base=%s keyset=%v", last.Type, last.Model, last.BaseURL, last.APIKey != "")
+	}
+	if last.Temperature == nil || *last.Temperature != 0.2 {
+		t.Fatalf("temperature %+v", last.Temperature)
+	}
+	if len(last.Messages) != 3 || last.Messages[0].Role != "system" || last.Messages[1].Content != "truoc" || last.Messages[2].Content != "xin chao" {
+		t.Fatalf("messages %+v", last.Messages)
+	}
+	sessions := svc.Store.ListSessions()
+	if len(sessions) != 1 || sessions[0].TenantID != tenant {
+		t.Fatalf("sessions %+v", sessions)
+	}
+	msgs, err := svc.Store.ListMessages(sessions[0].ID)
+	if err != nil || len(msgs) != 2 || msgs[0].Role != "user" || msgs[0].Content != "xin chao" || msgs[1].Role != "assistant" {
+		t.Fatalf("turns %+v %v", msgs, err)
+	}
+	agents := svc.Store.ListAgents()
+	if len(agents) != 1 || agents[0].TenantID != tenant || agents[0].AgentKey != "omni:"+tenant+":"+agentID {
+		t.Fatalf("agent %+v", agents)
+	}
+
+	// gRPC uses session_id as the agent id, matching omni-core's client.
+	h2 := h2cHTTPClient()
+	gclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.GenerateReplyResponse](
+		h2,
+		base+procGenerate,
+		connect.WithGRPC(),
+	)
+	greq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId:    agentID,
+		TenantId:     tenant,
+		Model:        "gpt-4o-mini",
+		SystemPrompt: "Ban la tro ly",
+		Prompt:       "grpc xin chao",
+		Temperature:  0.2,
+	})
+	stamp(greq.Header(), svc.Secret, tenant, []byte("grpc xin chao"))
+	gres, err := gclient.CallUnary(context.Background(), greq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gres.Msg.GetReplyText() != "xin chao tu goso" || gres.Msg.GetStopReason() != "stop" {
+		t.Fatalf("grpc %+v", gres.Msg)
+	}
+
+	unauth := connect.NewRequest(&gosov1.GenerateReplyRequest{SessionId: agentID, TenantId: tenant, Prompt: "x"})
+	_, err = gclient.CallUnary(context.Background(), unauth)
+	var ce *connect.Error
+	if !errors.As(err, &ce) || ce.Code() != connect.CodeUnauthenticated {
+		t.Fatalf("grpc unsigned %v", err)
+	}
+
+	fake.setDeltas([]string{"xin ", "chao"})
+	sclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.StreamReplyChunk](
+		h2,
+		base+procStream,
+		connect.WithGRPC(),
+	)
+	sreq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId: agentID,
+		TenantId:  tenant,
+		Model:     "gpt-4o-mini",
+		Prompt:    "stream",
+	})
+	stamp(sreq.Header(), svc.Secret, tenant, []byte("stream"))
+	stream, err := sclient.CallServerStream(context.Background(), sreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streamed string
+	finished := false
+	for stream.Receive() {
+		streamed += stream.Msg().GetDelta()
+		if stream.Msg().GetIsFinished() {
+			finished = true
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if streamed != "xin chao" || !finished {
+		t.Fatalf("stream %q finished=%v", streamed, finished)
+	}
+
+	hclient := connect.NewClient[gosov1.HealthRequest, gosov1.HealthResponse](
+		h2,
+		base+procHealth,
+		connect.WithGRPC(),
+	)
+	hres, err := hclient.CallUnary(context.Background(), connect.NewRequest(&gosov1.HealthRequest{}))
+	if err != nil || !hres.Msg.GetHealthy() || hres.Msg.GetVersion() != "test" {
+		t.Fatalf("health %v %+v", err, hres)
+	}
+	health, err := http.Get(base + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, _ := io.ReadAll(health.Body)
+	_ = health.Body.Close()
+	if health.StatusCode != 200 || !strings.Contains(string(hb), `"healthy":true`) {
+		t.Fatalf("healthz %d %s", health.StatusCode, hb)
+	}
+
+	del := doSigned(t, http.MethodDelete, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, nil)
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete %d %s", del.StatusCode, del.Body)
+	}
+	missing := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("after delete %d %s", missing.StatusCode, missing.Body)
+	}
+}
+
+func TestResolveByModelAndZenDefault(t *testing.T) {
+	key, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", key)
+	t.Setenv("GOSO_DEFAULT_API_KEY", "")
+	t.Setenv("GOSO_DEFAULT_BASE_URL", "")
+	t.Setenv("GOSO_DEFAULT_MODEL", "")
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	t.Setenv("GOSO_LLM_BASE_URL", "")
+	t.Setenv("GOSO_LLM_MODEL", "")
+	t.Setenv("GOSO_LLM_PROVIDER", "")
+	if got := normalizeBase("opencode", ""); got != "https://api.openai.com/v1" {
+		t.Fatalf("opencode alias base %s", got)
+	}
+	if got := normalizeBase("opencode", "http://9router:20128/v1"); got != "http://9router:20128/v1" {
+		t.Fatalf("opencode custom base %s", got)
+	}
+	if got := normalizeBase("custom", "http://9router:20128/v1"); got != "http://9router:20128/v1" {
+		t.Fatalf("custom base %s", got)
+	}
+	cat := newMem()
+	svc := &Service{Catalog: cat}
+	const tenant = "00000000-0000-0000-0000-000000000009"
+	if _, err := cat.EnsureTenant(tenant); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.PutProvider(Provider{
+		TenantID: tenant, ID: "oa", Name: "oa", Type: "openai",
+		BaseURL: "https://api.openai.com/v1", Models: []string{"gpt-4o-mini"}, Active: true, APIKey: "k1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.PutProvider(Provider{
+		TenantID: tenant, ID: "router", Name: "router", Type: "custom",
+		BaseURL: "http://9router:20128/v1", Models: []string{"gcli/grok-4.5-high"}, Active: true, APIKey: "k2",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := svc.resolveProvider(tenant, "", "gcli/grok-4.5-high")
+	if err != nil || p.ID != "router" || p.APIKey != "k2" || p.BaseURL != "http://9router:20128/v1" {
+		t.Fatalf("router provider id=%s base=%s err=%v", p.ID, p.BaseURL, err)
+	}
+	p, err = svc.resolveProvider(tenant, "", "gpt-4o-mini")
+	if err != nil || p.ID != "oa" {
+		t.Fatalf("mini provider id=%s err=%v", p.ID, err)
+	}
+	t.Setenv("GOSO_DEFAULT_API_KEY", "")
+	t.Setenv("GOSO_LLM_API_KEY", "sk-llm")
+	t.Setenv("GOSO_LLM_PROVIDER", "openai_compatible")
+	t.Setenv("GOSO_LLM_BASE_URL", "http://9router:20128/v1")
+	t.Setenv("GOSO_LLM_MODEL", "gcli/grok-4.5-high")
+	p, err = svc.resolveProvider("tenant-without-providers", "", "gcli/grok-4.5-high")
+	if err != nil || p.Type != "openai_compatible" || p.BaseURL != "http://9router:20128/v1" || p.APIKey != "sk-llm" || len(p.Models) != 1 || p.Models[0] != "gcli/grok-4.5-high" {
+		t.Fatalf("llm env base=%s type=%s models=%v keyset=%v err=%v", p.BaseURL, p.Type, p.Models, p.APIKey != "", err)
+	}
+}
+
+func TestUpstream402And429(t *testing.T) {
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_DEFAULT_API_KEY", "")
+	status := http.StatusPaymentRequired
+	var sawAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		if status == http.StatusOK {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""}}]}`))
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":{"message":"billing sk-should-not-leak"}}`))
+	}))
+	defer upstream.Close()
+
+	cat := newMem()
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-zen"
+	)
+	provBody := []byte(`{"name":"other","provider_type":"openai","base_url":"https://api.openai.com/v1","api_key":"sk-other","models":["gpt-4o-mini"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/other", svc.Secret, tenant, provBody); res.StatusCode != 200 {
+		t.Fatalf("other provider %d %s", res.StatusCode, res.Body)
+	}
+	zenBody := []byte(`{"name":"router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"sk-zen","models":["gcli/grok-4.5-high","gcli/grok-4.5"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/zen", svc.Secret, tenant, zenBody); res.StatusCode != 200 {
+		t.Fatalf("zen provider %d %s", res.StatusCode, res.Body)
+	}
+	// Core agents have no provider_id; the model name selects the provider.
+	agentBody := []byte(`{"name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agentBody); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	replyBody := []byte(`{"agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","prompt":"xin chao"}`)
+
+	status = http.StatusPaymentRequired
+	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusPaymentRequired || !strings.Contains(res.Body, `"code":"insufficient_funds"`) || !strings.Contains(res.Body, `"upstream_status":402`) {
+		t.Fatalf("402 %d %s", res.StatusCode, res.Body)
+	}
+	if strings.Contains(res.Body, "sk-zen") || strings.Contains(res.Body, "sk-should-not-leak") || strings.Contains(res.Body, `"reply_text"`) {
+		t.Fatalf("402 leaked or looked like success: %s", res.Body)
+	}
+	if sawAuth != "Bearer sk-zen" {
+		t.Fatalf("auth %q", sawAuth)
+	}
+
+	status = http.StatusTooManyRequests
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusTooManyRequests || !strings.Contains(res.Body, `"code":"rate_limited"`) || !strings.Contains(res.Body, `"upstream_status":429`) {
+		t.Fatalf("429 %d %s", res.StatusCode, res.Body)
+	}
+
+	status = http.StatusUnauthorized
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusUnauthorized || !strings.Contains(res.Body, `"code":"upstream_unauthorized"`) {
+		t.Fatalf("401 %d %s", res.StatusCode, res.Body)
+	}
+
+	status = http.StatusForbidden
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(res.Body, `"code":"upstream_forbidden"`) {
+		t.Fatalf("403 %d %s", res.StatusCode, res.Body)
+	}
+
+	status = http.StatusOK
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, replyBody)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(res.Body, `"code":"empty_reply"`) {
+		t.Fatalf("empty %d %s", res.StatusCode, res.Body)
+	}
+
+	status = http.StatusPaymentRequired
+	h2 := h2cHTTPClient()
+	gclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.GenerateReplyResponse](h2, base+procGenerate, connect.WithGRPC())
+	greq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId: agentID, TenantId: tenant, Model: "gcli/grok-4.5-high", Prompt: "grpc",
+	})
+	stamp(greq.Header(), svc.Secret, tenant, []byte("grpc"))
+	_, err = gclient.CallUnary(context.Background(), greq)
+	var ce *connect.Error
+	if !errors.As(err, &ce) || ce.Code() != connect.CodeFailedPrecondition || !strings.Contains(ce.Message(), "insufficient_funds") {
+		t.Fatalf("grpc 402 %v", err)
+	}
+
+	status = http.StatusTooManyRequests
+	sclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.StreamReplyChunk](h2, base+procStream, connect.WithGRPC())
+	sreq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId: agentID, TenantId: tenant, Model: "gcli/grok-4.5", Prompt: "stream",
+	})
+	stamp(sreq.Header(), svc.Secret, tenant, []byte("stream"))
+	stream, err := sclient.CallServerStream(context.Background(), sreq)
+	if err == nil {
+		for stream.Receive() {
+		}
+		err = stream.Err()
+	}
+	if !errors.As(err, &ce) || ce.Code() != connect.CodeResourceExhausted || !strings.Contains(ce.Message(), "rate_limited") {
+		t.Fatalf("grpc stream 429 %v", err)
+	}
+}
+
+func TestKnowledgeSync(t *testing.T) {
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	t.Setenv("GOSO_DEFAULT_API_KEY", "")
+	cat := newMem()
+	fake := &fakeLLM{text: "da ro"}
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New(), Complete: fake.Complete}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-know"
+	)
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"http://9router:20128/v1","api_key":"sk-zen","models":["gcli/grok-4.5-high"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"id":"` + agentID + `","tenant_id":"` + tenant + `","name":"ZZTEST-agent","description":"probe","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"daily_reply_cap":5,"status":"ACTIVE","harness_config_json":""}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	know := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","documents":[{"id":"f1","file_name":"SOUL.md","mime_type":"text/markdown","file_size":18,"content":"Gia cua hang la 10"}]}`)
+	req, err := http.NewRequest(http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID+"/knowledge", bytes.NewReader(know))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp(req.Header, svc.Secret, tenant, know)
+	req.Header.Set(headerAgent, agentID)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"status":"SYNCED"`) || strings.Contains(string(body), "Gia cua hang") {
+		t.Fatalf("knowledge %d %s", res.StatusCode, body)
+	}
+	reply := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","system_prompt":"Ban la tro ly","temperature":0.2,"prompt":"gia?"}`)
+	got := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if got.StatusCode != 200 {
+		t.Fatalf("reply %d %s", got.StatusCode, got.Body)
+	}
+	last := fake.snapshot()
+	if last.Type != "custom" || last.BaseURL != "http://9router:20128/v1" || last.Model != "gcli/grok-4.5-high" {
+		t.Fatalf("routed type=%s base=%s model=%s", last.Type, last.BaseURL, last.Model)
+	}
+	if len(last.Messages) == 0 || !strings.Contains(last.Messages[0].Content, "Gia cua hang la 10") || !strings.Contains(last.Messages[0].Content, "Ban la tro ly") {
+		t.Fatalf("system prompt missing knowledge: %+v", last.Messages)
+	}
+}
+
+func TestOpenAICompatAliasesKeepSlashModel(t *testing.T) {
+	const base = "http://9router:20128/v1"
+	const model = "gcli/grok-4.5-high"
+	for _, typ := range []string{"openai", "openai_compatible", "openai-compatible", "custom", "opencode"} {
+		if mapProviderType(typ) != llm.TypeOpenAICompat {
+			t.Fatalf("%s mapped to %s", typ, mapProviderType(typ))
+		}
+		if got := normalizeBase(typ, base); got != base {
+			t.Fatalf("%s base %s", typ, got)
+		}
+	}
+	t.Setenv("GOSO_LLM_API_KEY", "router-key")
+	t.Setenv("GOSO_LLM_PROVIDER", "custom")
+	t.Setenv("GOSO_LLM_BASE_URL", base)
+	t.Setenv("GOSO_LLM_MODEL", model)
+	p, ok := envDefaultProvider()
+	if !ok || p.BaseURL != base || len(p.Models) != 1 || p.Models[0] != model || strings.Contains(p.BaseURL, "opencode.ai") {
+		t.Fatalf("%+v", p)
+	}
+}
+
+func TestBridgeAccessAndFailureLogs(t *testing.T) {
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-log"
+		apiKey  = "fixture-key"
+		prompt  = "do not log this prompt"
+		model   = "gcli/grok-4.5-high"
+	)
+	cat := newMem()
+	svc := &Service{
+		Secret:  "test-secret",
+		Version: "test",
+		Catalog: cat,
+		Store:   store.New(),
+		Complete: func(context.Context, Completion) (Result, error) {
+			return Result{}, &llm.UpstreamError{Provider: "custom", Status: http.StatusPaymentRequired, Detail: apiKey + " " + prompt}
+		},
+	}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	if res, err := http.Get(base + "/healthz"); err != nil || res.StatusCode != 200 {
+		t.Fatalf("healthz %v", err)
+	} else {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}
+	if res, err := http.Get(base + "/v1/health"); err != nil || res.StatusCode != 200 {
+		t.Fatalf("v1 health %v", err)
+	} else {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"http://9router:20128/v1","api_key":"` + apiKey + `","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"logger","harness_type":"GOSO","model_name":"` + model + `","system_prompt":"hidden prompt text","temperature":0.2}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"tenant_id":"` + tenant + `","agent_id":"` + agentID + `","model":"` + model + `","prompt":"` + prompt + `"}`)
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/reply", bytes.NewReader(reply))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp(req.Header, svc.Secret, tenant, reply)
+	req.Header.Set(headerAgent, agentID)
+	sig := req.Header.Get(headerSignature)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusPaymentRequired {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	logs := buf.String()
+	for _, want := range []string{
+		`"method":"POST"`,
+		`"path":"/v1/chat/reply"`,
+		`"status":402`,
+		`"event":"bridge_reply_failed"`,
+		`"code":"insufficient_funds"`,
+		`"upstream_status":402`,
+		`"provider":"custom"`,
+		`"model":"gcli/grok-4.5-high"`,
+		`"tenant":"` + tenant + `"`,
+		`"agent":"` + agentID + `"`,
+		`"latency_ms":`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("missing %s in %s", want, logs)
+		}
+	}
+	if strings.Contains(logs, `"/healthz"`) || strings.Contains(logs, `"/v1/health"`) {
+		t.Fatalf("health access logged: %s", logs)
+	}
+	for _, secret := range []string{apiKey, prompt, "hidden prompt text", sig, "x-goclaw-signature"} {
+		if secret != "" && strings.Contains(logs, secret) {
+			t.Fatalf("log leaked %q", secret)
+		}
+	}
+}
+
+func TestLLMTimeoutAndTransportCodes(t *testing.T) {
+	if llm.ChatTimeout() != 120*time.Second {
+		t.Fatalf("default timeout %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "45")
+	if llm.ChatTimeout() != 45*time.Second {
+		t.Fatalf("seconds %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "90s")
+	if llm.ChatTimeout() != 90*time.Second {
+		t.Fatalf("duration %s", llm.ChatTimeout())
+	}
+	t.Setenv("GOSO_LLM_TIMEOUT", "1")
+	t.Setenv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", "200ms")
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	t.Setenv("GOSO_LLM_API_KEY", "")
+
+	var attempts int
+	hold := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		_, _ = io.Copy(io.Discard, r.Body)
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+		case <-timer.C:
+		}
+	}))
+	t.Cleanup(hold.Close)
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-timeout"
+		model   = "gcli/grok-4.5-high"
+		prompt  = "slow reasoning prompt"
+	)
+	cat := newMem()
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + hold.URL + `/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"slow","harness_type":"GOSO","model_name":"` + model + `","system_prompt":"secret prompt","temperature":0.2}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"` + model + `","prompt":"` + prompt + `"}`)
+	started := time.Now()
+	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	elapsed := time.Since(started)
+	if attempts != 3 || elapsed > 4*time.Second {
+		t.Fatalf("timeout attempts %d took %s", attempts, elapsed)
+	}
+	if res.StatusCode != http.StatusGatewayTimeout || !strings.Contains(res.Body, `"code":"upstream_timeout"`) {
+		t.Fatalf("timeout %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"upstream_timeout"`) || strings.Contains(buf.String(), prompt) {
+		t.Fatalf("timeout log %s", buf.String())
+	}
+
+	buf.Reset()
+	t.Setenv("GOSO_SSRF", "1")
+	t.Setenv("GOSO_SSRF_ALLOW_HOSTS", "")
+	blocked := []byte(`{"name":"local","provider_type":"custom","base_url":"http://127.0.0.1:9/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/local", svc.Secret, tenant, blocked); res.StatusCode != 200 {
+		t.Fatalf("local provider %d %s", res.StatusCode, res.Body)
+	}
+	agentLocal := []byte(`{"name":"blocked","harness_type":"GOSO","model_name":"` + model + `","provider_id":"local","system_prompt":"secret prompt"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/agent-ssrf", svc.Secret, tenant, agentLocal); res.StatusCode != 200 {
+		t.Fatalf("ssrf agent %d %s", res.StatusCode, res.Body)
+	}
+	ssrfReply := []byte(`{"agent_id":"agent-ssrf","model":"` + model + `","prompt":"` + prompt + `"}`)
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, ssrfReply)
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(res.Body, `"code":"ssrf_blocked"`) {
+		t.Fatalf("ssrf %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"ssrf_blocked"`) || strings.Contains(buf.String(), prompt) {
+		t.Fatalf("ssrf log %s", buf.String())
+	}
+
+	buf.Reset()
+	t.Setenv("GOSO_SSRF", "0")
+	dead := []byte(`{"name":"dead","provider_type":"openai","base_url":"http://127.0.0.1:1/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/dead", svc.Secret, tenant, dead); res.StatusCode != 200 {
+		t.Fatalf("dead provider %d %s", res.StatusCode, res.Body)
+	}
+	agentDead := []byte(`{"name":"dead-agent","harness_type":"GOSO","model_name":"` + model + `","provider_id":"dead"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/agent-dial", svc.Secret, tenant, agentDead); res.StatusCode != 200 {
+		t.Fatalf("dial agent %d %s", res.StatusCode, res.Body)
+	}
+	dialReply := []byte(`{"agent_id":"agent-dial","model":"` + model + `","prompt":"` + prompt + `"}`)
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, dialReply)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(res.Body, `"code":"dial_error"`) {
+		t.Fatalf("dial %d %s", res.StatusCode, res.Body)
+	}
+	if !strings.Contains(buf.String(), `"code":"dial_error"`) || strings.Contains(buf.String(), prompt) || strings.Contains(buf.String(), "fixture-key") {
+		t.Fatalf("dial log %s", buf.String())
+	}
+}
+
+func TestAgentFallbackModelOverride(t *testing.T) {
+	t.Setenv("GOSO_LLM_FALLBACK_MODEL", "from-env")
+	if got := agentFallbackModel(Agent{}); got != "from-env" {
+		t.Fatalf("env %q", got)
+	}
+	if got := agentFallbackModel(Agent{ParamsJSON: `{"fallback_model":"from-params"}`}); got != "from-params" {
+		t.Fatalf("params %q", got)
+	}
+	if got := agentFallbackModel(Agent{HarnessConfigJSON: `{"fallback_model":"from-agent"}`, ParamsJSON: `{"llm_fallback_model":"from-params"}`}); got != "from-agent" {
+		t.Fatalf("harness %q", got)
+	}
+}
+
+func TestLLMFallbackAfterRetries(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	t.Setenv("GOSO_LLM_FALLBACK_MODEL", "gcli/should-not-use")
+	t.Setenv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", "5s")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+
+	var models []string
+	mode := "fallback"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		models = append(models, body.Model)
+		if mode == "reject" || body.Model == "gcli/grok-4.5-high" && mode == "fallback" {
+			if mode == "reject" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"fallback ok"}}]}`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-fb"
+		prompt  = "hidden fallback prompt"
+	)
+	cat := newMem()
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"fixture-key","models":["gcli/grok-4.5-high","gcli/grok-4.5"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"fb","harness_type":"GOSO","model_name":"gcli/grok-4.5-high","harness_config_json":"{\"fallback_model\":\"gcli/grok-4.5\"}"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"gcli/grok-4.5-high","prompt":"` + prompt + `"}`)
+	res := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if res.StatusCode != 200 || !strings.Contains(res.Body, "fallback ok") {
+		t.Fatalf("fallback %d %s", res.StatusCode, res.Body)
+	}
+	if len(models) != 4 || models[0] != "gcli/grok-4.5-high" || models[1] != "gcli/grok-4.5-high" || models[2] != "gcli/grok-4.5-high" || models[3] != "gcli/grok-4.5" {
+		t.Fatalf("models %v", models)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, `"event":"bridge_reply_model"`) || !strings.Contains(logs, `"model":"gcli/grok-4.5"`) || !strings.Contains(logs, `"fallback":true`) {
+		t.Fatalf("model log %s", logs)
+	}
+	if strings.Contains(logs, prompt) || strings.Contains(logs, "fixture-key") || strings.Contains(logs, "gcli/should-not-use") {
+		t.Fatalf("log leaked %s", logs)
+	}
+
+	buf.Reset()
+	models = nil
+	mode = "reject"
+	res = doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(res.Body, `"code":"upstream_rejected"`) {
+		t.Fatalf("400 %d %s", res.StatusCode, res.Body)
+	}
+	if len(models) != 1 || models[0] != "gcli/grok-4.5-high" {
+		t.Fatalf("4xx retried %v", models)
+	}
+	if strings.Contains(buf.String(), prompt) || strings.Contains(buf.String(), `"fallback":true`) {
+		t.Fatalf("4xx log %s", buf.String())
+	}
+}
+
+func TestKnowledgeMaxBytes(t *testing.T) {
+	doc := KnowledgeDoc{ID: "d1", FileName: "notes.txt", Content: strings.Repeat("a", 200)}
+	got := knowledgePrompt([]KnowledgeDoc{doc}, defaultKnowledgeBytes)
+	if !strings.Contains(got, "notes.txt") || strings.Contains(got, "[knowledge truncated]") {
+		t.Fatalf("default cap dropped a small doc: %q", got)
+	}
+	small := knowledgePrompt([]KnowledgeDoc{doc}, 40)
+	if !strings.Contains(small, "[knowledge truncated]") || strings.Contains(small, strings.Repeat("a", 200)) {
+		t.Fatalf("small cap %q", small)
+	}
+	if knowledgeMaxBytes(Agent{}) != defaultKnowledgeBytes {
+		t.Fatal(knowledgeMaxBytes(Agent{}))
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "100")
+	if knowledgeMaxBytes(Agent{}) != 100 {
+		t.Fatal(knowledgeMaxBytes(Agent{}))
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "0")
+	if knowledgeMaxBytes(Agent{}) != defaultKnowledgeBytes {
+		t.Fatal("non-positive env")
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "100")
+	ag := Agent{ParamsJSON: `{"knowledge_max_bytes":80}`, HarnessConfigJSON: `{"knowledge_max_bytes":60}`}
+	if knowledgeMaxBytes(ag) != 60 {
+		t.Fatalf("harness %d", knowledgeMaxBytes(ag))
+	}
+	ag.HarnessConfigJSON = ""
+	if knowledgeMaxBytes(ag) != 80 {
+		t.Fatalf("params %d", knowledgeMaxBytes(ag))
+	}
+}
+
+// coreStreamEvent matches omni-core harness.streamEvent (staging goso_http_stream.go).
+type coreStreamEvent struct {
+	Delta      string `json:"delta"`
+	IsFinished bool   `json:"is_finished"`
+	Finished   bool   `json:"isFinished"`
+	StopReason string `json:"stop_reason"`
+	ReplyText  string `json:"reply_text"`
+	DelayMS    int64  `json:"delay_ms"`
+}
+
+// parseCoreSSE is the consumeStream loop from omni-core: event: lines are
+// skipped, each data: line is JSON, reply_text is appended only when no delta
+// has been accumulated yet, and is_finished does not add text.
+func parseCoreSSE(body string) (text string, finals int, delay int64, stop string, err error) {
+	sc := bufio.NewScanner(strings.NewReader(body))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var b strings.Builder
+	used := false
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, ":") || strings.HasPrefix(line, "event:") {
+			continue
+		}
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok {
+			continue
+		}
+		data = strings.TrimSpace(data)
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var ev coreStreamEvent
+		if json.Unmarshal([]byte(data), &ev) != nil {
+			if used {
+				return b.String(), finals, delay, stop, errors.New("goso stream: invalid event")
+			}
+			return "", 0, 0, "", errors.New("invalid before delta")
+		}
+		if ev.DelayMS != 0 {
+			delay = ev.DelayMS
+		}
+		if ev.StopReason != "" {
+			stop = ev.StopReason
+		}
+		piece := ev.Delta
+		if piece == "" && ev.ReplyText != "" && b.Len() == 0 {
+			piece = ev.ReplyText
+		}
+		if piece != "" {
+			used = true
+			b.WriteString(piece)
+		}
+		if ev.IsFinished || ev.Finished {
+			used = true
+			finals++
+		}
+	}
+	if !used {
+		return "", 0, 0, "", errors.New("no delta")
+	}
+	return b.String(), finals, delay, stop, sc.Err()
+}
+
+func TestHTTPAndGRPCStream(t *testing.T) {
+	t.Setenv("GOSO_SSRF", "0")
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_LLM_API_KEY", "")
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+
+	var streams []bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.Unmarshal(b, &body)
+		streams = append(streams, body.Stream)
+		if !body.Stream {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"unary ok"}}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"xin \"}}]}\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"chao\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(upstream.Close)
+
+	const (
+		tenant  = "00000000-0000-0000-0000-000000000001"
+		agentID = "agent-stream"
+		model   = "gcli/grok-4.5-high"
+	)
+	svc := &Service{Secret: "test-secret", Version: "test", Catalog: newMem(), Store: store.New()}
+	addr := startBridge(t, svc)
+	base := "http://" + addr
+	prov := []byte(`{"name":"9router","provider_type":"custom","base_url":"` + upstream.URL + `/v1","api_key":"fixture-key","models":["` + model + `"],"is_active":true}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/providers/router", svc.Secret, tenant, prov); res.StatusCode != 200 {
+		t.Fatalf("provider %d %s", res.StatusCode, res.Body)
+	}
+	agent := []byte(`{"name":"stream","harness_type":"GOSO","model_name":"` + model + `"}`)
+	if res := doSigned(t, http.MethodPut, base+"/v1/tenants/"+tenant+"/agents/"+agentID, svc.Secret, tenant, agent); res.StatusCode != 200 {
+		t.Fatalf("agent %d %s", res.StatusCode, res.Body)
+	}
+	reply := []byte(`{"agent_id":"` + agentID + `","model":"` + model + `","prompt":"hello"}`)
+
+	unary := doSigned(t, http.MethodPost, base+"/v1/chat/reply", svc.Secret, tenant, reply)
+	if unary.StatusCode != 200 || !strings.Contains(unary.Body, `"reply_text":"unary ok"`) || strings.Contains(unary.Body, "event:") {
+		t.Fatalf("unary %d %s", unary.StatusCode, unary.Body)
+	}
+	if len(streams) != 1 || streams[0] {
+		t.Fatalf("unary stream flag %v", streams)
+	}
+
+	for _, path := range []string{"/v1/chat/reply/stream", "/v1/chat/stream"} {
+		req, err := http.NewRequest(http.MethodPost, base+path, bytes.NewReader(reply))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stamp(req.Header, svc.Secret, tenant, reply)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		sse := string(raw)
+		if res.StatusCode != 200 || !strings.Contains(res.Header.Get("Content-Type"), "text/event-stream") {
+			t.Fatalf("%s status %d type %s body %s", path, res.StatusCode, res.Header.Get("Content-Type"), sse)
+		}
+		text, finals, _, stop, err := parseCoreSSE(sse)
+		if err != nil {
+			t.Fatalf("%s parse %v body %s", path, err, sse)
+		}
+		if text != "xin chao" || finals != 1 || stop != "stop" {
+			t.Fatalf("%s core parse text %q finals %d stop %q body %s", path, text, finals, stop, sse)
+		}
+		if strings.Contains(text, "xin chaoxin chao") || len(text) != len("xin chao") {
+			t.Fatalf("%s duplicated reply %q", path, text)
+		}
+	}
+	if len(streams) != 3 || !streams[1] || !streams[2] {
+		t.Fatalf("sse upstream %v", streams)
+	}
+
+	h2 := h2cHTTPClient()
+	sclient := connect.NewClient[gosov1.GenerateReplyRequest, gosov1.StreamReplyChunk](h2, base+procStream, connect.WithGRPC())
+	sreq := connect.NewRequest(&gosov1.GenerateReplyRequest{
+		SessionId: agentID, TenantId: tenant, Model: model, Prompt: "grpc-stream",
+	})
+	stamp(sreq.Header(), svc.Secret, tenant, []byte("grpc-stream"))
+	stream, err := sclient.CallServerStream(context.Background(), sreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streamed string
+	finished := false
+	for stream.Receive() {
+		streamed += stream.Msg().GetDelta()
+		if stream.Msg().GetIsFinished() {
+			finished = true
+			if stream.Msg().GetStopReason() == "" {
+				t.Fatal("missing stop reason")
+			}
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if streamed != "xin chao" || !finished || len(streams) != 4 || !streams[3] {
+		t.Fatalf("grpc %q finished=%v flags=%v", streamed, finished, streams)
+	}
+
+	bad := doSigned(t, http.MethodPost, base+"/v1/chat/reply/stream", "wrong-secret", tenant, reply)
+	if bad.StatusCode != http.StatusUnauthorized || strings.Contains(bad.Body, "event:") || !strings.Contains(bad.Body, `"error"`) {
+		t.Fatalf("bad sig %d %s", bad.StatusCode, bad.Body)
+	}
+}
+
+func TestListenAddr(t *testing.T) {
+	t.Setenv("GOSO_PORT", "")
+	t.Setenv("GOSO_HOST", "")
+	if ListenAddr("", -1) != "127.0.0.1:8088" {
+		t.Fatal(ListenAddr("", -1))
+	}
+	t.Setenv("GOSO_PORT", "9090")
+	t.Setenv("GOSO_HOST", "0.0.0.0")
+	if ListenAddr("", -1) != "0.0.0.0:9090" {
+		t.Fatal(ListenAddr("", -1))
+	}
+}
+
+type signedResult struct {
+	StatusCode int
+	Body       string
+}
+
+func doSigned(t *testing.T, method, url, secret, tenant string, body []byte) signedResult {
+	t.Helper()
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp(req.Header, secret, tenant, body)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return signedResult{StatusCode: res.StatusCode, Body: string(b)}
+}
+
+func stamp(h http.Header, secret, tenant string, payload []byte) {
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	h.Set(headerTenant, tenant)
+	h.Set(headerTimestamp, ts)
+	h.Set(headerSignature, sign(secret, ts, payload))
+}
+
+func startBridge(t *testing.T, svc *Service) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{
+		Handler:           h2c.NewHandler(NewMux(svc), &http2.Server{}),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+	return ln.Addr().String()
+}
+
+func h2cHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, addr)
+			},
+		},
+	}
+}
+
+type fakeLLM struct {
+	mu     sync.Mutex
+	n      int
+	last   Completion
+	text   string
+	deltas []string
+}
+
+func (f *fakeLLM) Complete(_ context.Context, in Completion) (Result, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.n++
+	f.last = in
+	if in.OnDelta != nil {
+		for _, d := range f.deltas {
+			in.OnDelta(d)
+		}
+	}
+	text := f.text
+	if len(f.deltas) > 0 {
+		text = strings.Join(f.deltas, "")
+	}
+	return Result{Text: text, PromptTokens: 4, CompletionTokens: 2, StopReason: "stop"}, nil
+}
+
+func (f *fakeLLM) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.n
+}
+
+func (f *fakeLLM) snapshot() Completion {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.last
+}
+
+func (f *fakeLLM) setDeltas(d []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deltas = d
+}

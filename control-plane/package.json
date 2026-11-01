@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/api/*.test.ts",
     "verify": "tsc --noEmit && vite build",
+    "qa:tabs": "node --experimental-strip-types scripts/qa-tabs.ts",
     "preview": "vite preview --port 3000"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "puppeteer-core": "^24.2.0",
     "typescript": "^5.6.2",
     "vite": "^5.4.3"
   }
