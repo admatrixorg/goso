@@ -7,6 +7,7 @@ export type SessionLite = {
   id: string;
   agent_id: string;
   label?: string;
+  preview?: string;
   prompt_mode?: string;
   archived?: boolean;
   created_at?: string;
@@ -77,9 +78,14 @@ export function clearSelectedSession(store: MemoryStore | null = fallbackStore()
   }
 }
 
-export function sessionDisplayName(s: { id: string; label?: string }): string {
+/** Label, else the first message, else a translated fallback. Never the raw session id. */
+export function sessionDisplayName(s: { id?: string; label?: string; preview?: string }, untitled = "Cuộc trò chuyện"): string {
   const label = (s.label || "").trim();
-  return label || s.id;
+  if (label) return label;
+  const preview = (s.preview || "").trim();
+  if (preview) return preview;
+  const fallback = untitled.trim();
+  return fallback || "Cuộc trò chuyện";
 }
 
 /** Last-activity field available on session list JSON. No message_count in this API. */
@@ -96,7 +102,7 @@ export function searchConversations<T extends SessionLite>(
   const q = query.trim().toLowerCase();
   const hit = sessions.filter((s) => {
     if (!q) return true;
-    const hay = `${s.label || ""} ${s.id} ${agentName(s.agent_id)}`.toLowerCase();
+    const hay = `${s.label || ""} ${s.preview || ""} ${agentName(s.agent_id)}`.toLowerCase();
     return hay.includes(q);
   });
   return [...hit.filter((s) => !s.archived), ...hit.filter((s) => s.archived)];

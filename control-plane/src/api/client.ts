@@ -257,6 +257,7 @@ export type Session = {
   id: string;
   agent_id: string;
   label?: string;
+  preview?: string;
   prompt_mode?: string;
   model_override?: string;
   provider_override?: string;

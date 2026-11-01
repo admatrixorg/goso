@@ -51,6 +51,9 @@ export const SessionsPage = forwardRef<
   }
 >(function SessionsPage({ onPick, compact, selectedId, onDeleted, onRenamed }, ref) {
   const { t, locale } = useI18n();
+  function titleOf(s: { label?: string; preview?: string }) {
+    return sessionDisplayName(s, t("chat.untitled"));
+  }
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -189,7 +192,7 @@ export const SessionsPage = forwardRef<
       setLoadedAt(new Date().toISOString());
       setErr(null);
       setFormErr("");
-      onPick(created.id, sessionDisplayName(created));
+      onPick(created.id, titleOf(created));
     } catch (e) {
       setFormErr(formatPublicError(e));
     } finally {
@@ -238,7 +241,7 @@ export const SessionsPage = forwardRef<
 
   async function remove(s: Session) {
     if (busy || createBlocked) return;
-    const named = sessionDisplayName(s);
+    const named = titleOf(s);
     if (!confirmNamed(t("sessions.confirmDelete", { name: named }), (m) => window.confirm(m))) return;
     setDeletingId(s.id);
     try {
@@ -388,7 +391,7 @@ export const SessionsPage = forwardRef<
     const hits = searchConversations(sessions, searchQ, (id) => agentLabel(agents, id));
     const row = (s: Session) => {
       const selected = Boolean(selectedId) && selectedId === s.id;
-      const named = sessionDisplayName(s);
+      const named = titleOf(s);
       return (
         <div key={s.id} className={selected ? "z-gs-cvw is-on" : "z-gs-cvw"}>
           {renamingId === s.id ? (
@@ -521,7 +524,7 @@ export const SessionsPage = forwardRef<
                 } else if (e.key === "Enter" && hits[searchIdx]) {
                   e.preventDefault();
                   const hit = hits[searchIdx];
-                  onPick(hit.id, sessionDisplayName(hit));
+                  onPick(hit.id, titleOf(hit));
                   if (hit.archived) setShowArchived(true);
                   setSearchOpen(false);
                 }
@@ -538,12 +541,12 @@ export const SessionsPage = forwardRef<
                     className={i === searchIdx ? "is-on" : ""}
                     onMouseEnter={() => setSearchIdx(i)}
                     onClick={() => {
-                      onPick(hit.id, sessionDisplayName(hit));
+                      onPick(hit.id, titleOf(hit));
                       if (hit.archived) setShowArchived(true);
                       setSearchOpen(false);
                     }}
                   >
-                    <b>{sessionDisplayName(hit)}</b>
+                    <b>{titleOf(hit)}</b>
                     <small>
                       {hit.archived ? t("chat.whereArchived") : t("chat.whereRecent")}
                       {" · "}
@@ -614,7 +617,7 @@ export const SessionsPage = forwardRef<
         </div>
         {state.showItems
           ? page.map((s) => {
-              const named = sessionDisplayName(s);
+              const named = titleOf(s);
               return (
                 <div
                   key={s.id}

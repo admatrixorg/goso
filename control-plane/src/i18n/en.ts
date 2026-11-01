@@ -285,6 +285,7 @@ export const en: Record<MsgKey, string> = {
   "chat.sug.brief": "Draft the standup brief",
   "chat.sug.vault": "Summarise a Vault document",
   "chat.recent": "Recent",
+  "chat.untitled": "Conversation",
   "chat.newConv": "New conversation",
   "chat.copy": "Copy",
   "chat.offline": "Can't reach the server",
