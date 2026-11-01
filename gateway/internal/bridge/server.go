@@ -71,6 +71,8 @@ func NewMux(svc *Service) http.Handler {
 	mux.HandleFunc("GET /healthz", svc.handleHealth)
 	mux.HandleFunc("GET /v1/health", svc.handleHealth)
 	mux.HandleFunc("POST /v1/chat/reply", svc.handleReply)
+	mux.HandleFunc("POST /v1/chat/stream", svc.handleReplyStream)
+	mux.HandleFunc("POST /v1/chat/reply/stream", svc.handleReplyStream)
 	mux.HandleFunc("PUT /v1/tenants/{tenantId}/providers/{providerId}", svc.handlePutProvider)
 	mux.HandleFunc("DELETE /v1/tenants/{tenantId}/providers/{providerId}", svc.handleDeleteProvider)
 	mux.HandleFunc("PUT /v1/tenants/{tenantId}/agents/{agentId}/knowledge", svc.handlePutKnowledge)
