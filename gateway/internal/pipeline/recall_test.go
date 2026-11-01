@@ -81,7 +81,7 @@ func TestRunner_RecallAcrossSessions(t *testing.T) {
 	lastPrompt := func() []llm.Message { return scripted.Recorded[len(scripted.Recorded)-1] }
 	recallMsg := func(msgs []llm.Message) (string, int) {
 		for i, m := range msgs {
-			if m.Role == "system" && strings.HasPrefix(m.Content, recallHeader) {
+			if m.Role == "system" && strings.Contains(m.Content, recallHeader) {
 				return m.Content, i
 			}
 		}
@@ -162,5 +162,49 @@ func TestMemoryExpand_SupersededIsNotCurrent(t *testing.T) {
 	}
 	if out, err := DispatchMemoryTool(st, store.DefaultTenant, call); err == nil || !strings.Contains(out, "superseded") {
 		t.Fatalf("superseded entity must not be served to the agent: %v %s", err, out)
+	}
+}
+
+// The recall note must reach the model inside the single system message,
+// after the agent's own prompt and before the history: 9router/gcli drops
+// every system message after the first.
+func TestRunner_RecallRidesInOneSystemMessageAfterAgentPrompt(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "")
+	st := store.New()
+	ag, _ := st.CreateAgent(store.Agent{AgentKey: "sale-shadow", Instructions: "Bạn chỉ tư vấn nội thất."})
+	s1, _ := st.CreateSession(store.Session{AgentID: ag.ID})
+	s2, _ := st.CreateSession(store.Session{AgentID: ag.ID})
+
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "đã ghi nhận"}}, RepeatLast: true}
+	r := NewRunner(st, nil, scripted, nil)
+	r.ForceSummarize = true
+	if _, err := r.Run(context.Background(), s1.ID, "Khách Mẫu muốn sofa gỗ sồi màu walnut, mã đơn SOFA-7731", ModeFull); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run(context.Background(), s2.ID, "Đơn SOFA-7731 sofa gỗ sồi màu gì?", ModeFull); err != nil {
+		t.Fatal(err)
+	}
+	msgs := scripted.Recorded[len(scripted.Recorded)-1]
+	systems := 0
+	for i, m := range msgs {
+		if m.Role == "system" {
+			systems++
+			if i != 0 {
+				t.Fatalf("system message at %d, want only index 0: %+v", i, msgs)
+			}
+		}
+	}
+	if systems != 1 {
+		t.Fatalf("want exactly one system message, got %d: %+v", systems, msgs)
+	}
+	sys := msgs[0].Content
+	ins := strings.Index(sys, "Bạn chỉ tư vấn nội thất.")
+	hdr := strings.Index(sys, recallHeader)
+	body := strings.Index(sys, "SOFA-7731")
+	if ins < 0 || hdr < 0 || body < 0 || !(ins < hdr && hdr < body) {
+		t.Fatalf("want agent prompt, then recall header, then note; ins=%d hdr=%d body=%d sys=%q", ins, hdr, body, sys)
+	}
+	if last := msgs[len(msgs)-1]; last.Role != "user" || !strings.Contains(last.Content, "SOFA-7731") {
+		t.Fatalf("last message must be the user turn: %+v", last)
 	}
 }

@@ -273,22 +273,31 @@ func (r *Runner) attachPrompt(st *State) {
 	if ins := strings.TrimSpace(st.Instructions); ins != "" && st.Mode != ModeNone {
 		sys = strings.TrimSpace(sys + "\n" + ins)
 	}
-	var prefix []llm.Message
-	if sys != "" {
-		prefix = append(prefix, llm.Message{Role: "system", Content: sys})
+	// Everything the model must obey or know rides in ONE system message:
+	// some OpenAI-compatible routers drop every system message after the
+	// first (9router/gcli, measured 01/11/2026), which silently discarded the
+	// SPEC 132 recall note. Order: agent prompt, prior-session memory,
+	// bootstrap files, then the same-session summary that loadHistory put in
+	// front of the history.
+	parts := []string{sys}
+	if st.Mode != ModeNone {
+		parts = append(parts, strings.TrimSpace(st.RecallNote), strings.TrimSpace(BootstrapText()))
 	}
-	// Prior-session memory goes at the start of the context, never buried
-	// mid-history (lost-in-the-middle).
-	if note := strings.TrimSpace(st.RecallNote); note != "" && st.Mode != ModeNone {
-		prefix = append(prefix, llm.Message{Role: "system", Content: note})
+	rest := st.Messages
+	for len(rest) > 0 && rest[0].Role == "system" {
+		parts = append(parts, strings.TrimSpace(rest[0].Content))
+		rest = rest[1:]
 	}
-	if boot := strings.TrimSpace(BootstrapText()); boot != "" && st.Mode != ModeNone {
-		prefix = append(prefix, llm.Message{Role: "system", Content: boot})
+	var kept []string
+	for _, p := range parts {
+		if p != "" {
+			kept = append(kept, p)
+		}
 	}
-	if len(prefix) == 0 {
+	if len(kept) == 0 {
 		return
 	}
-	st.Messages = append(prefix, st.Messages...)
+	st.Messages = append([]llm.Message{{Role: "system", Content: strings.Join(kept, "\n\n")}}, rest...)
 }
 
 func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err error) {
