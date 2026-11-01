@@ -31,7 +31,7 @@ import (
 // session, and that session is never summarised nor injected.
 
 const (
-	// bridgeSummaryEvery is how many new messages (user+assistant) pass
+	// bridgeSummaryEvery is how many new conversation turns (user+assistant) pass
 	// between summary refreshes once the session reached
 	// pipeline.SummarizeMessageMin.
 	bridgeSummaryEvery   = 6
@@ -83,8 +83,8 @@ func (s *Service) memoryNote(sid string) string {
 }
 
 // scheduleSummary refreshes the L1 summary of sid in the background when the
-// session has at least pipeline.SummarizeMessageMin messages, then every
-// bridgeSummaryEvery messages. The reply is never delayed by it.
+// session has at least pipeline.SummarizeMessageMin conversation turns, then
+// every bridgeSummaryEvery turns. The reply is never delayed by it.
 func (s *Service) scheduleSummary(sid string, prov Provider, model string, ag Agent) {
 	if s == nil || s.Store == nil || sid == "" {
 		return
@@ -93,7 +93,7 @@ func (s *Service) scheduleSummary(sid string, prov Provider, model string, ag Ag
 	if err != nil {
 		return
 	}
-	n := len(raw)
+	n := pipeline.ConversationTurns(raw) // user/assistant turns only, like SummarizeStage
 	if n < pipeline.SummarizeMessageMin || (n-pipeline.SummarizeMessageMin)%bridgeSummaryEvery != 0 {
 		return
 	}
@@ -117,7 +117,7 @@ func (s *Service) scheduleSummary(sid string, prov Provider, model string, ag Ag
 			FallbackModel: agentFallbackModel(ag),
 		})
 		if err != nil {
-			log.Printf("goso memory: bridge summary session=%s messages=%d error=%v", sid, n, classifyTransport(err, prov.APIKey))
+			log.Printf("goso memory: bridge summary session=%s turns=%d error=%v", sid, n, classifyTransport(err, prov.APIKey))
 			return
 		}
 		text := pipeline.TruncateRunes(strings.TrimSpace(res.Text), bridgeSummaryRunes)
@@ -128,6 +128,6 @@ func (s *Service) scheduleSummary(sid string, prov Provider, model string, ag Ag
 			log.Printf("goso memory: bridge summary session=%s save error=%v", sid, err)
 			return
 		}
-		log.Printf("goso memory: bridge summary session=%s messages=%d runes=%d", sid, n, utf8.RuneCountInString(text))
+		log.Printf("goso memory: bridge summary session=%s turns=%d runes=%d", sid, n, utf8.RuneCountInString(text))
 	}()
 }
