@@ -79,21 +79,7 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	agent := z.ensureAgent()
 	sess := z.ensureSession(agent.ID, threadID)
 
-	_, _ = z.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
-
-	provider := resolveInboundLLM(z.Store, agent, z.LLM)
-	history, _ := z.Store.ListMessages(sess.ID)
-	var msgs []llm.Message
-	for _, m := range history {
-		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
-	}
-	reply, usage, err := llm.ChatUsage(r.Context(), provider, msgs)
-	if err != nil {
-		reply = fmt.Sprintf("LLM error: %v", err)
-	} else {
-		trackUsage(z.Meter, agent.ID, provider.Name(), usage)
-	}
-	_, _ = z.Store.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
+	reply := answerTurn(r.Context(), z.Store, agent, sess, z.LLM, z.Meter, text)
 
 	sender := z.Sender
 	if sender == nil {

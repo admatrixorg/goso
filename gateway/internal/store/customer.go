@@ -17,9 +17,21 @@ import (
 // (memories.customer_key) and not read back from the session at recall time,
 // because operators can rename a session label.
 
+// OmniCustomerPrefix labels Omni bridge sessions of one identified customer
+// conversation: "omni-chat:<tenant>:<channel type>:<channel account>:<external
+// conversation>" (parts query-escaped). The bridge owns these sessions and
+// writes their notes itself (see bridge/memory.go).
+const OmniCustomerPrefix = "omni-chat:"
+
 // ChannelLabelPrefixes mark sessions created by external channel threads.
 var ChannelLabelPrefixes = []string{
 	"zalo-personal:", "zalo-oa:", "telegram:", "discord:", "slack:", "feishu:", "whatsapp:",
+	OmniCustomerPrefix,
+}
+
+// IsOmniCustomerLabel reports an Omni bridge per-customer session label.
+func IsOmniCustomerLabel(label string) bool {
+	return strings.HasPrefix(label, OmniCustomerPrefix) && len(label) > len(OmniCustomerPrefix)
 }
 
 // IsChannelLabel reports a session label owned by an external channel thread.

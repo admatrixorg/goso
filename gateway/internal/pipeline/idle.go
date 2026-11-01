@@ -219,6 +219,9 @@ func (f *IdleFlusher) flush(ctx context.Context, sessionID string, cutoff time.T
 	if IsChannelSession(sess) && CustomerKey(sess) == "" {
 		return false, nil // channel thread without an id: nothing to scope to
 	}
+	if store.IsOmniCustomerLabel(sess.Label) {
+		return false, nil // the Omni bridge writes these notes with the tenant's own provider
+	}
 	raw, err := f.Store.ListMessages(sessionID)
 	if err != nil {
 		return false, err
@@ -281,6 +284,10 @@ func (f *IdleFlusher) provider(sess *store.Session) llm.Provider {
 	}
 	return p
 }
+
+// CompactNote is compactNote for callers outside the idle flusher (the Omni
+// bridge): user lines verbatim for short sessions, without an LLM.
+func CompactNote(msgs []llm.Message) (string, string) { return compactNote(msgs) }
 
 // compactNote returns the user lines of a short session verbatim (mode
 // "compact"), "llm" when the session is too long for that, or "" when it has

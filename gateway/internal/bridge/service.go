@@ -164,14 +164,19 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 	if err := s.ensureSession(ten.GosoID, &ag, model, system, in); err != nil {
 		return ReplyOutput{}, err
 	}
-	// SPEC 132 §bridge: this conversation's session, or "" when memory is off/unscoped.
-	sid := s.memorySession(ag.GosoAgentID, in)
+	// SPEC 132 §bridge: this conversation's session, or nil when memory is off/unscoped.
+	msess := s.memorySession(ag.GosoAgentID, in)
+	sid := ""
+	if msess != nil {
+		sid = msess.ID
+	}
 
-	// SPEC 132 §bridge: prior turns of this conversation ride inside the one
-	// system message, right after the prompt and never mid-history. Some
-	// OpenAI-compatible routers drop a second system message outright
-	// (9router/gcli, measured 01/11/2026), so the note is merged, not appended.
-	if note := s.memoryNote(sid); note != "" {
+	// SPEC 132 §bridge: this customer's memory rides inside the one system
+	// message, after the prompt and the (capped) knowledge block and never
+	// mid-history. Some OpenAI-compatible routers drop a second system message
+	// outright (9router/gcli, measured 01/11/2026), so the note is merged, not
+	// appended.
+	if note := s.memoryNote(msess, in.Prompt); note != "" {
 		if system != "" {
 			system += "\n\n" + note
 		} else {
@@ -583,6 +588,9 @@ func clipLogErr(msg string) string {
 }
 
 func sessionLabel(in ReplyInput, agentID string) string {
+	if v := customerLabel(in); v != "" {
+		return v
+	}
 	if v := meta(in.Metadata, "conversation_id", "conversationId"); v != "" {
 		return "omni:" + v
 	}
