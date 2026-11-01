@@ -62,6 +62,8 @@ type State struct {
 	Pending        bool
 	ForceSummarize bool
 	Provider       llm.Provider
+	// RecallNote is the admitted prior-session memory for this turn (SPEC 132).
+	RecallNote string
 }
 
 // Result is returned to Runtime.Chat.
@@ -170,6 +172,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	if err := r.loadHistory(st); err != nil {
 		return nil, err
 	}
+	st.RecallNote, _ = r.recall(st, userText)
 	r.attachPrompt(st)
 	if r.Tools != nil {
 		st.Tools, _ = r.Tools.List(ctx, st.AgentID)
@@ -273,6 +276,11 @@ func (r *Runner) attachPrompt(st *State) {
 	var prefix []llm.Message
 	if sys != "" {
 		prefix = append(prefix, llm.Message{Role: "system", Content: sys})
+	}
+	// Prior-session memory goes at the start of the context, never buried
+	// mid-history (lost-in-the-middle).
+	if note := strings.TrimSpace(st.RecallNote); note != "" && st.Mode != ModeNone {
+		prefix = append(prefix, llm.Message{Role: "system", Content: note})
 	}
 	if boot := strings.TrimSpace(BootstrapText()); boot != "" && st.Mode != ModeNone {
 		prefix = append(prefix, llm.Message{Role: "system", Content: boot})

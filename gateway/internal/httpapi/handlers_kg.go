@@ -44,23 +44,25 @@ func handleCreateKGEntity(st store.StoreIface) http.HandlerFunc {
 func handleCreateKGRelation(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			FromID string `json:"from_id"`
-			ToID   string `json:"to_id"`
-			Rel    string `json:"rel"`
-			Body   string `json:"body"`
-			Source string `json:"source"`
+			FromID    string `json:"from_id"`
+			ToID      string `json:"to_id"`
+			Rel       string `json:"rel"`
+			Body      string `json:"body"`
+			Source    string `json:"source"`
+			Exclusive bool   `json:"exclusive"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 		rel, err := st.PutKGRelation(store.KGRelation{
-			TenantID: requestTenant(r),
-			FromID:   strings.TrimSpace(body.FromID),
-			ToID:     strings.TrimSpace(body.ToID),
-			Rel:      strings.TrimSpace(body.Rel),
-			Body:     strings.TrimSpace(body.Body),
-			Source:   strings.TrimSpace(body.Source),
+			TenantID:  requestTenant(r),
+			FromID:    strings.TrimSpace(body.FromID),
+			ToID:      strings.TrimSpace(body.ToID),
+			Rel:       strings.TrimSpace(body.Rel),
+			Body:      strings.TrimSpace(body.Body),
+			Source:    strings.TrimSpace(body.Source),
+			Exclusive: body.Exclusive,
 		})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

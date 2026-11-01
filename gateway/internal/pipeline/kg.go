@@ -68,6 +68,10 @@ func DispatchMemoryTool(st store.StoreIface, tenant string, call llm.ToolCall) (
 		if exp == nil || exp.Entity == nil || !store.SameTenant(exp.Entity.TenantID, tenant) {
 			return `{"error":"not found"}`, store.ErrNotFound
 		}
+		// Agents never read a superseded fact as current (SPEC 132).
+		if !store.KGIsCurrent(exp.Entity.ValidFrom, exp.Entity.ValidUntil) {
+			return `{"error":"superseded"}`, store.ErrNotFound
+		}
 		b, err := json.Marshal(exp)
 		if err != nil {
 			return `{"error":"encode"}`, err

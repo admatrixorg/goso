@@ -26,6 +26,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/logstore"
 	"github.com/mqglobal/goso/gateway/internal/observe"
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -152,6 +153,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		if team.AutoEnabled() {
 			go team.Loop(context.Background(), st)
 		}
+		go pipeline.PruneLoop(context.Background(), st)
 	}
 	return mux, pairing
 }
@@ -184,6 +186,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	devMode := envTruthy(os.Getenv("GOSO_DEV_MODE"))
 	var handler http.Handler = security.LimitAPI(mux)
 	handler = httpapi.GuardDeactivatedTenant(nil, handler)
+	handler = httpapi.RejectInvalidTenant(handler)
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
