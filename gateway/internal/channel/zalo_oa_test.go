@@ -98,14 +98,34 @@ func TestZaloOA_VerifyMatrix(t *testing.T) {
 	}
 }
 
+// An authorized update with no sender or text is acknowledged and ignored.
+// The environment is pinned: the webhook auth check runs first and, with
+// GOSO_ENV=production or a GOSO_ZALO_OA_SECRET inherited from the shell,
+// correctly rejects an unsigned request with 401.
 func TestZaloOA_IgnoreEmpty(t *testing.T) {
-	st := store.New()
-	z := &ZaloOA{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _, _ string) error { return nil }}
-	req := httptest.NewRequest("POST", "/api/channels/zalo-oa/webhook", bytes.NewReader([]byte(`{"event_name":"user_send_text"}`)))
-	w := httptest.NewRecorder()
-	z.HandleUpdate(w, req)
-	if w.Code != 200 || len(st.ListSessions()) != 0 {
-		t.Fatalf("expected ignore")
+	cases := map[string]struct{ env, secret, header string }{
+		"dev without secret":     {env: "development"},
+		"production with secret": {env: "production", secret: "sec", header: "sec"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOSO_ENV", tc.env)
+			t.Setenv("GOSO_ZALO_OA_SECRET", tc.secret)
+			st := store.New()
+			z := &ZaloOA{Store: st, LLM: llm.Echo{}, Sender: func(_ context.Context, _, _ string) error {
+				t.Fatal("empty update must not send")
+				return nil
+			}}
+			req := httptest.NewRequest("POST", "/api/channels/zalo-oa/webhook", bytes.NewReader([]byte(`{"event_name":"user_send_text"}`)))
+			if tc.header != "" {
+				req.Header.Set("X-Goso-OA-Secret", tc.header)
+			}
+			w := httptest.NewRecorder()
+			z.HandleUpdate(w, req)
+			if w.Code != 200 || len(st.ListSessions()) != 0 {
+				t.Fatalf("expected ignore: code=%d sessions=%d body=%s", w.Code, len(st.ListSessions()), w.Body.String())
+			}
+		})
 	}
 }
 
