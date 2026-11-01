@@ -20,7 +20,7 @@ function kindColor(kind: HealthKind | null): string {
   return "var(--text-4)";
 }
 
-export function GatewayStatus() {
+export function GatewayStatus({ quiet = false }: { quiet?: boolean }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<HealthKind | null>(null);
   const [lastHeartbeat, setLastHeartbeat] = useState("");
@@ -53,6 +53,16 @@ export function GatewayStatus() {
   let label = kind ? `${t("chrome.gateway")} · ${t(KIND_KEY[kind])}` : t("chrome.gateway");
   if (lastHeartbeat) {
     label = `${label} · ${t("chrome.gateway.heartbeat", { at: lastHeartbeat })}`;
+  }
+
+  if (quiet) {
+    const quietLabel = kind ? t(KIND_KEY[kind]) : t("chrome.gateway");
+    return (
+      <div className="z-org-conn" data-health={kind ?? "checking"} aria-live="polite">
+        <span className="z-org-dot" />
+        <span className="z-wide-only">{quietLabel}</span>
+      </div>
+    );
   }
 
   return (

@@ -4,6 +4,7 @@ import {
   agentDisplayName,
   applyMention,
   choiceFromSelect,
+  collapseSwitchRuns,
   dayPart,
   ensureModelChoice,
   filterMentionAgents,
@@ -345,7 +346,7 @@ export function ChatPage({
   const mentionHits = mentionQ === null ? [] : filterMentionAgents(agents, mentionQ);
   const activeMention = Math.min(mentionIdx, Math.max(0, mentionHits.length - 1));
   const busy = sending || savingMeta;
-  const visible = msgs.filter((m) => m.role !== "tool" && !m.id.startsWith("local-err-"));
+  const visible = collapseSwitchRuns(msgs.filter((m) => m.role !== "tool" && !m.id.startsWith("local-err-")));
   const empty = Boolean(sessionId) && !loading && visible.length === 0 && !err;
   const showHello = !sessionId || empty;
   const sessionAgentRow = agents.find((a) => a.id === sessionAgent);

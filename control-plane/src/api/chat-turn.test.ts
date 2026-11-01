@@ -10,6 +10,7 @@ import {
   mentionStep,
   mentionStillPresent,
   choiceFromSelect,
+  collapseSwitchRuns,
   dayPart,
   modelChoiceValue,
   modelFace,
@@ -41,6 +42,20 @@ test("model options skip empty provider and paused agents", () => {
   const bare = selectValueForChoice({ provider: "", model: "custom-model" });
   assert.deepEqual(choiceFromSelect(bare), { provider: "", model: "custom-model" });
   assert.equal(choiceFromSelect(""), null);
+});
+
+test("consecutive switch lines keep only the latest", () => {
+  const rows = [
+    { role: "user" },
+    { role: "event", id: "a" },
+    { role: "event", id: "b" },
+    { role: "assistant" },
+    { role: "event", id: "c" },
+  ];
+  assert.deepEqual(
+    collapseSwitchRuns(rows).map((r) => ("id" in r ? r.id : r.role)),
+    ["user", "b", "assistant", "c"],
+  );
 });
 
 test("day part and model face stay quiet", () => {

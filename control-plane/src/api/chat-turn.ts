@@ -80,6 +80,23 @@ export function dayPart(date: Date): DayPart {
 }
 
 /** Composer face shows the model that will run. "Theo agent" stays inside the menu. */
+/** Keep only the last switch marker in a run of event rows. */
+export function collapseSwitchRuns<T extends { role: string }>(messages: T[]): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const row = messages[i];
+    if (row.role !== "event") {
+      out.push(row);
+      continue;
+    }
+    let j = i;
+    while (j + 1 < messages.length && messages[j + 1].role === "event") j++;
+    out.push(messages[j]);
+    i = j;
+  }
+  return out;
+}
+
 export function shortLabel(name: string, max = 32): string {
   const n = name.trim();
   if (n.length <= max) return n;
