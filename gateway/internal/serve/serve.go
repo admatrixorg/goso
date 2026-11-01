@@ -154,6 +154,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 			go team.Loop(context.Background(), st)
 		}
 		go pipeline.PruneLoop(context.Background(), st)
+		go pipeline.IdleFlushLoop(context.Background(), st, provider)
 	}
 	return mux, pairing
 }
