@@ -46,3 +46,10 @@ Nguồn: audit prod GoClaw 30/10 (`~/goclaw-audit-20261030/REPORT.md`): memory L
 - `GOSO_MEMORY_RECALL=0`: không nạp.
 - Postgres: `TestBridgeReplySessionOnPostgres` + probe RecallMemories/PruneEpisodic trên Postgres 16 (zcrm-test-db) đều PASS.
 - Điều kiện vận hành: omni-core hiện (hongta0506/omni-core staging, `goso_http_stream.go replyPayload`) không gửi `metadata`, và `GenerateReplyHandler` bỏ `ExternalConversationID`/`ExternalSenderID` khi dựng `HarnessRequest`. Chừng nào chưa sửa hai chỗ đó, memory trên bridge nằm im (cổng gác), prod không đổi hành vi.
+
+### Smoke trên VPS omni (01/11/2026, bridge `omni-goso`, LLM 9router → gcli/grok-4.5-high)
+
+- 6 lượt hội thoại `conversation_id=smoke132-c1` → log `goso memory: bridge summary session=… messages=12 runes=140`; bảng `memories` có 1 dòng episodic đúng nội dung (Lan, Đà Nẵng, 20 bộ, 150 triệu, hẹn thứ Sáu 9h).
+- Lượt 7 với history rỗng → log `bridge inject … runes=158`, nhưng model trả "chưa có thông tin".
+- Đo thẳng vào 9router với 3 cách đặt ghi chú: hai system message → model bỏ qua; gộp vào một system message → đúng; đặt làm lượt user → đúng. Kết luận: 9router/gcli bỏ system message thứ hai.
+- Sửa: `bridge/service.go` gộp ghi chú vào system message duy nhất (không đổi Instructions lưu trong goso). Test `TestBridgeMemoryPerConversation` kiểm tra ghi chú nằm cuối system message đầu tiên và không có system message thứ hai.

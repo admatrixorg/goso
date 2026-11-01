@@ -76,7 +76,7 @@ func TestBridgeMemoryPerConversation(t *testing.T) {
 		t.Fatalf("shared session must not be summarised, memories=%d", n)
 	}
 	for _, m := range fake.last.Messages {
-		if strings.HasPrefix(m.Content, pipeline.PreviousSummaryPrefix) {
+		if strings.Contains(m.Content, pipeline.PreviousSummaryPrefix) {
 			t.Fatalf("shared session got a memory note: %q", m.Content)
 		}
 	}
@@ -95,21 +95,22 @@ func TestBridgeMemoryPerConversation(t *testing.T) {
 	reply("c1", pipeline.SummarizeMessageMin/2+1)
 	var note string
 	for _, m := range fake.last.Messages {
-		if m.Role == "system" && strings.HasPrefix(m.Content, pipeline.PreviousSummaryPrefix) {
-			note = m.Content
+		if i := strings.Index(m.Content, pipeline.PreviousSummaryPrefix); m.Role == "system" && i >= 0 {
+			note = m.Content[i:]
 		}
 	}
 	if !strings.Contains(note, "150 triệu") {
 		t.Fatalf("c1 next turn must carry the summary note, got messages=%+v", fake.last.Messages)
 	}
-	if fake.last.Messages[0].Role != "system" || fake.last.Messages[1].Content != note {
-		t.Fatalf("note must follow the system prompt, got %+v", fake.last.Messages[:2])
+	if m0 := fake.last.Messages[0]; m0.Role != "system" || !strings.HasSuffix(m0.Content, "\n\n"+note) ||
+		!strings.HasPrefix(m0.Content, "Bạn là trợ lý bán hàng.") || fake.last.Messages[1].Role == "system" {
+		t.Fatalf("note must be merged into the single system prompt, got %+v", fake.last.Messages[:2])
 	}
 
 	// 3) Conversation c2 of the same agent: no note from c1.
 	reply("c2", 1)
 	for _, m := range fake.last.Messages {
-		if strings.HasPrefix(m.Content, pipeline.PreviousSummaryPrefix) {
+		if strings.Contains(m.Content, pipeline.PreviousSummaryPrefix) {
 			t.Fatalf("c2 must not see c1 memory: %q", m.Content)
 		}
 	}
@@ -118,7 +119,7 @@ func TestBridgeMemoryPerConversation(t *testing.T) {
 	t.Setenv("GOSO_MEMORY_RECALL", "0")
 	reply("c1", pipeline.SummarizeMessageMin/2+2)
 	for _, m := range fake.last.Messages {
-		if strings.HasPrefix(m.Content, pipeline.PreviousSummaryPrefix) {
+		if strings.Contains(m.Content, pipeline.PreviousSummaryPrefix) {
 			t.Fatalf("recall off must not inject: %q", m.Content)
 		}
 	}
