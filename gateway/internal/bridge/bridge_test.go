@@ -971,6 +971,38 @@ func TestLLMFallbackAfterRetries(t *testing.T) {
 	}
 }
 
+func TestKnowledgeMaxBytes(t *testing.T) {
+	doc := KnowledgeDoc{ID: "d1", FileName: "notes.txt", Content: strings.Repeat("a", 200)}
+	got := knowledgePrompt([]KnowledgeDoc{doc}, defaultKnowledgeBytes)
+	if !strings.Contains(got, "notes.txt") || strings.Contains(got, "[knowledge truncated]") {
+		t.Fatalf("default cap dropped a small doc: %q", got)
+	}
+	small := knowledgePrompt([]KnowledgeDoc{doc}, 40)
+	if !strings.Contains(small, "[knowledge truncated]") || strings.Contains(small, strings.Repeat("a", 200)) {
+		t.Fatalf("small cap %q", small)
+	}
+	if knowledgeMaxBytes(Agent{}) != defaultKnowledgeBytes {
+		t.Fatal(knowledgeMaxBytes(Agent{}))
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "100")
+	if knowledgeMaxBytes(Agent{}) != 100 {
+		t.Fatal(knowledgeMaxBytes(Agent{}))
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "0")
+	if knowledgeMaxBytes(Agent{}) != defaultKnowledgeBytes {
+		t.Fatal("non-positive env")
+	}
+	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "100")
+	ag := Agent{ParamsJSON: `{"knowledge_max_bytes":80}`, HarnessConfigJSON: `{"knowledge_max_bytes":60}`}
+	if knowledgeMaxBytes(ag) != 60 {
+		t.Fatalf("harness %d", knowledgeMaxBytes(ag))
+	}
+	ag.HarnessConfigJSON = ""
+	if knowledgeMaxBytes(ag) != 80 {
+		t.Fatalf("params %d", knowledgeMaxBytes(ag))
+	}
+}
+
 func TestListenAddr(t *testing.T) {
 	t.Setenv("GOSO_PORT", "")
 	t.Setenv("GOSO_HOST", "")

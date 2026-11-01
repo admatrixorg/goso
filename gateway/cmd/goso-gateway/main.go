@@ -87,6 +87,7 @@ Environment:
   GOSO_LLM_TIMEOUT         Legacy chat budget (seconds or Go duration, default 120s). Not applied to the chat HTTP client
   GOSO_LLM_RESPONSE_HEADER_TIMEOUT  Wait for upstream status/headers (default 180s). Dial 10s, TLS handshake 10s. Body follows the request context
   GOSO_LLM_FALLBACK_MODEL  Model used after a retryable failure exhausts 3 attempts. Empty = none. Per-agent fallback_model overrides this
+  GOSO_KNOWLEDGE_MAX_BYTES Max bytes of synced knowledge injected into the system prompt (default 32768). Per-agent harness_config_json knowledge_max_bytes overrides it
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
