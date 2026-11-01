@@ -73,9 +73,11 @@ test("session pagination recovers when the list shrinks after delete", () => {
   assert.equal(filterSessions(many, { query: "no-such" }).length, 0);
 });
 
-test("sessionDisplayName prefers label then id", () => {
-  assert.equal(sessionDisplayName({ id: "s1", label: " Sales " }), "Sales");
-  assert.equal(sessionDisplayName({ id: "s1", label: "  " }), "s1");
+test("sessionDisplayName prefers label, then the first message, never the raw id", () => {
+  assert.equal(sessionDisplayName({ id: "20261101-abc", label: " Sales " }), "Sales");
+  assert.equal(sessionDisplayName({ id: "20261101-abc", label: "  ", preview: " Đại lý Bình Dương " }), "Đại lý Bình Dương");
+  assert.equal(sessionDisplayName({ id: "20261101-abc" }), "Cuộc trò chuyện");
+  assert.equal(sessionDisplayName({ id: "20261101-abc" }, "Untitled"), "Untitled");
 });
 
 test("sessionActivityAt uses created_at only", () => {

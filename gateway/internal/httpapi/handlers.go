@@ -565,6 +565,16 @@ func handleListSessions(st store.StoreIface) http.HandlerFunc {
 		if list == nil {
 			list = []*store.Session{}
 		}
+		for _, sess := range list {
+			if strings.TrimSpace(sess.Label) != "" {
+				continue
+			}
+			msgs, err := st.ListMessages(sess.ID)
+			if err != nil {
+				continue
+			}
+			sess.Preview = sessionPreview(msgs)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"sessions": list})
 	}
 }

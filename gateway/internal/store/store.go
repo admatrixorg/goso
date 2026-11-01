@@ -148,6 +148,7 @@ type Session struct {
 	TenantID         string    `json:"tenant_id"`
 	AgentID          string    `json:"agent_id"`
 	Label            string    `json:"label,omitempty"`
+	Preview          string    `json:"preview,omitempty"`
 	PromptMode       string    `json:"prompt_mode"`
 	ModelOverride    string    `json:"model_override,omitempty"`
 	ProviderOverride string    `json:"provider_override,omitempty"`

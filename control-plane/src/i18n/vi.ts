@@ -283,6 +283,7 @@ export const vi = {
   "chat.sug.brief": "Soạn brief họp giao ban",
   "chat.sug.vault": "Tóm tắt tài liệu trong Vault",
   "chat.recent": "Gần đây",
+  "chat.untitled": "Cuộc trò chuyện",
   "chat.newConv": "Cuộc trò chuyện mới",
   "chat.copy": "Sao chép",
   "chat.offline": "Không kết nối được máy chủ",
