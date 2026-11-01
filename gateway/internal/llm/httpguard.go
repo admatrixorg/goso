@@ -3,10 +3,16 @@
 package llm
 
 import (
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
+)
+
+const (
+	llmDialTimeout = 10 * time.Second
+	llmTLSTimeout  = 10 * time.Second
 )
 
 func guardedClient(existing *http.Client, timeout time.Duration) *http.Client {
@@ -33,6 +39,49 @@ func clientWithTimeout(existing *http.Client, timeout time.Duration, raise bool)
 	clone.Timeout = timeout
 	security.GuardClient(&clone)
 	return &clone
+}
+
+// chatClient is the goso→provider client for a chat or stream call.
+// It has no overall Timeout (that cut long 9router streams at the old budget).
+// ResponseHeaderTimeout bounds the wait for status/headers. Dial and TLS
+// keep their own deadlines. The request context cancels the body.
+func chatClient(existing *http.Client) *http.Client {
+	header := ResponseHeaderTimeout()
+	var c http.Client
+	if existing != nil {
+		c = *existing
+	}
+	c.Timeout = 0
+	switch tr := c.Transport.(type) {
+	case nil:
+		c.Transport = defaultChatTransport(header)
+	case *http.Transport:
+		clone := tr.Clone()
+		clone.ResponseHeaderTimeout = header
+		if clone.TLSHandshakeTimeout == 0 {
+			clone.TLSHandshakeTimeout = llmTLSTimeout
+		}
+		if clone.DialContext == nil && clone.Dial == nil {
+			clone.DialContext = (&net.Dialer{Timeout: llmDialTimeout, KeepAlive: 30 * time.Second}).DialContext
+		}
+		c.Transport = clone
+	}
+	security.GuardClient(&c)
+	return &c
+}
+
+func defaultChatTransport(header time.Duration) *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   llmDialTimeout,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   llmTLSTimeout,
+		ResponseHeaderTimeout: header,
+		ExpectContinueTimeout: time.Second,
+	}
 }
 
 func checkEndpoint(raw string) error {

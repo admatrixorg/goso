@@ -19,12 +19,23 @@ import (
 
 const probeTimeout = 20 * time.Second
 
-// ChatTimeout is the upstream LLM budget for chat (not the 20s probe).
-// GOSO_LLM_TIMEOUT is seconds ("120") or a Go duration ("90s"). Default 120s.
+// ChatTimeout parses GOSO_LLM_TIMEOUT (seconds or a Go duration). Default 120s.
+// Chat calls no longer use it as http.Client.Timeout; see ResponseHeaderTimeout.
 func ChatTimeout() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("GOSO_LLM_TIMEOUT"))
+	return parseDurationEnv("GOSO_LLM_TIMEOUT", 120*time.Second)
+}
+
+// ResponseHeaderTimeout is how long a chat call waits for upstream status
+// and headers. GOSO_LLM_RESPONSE_HEADER_TIMEOUT is seconds ("180") or a Go
+// duration ("90s"). Default 180s. The body is bounded by the request context.
+func ResponseHeaderTimeout() time.Duration {
+	return parseDurationEnv("GOSO_LLM_RESPONSE_HEADER_TIMEOUT", 180*time.Second)
+}
+
+func parseDurationEnv(key string, def time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
-		return 120 * time.Second
+		return def
 	}
 	if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 		return time.Duration(n) * time.Second
@@ -32,7 +43,7 @@ func ChatTimeout() time.Duration {
 	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 		return d
 	}
-	return 120 * time.Second
+	return def
 }
 
 // TestResult is the public payload of POST /api/providers/{name}/test.

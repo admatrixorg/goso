@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -180,20 +181,30 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		fn = DefaultComplete
 	}
 	res, err := fn(ctx, Completion{
-		Type:        prov.Type,
-		BaseURL:     prov.BaseURL,
-		APIKey:      prov.APIKey,
-		Model:       model,
-		Temperature: temp,
-		MaxTokens:   maxTok,
-		Messages:    msgs,
-		OnDelta:     onDelta,
+		Type:          prov.Type,
+		BaseURL:       prov.BaseURL,
+		APIKey:        prov.APIKey,
+		Model:         model,
+		Temperature:   temp,
+		MaxTokens:     maxTok,
+		Messages:      msgs,
+		OnDelta:       onDelta,
+		FallbackModel: agentFallbackModel(ag),
 	})
 	if err != nil {
+		failedModel := model
+		if fb := strings.TrimSpace(agentFallbackModel(ag)); fb != "" && fb != model && llm.Retryable(err) {
+			failedModel = fb
+		}
 		err = classifyTransport(err, prov.APIKey)
-		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
+		logReplyFailure(in, prov.Type, failedModel, s.now().Sub(start), err)
 		return ReplyOutput{}, err
 	}
+	answered := res.Model
+	if answered == "" {
+		answered = model
+	}
+	logReplyModel(in, prov.Type, answered, res.UsedFallback)
 	if strings.TrimSpace(res.Text) == "" {
 		err = &Error{Status: 502, Code: "empty_reply", Msg: "upstream returned empty text"}
 		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
@@ -422,6 +433,42 @@ func knowledgePrompt(docs []KnowledgeDoc) string {
 		return ""
 	}
 	return b.String()
+}
+
+func logReplyModel(in ReplyInput, provider, model string, fallback bool) {
+	logJSON(map[string]any{
+		"event":    "bridge_reply_model",
+		"tenant":   in.TenantID,
+		"agent":    in.AgentID,
+		"provider": provider,
+		"model":    model,
+		"fallback": fallback,
+	})
+}
+
+// agentFallbackModel is the per-agent model used only after a retryable
+// failure exhausts its attempts. harness_config_json wins, then params_json,
+// then GOSO_LLM_FALLBACK_MODEL. Empty means no fallback.
+func agentFallbackModel(ag Agent) string {
+	if v := configString(ag.HarnessConfigJSON, "fallback_model", "llm_fallback_model"); v != "" {
+		return v
+	}
+	if v := configString(ag.ParamsJSON, "fallback_model", "llm_fallback_model"); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("GOSO_LLM_FALLBACK_MODEL"))
+}
+
+func configString(raw string, keys ...string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "{}" || raw == `""` {
+		return ""
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return ""
+	}
+	return strField(m, keys...)
 }
 
 func logReplyFailure(in ReplyInput, provider, model string, latency time.Duration, err error) {
