@@ -14,6 +14,12 @@ type fact struct {
 	Kind string // code | money | percent | date
 	Key  string // normalised value used for comparison
 	Raw  string
+	// Offer marks a fact that states an offer: every money amount and
+	// percentage, a voucher/discount/gift code, a date stated as a promotion
+	// deadline. Offers are verified only by SHOP FACTS. A non-offer code (an
+	// order or reference number) or date (an appointment) may also be
+	// verified by the customer's own words.
+	Offer bool
 }
 
 var (
@@ -51,7 +57,7 @@ func extractFacts(text string) []fact {
 	for _, m := range reMoneyTrX.FindAllStringSubmatch(text, -1) {
 		a, _ := strconv.Atoi(m[1])
 		b, _ := strconv.Atoi(m[2])
-		add(fact{Kind: "money", Key: strconv.FormatInt(int64(a)*1_000_000+int64(b)*100_000, 10), Raw: m[0]})
+		add(fact{Kind: "money", Offer: true, Key: strconv.FormatInt(int64(a)*1_000_000+int64(b)*100_000, 10), Raw: m[0]})
 		moneySpans[strings.ToUpper(strings.ReplaceAll(m[0], " ", ""))] = true
 	}
 	for _, ix := range reMoneyUnit.FindAllStringSubmatchIndex(text, -1) {
@@ -73,7 +79,7 @@ func extractFacts(text string) []fact {
 		case "tỷ":
 			mult = 1e9
 		}
-		add(fact{Kind: "money", Key: strconv.FormatInt(int64(v*mult+0.5), 10), Raw: m[0]})
+		add(fact{Kind: "money", Offer: true, Key: strconv.FormatInt(int64(v*mult+0.5), 10), Raw: m[0]})
 		moneySpans[strings.ToUpper(strings.ReplaceAll(m[0], " ", ""))] = true
 	}
 	for _, ix := range reMoneyBig.FindAllStringSubmatchIndex(text, -1) {
@@ -112,24 +118,27 @@ func extractFacts(text string) []fact {
 		if err != nil || n < 1000 {
 			continue
 		}
-		add(fact{Kind: "money", Key: strconv.FormatInt(n, 10), Raw: m[0]})
+		add(fact{Kind: "money", Offer: true, Key: strconv.FormatInt(n, 10), Raw: m[0]})
 	}
 	for _, m := range rePercent.FindAllStringSubmatch(text, -1) {
 		v, ok := parseNum(m[1])
 		if !ok {
 			continue
 		}
-		add(fact{Kind: "percent", Key: strconv.FormatFloat(v, 'f', -1, 64), Raw: m[0]})
+		add(fact{Kind: "percent", Offer: true, Key: strconv.FormatFloat(v, 'f', -1, 64), Raw: m[0]})
 	}
 
-	for _, m := range reCodeAfter.FindAllStringSubmatch(text, -1) {
-		add(fact{Kind: "code", Key: strings.ToUpper(m[1]), Raw: m[1]})
+	for _, ix := range reCodeAfter.FindAllStringSubmatchIndex(text, -1) {
+		raw := text[ix[2]:ix[3]]
+		key := strings.ToUpper(raw)
+		add(fact{Kind: "code", Key: key, Raw: raw, Offer: codeIsOffer(text, ix[2], ix[3], key)})
 	}
-	for _, tok := range reCodeToken.FindAllString(text, -1) {
+	for _, ix := range reCodeToken.FindAllStringIndex(text, -1) {
+		tok := text[ix[0]:ix[1]]
 		if !hasLetter(tok) || !hasDigit(tok) || moneySpans[tok] || isMoneyToken(tok) {
 			continue
 		}
-		add(fact{Kind: "code", Key: tok, Raw: tok})
+		add(fact{Kind: "code", Key: tok, Raw: tok, Offer: codeIsOffer(text, ix[0], ix[1], tok)})
 	}
 
 	for _, ix := range reDateNum.FindAllStringSubmatchIndex(text, -1) {
@@ -143,12 +152,12 @@ func extractFacts(text string) []fact {
 		if d < 1 || d > 31 || mo < 1 || mo > 12 {
 			continue
 		}
-		add(fact{Kind: "date", Key: strconv.Itoa(d) + "/" + strconv.Itoa(mo), Raw: m[0]})
+		add(fact{Kind: "date", Key: strconv.Itoa(d) + "/" + strconv.Itoa(mo), Raw: m[0], Offer: dateIsOffer(text, ix[0])})
 	}
-	for _, m := range reDateVN.FindAllStringSubmatch(text, -1) {
-		d, _ := strconv.Atoi(m[1])
-		mo, _ := strconv.Atoi(m[2])
-		add(fact{Kind: "date", Key: strconv.Itoa(d) + "/" + strconv.Itoa(mo), Raw: m[0]})
+	for _, ix := range reDateVN.FindAllStringSubmatchIndex(text, -1) {
+		d, _ := strconv.Atoi(text[ix[2]:ix[3]])
+		mo, _ := strconv.Atoi(text[ix[4]:ix[5]])
+		add(fact{Kind: "date", Key: strconv.Itoa(d) + "/" + strconv.Itoa(mo), Raw: text[ix[0]:ix[1]], Offer: dateIsOffer(text, ix[0])})
 	}
 	return out
 }
@@ -189,30 +198,132 @@ func hasDigit(s string) bool {
 	return false
 }
 
-// unverified returns the reply facts the grounding text does not contain.
-// Grounding is the agent's instructions, its knowledge/vault and this
-// customer's memory; a fact is verified only when the same normalised value
-// appears there (a code literally, money/percent/date by value).
-func unverified(reply []fact, grounding string) []fact {
+// unverified returns the reply facts that neither source backs.
+//
+// shop is SHOP FACTS: the agent's instructions, knowledge and vault. Any fact
+// found there by value (a code literally, money/percent/date by value) is
+// verified.
+//
+// customer is CUSTOMER WORDS: the customer's own messages in this
+// conversation and their memory note. It verifies only non-offer facts, so a
+// customer's order/reference number or appointment date may be echoed back,
+// but a voucher, discount, gift, price or percentage the customer (or a
+// memory note) mentions is never proof that the shop offers it. A code the
+// customer used in an offer context ("voucher X giảm 200k") counts as an
+// offer even if the reply mentions it bare.
+func unverified(reply []fact, shop, customer string) []fact {
 	if len(reply) == 0 {
 		return nil
 	}
-	have := map[string]bool{}
-	for _, f := range extractFacts(grounding) {
-		have[f.Kind+":"+f.Key] = true
+	shopHave := map[string]bool{}
+	for _, f := range extractFacts(shop) {
+		shopHave[f.Kind+":"+f.Key] = true
 	}
-	upper := strings.ToUpper(grounding)
+	shopUpper := strings.ToUpper(shop)
+	custHave := map[string]bool{}  // non-offer facts the customer stated
+	custOffer := map[string]bool{} // codes/dates the customer stated as an offer
+	for _, f := range extractFacts(customer) {
+		if f.Offer {
+			custOffer[f.Kind+":"+f.Key] = true
+		} else {
+			custHave[f.Kind+":"+f.Key] = true
+		}
+	}
+	custUpper := strings.ToUpper(customer)
 	var out []fact
 	for _, f := range reply {
-		if have[f.Kind+":"+f.Key] {
+		k := f.Kind + ":" + f.Key
+		if shopHave[k] || (f.Kind == "code" && strings.Contains(shopUpper, f.Key)) {
 			continue
 		}
-		if f.Kind == "code" && strings.Contains(upper, f.Key) {
+		if f.Offer || custOffer[k] {
+			f.Offer = true
+			out = append(out, f)
+			continue
+		}
+		if custHave[k] || (f.Kind == "code" && strings.Contains(custUpper, f.Key)) {
 			continue
 		}
 		out = append(out, f)
 	}
 	return out
+}
+
+// Offer cues around a code or date. Codes whose own letters say "voucher"
+// (VOUCHER-C-5508, GIAM50, SALE10, KM-…) are offers wherever they appear.
+var (
+	offerCodeParts   = []string{"VOUCHER", "COUPON", "PROMO", "DISCOUNT", "GIAM", "SALE", "GIFT", "FREESHIP", "UUDAI", "DEAL", "KHUYENMAI"}
+	offerCodeSegs    = []string{"VC", "KM", "CK", "QUA", "TANG", "OFF", "FREE", "VIP", "GG"}
+	offerCuesBefore  = []string{"voucher", "coupon", "mã giảm", "mã khuyến", "mã ưu đãi", "mã quà", "mã tặng", "mã km", "code giảm", "áp mã", "nhập mã", "dùng mã", "khuyến mãi", "khuyến mại", "ưu đãi", "giảm giá", "chiết khấu", "promo", "discount", "gift"}
+	offerCuesAfter   = []string{"giảm", "tặng", "ưu đãi", "khuyến mãi", "khuyến mại", "chiết khấu", "%", "off", "freeship", "free ship", "miễn phí", "voucher", "coupon"}
+	refCuesBefore    = []string{"đơn", "đơn hàng", "mã đơn", "vận đơn", "mã vận đơn", "order", "tham chiếu", "mã tham chiếu", "ref", "booking", "hóa đơn", "hoá đơn", "hợp đồng", "mã khách", "mã hồ sơ", "hồ sơ", "phiếu", "tracking", "mã kh", "lịch hẹn", "mã hẹn", "bảo hành"}
+	dateOfferCues    = []string{"hạn", "đến hết", "hết ngày", "áp dụng đến", "áp dụng tới", "khuyến mãi", "khuyến mại", "ưu đãi", "giảm", "voucher", "sale", "chương trình", "trước ngày"}
+	clauseBreakRunes = ".!?;\n"
+)
+
+// codeIsOffer reports whether the code at text[start:end] is stated as a
+// voucher/discount/gift rather than an order or reference number.
+func codeIsOffer(text string, start, end int, key string) bool {
+	for _, p := range offerCodeParts {
+		if strings.Contains(key, p) {
+			return true
+		}
+	}
+	for _, seg := range strings.FieldsFunc(key, func(r rune) bool { return r == '-' || r == '_' || (r >= '0' && r <= '9') }) {
+		for _, p := range offerCodeSegs {
+			if seg == p || (len(p) >= 3 && strings.HasPrefix(seg, p)) {
+				return true
+			}
+		}
+	}
+	before := clauseTail(strings.ToLower(text[:start]), 40)
+	// "đơn TEST-C-5508", "mã đơn …": the word right before names a reference.
+	near := strings.TrimRight(before, " :#\"'“”(")
+	for _, w := range refCuesBefore {
+		if strings.HasSuffix(near, w) {
+			return false
+		}
+	}
+	if containsAny(before, offerCuesBefore) {
+		return true
+	}
+	return containsAny(clauseHead(strings.ToLower(text[end:]), 25), offerCuesAfter)
+}
+
+// dateIsOffer reports whether a date is stated as a promotion deadline.
+func dateIsOffer(text string, start int) bool {
+	return containsAny(clauseTail(strings.ToLower(text[:start]), 45), dateOfferCues)
+}
+
+// clauseTail is the last n bytes of s, cut at the last sentence break.
+func clauseTail(s string, n int) string {
+	if len(s) > n {
+		s = s[len(s)-n:]
+	}
+	if i := strings.LastIndexAny(s, clauseBreakRunes); i >= 0 {
+		s = s[i+1:]
+	}
+	return s
+}
+
+// clauseHead is the first n bytes of s, cut at the first sentence break.
+func clauseHead(s string, n int) string {
+	if len(s) > n {
+		s = s[:n]
+	}
+	if i := strings.IndexAny(s, clauseBreakRunes); i >= 0 {
+		s = s[:i]
+	}
+	return s
+}
+
+func containsAny(s string, subs []string) bool {
+	for _, w := range subs {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
 }
 
 func startsWithAny(s string, prefixes ...string) bool {

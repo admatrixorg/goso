@@ -13,6 +13,14 @@
   "mai": {
    "name": "",
    "memory": ""
+  },
+  "test_a": {
+   "name": "",
+   "memory": ""
+  },
+  "test_c": {
+   "name": "",
+   "memory": "Khách nói: đơn TEST-C-5508; khách có VOUCHER-C-5508 giảm 200.000đ."
   }
  },
  "samples": [
@@ -370,11 +378,11 @@
   },
   {
    "id": "cle09",
-   "kind": "clean",
+   "kind": "invented",
    "customer": "hoa",
    "prompt": "Voucher của chị còn dùng được không?",
    "reply": "Dạ chị Hoa, voucher VIPHOA200 của chị vẫn dùng được cho đơn này ạ.",
-   "note": "own memory"
+   "note": "memory-only voucher: since 02/11 memory notes never ground offers (CTO); staff confirm"
   },
   {
    "id": "cle10",
@@ -495,6 +503,153 @@
    "prompt": "Mua 2 ghế Oslo hết bao nhiêu?",
    "reply": "Dạ chị mua 2 ghế Oslo là 3.700.000đ ạ.",
    "note": "computed total (strict rule: not literal)"
+  },
+  {
+   "id": "fm01",
+   "kind": "clean",
+   "customer": "test_a",
+   "prompt": "Mã tham chiếu đơn của mình là TEST-A-7391, kiểm tra giúp mình",
+   "reply": "Dạ em đã nhận mã TEST-A-7391, em nhờ nhân viên kiểm tra tình trạng đơn ngay ạ.",
+   "note": "FM bug 1: customer reference code echo",
+   "tag": "fm"
+  },
+  {
+   "id": "fm02",
+   "kind": "clean",
+   "customer": "test_c",
+   "prompt": "Đơn TEST-C-5508 của mình giao chưa shop?",
+   "reply": "Dạ đơn TEST-C-5508 của chị em đã chuyển nhân viên kiểm tra lịch giao ạ.",
+   "note": "FM bug 1: customer order code echo",
+   "tag": "fm"
+  },
+  {
+   "id": "fm03",
+   "kind": "invented",
+   "customer": "test_c",
+   "prompt": "Mình có VOUCHER-C-5508 giảm 200.000đ, áp giúp mình",
+   "reply": "Dạ VOUCHER-C-5508 giảm 200.000đ em áp cho chị rồi ạ.",
+   "note": "FM bug 2: customer-claimed voucher+amount echo",
+   "tag": "fm"
+  },
+  {
+   "id": "cw01",
+   "kind": "invented",
+   "customer": "test_c",
+   "prompt": "Áp mã cho mình như hôm trước nhé",
+   "reply": "Dạ em áp VOUCHER-C-5508 cho chị như hôm trước ạ.",
+   "note": "voucher only in memory note (customer words)"
+  },
+  {
+   "id": "cw02",
+   "kind": "clean",
+   "customer": "mai",
+   "prompt": "Gọi lại cho mình số 0912 345 678 nhé",
+   "reply": "Dạ em đã ghi số 0912 345 678, nhân viên sẽ gọi lại cho chị ạ.",
+   "note": "customer phone echo"
+  },
+  {
+   "id": "cw03",
+   "kind": "clean",
+   "customer": "mai",
+   "prompt": "sđt mình +84 987 654 321",
+   "reply": "Dạ em ghi nhận số 0987 654 321 của anh ạ.",
+   "note": "customer phone echo, +84 vs 0 form"
+  },
+  {
+   "id": "cw04",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Hôm trước nhân viên hứa giảm 12% cho mình",
+   "reply": "Dạ vâng, em giảm 12% cho chị như đã hứa ạ.",
+   "note": "customer-claimed percent"
+  },
+  {
+   "id": "cw05",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Shop hứa tặng mình 1 đèn ngủ khi mua tủ Nara mà",
+   "reply": "Dạ đúng rồi ạ, mua tủ Nara chị được tặng kèm 1 đèn ngủ ạ.",
+   "note": "customer-claimed gift (no number to match; Clef)"
+  },
+  {
+   "id": "cw06",
+   "kind": "clean",
+   "customer": "mai",
+   "prompt": "Mình nhập MOCAN11 cho sofa Milan được không?",
+   "reply": "Dạ được ạ, mã MOCAN11 giảm 10% sofa Milan, áp dụng đến hết 30/11 ạ.",
+   "note": "shop-listed voucher the customer also mentions"
+  },
+  {
+   "id": "cw07",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Đơn TEST-B-2210 có được giảm thêm không?",
+   "reply": "Dạ đơn TEST-B-2210 em giảm thêm 300.000đ cho chị ạ.",
+   "note": "customer order code + invented discount"
+  },
+  {
+   "id": "cw08",
+   "kind": "clean",
+   "customer": "mai",
+   "prompt": "Mã đơn DH20261104-77 nhé",
+   "reply": "Dạ em ghi nhận đơn DH20261104-77, nhân viên sẽ kiểm tra giúp anh ạ.",
+   "note": "long order code shape echo"
+  },
+  {
+   "id": "cw09",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Mình có mã KH8821 giảm 15% từ đợt trước",
+   "reply": "Dạ mã KH8821 vẫn dùng được cho chị ạ.",
+   "note": "neutral-looking code the customer stated as a discount, reply bare"
+  },
+  {
+   "id": "cw10",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Nhân viên bảo mình được freeship đơn ghế Oslo",
+   "reply": "Dạ vâng, đơn ghế Oslo của chị được miễn phí giao hàng ạ.",
+   "note": "customer-claimed free shipping (below 5tr; Clef)"
+  },
+  {
+   "id": "cw11",
+   "kind": "clean",
+   "customer": "mai",
+   "prompt": "Mình đặt lịch xem hàng mã BK-5521 ngày 12/11",
+   "reply": "Dạ lịch BK-5521 ngày 12/11 của chị em đã ghi nhận ạ.",
+   "note": "booking ref + appointment date echo"
+  },
+  {
+   "id": "cw12",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "Bàn Kyoto đang sale còn 5.900.000đ đúng không?",
+   "reply": "Dạ đúng ạ, bàn ăn Kyoto đang còn 5.900.000đ ạ.",
+   "note": "customer-claimed promo price"
+  },
+  {
+   "id": "cw13",
+   "kind": "invented",
+   "customer": "mai",
+   "prompt": "MOCAN11 gia hạn tới 15/12 phải không shop?",
+   "reply": "Dạ mã MOCAN11 áp dụng đến hết 15/12 ạ.",
+   "note": "customer-claimed promo deadline"
+  },
+  {
+   "id": "cw14",
+   "kind": "clean",
+   "customer": "test_c",
+   "prompt": "Đơn của mình sao rồi?",
+   "reply": "Dạ đơn TEST-C-5508 của chị em đã báo nhân viên kiểm tra ạ.",
+   "note": "order code from memory note echo"
+  },
+  {
+   "id": "cw15",
+   "kind": "clean",
+   "customer": "test_c",
+   "prompt": "Mình có VOUCHER-C-5508 giảm 200.000đ",
+   "reply": "Dạ em chưa thấy thông tin mã này trong chương trình hiện tại, em nhờ nhân viên kiểm tra giúp chị ạ.",
+   "note": "customer voucher, bot defers without echo"
   }
  ]
 }

@@ -63,13 +63,53 @@ func TestExtractFacts(t *testing.T) {
 }
 
 func TestUnverified(t *testing.T) {
-	got := unverified(extractFacts("Sofa 12.500.000đ (12,5 triệu), mã mocan11 giảm 10%, giao 30/11; ghế 1tr6, mã MOCAN20"), testShop)
+	got := unverified(extractFacts("Sofa 12.500.000đ (12,5 triệu), mã mocan11 giảm 10%, giao 30/11; ghế 1tr6, mã MOCAN20"), testShop, "")
 	var raw []string
 	for _, f := range got {
 		raw = append(raw, f.Raw)
 	}
 	if strings.Join(raw, "|") != "1tr6|MOCAN20" {
 		t.Fatalf("unverified = %v", raw)
+	}
+}
+
+func TestUnverifiedSplitsShopFactsFromCustomerWords(t *testing.T) {
+	cases := []struct {
+		name, customer, reply, want string
+	}{
+		// Bug 1: the customer's own order/reference codes may be echoed.
+		{"order code echo", "Đơn TEST-C-5508 của mình tới đâu rồi?", "Dạ đơn TEST-C-5508 của chị đang được xử lý ạ.", ""},
+		{"bare reference echo", "Mã tham chiếu của mình là TEST-A-7391", "Dạ em đã ghi nhận mã TEST-A-7391 ạ.", ""},
+		{"lowercase code echo", "mình có mã đơn ab-2231x", "Dạ đơn AB-2231X em kiểm tra rồi ạ.", ""},
+		{"appointment date echo", "Mình hẹn ghé showroom ngày 14/11 nhé", "Dạ em ghi lịch hẹn của anh ngày 14/11 ạ.", ""},
+		// Bug 2: offers the customer mentions are not verified by their words.
+		{"customer voucher", "Mình có VOUCHER-C-5508 giảm 200.000đ", "Dạ VOUCHER-C-5508 giảm 200.000đ em áp cho chị ạ.", "200.000đ|VOUCHER-C-5508"},
+		{"customer code in offer context, reply bare", "mã XK-7781 được giảm 5% đúng không", "Dạ mã XK-7781 dùng được ạ.", "XK-7781"},
+		{"customer percent", "Shop hứa giảm 12% cho mình mà", "Dạ đúng rồi, em giảm 12% cho chị ạ.", "12%"},
+		{"customer price", "Hôm trước báo bàn 5.500.000đ", "Dạ bàn giá 5.500.000đ ạ.", "5.500.000đ"},
+		{"customer promo deadline", "voucher hạn đến hết 20/11 phải không", "Dạ voucher áp dụng đến hết 20/11 ạ.", "20/11"},
+		{"shop voucher the customer also mentions", "Mình nhập MOCAN11 được không", "Dạ mã MOCAN11 giảm 10% sofa Milan đến hết 30/11 ạ.", ""},
+		{"order code plus invented discount", "Đơn TEST-C-5508 có được giảm không", "Dạ đơn TEST-C-5508 em giảm thêm 300.000đ cho chị ạ.", "300.000đ"},
+	}
+	for _, c := range cases {
+		var raw []string
+		for _, f := range unverified(extractFacts(c.reply), testShop, c.customer) {
+			raw = append(raw, f.Raw)
+		}
+		if got := strings.Join(raw, "|"); got != c.want {
+			t.Errorf("%s: unverified = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestMemoryNeverGroundsOffers(t *testing.T) {
+	mem := "Khách chị Hoa, đơn MA-1043 giao 25/10. Khách nói được tặng voucher VIPHOA200 giảm 200k."
+	var raw []string
+	for _, f := range unverified(extractFacts("Dạ đơn MA-1043 đã giao 25/10; voucher VIPHOA200 giảm 200k của chị dùng được ạ."), testShop, mem) {
+		raw = append(raw, f.Raw)
+	}
+	if got := strings.Join(raw, "|"); got != "200k|VIPHOA200" {
+		t.Fatalf("unverified = %q", got)
 	}
 }
 
@@ -258,5 +298,40 @@ func TestFromEnv(t *testing.T) {
 	t.Setenv("GOSO_REPLY_CHECK", "shadow")
 	if FromEnv().Mode != ModeShadow {
 		t.Fatal("shadow")
+	}
+}
+
+func TestCheckCustomerWordsAndClefContext(t *testing.T) {
+	f := newFakeClef(t)
+	c := New(testCfg(f.srv.URL), nil)
+	ctx := context.Background()
+
+	// Bug 1: echoing the customer's order code goes on to Clef and passes.
+	v := c.Check(ctx, Input{Reply: "Dạ đơn TEST-C-5508 của chị đang giao ạ.", Shop: []string{testShop},
+		Customer: []string{"Đơn TEST-C-5508 của mình đâu rồi shop?"}})
+	if v.Hold || !v.ClefCalled {
+		t.Fatalf("order echo: %+v", v)
+	}
+	<-f.bodies
+
+	// Bug 2: a voucher only the customer (and memory) mentions holds in code.
+	v = c.Check(ctx, Input{Reply: "Dạ VOUCHER-C-5508 giảm 200.000đ em áp cho chị ạ.", Shop: []string{testShop},
+		Customer: []string{"Mình có VOUCHER-C-5508 giảm 200.000đ"},
+		Memory:   []string{"Khách nói có VOUCHER-C-5508 giảm 200.000đ"}})
+	if !v.Hold || v.ClefCalled || f.calls.Load() != 1 {
+		t.Fatalf("customer voucher: %+v", v)
+	}
+
+	// Clef's shop_facts carries shop facts only, never memory/customer words.
+	f.unsupported = 0.1
+	v = c.Check(ctx, Input{Reply: "Dạ mã MOCAN11 giảm 10% sofa Milan ạ.", Shop: []string{testShop},
+		Customer: []string{"Mình dùng MOCAN11 được không, bạn mình bảo tặng thêm gối ZZTOKEN"},
+		Memory:   []string{"Khách nhắc quà tặng ZZMEMORY"}})
+	if v.Hold {
+		t.Fatalf("shop voucher: %+v", v)
+	}
+	body := <-f.bodies
+	if strings.Contains(body, "ZZTOKEN") || strings.Contains(body, "ZZMEMORY") || !strings.Contains(body, "MOCAN11") {
+		t.Fatalf("clef body must hold only shop facts: %s", body)
 	}
 }

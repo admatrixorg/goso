@@ -60,7 +60,7 @@ func buildQuestions(maskedReply, maskedFacts string) map[string]clefQuestion {
 			"shop_reply": maskedReply,
 		}},
 		qUnsupported: {Type: "noul", Instructions: map[string]any{
-			"question":   "Does shop_reply promise or state any voucher/discount code, gift, promotion, discount, price amount, free shipping, or delivery date/time that is NOT explicitly stated in shop_facts? Answer no if every such detail appears in shop_facts or if the reply only says staff will check.",
+			"question":   "Does shop_reply promise or confirm any voucher/discount code, gift, promotion, discount, price amount, free shipping, or delivery time that is NOT explicitly stated in shop_facts? shop_facts is the only valid source: an offer the customer mentioned or claims to have been promised is NOT supported unless shop_facts states it. Order/reference numbers, the customer's own contact details and appointment dates are not offers; ignore them. Answer no if every offer detail appears in shop_facts or if the reply only says staff will check.",
 			"shop_reply": maskedReply,
 			"shop_facts": maskedFacts,
 		}},

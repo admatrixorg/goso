@@ -25,6 +25,7 @@ type evalFile struct {
 		Customer string `json:"customer"`
 		Prompt   string `json:"prompt"`
 		Reply    string `json:"reply"`
+		Tag      string `json:"tag"` // "fm": a case Freelance manager reported
 	} `json:"samples"`
 }
 
@@ -84,6 +85,7 @@ func TestEvalLive(t *testing.T) {
 	ef := loadEval(t)
 	var (
 		caught, bad, falseHold, clean, clefErr, tokens int
+		fmOK, fmN                                      int
 		lat, clefLat                                   []time.Duration
 	)
 	// Warm the connection the way a running bridge would be warm.
@@ -110,6 +112,12 @@ func TestEvalLive(t *testing.T) {
 				caught++
 			}
 		}
+		if s.Tag == "fm" {
+			fmN++
+			if ok {
+				fmOK++
+			}
+		}
 		mark := "ok "
 		if !ok {
 			mark = "MISS"
@@ -126,10 +134,10 @@ func TestEvalLive(t *testing.T) {
 		sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
 		return s[int(float64(len(s)-1)*q+0.5)]
 	}
-	summary := fmt.Sprintf("model=%s samples=%d catch=%d/%d (%.1f%%) false_hold=%d/%d (%.1f%%) latency_all p50=%v p95=%v max=%v clef_calls=%d p50=%v p95=%v clef_errors=%d input_tokens=%d",
+	summary := fmt.Sprintf("model=%s samples=%d catch=%d/%d (%.1f%%) false_hold=%d/%d (%.1f%%) latency_all p50=%v p95=%v max=%v clef_calls=%d p50=%v p95=%v clef_errors=%d input_tokens=%d fm_cases=%d/%d",
 		cfg.Model, len(ef.Samples), caught, bad, 100*float64(caught)/float64(bad), falseHold, clean, 100*float64(falseHold)/float64(clean),
 		p(lat, .5).Round(time.Millisecond), p(lat, .95).Round(time.Millisecond), p(lat, 1).Round(time.Millisecond),
-		len(clefLat), p(clefLat, .5).Round(time.Millisecond), p(clefLat, .95).Round(time.Millisecond), clefErr, tokens)
+		len(clefLat), p(clefLat, .5).Round(time.Millisecond), p(clefLat, .95).Round(time.Millisecond), clefErr, tokens, fmOK, fmN)
 	t.Log(summary)
 	if out := os.Getenv("GOSO_CLEF_EVAL_OUT"); out != "" {
 		_ = os.WriteFile(out, []byte(summary+"\n"), 0o644)
