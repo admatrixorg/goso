@@ -1,19 +1,15 @@
 {
-  "channel": {
-    "context": "Channel: a customer chat reply for Minh An (demo), a household-goods distributor. Sample teams are kinh-doanh and phap-che. The customer message and the passage may be Vietnamese. Judge only the passage pasted into this question. Do not look for the answer anywhere else."
-  },
+  "version": "2026-11-02.1",
   "relevance": {
     "instructions": {
-      "question": "Does the passage below contain information that would help answer the customer message? Judge only this passage.",
+      "question": "Does the passage in `passage` contain information that would help answer `customer_message`? Judge only that passage.",
       "customer_message": "{{message}}",
       "passage_name": "{{name}}",
       "passage": "{{content}}"
     },
     "criteria": {
-      "true": "The passage is about the same dealer, meeting, product, team, nick, broadcast, or task the message asks about, or it states a fact that answers the message.",
-      "false": "The passage is about a different topic and would not help answer this message."
-    },
-    "yes_at": 0.7,
-    "no_at": 0.3
+      "true": "The passage states a fact, name, or topic the customer message is asking about.",
+      "false": "The passage is about a different topic and does not help answer the customer message."
+    }
   }
 }

@@ -98,7 +98,9 @@ Environment:
   GOSO_JEV_TIMEOUT_MS      Per-call budget (default 1200, max 10000). Timeout keeps every chunk
   GOSO_JEV_MAX_CALLS       Hard cap on Jev calls per reply (default 2, max 8). Chunks past the cap are kept
   GOSO_JEV_CACHE_TTL       Dedup cache TTL (Go duration, default 24h). A repeated message+chunk costs 0 calls
-  GOSO_JEV_QUESTIONS_FILE  Optional override of the embedded English question file
+  GOSO_JEV_CONTEXT_FILE    Optional override of the versioned English context JSON (state only; no passage text)
+  GOSO_JEV_QUESTIONS_FILE  Optional override of the versioned question JSON
+  GOSO_JEV_THRESHOLDS_FILE Optional override of the versioned yes_at/no_at JSON
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)

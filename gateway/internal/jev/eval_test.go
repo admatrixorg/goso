@@ -5,6 +5,7 @@ package jev
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,6 +36,174 @@ func TestEvalCases_MinhAnOnly(t *testing.T) {
 		if !strings.Contains(cs.Passage, "Minh An") && !strings.Contains(cs.Source, "mock.ts") && !strings.Contains(cs.Source, "queue.md") && !strings.Contains(cs.Source, "chat-attach") && !strings.Contains(cs.Passage, "Đại lý") && !strings.Contains(cs.Passage, "Deal") && !strings.Contains(cs.Passage, "Nick") && !strings.Contains(cs.Passage, "Việc") && !strings.Contains(cs.Passage, "Broadcast") && !strings.Contains(cs.Passage, "nick") && !strings.Contains(cs.Passage, "Cố vấn") && !strings.Contains(cs.Passage, "Cam kết") && !strings.Contains(cs.Passage, "Cuộc họp") {
 			t.Fatalf("passage not from sample: %+v", cs)
 		}
+	}
+}
+
+func TestTopKAndWrongConfidence(t *testing.T) {
+	cases := []EvalCase{
+		{ID: "a", Message: "m", Relevant: true},
+		{ID: "b", Message: "m", Relevant: false},
+		{ID: "c", Message: "m", Relevant: true},
+	}
+	results := []Result{
+		{Have: true, Noul: 0.9},
+		{Have: true, Noul: 0.8},
+		{Have: true, Noul: 0.2},
+	}
+	groups, overlap := topKOverlap(cases, results)
+	if groups != 1 || overlap != 0.5 {
+		t.Fatalf("groups %d overlap %v", groups, overlap)
+	}
+	n, lo, hi := wrongConfidence(cases, results, 0.7, 0.3)
+	// 0.8 is a confident yes on a negative label, and 0.2 is a confident no
+	// on a positive label. Both have |2p-1| = 0.6.
+	if n != 2 || lo < 0.59 || lo > 0.61 || hi < 0.59 || hi > 0.61 {
+		t.Fatalf("wrong n=%d min=%v max=%v", n, lo, hi)
+	}
+}
+
+func TestChoiceOrder_ReportsFirstOption(t *testing.T) {
+	cases := []EvalCase{
+		{ID: "a", Message: "Đại lý Bình Dương còn nợ bao nhiêu?", Name: "a", Passage: "Đại lý Bình Dương. Minh An (demo)", Relevant: true},
+		{ID: "b", Message: "Đại lý Bình Dương còn nợ bao nhiêu?", Name: "b", Passage: "Họp kế hoạch nồi chiên — Minh An (demo)", Relevant: false},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var req struct {
+			Questions map[string]struct {
+				Type     string          `json:"type"`
+				Criteria json.RawMessage `json:"criteria"`
+			} `json:"questions"`
+		}
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Fatal(err)
+		}
+		answers := map[string]any{}
+		for id, q := range req.Questions {
+			if q.Type != "choice" {
+				t.Fatalf("type %s", q.Type)
+			}
+			first := firstJSONKey(q.Criteria)
+			answers[id] = map[string]any{"type": "choice", "choice": first, "confidence": 0.2}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": defaultModel, "answers": answers,
+			"usage": map[string]int{"input_tokens": 10, "output_tokens": 2},
+		})
+	}))
+	defer srv.Close()
+	cfg := LoadConfig()
+	cfg.URL = srv.URL
+	cfg.APIKey = "k"
+	cfg.Timeout = time.Second
+	var rep EvalReport
+	if err := measureChoiceOrder(context.Background(), New(cfg, srv.Client()), cases, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.ChoiceCases != 2 || rep.ChoiceFlips != 2 || rep.FirstForward != 2 || rep.FirstReversed != 2 {
+		t.Fatalf("%+v", rep)
+	}
+}
+
+func firstJSONKey(raw []byte) string {
+	s := strings.TrimSpace(string(raw))
+	if len(s) == 0 || s[0] != '{' {
+		return ""
+	}
+	s = strings.TrimSpace(s[1:])
+	if len(s) == 0 || s[0] != '"' {
+		return ""
+	}
+	end := strings.Index(s[1:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return s[1 : 1+end]
+}
+
+func TestRetry429ThenOK(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		var req apiRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		answers := map[string]any{}
+		for id := range req.Questions {
+			answers[id] = map[string]any{"type": "noul", "noul": 0.2}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": "jev-1.14.0", "answers": answers,
+			"usage": map[string]int{"input_tokens": 4, "output_tokens": 1},
+		})
+	}))
+	defer srv.Close()
+	cfg := LoadConfig()
+	cfg.URL = srv.URL
+	cfg.APIKey = "k"
+	cfg.Timeout = time.Second
+	res, _, err := New(cfg, srv.Client()).Nouls(context.Background(), "m", []Passage{{ID: "a", Content: "x"}})
+	if err != nil || hits != 2 || !res[0].Have || res[0].Noul != 0.2 {
+		t.Fatalf("err %v hits %d %+v", err, hits, res)
+	}
+}
+
+func TestRetryAfterTooLongFallsBack(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(529)
+	}))
+	defer srv.Close()
+	cfg := LoadConfig()
+	cfg.URL = srv.URL
+	cfg.APIKey = "k"
+	cfg.Timeout = 80 * time.Millisecond
+	start := time.Now()
+	_, _, err := New(cfg, srv.Client()).Nouls(context.Background(), "m", []Passage{{ID: "a", Content: "x"}})
+	if err == nil || err.Error() != "timeout" || time.Since(start) > time.Second {
+		t.Fatalf("err %v waited %s", err, time.Since(start))
+	}
+}
+
+func TestCacheKeyChangesWithContextVersion(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		var req apiRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		answers := map[string]any{}
+		for id := range req.Questions {
+			answers[id] = map[string]any{"type": "noul", "noul": 0.25}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": defaultModel, "answers": answers,
+			"usage": map[string]int{"input_tokens": 1, "output_tokens": 1},
+		})
+	}))
+	defer srv.Close()
+	cfg := LoadConfig()
+	cfg.URL = srv.URL
+	cfg.APIKey = "k"
+	cfg.Timeout = time.Second
+	c := New(cfg, srv.Client())
+	ps := []Passage{{ID: "a", Name: "n", Content: "same text"}}
+	if _, _, err := c.Nouls(context.Background(), "msg", ps); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.Nouls(context.Background(), "msg", ps); err != nil || hits != 1 {
+		t.Fatalf("cache hit missing hits=%d", hits)
+	}
+	c.cfg.ContextVersion = "2099-01-01.9"
+	if _, _, err := c.Nouls(context.Background(), "msg", ps); err != nil || hits != 2 {
+		t.Fatalf("version change hits=%d err %v", hits, err)
+	}
+	c.cfg.Model = "jev-1.13.0"
+	if _, _, err := c.Nouls(context.Background(), "msg", ps); err != nil || hits != 3 {
+		t.Fatalf("model change hits=%d err %v", hits, err)
 	}
 }
 

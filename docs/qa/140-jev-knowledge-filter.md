@@ -9,6 +9,7 @@ Bridge knowledge injection (`gateway/internal/bridge/knowledge_jev.go`). Agent r
 ## Checks
 
 - `GOSO_JEV_ENABLED` unset or `GOSO_JEV_API_KEY` empty: `knowledgeBlock` equals `knowledgePrompt`.
+- Context, questions, and thresholds are separate versioned JSON files. The cache key includes the model id and those versions. 429/529 back off inside the call budget. A Jev error keeps the unfiltered knowledge block.
 - Fake Jev: a confident no drops that chunk; the passage is inside the question, not in `state`; a 502 keeps every chunk.
 - Unit tests cover batching, the call cap, timeout, HTTP 500, cache TTL, SSRF when `GOSO_SSRF=1`, and the question file override.
 - `scripts/jev-knowledge-eval.sh` skips with exit 0 when the key is unset. The 32 labels are existing Minh An (demo) strings only.

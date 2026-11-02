@@ -14,7 +14,14 @@ import (
 // dropped. A noul between the thresholds, a missing answer, a timeout, an
 // HTTP error, or a passage that does not fit the call cap is kept — that is
 // today's behavior for that passage.
-func FilterPassages(ctx context.Context, message string, in []Passage) []Passage {
+func FilterPassages(ctx context.Context, message string, in []Passage) (kept []Passage) {
+	kept = in
+	defer func() {
+		if recover() != nil {
+			log.Printf("goso jev: fallback reason=panic")
+			kept = in
+		}
+	}()
 	if EnabledFlag() && !KeySet() {
 		noKeyOnce.Do(func() {
 			log.Printf("goso jev: GOSO_JEV_ENABLED is set but GOSO_JEV_API_KEY is empty; knowledge injection unchanged")
@@ -30,7 +37,11 @@ func FilterPassages(ctx context.Context, message string, in []Passage) []Passage
 	}
 	c := defaultClient()
 	results, usage, err := c.Nouls(ctx, message, in)
-	kept := make([]Passage, 0, len(in))
+	if len(results) != len(in) {
+		log.Printf("goso jev: fallback reason=short_result err=%v", err)
+		return in
+	}
+	kept = make([]Passage, 0, len(in))
 	dropped := 0
 	fallback := 0
 	for _, r := range results {
@@ -53,8 +64,12 @@ func FilterPassages(ctx context.Context, message string, in []Passage) []Passage
 	if err != nil {
 		fallbackReason = err.Error()
 	}
-	log.Printf("goso jev: summary model=%s response_model=%s calls=%d cache_hits=%d input_tokens=%d output_tokens=%d kept=%d dropped=%d unscored=%d fallback=%s",
-		c.cfg.Model, usage.Model, usage.Calls, usage.CacheHits, usage.InputTokens, usage.OutputTokens, len(kept), dropped, fallback, fallbackReason)
+	answered := usage.Model
+	if answered == "" {
+		answered = "-"
+	}
+	log.Printf("goso jev: summary model=%s response_model=%s context=%s questions=%s calls=%d cache_hits=%d deduped=%d input_tokens=%d output_tokens=%d kept=%d dropped=%d unscored=%d fallback=%s",
+		c.cfg.Model, answered, c.cfg.ContextVersion, c.cfg.QuestionsVersion, usage.Calls, usage.CacheHits, usage.Deduped, usage.InputTokens, usage.OutputTokens, len(kept), dropped, fallback, fallbackReason)
 	return kept
 }
 

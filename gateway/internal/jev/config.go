@@ -37,14 +37,23 @@ type Config struct {
 	CacheTTL          time.Duration
 	PerRequestTokens  int
 	PerQuestionTokens int
-	ChannelContext    string
-	Instructions      map[string]string
-	CriteriaTrue      string
-	CriteriaFalse     string
-	YesAt             float64
-	NoAt              float64
-	QuestionsHash     string
-	QuestionsErr      string
+	// ChannelContext is the English context JSON sent as `state`.
+	ChannelContext   string
+	ContextJSON      []byte
+	ContextVersion   string
+	ContextHash      string
+	QuestionsVersion string
+	Instructions     map[string]string
+	CriteriaTrue     string
+	CriteriaFalse    string
+	YesAt            float64
+	NoAt             float64
+	QuestionsHash    string
+	ThresholdVersion string
+	ConfigErr        string
+	// QuestionsErr is set when the question file cannot be loaded.
+	// Kept so a questions-only failure is visible in logs.
+	QuestionsErr string
 }
 
 // EnabledFlag is GOSO_JEV_ENABLED, ignoring the key.
@@ -105,35 +114,90 @@ func LoadConfig() Config {
 	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("GOSO_JEV_CACHE_TTL"))); err == nil && d > 0 {
 		c.CacheTTL = d
 	}
-	raw := questionsJSON
-	if p := strings.TrimSpace(os.Getenv("GOSO_JEV_QUESTIONS_FILE")); p != "" {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			c.QuestionsErr = "questions_file"
-			return c
-		}
-		raw = b
+	ctxRaw, ctxErr := loadFile("GOSO_JEV_CONTEXT_FILE", contextJSON)
+	qRaw, qErr := loadFile("GOSO_JEV_QUESTIONS_FILE", questionsJSON)
+	thRaw, thErr := loadFile("GOSO_JEV_THRESHOLDS_FILE", thresholdsJSON)
+	if ctxErr != "" || qErr != "" || thErr != "" {
+		c.ConfigErr = firstNonEmpty(ctxErr, qErr, thErr)
+		c.QuestionsErr = c.ConfigErr
+		return c
 	}
-	sum := sha256.Sum256(raw)
-	c.QuestionsHash = hex.EncodeToString(sum[:])
-	if err := applyQuestions(&c, raw); err != nil {
-		c.QuestionsErr = "questions_invalid"
+	c.ContextHash = shortHash(ctxRaw)
+	c.QuestionsHash = shortHash(qRaw)
+	if err := applyContext(&c, ctxRaw); err != nil {
+		c.ConfigErr = "context_invalid"
+		c.QuestionsErr = c.ConfigErr
+		return c
+	}
+	if err := applyQuestions(&c, qRaw); err != nil {
+		c.ConfigErr = "questions_invalid"
+		c.QuestionsErr = c.ConfigErr
+		return c
+	}
+	if err := applyThresholds(&c, thRaw); err != nil {
+		c.ConfigErr = "thresholds_invalid"
+		c.QuestionsErr = c.ConfigErr
+		return c
 	}
 	return c
 }
 
+func loadFile(envKey string, embedded []byte) ([]byte, string) {
+	if p := strings.TrimSpace(os.Getenv(envKey)); p != "" {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, envKey
+		}
+		return b, ""
+	}
+	return embedded, ""
+}
+
+func shortHash(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func applyContext(c *Config, raw []byte) error {
+	var f struct {
+		Version  string `json:"version"`
+		Company  string `json:"company"`
+		Audience string `json:"audience"`
+		Task     string `json:"task"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return err
+	}
+	if strings.TrimSpace(f.Version) == "" || strings.TrimSpace(f.Company) == "" || strings.TrimSpace(f.Audience) == "" || strings.TrimSpace(f.Task) == "" {
+		return errQuestions
+	}
+	text := string(raw)
+	if strings.Contains(text, "{{content}}") || strings.Contains(text, "{{message}}") {
+		return errQuestions
+	}
+	c.ContextVersion = strings.TrimSpace(f.Version)
+	c.ContextJSON = raw
+	c.ChannelContext = text
+	return nil
+}
+
 type questionFile struct {
-	Channel struct {
-		Context string `json:"context"`
-	} `json:"channel"`
+	Version   string `json:"version"`
 	Relevance struct {
 		Instructions map[string]string `json:"instructions"`
 		Criteria     struct {
 			True  string `json:"true"`
 			False string `json:"false"`
 		} `json:"criteria"`
-		YesAt float64 `json:"yes_at"`
-		NoAt  float64 `json:"no_at"`
 	} `json:"relevance"`
 }
 
@@ -142,11 +206,7 @@ func applyQuestions(c *Config, raw []byte) error {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		return err
 	}
-	ctx := strings.TrimSpace(f.Channel.Context)
-	if ctx == "" || strings.Contains(ctx, "{{content}}") || strings.Contains(ctx, "{{message}}") {
-		return errQuestions
-	}
-	if len(f.Relevance.Instructions) == 0 {
+	if strings.TrimSpace(f.Version) == "" || len(f.Relevance.Instructions) == 0 {
 		return errQuestions
 	}
 	joined := ""
@@ -159,16 +219,28 @@ func applyQuestions(c *Config, raw []byte) error {
 	if strings.TrimSpace(f.Relevance.Criteria.True) == "" || strings.TrimSpace(f.Relevance.Criteria.False) == "" {
 		return errQuestions
 	}
-	yes, no := f.Relevance.YesAt, f.Relevance.NoAt
-	if !(no > 0 && no < yes && yes < 1) {
-		return errQuestions
-	}
-	c.ChannelContext = ctx
+	c.QuestionsVersion = strings.TrimSpace(f.Version)
 	c.Instructions = f.Relevance.Instructions
 	c.CriteriaTrue = f.Relevance.Criteria.True
 	c.CriteriaFalse = f.Relevance.Criteria.False
-	c.YesAt = yes
-	c.NoAt = no
+	return nil
+}
+
+func applyThresholds(c *Config, raw []byte) error {
+	var f struct {
+		Version string  `json:"version"`
+		YesAt   float64 `json:"yes_at"`
+		NoAt    float64 `json:"no_at"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return err
+	}
+	if strings.TrimSpace(f.Version) == "" || !(f.NoAt > 0 && f.NoAt < f.YesAt && f.YesAt < 1) {
+		return errQuestions
+	}
+	c.ThresholdVersion = strings.TrimSpace(f.Version)
+	c.YesAt = f.YesAt
+	c.NoAt = f.NoAt
 	return nil
 }
 

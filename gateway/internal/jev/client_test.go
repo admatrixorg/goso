@@ -64,11 +64,12 @@ func TestFilter_DropsOnlyConfidentNo(t *testing.T) {
 		if req.Model != defaultModel {
 			t.Fatalf("model %s", req.Model)
 		}
-		if strings.Contains(req.State, "UNIQUE_PASSAGE_DROP") || strings.Contains(req.State, "UNIQUE_PASSAGE_KEEP") {
-			t.Fatalf("passage leaked into state: %s", req.State)
+		state := string(req.State)
+		if strings.Contains(state, "UNIQUE_PASSAGE_DROP") || strings.Contains(state, "UNIQUE_PASSAGE_KEEP") {
+			t.Fatalf("passage leaked into state: %s", state)
 		}
-		if !strings.Contains(req.State, "Minh An (demo)") {
-			t.Fatalf("state %s", req.State)
+		if !strings.Contains(state, "Minh An (demo)") {
+			t.Fatalf("state %s", state)
 		}
 		if len(req.Questions) != 3 {
 			t.Fatalf("questions %d", len(req.Questions))

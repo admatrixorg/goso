@@ -14,6 +14,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +50,7 @@ type Result struct {
 type Usage struct {
 	Calls        int
 	CacheHits    int
+	Deduped      int
 	InputTokens  int
 	OutputTokens int
 	Model        string
@@ -145,9 +147,10 @@ func defaultClient() *Client {
 func fingerprint(cfg Config) string {
 	keySum := sha256.Sum256([]byte(cfg.APIKey))
 	h := sha256.New()
-	fmt.Fprintf(h, "%v %s %s %s %s %d %d %d %d %s %s",
-		cfg.Enabled, hex.EncodeToString(keySum[:]), cfg.Model, cfg.URL, cfg.QuestionsHash,
-		cfg.Timeout, cfg.MaxCalls, cfg.PerRequestTokens, cfg.PerQuestionTokens, cfg.CacheTTL, cfg.QuestionsErr)
+	fmt.Fprintf(h, "%v %s %s %s %s %s %s %s %d %d %d %d %s %s",
+		cfg.Enabled, hex.EncodeToString(keySum[:]), cfg.Model, cfg.URL,
+		cfg.ContextVersion, cfg.QuestionsVersion, cfg.ContextHash, cfg.QuestionsHash,
+		cfg.Timeout, cfg.MaxCalls, cfg.PerRequestTokens, cfg.PerQuestionTokens, cfg.CacheTTL, cfg.ConfigErr)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -212,6 +215,7 @@ func (c *Client) Score(ctx context.Context, items []Item) ([]Result, Usage, erro
 	for _, batch := range batches {
 		u, answered, err := c.post(ctx, batch)
 		usage.Calls++
+		usage.Deduped += u.Deduped
 		usage.InputTokens += u.InputTokens
 		usage.OutputTokens += u.OutputTokens
 		if u.Model != "" {
@@ -242,8 +246,17 @@ func (c *Client) Score(ctx context.Context, items []Item) ([]Result, Usage, erro
 
 func (c *Client) hash(message string, p Passage) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n%s", c.cfg.Model, c.cfg.QuestionsHash, message, p.Name, p.Content)
+	// Versions and content hashes are both included so a context or question
+	// edit invalidates cached nouls even when the version string was not bumped.
+	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+		c.cfg.Model, c.cfg.ContextVersion, c.cfg.QuestionsVersion,
+		c.cfg.ContextHash, c.cfg.QuestionsHash,
+		normKey(message), normKey(p.Name), normKey(p.Content))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func normKey(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(s))), " ")
 }
 
 func (c *Client) cached(h string) (float64, bool) {
@@ -273,22 +286,19 @@ func (c *Client) store(h string, noul float64) {
 type apiQuestion struct {
 	Type         string            `json:"type"`
 	Instructions map[string]string `json:"instructions"`
-	Criteria     map[string]string `json:"criteria"`
+	Criteria     json.RawMessage   `json:"criteria"`
 }
 
 type apiRequest struct {
 	Model     string                 `json:"model"`
-	State     string                 `json:"state"`
+	State     json.RawMessage        `json:"state"`
 	Questions map[string]apiQuestion `json:"questions"`
 }
 
 type apiResponse struct {
-	Model   string `json:"model"`
-	Answers map[string]struct {
-		Type string   `json:"type"`
-		Noul *float64 `json:"noul"`
-	} `json:"answers"`
-	Usage struct {
+	Model   string                     `json:"model"`
+	Answers map[string]json.RawMessage `json:"answers"`
+	Usage   struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
@@ -311,10 +321,10 @@ func (c *Client) post(ctx context.Context, batch []askItem) (Usage, map[int]floa
 		qs[id] = apiQuestion{
 			Type:         "noul",
 			Instructions: fillInstructions(c.cfg.Instructions, it.message, it.p.Name, it.p.Content),
-			Criteria:     map[string]string{"true": c.cfg.CriteriaTrue, "false": c.cfg.CriteriaFalse},
+			Criteria:     noulCriteria(c.cfg.CriteriaTrue, c.cfg.CriteriaFalse),
 		}
 	}
-	body, err := json.Marshal(apiRequest{Model: c.cfg.Model, State: c.cfg.ChannelContext, Questions: qs})
+	body, err := json.Marshal(apiRequest{Model: c.cfg.Model, State: c.cfg.ContextJSON, Questions: qs})
 	if err != nil {
 		return Usage{}, nil, errors.New("encode")
 	}
@@ -326,54 +336,160 @@ func (c *Client) post(ctx context.Context, batch []askItem) (Usage, map[int]floa
 		return usage, nil, err
 	}
 	answered := map[int]float64{}
+	deduped := 0
 	for _, it := range batch {
+		if primary[it.hash] != it.idx {
+			deduped++
+		}
 		src := primary[it.hash]
 		if noul, ok := byIdx[src]; ok {
 			answered[it.idx] = noul
 		}
 	}
+	usage.Deduped = deduped
 	return usage, answered, nil
 }
 
+func noulCriteria(yes, no string) json.RawMessage {
+	yb, _ := json.Marshal(yes)
+	nb, _ := json.Marshal(no)
+	return json.RawMessage(`{"true":` + string(yb) + `,"false":` + string(nb) + `}`)
+}
+
 func (c *Client) do(ctx context.Context, body []byte, idToIdx map[string]int) (Usage, map[int]float64, error) {
-	callCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.cfg.URL, bytes.NewReader(body))
+	env, err := c.roundTrip(ctx, body)
 	if err != nil {
-		return Usage{}, nil, errors.New("request")
-	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	res, err := c.http.Do(req)
-	if err != nil {
-		if callCtx.Err() != nil || ctx.Err() != nil {
-			return Usage{}, nil, errors.New("timeout")
-		}
-		return Usage{}, nil, errors.New("unreachable")
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode != http.StatusOK {
-		return Usage{}, nil, fmt.Errorf("http_%d", res.StatusCode)
-	}
-	var env apiResponse
-	if json.Unmarshal(raw, &env) != nil {
-		return Usage{}, nil, errors.New("bad_json")
+		return Usage{}, nil, err
 	}
 	usage := Usage{InputTokens: env.Usage.InputTokens, OutputTokens: env.Usage.OutputTokens, Model: env.Model}
-	if len(env.Answers) == 0 {
-		return usage, nil, errors.New("no_answers")
-	}
 	byIdx := map[int]float64{}
 	for id, idx := range idToIdx {
-		a, ok := env.Answers[id]
-		if !ok || a.Noul == nil || math.IsNaN(*a.Noul) || *a.Noul < 0 || *a.Noul > 1 {
+		raw, ok := env.Answers[id]
+		if !ok {
+			continue
+		}
+		var a struct {
+			Noul *float64 `json:"noul"`
+		}
+		if json.Unmarshal(raw, &a) != nil || a.Noul == nil || math.IsNaN(*a.Noul) || *a.Noul < 0 || *a.Noul > 1 {
 			continue
 		}
 		byIdx[idx] = *a.Noul
 	}
 	return usage, byIdx, nil
+}
+
+// roundTrip posts one System One body. 429 and 529 are retried with
+// exponential backoff, honoring Retry-After when it fits the call budget.
+// Any other failure returns so the caller can keep the current knowledge.
+func (c *Client) roundTrip(ctx context.Context, body []byte) (apiResponse, error) {
+	callCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
+	var last error
+	for attempt := 0; attempt < 4; attempt++ {
+		req, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.cfg.URL, bytes.NewReader(body))
+		if err != nil {
+			return apiResponse{}, errors.New("request")
+		}
+		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		res, err := c.http.Do(req)
+		if err != nil {
+			if callCtx.Err() != nil || ctx.Err() != nil {
+				return apiResponse{}, errors.New("timeout")
+			}
+			return apiResponse{}, errors.New("unreachable")
+		}
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		res.Body.Close()
+		if res.StatusCode == http.StatusTooManyRequests || res.StatusCode == 529 {
+			last = fmt.Errorf("http_%d", res.StatusCode)
+			if attempt == 3 {
+				return apiResponse{}, last
+			}
+			wait := time.Duration(200*(1<<uint(attempt))) * time.Millisecond
+			if ra, ok := retryAfterWait(res.Header); ok {
+				wait = ra
+			}
+			if !waitFits(callCtx, wait) {
+				log.Printf("goso jev: retry status=%d skipped wait_ms=%d reason=budget", res.StatusCode, wait.Milliseconds())
+				return apiResponse{}, errors.New("timeout")
+			}
+			log.Printf("goso jev: retry status=%d attempt=%d wait_ms=%d", res.StatusCode, attempt+1, wait.Milliseconds())
+			if !sleepBudget(callCtx, wait) {
+				return apiResponse{}, errors.New("timeout")
+			}
+			continue
+		}
+		if res.StatusCode != http.StatusOK {
+			return apiResponse{}, fmt.Errorf("http_%d", res.StatusCode)
+		}
+		var env apiResponse
+		if json.Unmarshal(raw, &env) != nil {
+			return apiResponse{}, errors.New("bad_json")
+		}
+		if len(env.Answers) == 0 {
+			return apiResponse{}, errors.New("no_answers")
+		}
+		model := env.Model
+		if model == "" {
+			model = "-"
+		}
+		log.Printf("goso jev: response_model=%s requested_model=%s input_tokens=%d output_tokens=%d",
+			model, c.cfg.Model, env.Usage.InputTokens, env.Usage.OutputTokens)
+		return env, nil
+	}
+	if last == nil {
+		last = errors.New("unreachable")
+	}
+	return apiResponse{}, last
+}
+
+func retryAfterWait(h http.Header) (time.Duration, bool) {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return 0, false
+	}
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		return time.Duration(n) * time.Second, true
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			d = 0
+		}
+		return d, true
+	}
+	return 0, false
+}
+
+func waitFits(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return true
+	}
+	return time.Until(dl) >= d+20*time.Millisecond
+}
+
+func sleepBudget(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	if !waitFits(ctx, d) {
+		return false
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func fillInstructions(tmpl map[string]string, message, name, content string) map[string]string {

@@ -33,7 +33,7 @@ func TestKnowledgeBlock_DropsConfidentIrrelevant(t *testing.T) {
 	const key = "bridge-jev-key"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			State     string `json:"state"`
+			State     json.RawMessage `json:"state"`
 			Questions map[string]struct {
 				Instructions map[string]string `json:"instructions"`
 			} `json:"questions"`
@@ -41,7 +41,7 @@ func TestKnowledgeBlock_DropsConfidentIrrelevant(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(req.State, "nồi chiên") || strings.Contains(req.State, "Bình Dương") {
+		if strings.Contains(string(req.State), "nồi chiên") || strings.Contains(string(req.State), "Bình Dương") {
 			t.Fatal("passage was placed in state")
 		}
 		answers := map[string]any{}

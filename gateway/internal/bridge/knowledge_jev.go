@@ -16,14 +16,21 @@ import (
 // chunks that already fit the cap are scored, and a chunk is removed only
 // when Jev's noul is at or below the configured no threshold. Any error,
 // timeout, uncertain score, or call cap keeps that chunk.
-func knowledgeBlock(ctx context.Context, tenant, agentID, prompt string, ag Agent, docs []KnowledgeDoc) string {
+func knowledgeBlock(ctx context.Context, tenant, agentID, prompt string, ag Agent, docs []KnowledgeDoc) (block string) {
 	capN := knowledgeMaxBytes(ag)
+	block = knowledgePrompt(docs, capN)
+	defer func() {
+		if recover() != nil {
+			log.Printf("goso jev: fallback reason=panic")
+			block = knowledgePrompt(docs, capN)
+		}
+	}()
 	if !jev.Active() {
-		return knowledgePrompt(docs, capN)
+		return block
 	}
 	included, _ := walkKnowledge(docs, capN)
 	if len(included) == 0 {
-		return knowledgePrompt(docs, capN)
+		return block
 	}
 	passages := make([]jev.Passage, len(included))
 	for i, d := range included {
@@ -32,7 +39,7 @@ func knowledgeBlock(ctx context.Context, tenant, agentID, prompt string, ag Agen
 	log.Printf("goso jev: knowledge tenant=%s agent=%s candidates=%d", tenant, agentID, len(passages))
 	kept := jev.FilterPassages(ctx, prompt, passages)
 	if samePassageKeys(passages, kept) {
-		return knowledgePrompt(docs, capN)
+		return block
 	}
 	keep := map[string]struct{}{}
 	for _, p := range kept {
