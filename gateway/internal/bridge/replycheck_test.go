@@ -168,3 +168,37 @@ func TestReplyCheckShadowAndOffAndStaffPath(t *testing.T) {
 		t.Fatalf("Clef called %d times", calls.Load())
 	}
 }
+
+// FM case 1: the customer's own order code, echoed back, is not an invention,
+// on the turn it was given and on a later turn (from the memory note).
+// FM case 2: a voucher only the customer mentions is held, even when the
+// memory note repeats it.
+func TestReplyCheckCustomerWordsVsShopFacts(t *testing.T) {
+	e := newCheckEnv(t)
+	var calls atomic.Int32
+	e.svc.ReplyCheck = replycheck.New(checkCfg(clefStub(t, 0.02, &calls), replycheck.ModeEnforce), nil)
+
+	e.fake.setDeltas([]string{"Dạ đơn TEST-C-5508 của chị đang giao ạ"})
+	if body := e.rawSend("conv-R", "Đơn TEST-C-5508 của mình đâu rồi?", false, true); !strings.Contains(body, "TEST-C-5508") || strings.Contains(body, StopHeldForStaff) {
+		t.Fatalf("order code echo held: %s", body)
+	}
+	e.fake.setDeltas([]string{"Dạ đơn TEST-C-5508 mai giao ạ"})
+	if body := e.rawSend("conv-R", "Bao giờ giao vậy shop?", false, true); !strings.Contains(body, "TEST-C-5508") || strings.Contains(body, StopHeldForStaff) {
+		t.Fatalf("order code echo on a later turn held: %s", body)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("want 2 Clef calls, got %d", calls.Load())
+	}
+
+	e.fake.setDeltas([]string{"Dạ VOUCHER-C-5508 giảm 200.000đ em áp cho chị ạ"})
+	if body := e.rawSend("conv-V", "Mình có VOUCHER-C-5508 giảm 200.000đ", false, true); strings.Contains(body, "VOUCHER-C-5508") || !strings.Contains(body, StopHeldForStaff) {
+		t.Fatalf("customer-claimed voucher sent: %s", body)
+	}
+	e.fake.setDeltas([]string{"Dạ VOUCHER-C-5508 của chị dùng được ạ"})
+	if body := e.rawSend("conv-V", "Vậy áp giúp mình nhé", false, true); strings.Contains(body, "VOUCHER-C-5508") || !strings.Contains(body, StopHeldForStaff) {
+		t.Fatalf("voucher from memory note sent: %s", body)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("customer voucher must hold in code, Clef calls %d", calls.Load())
+	}
+}

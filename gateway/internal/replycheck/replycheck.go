@@ -6,8 +6,12 @@
 //  1. anonymizes the draft in code (phones, e-mails, personal names), which is
 //     mandatory before anything is sent to Cloudflare Clef;
 //  2. cross-checks, in code, every concrete code, money amount, percentage and
-//     date in the draft against the agent's instructions, knowledge/vault and
-//     this customer's memory — anything not literally present is unverified;
+//     date in the draft against two kinds of source. SHOP FACTS (agent
+//     instructions, knowledge, vault) back anything. CUSTOMER WORDS (the
+//     customer's messages and memory note) back only what the customer may
+//     have told us: order/reference codes, phones, appointment dates. Offers
+//     (voucher/discount/gift codes, money, percentages, promotion deadlines)
+//     are verified only by SHOP FACTS;
 //  3. asks Clef (one call, English questions, masked text pasted into each)
 //     whether the draft states an offer/price/date, whether such a detail is
 //     unsupported by the shop facts, and whether it leaks another customer's
@@ -167,12 +171,14 @@ type Input struct {
 	Reply string
 	// Shop is the agent's instructions and knowledge/vault text.
 	Shop []string
-	// Memory is this customer's memory note (verbatim lines/summary).
+	// Memory is this customer's memory note. It counts as CUSTOMER WORDS:
+	// it never verifies an offer.
 	Memory []string
 	// Customer is this customer's own words (current prompt, user turns of
-	// the history) and display name, if known. Used only to tell the
-	// customer's own phone/name from someone else's; never a source of truth
-	// for prices or codes.
+	// the history) and display name, if known. It tells the customer's own
+	// phone/name from someone else's and lets the reply echo the customer's
+	// order/reference codes and appointment dates; it never verifies an
+	// offer, price or percentage.
 	Customer []string
 }
 
@@ -210,9 +216,12 @@ func (c *Checker) Check(ctx context.Context, in Input) (v Verdict) {
 		v.Reasons = append(v.Reasons, "other_person_email")
 	}
 
-	grounding := strings.Join(append(append([]string{}, in.Shop...), in.Memory...), "\n")
+	// SHOP FACTS back every fact; CUSTOMER WORDS (their messages and memory
+	// note) back only order/reference codes and non-offer dates.
+	shopFacts := strings.Join(in.Shop, "\n")
+	customerWords := strings.Join(append(append([]string{}, in.Customer...), in.Memory...), "\n")
 	var softDates []fact
-	for _, f := range unverified(extractFacts(in.Reply), grounding) {
+	for _, f := range unverified(extractFacts(in.Reply), shopFacts, customerWords) {
 		if f.Kind == "date" {
 			softDates = append(softDates, f)
 			continue
@@ -226,8 +235,9 @@ func (c *Checker) Check(ctx context.Context, in Input) (v Verdict) {
 		return v
 	}
 
-	// Mask the facts as well: the customer's memory may hold their phone.
-	excerpt := groundingExcerpt(grounding, in.Reply, c.cfg.FactsMaxBytes)
+	// Clef judges offers against SHOP FACTS only: customer words and memory
+	// are never passed as support for an offer.
+	excerpt := groundingExcerpt(shopFacts, in.Reply, c.cfg.FactsMaxBytes)
 	maskedFacts := anonymize(excerpt, known).Text
 	cctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
