@@ -15,6 +15,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/guardrail"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/replycheck"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -28,6 +29,9 @@ type Service struct {
 	Now      func() time.Time
 	Skew     time.Duration
 	MaxBody  int64
+	// ReplyCheck is the pre-send check on customer replies (nil/off keeps
+	// replies unchecked). main builds it from GOSO_REPLY_CHECK*.
+	ReplyCheck *replycheck.Checker
 }
 
 func (s *Service) now() time.Time {
@@ -172,12 +176,16 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		sid = msess.ID
 	}
 
+	// The pre-send check grounds on the agent's own prompt + knowledge and
+	// this customer's memory, never on the guardrail text or past replies.
+	shopText := system
 	// SPEC 132 §bridge: this customer's memory rides inside the one system
 	// message, after the prompt and the (capped) knowledge block and never
 	// mid-history. Some OpenAI-compatible routers drop a second system message
 	// outright (9router/gcli, measured 01/11/2026), so the note is merged, not
 	// appended.
-	if note := s.memoryNote(msess, in.Prompt); note != "" {
+	note := s.memoryNote(msess, in.Prompt)
+	if note != "" {
 		if system != "" {
 			system += "\n\n" + note
 		} else {
@@ -200,6 +208,15 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 	fn := s.Complete
 	if fn == nil {
 		fn = DefaultComplete
+	}
+	// Customer channel replies are checked before they leave the bridge.
+	// When the check can hold a reply, nothing streams until it has passed:
+	// the passed text then goes out whole (the SSE handler sends ReplyText
+	// as one delta when nothing streamed).
+	checked := s.ReplyCheck.Enabled() && customerLabel(in) != ""
+	enforce := checked && s.ReplyCheck.Config().Mode == replycheck.ModeEnforce
+	if enforce {
+		onDelta = nil
 	}
 	res, err := fn(ctx, Completion{
 		Type:          prov.Type,
@@ -230,6 +247,21 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		err = &Error{Status: 502, Code: "empty_reply", Msg: "upstream returned empty text"}
 		logReplyFailure(in, prov.Type, model, s.now().Sub(start), err)
 		return ReplyOutput{}, err
+	}
+	if checked {
+		if v := s.preSendCheck(ctx, in, res.Text, shopText, note); v.Hold && enforce {
+			// Held for staff: omni-core sends nothing for an empty
+			// successful reply and does not fall back to another model.
+			// The draft is not stored as the agent's answer.
+			s.appendTurn(ag.GosoAgentID, in, "")
+			s.scheduleSummary(sid, prov, model, ag)
+			return ReplyOutput{
+				PromptTokens:     int64(res.PromptTokens),
+				CompletionTokens: int64(res.CompletionTokens),
+				LatencyMS:        s.now().Sub(start).Milliseconds(),
+				StopReason:       StopHeldForStaff,
+			}, nil
+		}
 	}
 	s.appendTurn(ag.GosoAgentID, in, res.Text)
 	s.scheduleSummary(sid, prov, model, ag)

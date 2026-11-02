@@ -23,6 +23,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
+	"github.com/mqglobal/goso/gateway/internal/replycheck"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/serve"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -304,11 +305,15 @@ func runBridge(args []string) {
 		strings.TrimSpace(os.Getenv("GOSO_LLM_API_KEY")) != "",
 		strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN")) != "")
 
+	rc := replycheck.FromEnv()
+	log.Printf("goso bridge reply_check mode=%s on_error_hold=%v timeout_ms=%d clef_configured=%v",
+		rc.Mode, rc.HoldOnError, rc.Timeout.Milliseconds(), rc.URL != "" && rc.Token != "")
 	svc := &bridge.Service{
-		Secret:  strings.TrimSpace(os.Getenv("GOSO_SHARED_SECRET")),
-		Version: version,
-		Catalog: cat,
-		Store:   st,
+		Secret:     strings.TrimSpace(os.Getenv("GOSO_SHARED_SECRET")),
+		Version:    version,
+		Catalog:    cat,
+		Store:      st,
+		ReplyCheck: replycheck.New(rc, nil),
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
