@@ -155,9 +155,11 @@ func (s *Service) Reply(ctx context.Context, in ReplyInput, onDelta func(string)
 		model = prov.Models[0]
 	}
 	system := firstNonEmpty(in.SystemPrompt, ag.SystemPrompt)
-	if docs, err := cat.ListKnowledge(in.TenantID, agentID); err != nil {
+	docs, err := cat.ListKnowledge(in.TenantID, agentID)
+	if err != nil {
 		return ReplyOutput{}, err
-	} else if extra := knowledgePrompt(docs, knowledgeMaxBytes(ag)); extra != "" {
+	}
+	if extra := knowledgeBlock(ctx, in.TenantID, agentID, in.Prompt, ag, docs); extra != "" {
 		if system != "" {
 			system += "\n\n" + extra
 		} else {
@@ -512,15 +514,14 @@ func positiveIntEnv(key string, def int) int {
 	return n
 }
 
-func knowledgePrompt(docs []KnowledgeDoc, capBytes int) string {
-	if len(docs) == 0 {
-		return ""
-	}
+// walkKnowledge is the same inclusion rule as knowledgePrompt: header bytes
+// count, empty bodies are skipped, and the first chunk that does not fit
+// stops the walk. included is what would be written, in order.
+func walkKnowledge(docs []KnowledgeDoc, capBytes int) (included []KnowledgeDoc, truncated bool) {
 	if capBytes <= 0 {
 		capBytes = defaultKnowledgeBytes
 	}
-	var b strings.Builder
-	b.WriteString("# Knowledge")
+	used := len("# Knowledge")
 	for _, d := range docs {
 		content := strings.TrimSpace(d.Content)
 		if content == "" {
@@ -530,12 +531,33 @@ func knowledgePrompt(docs []KnowledgeDoc, capBytes int) string {
 		if name == "" {
 			name = d.ID
 		}
-		chunk := "\n\n## " + name + "\n" + content
-		if b.Len()+len(chunk) > capBytes {
-			b.WriteString("\n\n[knowledge truncated]")
-			break
+		chunkLen := len("\n\n## ") + len(name) + len("\n") + len(content)
+		if used+chunkLen > capBytes {
+			return included, true
 		}
-		b.WriteString(chunk)
+		d.Content = content
+		d.FileName = name
+		included = append(included, d)
+		used += chunkLen
+	}
+	return included, false
+}
+
+func knowledgePrompt(docs []KnowledgeDoc, capBytes int) string {
+	if len(docs) == 0 {
+		return ""
+	}
+	included, truncated := walkKnowledge(docs, capBytes)
+	if len(included) == 0 && !truncated {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("# Knowledge")
+	for _, d := range included {
+		b.WriteString("\n\n## " + d.FileName + "\n" + d.Content)
+	}
+	if truncated {
+		b.WriteString("\n\n[knowledge truncated]")
 	}
 	if b.Len() == len("# Knowledge") {
 		return ""

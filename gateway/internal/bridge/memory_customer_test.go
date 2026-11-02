@@ -88,6 +88,8 @@ func newCustEnv(t *testing.T, st store.StoreIface) *custEnv {
 	t.Setenv("GOSO_SSRF", "0")
 	t.Setenv("GOSO_ENV", "demo")
 	t.Setenv("GOSO_LLM_API_KEY", "")
+	t.Setenv("GOSO_JEV_ENABLED", "")
+	t.Setenv("GOSO_JEV_API_KEY", "")
 	t.Setenv("GOSO_MEMORY_RECALL", "")
 	t.Setenv("GOSO_BRIDGE_MEMORY", "")
 	t.Setenv("GOSO_KNOWLEDGE_MAX_BYTES", "64")

@@ -22,6 +22,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/bridge"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/health"
+	"github.com/mqglobal/goso/gateway/internal/jev"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/replycheck"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -90,6 +91,16 @@ Environment:
   GOSO_LLM_RESPONSE_HEADER_TIMEOUT  Wait for upstream status/headers (default 180s). Dial 10s, TLS handshake 10s. Body follows the request context
   GOSO_LLM_FALLBACK_MODEL  Model used after a retryable failure exhausts 3 attempts. Empty = none. Per-agent fallback_model overrides this
   GOSO_KNOWLEDGE_MAX_BYTES Max bytes of synced knowledge injected into the system prompt (default 32768). Per-agent harness_config_json knowledge_max_bytes overrides it
+  GOSO_JEV_ENABLED         1 = score bridge knowledge chunks with TypeSafe Jev before injection. Default off. No effect without GOSO_JEV_API_KEY
+  GOSO_JEV_API_KEY         TypeSafe API key. Server env only. Never a VITE_ variable and never returned by GET /api/config
+  GOSO_JEV_MODEL           Pinned model (default jev-1.14.0). Do not leave jev-latest after tuning; that alias moves
+  GOSO_JEV_URL             System One endpoint (default https://api.typesafe.ai/v1/systemone)
+  GOSO_JEV_TIMEOUT_MS      Per-call budget (default 1200, max 10000). Timeout keeps every chunk
+  GOSO_JEV_MAX_CALLS       Hard cap on Jev calls per reply (default 2, max 8). Chunks past the cap are kept
+  GOSO_JEV_CACHE_TTL       Dedup cache TTL (Go duration, default 24h). A repeated message+chunk costs 0 calls
+  GOSO_JEV_CONTEXT_FILE    Optional override of the versioned English context JSON (state only; no passage text)
+  GOSO_JEV_QUESTIONS_FILE  Optional override of the versioned question JSON
+  GOSO_JEV_THRESHOLDS_FILE Optional override of the versioned yes_at/no_at JSON
   GOSO_ANTHROPIC_API_KEY   Anthropic key (optional; empty → absent, echo fallback)
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
@@ -308,6 +319,7 @@ func runBridge(args []string) {
 	rc := replycheck.FromEnv()
 	log.Printf("goso bridge reply_check mode=%s on_error_hold=%v timeout_ms=%d clef_configured=%v",
 		rc.Mode, rc.HoldOnError, rc.Timeout.Milliseconds(), rc.URL != "" && rc.Token != "")
+	log.Printf("goso bridge jev enabled=%v key_set=%v model=%s", jev.EnabledFlag(), jev.KeySet(), jev.Model())
 	svc := &bridge.Service{
 		Secret:     strings.TrimSpace(os.Getenv("GOSO_SHARED_SECRET")),
 		Version:    version,
