@@ -11,7 +11,10 @@ No customer data and no secret values. Env vars are named, not filled in.
 | `9b1b6f37b0b1d3df043b6edb0769545ec4b0d560` | Pre-fix head the blocker tests failed on |
 | `7a3ee90523f3bdd0c53c282791428946127a82e0` | B1–B3 and the SPEC collision, accepted. [Actions run 42491042663](https://github.com/admatrixorg/goso/actions/runs/42491042663) succeeded |
 | `55d9b9ab0a6278685f14fd7eb04b629b13f3ec91` | First evidence directory and the admin inventory GET test |
-| This commit | B4 fail-closed publish and B5 symlink checks. The Actions run for this head is linked from PR #25 |
+| `57894583ff6b35885ec99968ac76012e8c69e916` | Fail-closed publish and the symlink checks. [Actions run 42492310792](https://github.com/admatrixorg/goso/actions/runs/42492310792) succeeded |
+| `5984781feb4e76a857ade2b173d0c03f2da8a186` | Search keeps the snippet hash. The verbose transcripts below that name this tree were run here. Their stdout does not print a SHA |
+
+The commit that adds the Search transcripts and the corrected B5 note does not change gateway code. It was not the tree under test.
 
 Postgres for the local `go test` lines was **16.15** (Ubuntu package). CI uses the workflow service image `postgres:16`. The DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
@@ -112,8 +115,11 @@ GOSO_TEST_POSTGRES_DSN=... go test ./gateway/internal/vault/ \
 | [go-test-before-9b1b6f3-http-store.txt](go-test-before-9b1b6f3-http-store.txt) | Same, HTTP and store packages |
 | [go-test-after-7a3ee90-vault-http-store.txt](go-test-after-7a3ee90-vault-http-store.txt) | Passing run on the fixed tree `7a3ee90` |
 | [go-test-after-head-vault-http-store.txt](go-test-after-head-vault-http-store.txt) | Passing run including the admin inventory allow case |
-| [go-test-before-b4b5.txt](go-test-before-b4b5.txt) | New B4/B5 tests against the pre-fix publish and symlink behavior. Memory, SQLite, and Postgres each fail |
-| [go-test-after-b4b5.txt](go-test-after-b4b5.txt) | Same tests after the fail-closed publish and symlink checks. Each backend passes |
+| [go-test-before-b4b5.txt](go-test-before-b4b5.txt) | B4 publish tests and B5a/B5b against the pre-fix behavior. The `-run` list names `TestB5a_` and `TestB5b_` explicitly. Memory, SQLite, and Postgres fail |
+| [go-test-after-b4b5.txt](go-test-after-b4b5.txt) | Passing run whose `-run` pattern includes `TestB5_`. That pattern selects `TestB5_NamespaceSymlinkRejected` and `TestB5_ParentAndNestedSymlink` only. It does **not** select `TestB5a_` or `TestB5b_`. This file is not a full verbose B5 pass |
+| [go-test-b4-b5-full.txt](go-test-b4-b5-full.txt) | Full verbose B4 and B5 pass, including `TestB5a_` and `TestB5b_`, on `5984781feb4e76a857ade2b173d0c03f2da8a186` |
+| [go-test-before-b4-search.txt](go-test-before-b4-search.txt) | `TestB4_SearchDoesNotPairOldSnippetWithNewVersion` before the hash check. Memory, SQLite, and Postgres pair snippet V1 with `current` |
+| [go-test-after-b4-search.txt](go-test-after-b4-search.txt) | Same test after the hash check, on `5984781feb4e76a857ade2b173d0c03f2da8a186`. All three backends pass |
 
 Before, per backend where the test has one:
 
@@ -131,7 +137,7 @@ Before, per backend where the test has one:
 
 After: each of those tests PASS, including B1 `/sqlite`, `/memory`, and `/postgres`.
 
-B4 and B5 below were still open on `7a3ee90`. The new tests failed on that behavior, then passed after the change. Verbose output is in the two B4/B5 files. Each subtest name is the backend.
+B4 and B5 below were still open on `7a3ee90`. The new tests failed on that behavior, then passed after the change. `go-test-before-b4b5.txt` names `TestB5a_` and `TestB5b_` in its `-run` list. `go-test-after-b4b5.txt` does not: its pattern `TestB5_` never selects those two tests. The full verbose pass is [go-test-b4-b5-full.txt](go-test-b4-b5-full.txt). Each subtest name is the backend.
 
 Before, on memory, SQLite, and Postgres:
 
@@ -142,9 +148,30 @@ Before, on memory, SQLite, and Postgres:
 - `TestB5a_PartialSymlinkLeavesOtherTenantUnchanged`: `db-ok` followed the `.partial` symlink; `db-fail` replaced the other tenant's file with `SALES-OVERWRITE-8841`. This is local filesystem access, not a remote exploit.
 - `TestB5b_DirSymlinkDoesNotDeleteChild`: sync deleted `nhom/note.md` (`Deleted:1`) after `nhom` was replaced by a symlink.
 
-After: those tests PASS on memory, SQLite, and Postgres (restart is SQLite and Postgres only). `go test ./gateway/... -count=1` also passed.
+After, on `5984781feb4e76a857ade2b173d0c03f2da8a186`: those tests PASS on memory, SQLite, and Postgres (restart is SQLite and Postgres only). Command, env name only, from the repo root, with `GOSO_TEST_POSTGRES_DSN` set:
 
-Get, list, and search return a body, hash, and snippet only when the file bytes match the registry hash. Otherwise `body_status` is `unconfirmed` and the body, hash, and snippet are empty. A read error fails closed. Two operating-system processes writing the same vault root are unsupported; the namespace lock is process-local.
+```bash
+go test ./gateway/internal/vault/ -count=1 -timeout 180s -run 'TestB4|TestB5' -v
+```
+
+The stdout in `go-test-b4-b5-full.txt` does not print a commit SHA. `go test ./gateway/... -count=1` also passed on that tree before the transcripts were copied in.
+
+Get and list return a body and hash only when the file bytes match the registry hash. Search stores that hash with the hit that produced the snippet. The hit is `current` only when the snapshot matches the verified file. If a newer put lands after the query, the hit stays, `body_status` is `unconfirmed`, and the snippet is empty. Search does not build a snippet from the later body. A read error fails closed. Two operating-system processes writing the same vault root are unsupported; the namespace lock is process-local.
+
+### Search race
+
+Fixture: one doc titled `Giữ` for tenant `minh-an-sales`, body `V1-ONLY-8841 shared`, then a put of `V2-ONLY-8841 shared` while search is paused after `SearchVault` and before the refetch. Query: `V1-ONLY-8841`.
+
+Fail transcript [go-test-before-b4-search.txt](go-test-before-b4-search.txt) was captured on `57894583ff6b35885ec99968ac76012e8c69e916` plus the new test and the post-query barrier, before the hash comparison existed. That intermediate tree was not committed. The stdout has no SHA. Memory, SQLite, and Postgres each failed with `Snippet:"V1-ONLY-8841 shared"` and `BodyStatus:"current"`.
+
+Pass transcript [go-test-after-b4-search.txt](go-test-after-b4-search.txt) is the same command on `5984781feb4e76a857ade2b173d0c03f2da8a186`:
+
+```bash
+go test ./gateway/internal/vault/ -count=1 -timeout 180s \
+  -run 'TestB4_SearchDoesNotPairOldSnippetWithNewVersion' -v
+```
+
+Memory, SQLite, and Postgres pass. The hit remains, with an empty snippet and `unconfirmed`. The stdout has no SHA.
 
 ## Who may GET the inventory
 

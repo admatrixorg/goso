@@ -1,0 +1,11 @@
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres
+2026/11/08 15:07:50 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion (0.10s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory (0.00s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite (0.02s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres (0.07s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.105s

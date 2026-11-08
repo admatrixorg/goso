@@ -1,0 +1,84 @@
+=== RUN   TestB4_TwoServicesSameTenantDoNotDropPut
+--- PASS: TestB4_TwoServicesSameTenantDoNotDropPut (0.08s)
+=== RUN   TestB4_DBFailureDoesNotPublishFile
+--- PASS: TestB4_DBFailureDoesNotPublishFile (0.00s)
+=== RUN   TestB5_NamespaceSymlinkRejected
+--- PASS: TestB5_NamespaceSymlinkRejected (0.00s)
+=== RUN   TestB5_ParentAndNestedSymlink
+--- PASS: TestB5_ParentAndNestedSymlink (0.00s)
+=== RUN   TestB4_AfterCommitReadersFailClosed
+=== RUN   TestB4_AfterCommitReadersFailClosed/memory
+=== RUN   TestB4_AfterCommitReadersFailClosed/sqlite
+=== RUN   TestB4_AfterCommitReadersFailClosed/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_AfterCommitReadersFailClosed (0.12s)
+    --- PASS: TestB4_AfterCommitReadersFailClosed/memory (0.00s)
+    --- PASS: TestB4_AfterCommitReadersFailClosed/sqlite (0.04s)
+    --- PASS: TestB4_AfterCommitReadersFailClosed/postgres (0.08s)
+=== RUN   TestB4_RenameFailureUnconfirmed
+=== RUN   TestB4_RenameFailureUnconfirmed/memory
+=== RUN   TestB4_RenameFailureUnconfirmed/sqlite
+=== RUN   TestB4_RenameFailureUnconfirmed/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_RenameFailureUnconfirmed (0.09s)
+    --- PASS: TestB4_RenameFailureUnconfirmed/memory (0.00s)
+    --- PASS: TestB4_RenameFailureUnconfirmed/sqlite (0.02s)
+    --- PASS: TestB4_RenameFailureUnconfirmed/postgres (0.07s)
+=== RUN   TestB4_ReadFileErrorFailClosed
+=== RUN   TestB4_ReadFileErrorFailClosed/memory
+=== RUN   TestB4_ReadFileErrorFailClosed/sqlite
+=== RUN   TestB4_ReadFileErrorFailClosed/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_ReadFileErrorFailClosed (0.09s)
+    --- PASS: TestB4_ReadFileErrorFailClosed/memory (0.00s)
+    --- PASS: TestB4_ReadFileErrorFailClosed/sqlite (0.02s)
+    --- PASS: TestB4_ReadFileErrorFailClosed/postgres (0.07s)
+=== RUN   TestB4_RestartAcrossPersistentStore
+=== RUN   TestB4_RestartAcrossPersistentStore/sqlite
+=== RUN   TestB4_RestartAcrossPersistentStore/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_RestartAcrossPersistentStore (0.10s)
+    --- PASS: TestB4_RestartAcrossPersistentStore/sqlite (0.03s)
+    --- PASS: TestB4_RestartAcrossPersistentStore/postgres (0.07s)
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-ok
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-fail
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-ok
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-fail
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-ok
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-fail
+--- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged (0.10s)
+    --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory (0.00s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-ok (0.00s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-fail (0.00s)
+    --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite (0.03s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-ok (0.00s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-fail (0.00s)
+    --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres (0.08s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-ok (0.00s)
+        --- PASS: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-fail (0.00s)
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/memory
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/sqlite
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB5b_DirSymlinkDoesNotDeleteChild (0.10s)
+    --- PASS: TestB5b_DirSymlinkDoesNotDeleteChild/memory (0.00s)
+    --- PASS: TestB5b_DirSymlinkDoesNotDeleteChild/sqlite (0.03s)
+    --- PASS: TestB5b_DirSymlinkDoesNotDeleteChild/postgres (0.07s)
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres
+2026/11/08 15:07:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion (0.09s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory (0.00s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite (0.02s)
+    --- PASS: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres (0.07s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.792s

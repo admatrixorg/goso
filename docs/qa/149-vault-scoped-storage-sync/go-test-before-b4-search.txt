@@ -1,0 +1,15 @@
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory
+    cto_blockers_test.go:821: snippet v1 paired with current v2 store.VaultSearchHit{ID:"20261108-1", Title:"Giữ", Path:"giữ.md", Snippet:"V1-ONLY-8841 shared", BodyStatus:"current"}
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite
+    cto_blockers_test.go:821: snippet v1 paired with current v2 store.VaultSearchHit{ID:"20261108-0145508e943546fe", Title:"Giữ", Path:"giữ.md", Snippet:"V1-ONLY-8841 shared", BodyStatus:"current"}
+=== RUN   TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres
+2026/11/08 15:06:51 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:821: snippet v1 paired with current v2 store.VaultSearchHit{ID:"20261108-80a42415cd1e72a3", Title:"Giữ", Path:"giữ.md", Snippet:"V1-ONLY-8841 shared", BodyStatus:"current"}
+--- FAIL: TestB4_SearchDoesNotPairOldSnippetWithNewVersion (0.17s)
+    --- FAIL: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/memory (0.00s)
+    --- FAIL: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/sqlite (0.04s)
+    --- FAIL: TestB4_SearchDoesNotPairOldSnippetWithNewVersion/postgres (0.13s)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/vault	0.171s
+FAIL
