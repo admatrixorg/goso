@@ -235,7 +235,6 @@ func routerBase(opt Options) *http.ServeMux {
 	mux.HandleFunc("GET /api/vault/search", handleSearchVault(st))
 	mux.HandleFunc("POST /api/vault/sync", handleSyncVault(st))
 	mux.HandleFunc("GET /api/vault/inventory", handleVaultInventory(st))
-	mux.HandleFunc("POST /api/vault/inventory", handleVaultInventory(st))
 	mux.HandleFunc("GET /api/vault/health", handleVaultHealth(st))
 	mux.HandleFunc("GET /api/vault/graph", handleVaultGraph(st))
 	mux.HandleFunc("GET /api/vault/docs/{id}/links", handleVaultDocLinks(st))

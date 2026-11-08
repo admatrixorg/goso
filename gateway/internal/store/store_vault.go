@@ -128,6 +128,9 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		}
 	}
 	if existing != nil {
+		if !existing.OwnerExplicit {
+			return nil, ErrConflict
+		}
 		existing.Title = d.Title
 		existing.Path = d.Path
 		existing.SHA256 = d.SHA256
@@ -274,7 +277,8 @@ func (s *Store) ListVaultDocLinks(id string) (outbound, inbound []VaultLink, err
 	outbound = make([]VaultLink, 0, len(ob))
 	for _, l := range ob {
 		if l.ToID != "" {
-			if t := s.vaultDocs[l.ToID]; t == nil || !SameTenant(t.TenantID, doc.TenantID) {
+			t := s.vaultDocs[l.ToID]
+			if t == nil || !SameTenant(t.TenantID, doc.TenantID) || !t.OwnerExplicit {
 				l.ToID = ""
 			}
 		}
@@ -283,7 +287,7 @@ func (s *Store) ListVaultDocLinks(id string) (outbound, inbound []VaultLink, err
 	inbound = []VaultLink{}
 	for from, list := range s.vaultLinks {
 		src := s.vaultDocs[from]
-		if src == nil || !SameTenant(src.TenantID, doc.TenantID) {
+		if src == nil || !SameTenant(src.TenantID, doc.TenantID) || !src.OwnerExplicit {
 			continue
 		}
 		for _, l := range list {
@@ -309,7 +313,7 @@ func (s *Store) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 	defer s.mu.RUnlock()
 	var out []VaultSearchHit
 	for _, d := range s.vaultDocs {
-		if d == nil || !SameTenant(d.TenantID, tenant) {
+		if d == nil || !SameTenant(d.TenantID, tenant) || !d.OwnerExplicit {
 			continue
 		}
 		inTitle := strings.Contains(strings.ToLower(d.Title), needle)

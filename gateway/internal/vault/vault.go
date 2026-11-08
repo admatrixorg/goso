@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
 	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -23,10 +23,10 @@ import (
 type Service struct {
 	Store store.StoreIface
 	Root  string
-	mu    sync.Mutex
 	// collectHook, when set, replaces the tenant directory walk. Tests use it
 	// for empty, failed, and partial scans. Production leaves it nil.
 	collectHook func(tenant string) ([]diskFile, error)
+	skipped     []string
 }
 
 // SyncResult counts filesystem reconciliation work.
@@ -213,20 +213,20 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := lockNamespace(s.Root)
+	defer unlock()
 	var rel string
 	existing, err := s.Store.FindVaultDocByTitle(tenantID, title)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
-	if existing != nil && !store.SameTenant(existing.TenantID, tenantID) {
-		return nil, ErrTargetTenant
+	if existing != nil && (!store.SameTenant(existing.TenantID, tenantID) || !existing.OwnerExplicit) {
+		existing = nil
 	}
 	if existing != nil && existing.Path != "" {
 		rel = existing.Path
 	} else {
-		rel = uniqueRel(dir, Slug(title)+".md")
+		rel = s.freeLogical(dir, tenantID, Slug(title)+".md")
 	}
 	abs, err := s.namespaced(tenantID, rel)
 	if err != nil {
@@ -235,28 +235,28 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
-		return nil, err
-	}
-	fi, err := os.Stat(abs)
-	if err != nil {
+	tmp := abs + ".partial"
+	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
 		return nil, err
 	}
 	doc := store.VaultDoc{
 		Title:         title,
 		Path:          filepath.ToSlash(rel),
 		SHA256:        sha256Hex([]byte(body)),
-		Mtime:         fi.ModTime().UTC(),
+		Mtime:         time.Now().UTC(),
 		Body:          body,
 		TenantID:      tenantID,
 		OwnerExplicit: true,
 	}
 	if existing != nil {
 		doc.ID = existing.ID
-		doc.TenantID = tenantID
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	if err := os.Rename(tmp, abs); err != nil {
 		return nil, err
 	}
 	if err := s.refreshLinks(saved.ID, body); err != nil {
@@ -264,6 +264,22 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	}
 	_ = s.Store.ReResolveVaultLinks()
 	return saved, nil
+}
+
+func (s *Service) freeLogical(dir, tenant, rel string) string {
+	ext := filepath.Ext(rel)
+	stem := strings.TrimSuffix(rel, ext)
+	candidate := rel
+	for n := 2; ; n++ {
+		row, err := s.Store.FindVaultDocByPath(tenant, candidate)
+		taken := err == nil && row != nil
+		if !taken {
+			if _, statErr := os.Lstat(filepath.Join(dir, filepath.FromSlash(candidate))); statErr != nil {
+				return candidate
+			}
+		}
+		candidate = stem + "-" + strconv.Itoa(n) + ext
+	}
 }
 
 // Get returns one tenant's registry row. A different tenant is not found and
@@ -274,25 +290,26 @@ func (s *Service) Get(tenant, id string) (*store.VaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !store.SameTenant(d.TenantID, tenant) {
+	if !store.SameTenant(d.TenantID, tenant) || !served(d) {
 		return nil, store.ErrNotFound
 	}
-	if abs, ok := s.locate(d); ok {
-		b, err := os.ReadFile(abs)
-		if err == nil {
-			d.Body = string(b)
-		}
-	}
-	return d, nil
+	return s.present(d), nil
 }
 
-// List returns registry rows.
+// List returns rows that may be served. Unclear-owner rows are omitted.
 func (s *Service) List() []*store.VaultDoc {
 	list := s.Store.ListVaultDocs()
 	if list == nil {
-		return []*store.VaultDoc{}
+		list = []*store.VaultDoc{}
 	}
-	return list
+	out := make([]*store.VaultDoc, 0, len(list))
+	for _, d := range list {
+		if !served(d) {
+			continue
+		}
+		out = append(out, s.present(d))
+	}
+	return out
 }
 
 // Links returns outbound and inbound [[wikilink]] edges.
@@ -310,7 +327,21 @@ func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
 	if hits == nil {
 		hits = []store.VaultSearchHit{}
 	}
-	return hits, nil
+	out := make([]store.VaultSearchHit, 0, len(hits))
+	for _, h := range hits {
+		d, err := s.Store.GetVaultDoc(h.ID)
+		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) {
+			continue
+		}
+		if _, ok := s.locate(d); !ok {
+			h.Snippet = ""
+			h.BodyStatus = "unconfirmed"
+		} else {
+			h.BodyStatus = "current"
+		}
+		out = append(out, h)
+	}
+	return out, nil
 }
 
 // Sync is the old global reconcile. It no longer scans or deletes. Scoped

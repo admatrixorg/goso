@@ -430,20 +430,17 @@ func (s *SQLiteStore) migrate() error {
 	return nil
 }
 
+// vaultMigrateFault, when set, aborts migrateVaultScope at a named step.
+// Tests use it to prove the migration is transactional. Production leaves it nil.
+var vaultMigrateFault func(step string) error
+
 // migrateVaultScope makes (tenant_id, path) the uniqueness key. A database
 // created with a global path UNIQUE is rebuilt in place. Rows are copied, not
 // moved on disk, and owner_explicit stays 0 so unclear legacy rows are not
 // assigned. Postgres uses the same method from migratePostgres.
 func (s *SQLiteStore) migrateVaultScope() error {
 	if s.pg {
-		if _, err := s.db.Exec(`ALTER TABLE vault_docs ADD COLUMN IF NOT EXISTS owner_explicit INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return err
-		}
-		if _, err := s.db.Exec(`ALTER TABLE vault_docs DROP CONSTRAINT IF EXISTS vault_docs_path_key`); err != nil {
-			return err
-		}
-		_, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_docs_tenant_path ON vault_docs (tenant_id, path)`)
-		return err
+		return s.migrateVaultScopePostgres()
 	}
 	var ddl string
 	if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='vault_docs'`).Scan(&ddl); err != nil {
@@ -453,12 +450,17 @@ func (s *SQLiteStore) migrateVaultScope() error {
 		_, _ = s.db.Exec(`ALTER TABLE vault_docs ADD COLUMN owner_explicit INTEGER NOT NULL DEFAULT 0`)
 		return nil
 	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 	for _, trig := range []string{"vault_docs_ai", "vault_docs_au", "vault_docs_ad"} {
-		if _, err := s.db.Exec(`DROP TRIGGER IF EXISTS ` + trig); err != nil {
+		if _, err := tx.Exec(`DROP TRIGGER IF EXISTS ` + trig); err != nil {
 			return err
 		}
 	}
-	if _, err := s.db.Exec(`CREATE TABLE vault_docs_scoped (
+	if _, err := tx.Exec(`CREATE TABLE vault_docs_scoped (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
 		path TEXT NOT NULL,
@@ -471,20 +473,54 @@ func (s *SQLiteStore) migrateVaultScope() error {
 	)`); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`INSERT INTO vault_docs_scoped(id, title, path, sha256, mtime, body, tenant_id, owner_explicit)
+	if _, err := tx.Exec(`INSERT INTO vault_docs_scoped(id, title, path, sha256, mtime, body, tenant_id, owner_explicit)
 		SELECT id, title, path, sha256, mtime, COALESCE(body, ''), COALESCE(NULLIF(tenant_id, ''), 'default'), 0 FROM vault_docs`); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`DROP TABLE vault_docs`); err != nil {
+	if vaultMigrateFault != nil {
+		if err := vaultMigrateFault("copied"); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DROP TABLE vault_docs`); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`ALTER TABLE vault_docs_scoped RENAME TO vault_docs`); err != nil {
+	if _, err := tx.Exec(`ALTER TABLE vault_docs_scoped RENAME TO vault_docs`); err != nil {
 		return err
 	}
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_docs_title ON vault_docs(title)`)
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_docs_tenant ON vault_docs(tenant_id)`)
-	_, _ = s.db.Exec(`DROP TABLE IF EXISTS vault_fts`)
-	return nil
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_docs_title ON vault_docs(title)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_docs_tenant ON vault_docs(tenant_id)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS vault_fts`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *SQLiteStore) migrateVaultScopePostgres() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`ALTER TABLE vault_docs ADD COLUMN IF NOT EXISTS owner_explicit INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if vaultMigrateFault != nil {
+		if err := vaultMigrateFault("postgres-altered"); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`ALTER TABLE vault_docs DROP CONSTRAINT IF EXISTS vault_docs_path_key`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_docs_tenant_path ON vault_docs (tenant_id, path)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) initFTS() {

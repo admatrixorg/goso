@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -72,10 +73,76 @@ func (s *Service) tenantDir(tenant string) (string, error) {
 		return "", errors.New("path escape")
 	}
 	dir := filepath.Join(s.Root, "t", tenant)
+	if err := rejectSymlinks(s.Root, dir); err != nil {
+		return "", err
+	}
 	if !underRoot(s.Root, dir) {
 		return "", errors.New("path escape")
 	}
 	return dir, nil
+}
+
+func rejectSymlinks(root, target string) error {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return errors.New("path escape")
+	}
+	rel = filepath.Clean(rel)
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return errors.New("path escape")
+	}
+	cur := root
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		info, err := os.Lstat(cur)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("path escape")
+		}
+	}
+	return nil
+}
+
+var namespaceLocks sync.Map
+
+func lockNamespace(root string) func() {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	v, _ := namespaceLocks.LoadOrStore(abs, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+func served(d *store.VaultDoc) bool {
+	return d != nil && d.OwnerExplicit
+}
+
+func (s *Service) present(d *store.VaultDoc) *store.VaultDoc {
+	if d == nil {
+		return nil
+	}
+	cp := *d
+	if abs, ok := s.locate(&cp); ok {
+		if b, err := os.ReadFile(abs); err == nil {
+			cp.Body = string(b)
+		}
+		cp.BodyStatus = "current"
+		return &cp
+	}
+	cp.Body = ""
+	cp.BodyStatus = "unconfirmed"
+	return &cp
 }
 
 // LogicalPath rejects absolute paths and traversal. It does not grant scope.
@@ -111,6 +178,9 @@ func (s *Service) namespaced(tenant, logical string) (string, error) {
 		return "", err
 	}
 	abs := filepath.Join(dir, filepath.FromSlash(logical))
+	if err := rejectSymlinks(dir, abs); err != nil {
+		return "", err
+	}
 	if !underRoot(dir, abs) {
 		return "", errors.New("path escape")
 	}
@@ -179,7 +249,7 @@ func (s *Service) legacyOwned(d *store.VaultDoc) bool {
 	if err != nil || info.IsDir() {
 		return false
 	}
-	for _, other := range s.List() {
+	for _, other := range s.Store.ListVaultDocs() {
 		if other != nil && other.ID != d.ID && other.Path == d.Path && !store.SameTenant(other.TenantID, d.TenantID) {
 			return false
 		}
@@ -205,7 +275,21 @@ func (s *Service) locate(d *store.VaultDoc) (string, bool) {
 	return "", false
 }
 
+func (s *Service) noteSkip(rel string) {
+	s.skipped = append(s.skipped, rel)
+}
+
+func unverifiedPath(path string, skipped []string) bool {
+	for _, s := range skipped {
+		if s == path || strings.HasPrefix(path, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
+	s.skipped = nil
 	if s.collectHook != nil {
 		return s.collectHook(tenant)
 	}
@@ -234,8 +318,14 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 		if path == dir {
 			return nil
 		}
+		rel, relErr := filepath.Rel(dir, path)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if d.Type()&os.ModeSymlink != 0 {
+				s.noteSkip(rel + "/")
 				return filepath.SkipDir
 			}
 			return nil
@@ -245,14 +335,11 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 			return nil
 		}
 		if !fileInside(dir, path) {
+			s.noteSkip(rel)
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
 		if _, err := logicalPath(rel); err != nil {
+			s.noteSkip(rel)
 			return nil
 		}
 		body, err := os.ReadFile(path)
@@ -272,6 +359,19 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 	return out, nil
 }
 
+// SetTestBarriers installs test-only hooks. afterScan runs after the
+// directory walk and beforeDelete runs before registry deletes. Both run on
+// the sync goroutine. Production leaves them nil.
+func SetTestBarriers(afterScan, beforeDelete func()) {
+	barrierAfterScan = afterScan
+	barrierBeforeDelete = beforeDelete
+}
+
+var (
+	barrierAfterScan    func()
+	barrierBeforeDelete func()
+)
+
 // SyncTenant reconciles one tenant's namespace. An empty, failed, or partial
 // scan returns before any delete. Rows outside the tenant, and rows whose
 // owner was not recorded by a scoped write, are left in place.
@@ -280,11 +380,14 @@ func (s *Service) SyncTenant(tenant string) (*SyncResult, error) {
 		return nil, ErrSyncDisabled
 	}
 	tenant = store.NormalizeTenant(tenant)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := lockNamespace(s.Root)
+	defer unlock()
 	files, err := s.collectTenant(tenant)
 	if err != nil {
 		return nil, err
+	}
+	if barrierAfterScan != nil {
+		barrierAfterScan()
 	}
 	res := &SyncResult{}
 	seen := make(map[string]struct{}, len(files))
@@ -295,6 +398,11 @@ func (s *Service) SyncTenant(tenant string) (*SyncResult, error) {
 			return nil, err
 		}
 		if existing != nil && !store.SameTenant(existing.TenantID, tenant) {
+			continue
+		}
+		if existing != nil && !existing.OwnerExplicit {
+			seen[f.Rel] = struct{}{}
+			res.Skipped++
 			continue
 		}
 		if existing != nil && existing.SHA256 == f.Hash {
@@ -333,11 +441,17 @@ func (s *Service) SyncTenant(tenant string) (*SyncResult, error) {
 	if len(files) == 0 {
 		return res, nil
 	}
+	if barrierBeforeDelete != nil {
+		barrierBeforeDelete()
+	}
 	for _, d := range s.List() {
 		if d == nil || !store.SameTenant(d.TenantID, tenant) || !d.OwnerExplicit {
 			continue
 		}
 		if _, ok := seen[d.Path]; ok {
+			continue
+		}
+		if unverifiedPath(d.Path, s.skipped) {
 			continue
 		}
 		if s.legacyOwned(d) {
@@ -356,7 +470,7 @@ func (s *Service) SyncTenant(tenant string) (*SyncResult, error) {
 func (s *Service) Inventory(tenant string) (Inventory, error) {
 	tenant = store.NormalizeTenant(tenant)
 	out := Inventory{DryRun: true, Applied: false, Tenant: tenant, Entries: []InventoryEntry{}}
-	for _, d := range s.List() {
+	for _, d := range s.Store.ListVaultDocs() {
 		if d == nil || !store.SameTenant(d.TenantID, tenant) {
 			continue
 		}

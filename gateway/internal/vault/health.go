@@ -28,8 +28,13 @@ func (s *Service) Health(tenant string) (*Health, error) {
 	}
 	h := &Health{}
 	seen := make(map[string]struct{})
-	for _, d := range s.List() {
+	hidden := make(map[string]struct{})
+	for _, d := range s.Store.ListVaultDocs() {
 		if d == nil || !store.SameTenant(d.TenantID, tenant) {
+			continue
+		}
+		if !served(d) {
+			hidden[d.Path] = struct{}{}
 			continue
 		}
 		h.Docs++
@@ -48,6 +53,9 @@ func (s *Service) Health(tenant string) (*Health, error) {
 		}
 	}
 	for rel := range byRel {
+		if _, skip := hidden[rel]; skip {
+			continue
+		}
 		if _, ok := seen[rel]; !ok {
 			h.Unindexed++
 		}

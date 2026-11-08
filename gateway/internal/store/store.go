@@ -323,6 +323,7 @@ type VaultDoc struct {
 	SHA256        string    `json:"sha256"`
 	Mtime         time.Time `json:"mtime"`
 	Body          string    `json:"body,omitempty"`
+	BodyStatus    string    `json:"body_status,omitempty"`
 	OwnerExplicit bool      `json:"-"`
 }
 
@@ -335,10 +336,11 @@ type VaultLink struct {
 
 // VaultSearchHit is one lexical (FTS5 / substring) vault match. Semantic search is DI-09.
 type VaultSearchHit struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Path    string `json:"path"`
-	Snippet string `json:"snippet"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Path       string `json:"path"`
+	Snippet    string `json:"snippet"`
+	BodyStatus string `json:"body_status,omitempty"`
 }
 
 // ConnectorRecord is a persisted connector registration (config only, no secrets).

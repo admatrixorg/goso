@@ -430,14 +430,14 @@ func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer s.Close()
-	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "wikilink pineapple [[Beta]]"})
+	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "wikilink pineapple [[Beta]]", OwnerExplicit: true})
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if err := s.ReplaceVaultLinks(a.ID, []string{"Beta"}); err != nil {
 		t.Fatalf("links: %v", err)
 	}
-	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "mango [[Alpha]]"})
+	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "mango [[Alpha]]", OwnerExplicit: true})
 	if err != nil {
 		t.Fatalf("beta: %v", err)
 	}

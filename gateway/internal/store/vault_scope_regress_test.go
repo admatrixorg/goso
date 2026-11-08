@@ -78,11 +78,12 @@ func TestSearchVault_TenantBeforeLimit(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for i := 0; i < 55; i++ {
 				if _, err := s.PutVaultDoc(VaultDoc{
-					Title:    fmt.Sprintf("000-noise-%02d", i),
-					Path:     fmt.Sprintf("noise-%02d.md", i),
-					TenantID: "minh-an-legal",
-					Body:     "MATOKEN441 legal-only-8841",
-					SHA256:   "n",
+					Title:         fmt.Sprintf("000-noise-%02d", i),
+					Path:          fmt.Sprintf("noise-%02d.md", i),
+					TenantID:      "minh-an-legal",
+					Body:          "MATOKEN441 legal-only-8841",
+					SHA256:        "n",
+					OwnerExplicit: true,
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -123,14 +124,14 @@ func TestVaultLinks_DoNotCrossTenants(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			sales, err := s.PutVaultDoc(VaultDoc{
 				Title: "Chính sách chiết khấu Minh An", Path: "chinh-sach.md", TenantID: "minh-an-sales",
-				Body: "see [[Chính sách chiết khấu Minh An]]", SHA256: "s",
+				Body: "see [[Chính sách chiết khấu Minh An]]", SHA256: "s", OwnerExplicit: true,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 			legal, err := s.PutVaultDoc(VaultDoc{
 				Title: "Chính sách chiết khấu Minh An", Path: "chinh-sach.md", TenantID: "minh-an-legal",
-				Body: "see [[Chính sách chiết khấu Minh An]]", SHA256: "l",
+				Body: "see [[Chính sách chiết khấu Minh An]]", SHA256: "l", OwnerExplicit: true,
 			})
 			if err != nil {
 				t.Fatal(err)

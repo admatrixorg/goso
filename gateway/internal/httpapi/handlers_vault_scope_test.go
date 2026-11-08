@@ -127,7 +127,7 @@ func TestVaultAPI_ForgedScopeAndSameTenantPermission(t *testing.T) {
 		t.Fatalf("sync query tenant changed legal: %v %#v", err, got)
 	}
 
-	inv := httptest.NewRequest(http.MethodPost, "/api/vault/inventory?apply=1", bytes.NewBufferString(`{"apply":true}`))
+	inv := httptest.NewRequest(http.MethodGet, "/api/vault/inventory?apply=1", nil)
 	inv.Header.Set("Authorization", "Bearer admin-140")
 	inv.Header.Set("X-Goso-Tenant", "minh-an-sales")
 	w = httptest.NewRecorder()

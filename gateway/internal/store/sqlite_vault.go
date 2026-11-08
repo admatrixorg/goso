@@ -88,6 +88,9 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		existing, _ = scanVaultDoc(row)
 	}
 	if existing != nil {
+		if !existing.OwnerExplicit {
+			return nil, ErrConflict
+		}
 		d.ID = existing.ID
 		d.TenantID = NormalizeTenant(existing.TenantID)
 		explicit := 0
@@ -246,7 +249,7 @@ func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLin
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := s.db.Query(`SELECT l.from_id, l.to_id, l.raw, COALESCE(t.tenant_id, '')
+	rows, err := s.db.Query(`SELECT l.from_id, l.to_id, l.raw, COALESCE(t.tenant_id, ''), COALESCE(t.owner_explicit, 0)
 		FROM vault_links l
 		LEFT JOIN vault_docs t ON t.id = l.to_id
 		WHERE l.from_id=?
@@ -258,10 +261,11 @@ func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLin
 	for rows.Next() {
 		var l VaultLink
 		var toTenant string
-		if err := rows.Scan(&l.FromID, &l.ToID, &l.Raw, &toTenant); err != nil {
+		var toExplicit int
+		if err := rows.Scan(&l.FromID, &l.ToID, &l.Raw, &toTenant, &toExplicit); err != nil {
 			continue
 		}
-		if l.ToID != "" && !SameTenant(toTenant, tenant) {
+		if l.ToID != "" && (!SameTenant(toTenant, tenant) || toExplicit == 0) {
 			l.ToID = ""
 		}
 		outbound = append(outbound, l)
@@ -270,7 +274,7 @@ func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLin
 	rows, err = s.db.Query(`SELECT l.from_id, l.to_id, l.raw
 		FROM vault_links l
 		JOIN vault_docs s ON s.id = l.from_id
-		WHERE l.to_id=? AND s.tenant_id=?
+		WHERE l.to_id=? AND s.tenant_id=? AND s.owner_explicit<>0
 		ORDER BY l.raw`, id, tenant)
 	if err != nil {
 		return nil, nil, err
@@ -306,7 +310,7 @@ func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error)
 	rows, err := s.db.Query(`SELECT vault_fts.id, vault_docs.title, vault_docs.path, snippet(vault_fts, 2, '', '', '…', 16)
 		FROM vault_fts
 		JOIN vault_docs ON vault_docs.id = vault_fts.id
-		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ?
+		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ? AND vault_docs.owner_explicit<>0
 		ORDER BY rank LIMIT ?`, `"`+phrase+`"`, tenant, VaultSearchLimit)
 	if err != nil {
 		return nil, err
@@ -328,7 +332,7 @@ func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error)
 
 func (s *SQLiteStore) searchVaultInstr(tenant, q string) ([]VaultSearchHit, error) {
 	rows, err := s.db.Query(`SELECT id, title, path, body FROM vault_docs
-		WHERE tenant_id = ? AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)
+		WHERE tenant_id = ? AND owner_explicit<>0 AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)
 		ORDER BY lower(title) LIMIT ?`, tenant, q, q, VaultSearchLimit)
 	if err != nil {
 		return nil, err
