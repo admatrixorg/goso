@@ -33,7 +33,7 @@ func TestB1_UnclearOwnerDeniedBodyAndMetadata(t *testing.T) {
 			svc := New(st, root)
 			unclear, err := st.PutVaultDoc(store.VaultDoc{
 				Title: "Chính sách cũ Minh An", Path: "chinh-sach.md", TenantID: "minh-an-sales",
-				Body: "LEGACY-SECRET-8841", SHA256: "old", OwnerExplicit: false,
+				Body: "LEGACY-ROW-8841", SHA256: "old", OwnerExplicit: false,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -55,11 +55,11 @@ func TestB1_UnclearOwnerDeniedBodyAndMetadata(t *testing.T) {
 				t.Fatalf("get served legacy row: %v", err)
 			}
 			for _, d := range svc.List() {
-				if d.ID == unclear.ID || strings.Contains(d.Title, "cũ") || strings.Contains(d.Body, "LEGACY-SECRET-8841") || d.Path == unclear.Path && d.ID == unclear.ID {
+				if d.ID == unclear.ID || strings.Contains(d.Title, "cũ") || strings.Contains(d.Body, "LEGACY-ROW-8841") || d.Path == unclear.Path && d.ID == unclear.ID {
 					t.Fatalf("list leaked metadata %#v", d)
 				}
 			}
-			hits, err := svc.Search("minh-an-sales", "LEGACY-SECRET-8841")
+			hits, err := svc.Search("minh-an-sales", "LEGACY-ROW-8841")
 			if err != nil || len(hits) != 0 {
 				t.Fatalf("search leaked %v %#v", err, hits)
 			}
@@ -107,7 +107,7 @@ func TestB1_UnclearOwnerDeniedBodyAndMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			after, err = st.GetVaultDoc(unclear.ID)
-			if err != nil || after.Body != "LEGACY-SECRET-8841" || after.OwnerExplicit {
+			if err != nil || after.Body != "LEGACY-ROW-8841" || after.OwnerExplicit {
 				t.Fatalf("sync upgraded legacy %#v %v", after, err)
 			}
 		})

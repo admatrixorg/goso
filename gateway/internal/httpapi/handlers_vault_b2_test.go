@@ -13,11 +13,11 @@ import (
 )
 
 func TestB2_InventoryDenyLeaksNoMetadata(t *testing.T) {
-	const secret = "LEGACY-SECRET-8841"
+	const marker = "LEGACY-ROW-8841"
 	st := store.New()
 	if _, err := st.PutVaultDoc(store.VaultDoc{
-		Title: secret, Path: "chinh-sach.md", TenantID: store.DefaultTenant,
-		Body: secret, SHA256: "s", OwnerExplicit: true,
+		Title: marker, Path: "chinh-sach.md", TenantID: store.DefaultTenant,
+		Body: marker, SHA256: "s", OwnerExplicit: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestB2_InventoryDenyLeaksNoMetadata(t *testing.T) {
 	}
 	assertDenied := func(name string, w *httptest.ResponseRecorder) {
 		t.Helper()
-		if w.Code == http.StatusOK || strings.Contains(w.Body.String(), secret) || strings.Contains(w.Body.String(), "chinh-sach") {
+		if w.Code == http.StatusOK || strings.Contains(w.Body.String(), marker) || strings.Contains(w.Body.String(), "chinh-sach") {
 			t.Fatalf("%s leaked %d %s", name, w.Code, w.Body.String())
 		}
 	}
