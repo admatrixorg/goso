@@ -1,0 +1,21 @@
+# github.com/mqglobal/goso/gateway/internal/vault [github.com/mqglobal/goso/gateway/internal/vault.test]
+gateway/internal/vault/cto_blockers_test.go:303:59: got.BodyStatus undefined (type *store.VaultDoc has no field or method BodyStatus)
+FAIL	github.com/mqglobal/goso/gateway/internal/vault [build failed]
+=== RUN   TestB2_InventoryDenyLeaksNoMetadata
+    handlers_vault_b2_test.go:56: write POST leaked 200 {"dry_run":true,"applied":false,"tenant_id":"default","entries":[{"doc_id":"20261108-1","path":"chinh-sach.md","tenant_id":"default","action":"mapped","reason":"registry_explicit"}]}
+--- FAIL: TestB2_InventoryDenyLeaksNoMetadata (0.00s)
+=== RUN   TestB4_TwoHTTPRequestsSameTenant
+    handlers_vault_b2_test.go:102: http put lost 200 []
+--- FAIL: TestB4_TwoHTTPRequestsSameTenant (0.00s)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/httpapi	0.011s
+=== RUN   TestB3_SQLiteMigrationFaultIsReplaySafe
+    cto_migrate_test.go:61: reopen after fault: SQL logic error: table vault_docs_scoped already exists (1)
+--- FAIL: TestB3_SQLiteMigrationFaultIsReplaySafe (0.03s)
+=== RUN   TestB3_PostgresMigrationFaultRollsBack
+2026/11/08 14:28:52 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_migrate_test.go:136: postgres fault reported success
+--- FAIL: TestB3_PostgresMigrationFaultRollsBack (0.09s)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/store	0.120s
+FAIL

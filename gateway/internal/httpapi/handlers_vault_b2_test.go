@@ -56,6 +56,20 @@ func TestB2_InventoryDenyLeaksNoMetadata(t *testing.T) {
 	assertDenied("write POST", call(admin, http.MethodPost, "gk_write"))
 	assertDenied("view GET", call(admin, http.MethodGet, "view-b2"))
 	assertDenied("view POST", call(admin, http.MethodPost, "view-b2"))
+
+	// Existing full-access principal: the admin bearer. Not a new grant.
+	allowed := call(admin, http.MethodGet, "admin-b2")
+	if allowed.Code != http.StatusOK || !strings.Contains(allowed.Body.String(), `"dry_run":true`) || !strings.Contains(allowed.Body.String(), `"applied":false`) || !strings.Contains(allowed.Body.String(), "chinh-sach.md") {
+		t.Fatalf("admin GET inventory %d %s", allowed.Code, allowed.Body.String())
+	}
+	adminKey := auth.Require(auth.Config{
+		Admin: "admin-b2",
+		Keys:  vaultKeyGate{token: "gk_admin", scopes: []string{"admin"}},
+	})(inner)
+	byScope := call(adminKey, http.MethodGet, "gk_admin")
+	if byScope.Code != http.StatusOK || !strings.Contains(byScope.Body.String(), `"dry_run":true`) || !strings.Contains(byScope.Body.String(), "chinh-sach.md") {
+		t.Fatalf("existing admin-scope key GET inventory %d %s", byScope.Code, byScope.Body.String())
+	}
 }
 
 func TestB4_TwoHTTPRequestsSameTenant(t *testing.T) {

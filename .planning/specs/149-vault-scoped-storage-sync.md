@@ -46,9 +46,10 @@ One tenant cannot read, write, or sync-delete another tenant’s knowledge, even
 
 No new roles. The existing admin, view, and API-key matrix is unchanged, and read is not widened for write keys.
 
-- Admin bearer is the vault caller. `X-Goso-Tenant` is a tenant selector for that admin token when `GOSO_MULTI_TENANT=1`. It is not a staff id.
-- View, `read`, and `write` keys are denied on inventory GET and POST. A deny body contains no document id, title, path, or body.
-- `write` may still PUT and POST other non-privileged vault routes. It still cannot GET them.
+- The existing admin bearer (`GOSO_ADMIN_TOKEN`) is the principal that may GET the inventory dry-run. An issued API key whose scopes already include `admin` may also GET it, because that scope already implies every route. No new scope was added.
+- `X-Goso-Tenant` is a tenant selector for that admin token when `GOSO_MULTI_TENANT=1`. It is not a staff id.
+- Unauthenticated callers, the view token, and issued keys scoped only `read` or only `write` are denied on inventory GET and POST. A deny body contains no document id, title, path, or body.
+- `write` may still PUT and POST other non-privileged vault routes. It still cannot GET them, including inventory.
 
 ## Migration and schema rollback
 
