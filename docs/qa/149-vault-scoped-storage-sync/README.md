@@ -24,9 +24,11 @@ Chrome: **Google Chrome 156.0.8078.47** (`google-chrome --version`). Binary path
 
 `QA_SKIP_TABS` was not set.
 
-### Seeded branch run on the B4/B5 tree (the all-tab result)
+### Seeded run on the Search-fix tree (the all-tab result)
 
-Log: [qa-tabs-b4b5-seeded.log](qa-tabs-b4b5-seeded.log)
+Log: [qa-tabs-final-191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c-seeded.log](qa-tabs-final-191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c-seeded.log)
+
+Tested code SHA, from `git rev-parse HEAD` at 2026-11-08T15:12:20Z, before and after the run: `191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c`. `git status --porcelain` was empty both times. That tree already contains the Search hash fix (`5984781`). The stdout does not print a SHA.
 
 Command, from `control-plane/`, with `QA_SKIP_TABS` unset:
 
@@ -35,11 +37,13 @@ GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
   CHROME_PATH=/usr/local/bin/google-chrome npm run qa:tabs
 ```
 
-Gateway was `go run ./gateway/cmd/goso-gateway` from this working tree, fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+Gateway was `go run ./gateway/cmd/goso-gateway` started from that clean tree, fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
 
 Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Nothing was skipped.
 
-The earlier seeded log [qa-tabs-branch-seeded.log](qa-tabs-branch-seeded.log) is the same command on the pre-B4/B5 tree. It is kept so the first evidence commit stays readable.
+The commit that adds this log does not change gateway or control-plane code. qa:tabs was not run again for that commit. That commit's SHA is filled in by the following README-only commit, after `git rev-parse` of the log commit. It is not invented in the qa:tabs stdout.
+
+[qa-tabs-b4b5-seeded.log](qa-tabs-b4b5-seeded.log) is the same command on the tree before the Search fix. It does not confirm the final code. [qa-tabs-branch-seeded.log](qa-tabs-branch-seeded.log) is the earlier pre-B4/B5 run. Both are kept.
 
 Every sidebar hash, every alias, and the folded routes `#/teams`, `#/heatmap`, `#/marketing` passed. Honest empty states, not failures: `#/decision`, `#/decision-flow`, `#/hooks`, `#/meetings`, and the matching aliases. Chat send, agent menu, model menu, `@`, search, rename, archive, and restore passed.
 
