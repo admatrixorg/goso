@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -235,8 +236,8 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return nil, err
 	}
-	tmp := abs + ".partial"
-	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
+	tmp, err := writeExclusive(filepath.Dir(abs), filepath.Base(abs)+".partial", []byte(body))
+	if err != nil {
 		return nil, err
 	}
 	doc := store.VaultDoc{
@@ -253,10 +254,14 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {
-		_ = os.Remove(tmp)
+		removeRegular(tmp)
 		return nil, err
 	}
-	if err := os.Rename(tmp, abs); err != nil {
+	if barrierAfterCommit != nil {
+		barrierAfterCommit()
+	}
+	if err := publishRename(tmp, abs); err != nil {
+		removeRegular(tmp)
 		return nil, err
 	}
 	if err := s.refreshLinks(saved.ID, body); err != nil {
@@ -264,6 +269,40 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	}
 	_ = s.Store.ReResolveVaultLinks()
 	return saved, nil
+}
+
+// writeExclusive creates name inside dir. An existing symlink at that name is
+// not followed and not replaced. The directory must already have been checked.
+func writeExclusive(dir, name string, body []byte) (string, error) {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return "", errors.New("path escape")
+	}
+	path := filepath.Join(dir, name)
+	if err := rejectSymlinks(dir, path); err != nil {
+		return "", err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(body); err != nil {
+		_ = f.Close()
+		removeRegular(path)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		removeRegular(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func removeRegular(path string) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return
+	}
+	_ = os.Remove(path)
 }
 
 func (s *Service) freeLogical(dir, tenant, rel string) string {
@@ -333,7 +372,7 @@ func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
 		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) {
 			continue
 		}
-		if _, ok := s.locate(d); !ok {
+		if _, _, ok := s.published(d); !ok {
 			h.Snippet = ""
 			h.BodyStatus = "unconfirmed"
 		} else {

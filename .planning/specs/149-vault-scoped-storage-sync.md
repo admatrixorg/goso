@@ -35,11 +35,11 @@ One tenant cannot read, write, or sync-delete another tenant’s knowledge, even
 ## Behavior
 
 1. Logical `path` is unique per `tenant_id` on memory, SQLite, and Postgres. New files go under `GOSO_VAULT_DIR/t/<tenant>/`. That directory is assigned from the resolved tenant. Path segments are not agent, project, or customer grants. A symlink at `t/`, at `t/<tenant>`, or at a nested directory is rejected in put, get, sync, health, and inventory.
-2. Put publishes the file only after the registry write commits. A database error leaves the previous file bytes in place. Put by title and sync by path never change a row whose `owner_explicit` is false.
+2. Put writes a temp file inside the already-checked tenant directory with `O_EXCL`, then commits the registry, then renames the temp onto the final name, then writes links. The temp name is not `absolute path + ".partial"` via `WriteFile`: an existing symlink at the temp name is not followed and not replaced. Get, list, and search return a body, hash, and snippet only when the file was read and its bytes match the registry hash. A missing file, a hash mismatch (rename failed, or the process stopped after the registry commit), or a read error is `body_status=unconfirmed` with an empty body, hash, and snippet. That is fail-closed. There is no revision history. The namespace lock is process-local. Two operating-system processes writing the same vault root are unsupported. A database error leaves the previous file bytes in place. Put by title and sync by path never change a row whose `owner_explicit` is false.
 3. Get, list, search, links, backlinks, graph, health, and counts omit unclear-owner rows entirely: no body and no id, title, or path. Search applies that predicate before rank and `LIMIT`.
 4. `POST /api/vault/sync` calls `SyncTenant` for `tenant.Resolve` only. Forged query or body fields do not select a tenant. `Sync()` with no tenant always errors.
 5. Flag **vault_scoped_sync** is `GOSO_VAULT_SCOPED_SYNC`. Default off. Off refuses sync and does not restore a global scan. Off does **not** roll the schema back.
-6. Deletes run only after a finished, non-empty scan, and only for an explicit row whose file was verified absent. A skipped symlink or invalid path is not an authoritative absence, so that row is not deleted. An empty scan does not delete. The last missing file stays in the registry, but get and search do not present the cached body as current (`body_status=unconfirmed`, body and snippet empty).
+6. Deletes run only after a finished, non-empty scan, and only for an explicit row whose file was verified absent. A symlink is recorded before the extension and `IsDir` checks. `WalkDir` reports a directory symlink with `IsDir` false, so that order matters: descendants of an unverified symlink stay protected and are not deleted. A skipped symlink or invalid path is not an authoritative absence. An empty scan does not delete. The last missing file stays in the registry, but get and search do not present the cached body as current (`body_status=unconfirmed`, body, hash, and snippet empty).
 7. `GET /api/vault/inventory` is the only inventory method. `apply=1` is ignored. There is no POST. The report lists the resolved tenant’s registry rows (`mapped` / `quarantine`) and files inside that tenant directory. It does **not** list the shared root. This inventory is **incomplete**. It is not a finished migration and not a finished quarantine.
 
 ## Permission
@@ -47,7 +47,7 @@ One tenant cannot read, write, or sync-delete another tenant’s knowledge, even
 No new roles. The existing admin, view, and API-key matrix is unchanged, and read is not widened for write keys.
 
 - The existing admin bearer (`GOSO_ADMIN_TOKEN`) is the principal that may GET the inventory dry-run. An issued API key whose scopes already include `admin` may also GET it, because that scope already implies every route. No new scope was added.
-- `X-Goso-Tenant` is a tenant selector for that admin token when `GOSO_MULTI_TENANT=1`. It is not a staff id.
+- `X-Goso-Tenant` is a tenant selector for the admin bearer when `GOSO_MULTI_TENANT=1`. It is not a staff id. An issued key, including one that already has scope `admin`, cannot switch tenant with that header. The request stays on the default tenant.
 - Unauthenticated callers, the view token, and issued keys scoped only `read` or only `write` are denied on inventory GET and POST. A deny body contains no document id, title, path, or body.
 - `write` may still PUT and POST other non-privileged vault routes. It still cannot GET them, including inventory.
 
@@ -55,7 +55,7 @@ No new roles. The existing admin, view, and API-key matrix is unchanged, and rea
 
 Additive `owner_explicit INTEGER NOT NULL DEFAULT 0`. Existing rows stay 0. SQLite rebuilds `vault_docs` inside one transaction when `path` is still globally unique, copies rows, and does not move files. A fault before commit rolls the rebuild back; opening again completes it; opening a second time does not duplicate rows. Postgres applies the column, the drop of `vault_docs_path_key`, and the `(tenant_id, path)` unique index in one transaction.
 
-Turning the sync flag off does not reverse that schema. Rolling back the binary leaves the column and the new unique index in place. That is the schema rollback: do not `DROP TABLE`, `DROP COLUMN`, or delete rows to undo this spec. The data stays.
+Turning the sync flag off does not roll the schema back. Compatibility with the old binary is unproven. There is no automatic rollback. Leaving the column and the new unique index in place is the schema rollback: do not `DROP TABLE`, `DROP COLUMN`, or delete rows to undo this spec. The data stays.
 
 ## Rollback of sync
 
@@ -67,6 +67,8 @@ Converters, PARA, taxonomy, AI, moving legacy files, assigning owners, deleting 
 
 ## Tests
 
-`TestB1_UnclearOwnerDeniedBodyAndMetadata` (memory, SQLite, Postgres), `TestB2_InventoryDenyLeaksNoMetadata`, `TestB3_SQLiteMigrationFaultIsReplaySafe`, `TestB3_PostgresMigrationFaultRollsBack`, `TestB4_TwoServicesSameTenantDoNotDropPut`, `TestB4_TwoHTTPRequestsSameTenant`, `TestB4_DBFailureDoesNotPublishFile`, `TestB5_NamespaceSymlinkRejected`, `TestB5_ParentAndNestedSymlink`, `TestEmptyScan_DoesNotPresentCachedBody`, `TestPartialSkip_DoesNotAuthoritativelyDelete`, plus the earlier tenant-isolation tests.
+`TestB1_UnclearOwnerDeniedBodyAndMetadata` (memory, SQLite, Postgres), `TestB2_InventoryDenyLeaksNoMetadata`, `TestB2_IssuedKeyCannotSwitchTenant`, `TestB3_SQLiteMigrationFaultIsReplaySafe`, `TestB3_PostgresMigrationFaultRollsBack`, `TestB4_TwoServicesSameTenantDoNotDropPut`, `TestB4_TwoHTTPRequestsSameTenant`, `TestB4_DBFailureDoesNotPublishFile`, `TestB4_AfterCommitReadersFailClosed`, `TestB4_RenameFailureUnconfirmed`, `TestB4_ReadFileErrorFailClosed`, `TestB4_RestartAcrossPersistentStore`, `TestB5_NamespaceSymlinkRejected`, `TestB5_ParentAndNestedSymlink`, `TestB5a_PartialSymlinkLeavesOtherTenantUnchanged`, `TestB5b_DirSymlinkDoesNotDeleteChild`, `TestEmptyScan_DoesNotPresentCachedBody`, `TestPartialSkip_DoesNotAuthoritativelyDelete`, plus the earlier tenant-isolation tests.
+
+`TestB5a` is a local filesystem check. It is not a remote exploit. A pre-existing `.partial` symlink into another tenant must leave that tenant's bytes unchanged, including when the registry write fails.
 
 `go test ./...` with `GOSO_TEST_POSTGRES_DSN`. CI service `postgres:16`. `make verify`, desktop verify, `make smoke`, and `npm run qa:tabs` against a local gateway and control plane.

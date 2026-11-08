@@ -1,0 +1,92 @@
+=== RUN   TestB4_AfterCommitReadersFailClosed
+=== RUN   TestB4_AfterCommitReadersFailClosed/memory
+    cto_blockers_test.go:437: get returned a body during publish &store.VaultDoc{ID:"20261108-1", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"d0fd4b5ba71ed543ac8d304ea08919a04b0965be9fa42df4ed11db6d2b62685b", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 439132787, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_AfterCommitReadersFailClosed/sqlite
+    cto_blockers_test.go:437: get returned a body during publish &store.VaultDoc{ID:"20261108-bafc7419bbf59b44", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"d0fd4b5ba71ed543ac8d304ea08919a04b0965be9fa42df4ed11db6d2b62685b", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 485648833, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_AfterCommitReadersFailClosed/postgres
+2026/11/08 14:54:08 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:437: get returned a body during publish &store.VaultDoc{ID:"20261108-ecbb787a7f148bd9", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"d0fd4b5ba71ed543ac8d304ea08919a04b0965be9fa42df4ed11db6d2b62685b", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 705461036, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+--- FAIL: TestB4_AfterCommitReadersFailClosed (0.27s)
+    --- FAIL: TestB4_AfterCommitReadersFailClosed/memory (0.00s)
+    --- FAIL: TestB4_AfterCommitReadersFailClosed/sqlite (0.05s)
+    --- FAIL: TestB4_AfterCommitReadersFailClosed/postgres (0.22s)
+=== RUN   TestB4_RenameFailureUnconfirmed
+=== RUN   TestB4_RenameFailureUnconfirmed/memory
+    cto_blockers_test.go:494: rename failure still current &store.VaultDoc{ID:"20261108-1", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"6868180450613e1138c43393ffd8d45f18c04a0f5accb7c7cfff97d09e936027", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 706692614, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_RenameFailureUnconfirmed/sqlite
+    cto_blockers_test.go:494: rename failure still current &store.VaultDoc{ID:"20261108-b2ce4e803cc6bda0", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"6868180450613e1138c43393ffd8d45f18c04a0f5accb7c7cfff97d09e936027", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 756280636, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_RenameFailureUnconfirmed/postgres
+2026/11/08 14:54:08 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:494: rename failure still current &store.VaultDoc{ID:"20261108-13e87c28b2ca8e4b", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"6868180450613e1138c43393ffd8d45f18c04a0f5accb7c7cfff97d09e936027", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 937969224, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+--- FAIL: TestB4_RenameFailureUnconfirmed (0.23s)
+    --- FAIL: TestB4_RenameFailureUnconfirmed/memory (0.00s)
+    --- FAIL: TestB4_RenameFailureUnconfirmed/sqlite (0.05s)
+    --- FAIL: TestB4_RenameFailureUnconfirmed/postgres (0.18s)
+=== RUN   TestB4_ReadFileErrorFailClosed
+=== RUN   TestB4_ReadFileErrorFailClosed/memory
+    cto_blockers_test.go:528: read error kept cached body &store.VaultDoc{ID:"20261108-1", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"afe0f76f4da5383524d8dc30ab6ddb2bcaa307c7d7409dcfdd18a0a6b780a694", Mtime:time.Date(2026, time.November, 8, 14, 54, 8, 938947274, time.UTC), Body:"cached-body-8841", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_ReadFileErrorFailClosed/sqlite
+    cto_blockers_test.go:528: read error kept cached body &store.VaultDoc{ID:"20261108-9a7b2c2d233d8c0a", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"afe0f76f4da5383524d8dc30ab6ddb2bcaa307c7d7409dcfdd18a0a6b780a694", Mtime:time.Date(2026, time.November, 8, 14, 54, 9, 5262585, time.UTC), Body:"cached-body-8841", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_ReadFileErrorFailClosed/postgres
+2026/11/08 14:54:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:528: read error kept cached body &store.VaultDoc{ID:"20261108-bd69dd6a17e23170", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"afe0f76f4da5383524d8dc30ab6ddb2bcaa307c7d7409dcfdd18a0a6b780a694", Mtime:time.Date(2026, time.November, 8, 14, 54, 9, 174480623, time.UTC), Body:"cached-body-8841", BodyStatus:"current", OwnerExplicit:true}
+--- FAIL: TestB4_ReadFileErrorFailClosed (0.24s)
+    --- FAIL: TestB4_ReadFileErrorFailClosed/memory (0.00s)
+    --- FAIL: TestB4_ReadFileErrorFailClosed/sqlite (0.07s)
+    --- FAIL: TestB4_ReadFileErrorFailClosed/postgres (0.17s)
+=== RUN   TestB4_RestartAcrossPersistentStore
+=== RUN   TestB4_RestartAcrossPersistentStore/sqlite
+    cto_blockers_test.go:575: restart presented a body &store.VaultDoc{ID:"20261108-199e45eae4a1c322", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"73f5f830f28527d729b86d7be62c8408cc5d9e6de19456e14c81cf7fffe64777", Mtime:time.Date(2026, time.November, 8, 14, 54, 9, 205560103, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+=== RUN   TestB4_RestartAcrossPersistentStore/postgres
+2026/11/08 14:54:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/08 14:54:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:606: restart presented a body &store.VaultDoc{ID:"20261108-b2c4e62887cee5ed", TenantID:"minh-an-sales", Title:"Giữ", Path:"giữ.md", SHA256:"73f5f830f28527d729b86d7be62c8408cc5d9e6de19456e14c81cf7fffe64777", Mtime:time.Date(2026, time.November, 8, 14, 54, 9, 272476628, time.UTC), Body:"original-body", BodyStatus:"current", OwnerExplicit:true}
+--- FAIL: TestB4_RestartAcrossPersistentStore (0.12s)
+    --- FAIL: TestB4_RestartAcrossPersistentStore/sqlite (0.03s)
+    --- FAIL: TestB4_RestartAcrossPersistentStore/postgres (0.08s)
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-ok
+    cto_blockers_test.go:693: put followed an existing partial symlink
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-fail
+    cto_blockers_test.go:697: other tenant bytes changed "SALES-OVERWRITE-8841" <nil>
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-ok
+    cto_blockers_test.go:693: put followed an existing partial symlink
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-fail
+    cto_blockers_test.go:697: other tenant bytes changed "SALES-OVERWRITE-8841" <nil>
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres
+2026/11/08 14:54:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-ok
+    cto_blockers_test.go:693: put followed an existing partial symlink
+=== RUN   TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-fail
+    cto_blockers_test.go:697: other tenant bytes changed "SALES-OVERWRITE-8841" <nil>
+--- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged (0.14s)
+    --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory (0.00s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-ok (0.00s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/memory/db-fail (0.00s)
+    --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite (0.03s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-ok (0.00s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/sqlite/db-fail (0.00s)
+    --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres (0.11s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-ok (0.00s)
+        --- FAIL: TestB5a_PartialSymlinkLeavesOtherTenantUnchanged/postgres/db-fail (0.00s)
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/memory
+    cto_blockers_test.go:755: child deleted when folder became a symlink &vault.SyncResult{Upserted:0, Skipped:1, Deleted:1} not found
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/sqlite
+    cto_blockers_test.go:755: child deleted when folder became a symlink &vault.SyncResult{Upserted:0, Skipped:1, Deleted:1} not found
+=== RUN   TestB5b_DirSymlinkDoesNotDeleteChild/postgres
+2026/11/08 14:54:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    cto_blockers_test.go:755: child deleted when folder became a symlink &vault.SyncResult{Upserted:0, Skipped:1, Deleted:1} not found
+--- FAIL: TestB5b_DirSymlinkDoesNotDeleteChild (0.10s)
+    --- FAIL: TestB5b_DirSymlinkDoesNotDeleteChild/memory (0.00s)
+    --- FAIL: TestB5b_DirSymlinkDoesNotDeleteChild/sqlite (0.02s)
+    --- FAIL: TestB5b_DirSymlinkDoesNotDeleteChild/postgres (0.08s)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/vault	1.096s
+=== RUN   TestB2_IssuedKeyCannotSwitchTenant
+--- PASS: TestB2_IssuedKeyCannotSwitchTenant (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	0.013s
+FAIL

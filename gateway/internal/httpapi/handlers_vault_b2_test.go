@@ -72,6 +72,48 @@ func TestB2_InventoryDenyLeaksNoMetadata(t *testing.T) {
 	}
 }
 
+func TestB2_IssuedKeyCannotSwitchTenant(t *testing.T) {
+	t.Setenv("GOSO_MULTI_TENANT", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "admin-b2")
+	st := store.New()
+	if _, err := st.PutVaultDoc(store.VaultDoc{
+		Title: "Mặc định", Path: "default-note.md", TenantID: store.DefaultTenant,
+		Body: "default-body", SHA256: "d", OwnerExplicit: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.PutVaultDoc(store.VaultDoc{
+		Title: "Pháp chế", Path: "legal-only.md", TenantID: "minh-an-legal",
+		Body: "legal-body", SHA256: "l", OwnerExplicit: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inner := NewRouter(Options{Store: st, Version: "t"})
+	h := auth.Require(auth.Config{
+		Admin: "admin-b2",
+		Keys:  vaultKeyGate{token: "gk_admin", scopes: []string{"admin"}},
+	})(inner)
+	call := func(token, tenant string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/vault/inventory", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if tenant != "" {
+			req.Header.Set("X-Goso-Tenant", tenant)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	admin := call("admin-b2", "minh-an-legal")
+	if admin.Code != http.StatusOK || !strings.Contains(admin.Body.String(), "legal-only.md") || strings.Contains(admin.Body.String(), "default-note.md") {
+		t.Fatalf("admin bearer with header %d %s", admin.Code, admin.Body.String())
+	}
+	issued := call("gk_admin", "minh-an-legal")
+	if issued.Code != http.StatusOK || strings.Contains(issued.Body.String(), "legal-only.md") || !strings.Contains(issued.Body.String(), "default-note.md") || !strings.Contains(issued.Body.String(), `"dry_run":true`) {
+		t.Fatalf("issued admin-scope key switched tenant %d %s", issued.Code, issued.Body.String())
+	}
+}
+
 func TestB4_TwoHTTPRequestsSameTenant(t *testing.T) {
 	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
 	t.Setenv("GOSO_VAULT_DIR", t.TempDir())

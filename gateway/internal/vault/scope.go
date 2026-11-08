@@ -113,6 +113,8 @@ func rejectSymlinks(root, target string) error {
 
 var namespaceLocks sync.Map
 
+// lockNamespace is process-local. Two operating-system processes writing the
+// same vault root are unsupported: this lock does not cross process boundaries.
 func lockNamespace(root string) func() {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -133,16 +135,38 @@ func (s *Service) present(d *store.VaultDoc) *store.VaultDoc {
 		return nil
 	}
 	cp := *d
-	if abs, ok := s.locate(&cp); ok {
-		if b, err := os.ReadFile(abs); err == nil {
-			cp.Body = string(b)
-		}
-		cp.BodyStatus = "current"
+	body, sum, ok := s.published(&cp)
+	if !ok {
+		cp.Body = ""
+		cp.SHA256 = ""
+		cp.BodyStatus = "unconfirmed"
 		return &cp
 	}
-	cp.Body = ""
-	cp.BodyStatus = "unconfirmed"
+	cp.Body = body
+	cp.SHA256 = sum
+	cp.BodyStatus = "current"
 	return &cp
+}
+
+// published is true only when the file was read and its bytes match the
+// registry hash. A missing file, a hash mismatch, or a read error is unconfirmed.
+func (s *Service) published(d *store.VaultDoc) (body, sum string, ok bool) {
+	if d == nil {
+		return "", "", false
+	}
+	abs, located := s.locate(d)
+	if !located || d.SHA256 == "" {
+		return "", "", false
+	}
+	b, err := readVaultFile(abs)
+	if err != nil {
+		return "", "", false
+	}
+	sum = sha256Hex(b)
+	if sum != d.SHA256 {
+		return "", "", false
+	}
+	return string(b), sum, true
 }
 
 // LogicalPath rejects absolute paths and traversal. It does not grant scope.
@@ -323,11 +347,14 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 			return relErr
 		}
 		rel = filepath.ToSlash(rel)
+		// A directory symlink is not IsDir. Record it before the extension
+		// check, or descendants such as nhom/note.md look missing and are deleted.
+		if d.Type()&os.ModeSymlink != 0 {
+			s.noteSkip(rel)
+			s.noteSkip(rel + "/")
+			return nil
+		}
 		if d.IsDir() {
-			if d.Type()&os.ModeSymlink != 0 {
-				s.noteSkip(rel + "/")
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(d.Name()))
@@ -370,7 +397,29 @@ func SetTestBarriers(afterScan, beforeDelete func()) {
 var (
 	barrierAfterScan    func()
 	barrierBeforeDelete func()
+	barrierAfterCommit  func()
+	publishRename       = os.Rename
+	readVaultFile       = os.ReadFile
 )
+
+// SetPublishHooks installs test-only hooks around publication.
+// rename defaults to os.Rename and read defaults to os.ReadFile when nil.
+// afterCommit runs after the registry write and before the file rename.
+// Get and Search do not take the namespace lock. Multiple processes writing
+// the same vault root are unsupported.
+func SetPublishHooks(rename func(oldPath, newPath string) error, read func(string) ([]byte, error), afterCommit func()) {
+	if rename == nil {
+		publishRename = os.Rename
+	} else {
+		publishRename = rename
+	}
+	if read == nil {
+		readVaultFile = os.ReadFile
+	} else {
+		readVaultFile = read
+	}
+	barrierAfterCommit = afterCommit
+}
 
 // SyncTenant reconciles one tenant's namespace. An empty, failed, or partial
 // scan returns before any delete. Rows outside the tenant, and rows whose

@@ -9,8 +9,9 @@ No customer data and no secret values. Env vars are named, not filled in.
 | Commit | What it is |
 |---|---|
 | `9b1b6f37b0b1d3df043b6edb0769545ec4b0d560` | Pre-fix head the blocker tests failed on |
-| `7a3ee90523f3bdd0c53c282791428946127a82e0` | Fixes plus the gitleaks test-marker rename. [Actions run 42491042663](https://github.com/admatrixorg/goso/actions/runs/42491042663) succeeded |
-| This evidence commit | Adds this directory and the admin inventory test. Its Actions run is linked from PR #25 |
+| `7a3ee90523f3bdd0c53c282791428946127a82e0` | B1–B3 and the SPEC collision, accepted. [Actions run 42491042663](https://github.com/admatrixorg/goso/actions/runs/42491042663) succeeded |
+| `55d9b9ab0a6278685f14fd7eb04b629b13f3ec91` | First evidence directory and the admin inventory GET test |
+| This commit | B4 fail-closed publish and B5 symlink checks. The Actions run for this head is linked from PR #25 |
 
 Postgres for the local `go test` lines was **16.15** (Ubuntu package). CI uses the workflow service image `postgres:16`. The DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
@@ -20,11 +21,22 @@ Chrome: **Google Chrome 156.0.8078.47** (`google-chrome --version`). Binary path
 
 `QA_SKIP_TABS` was not set.
 
-### Seeded branch run (the all-tab result)
+### Seeded branch run on the B4/B5 tree (the all-tab result)
 
-Log: [qa-tabs-branch-seeded.log](qa-tabs-branch-seeded.log)
+Log: [qa-tabs-b4b5-seeded.log](qa-tabs-b4b5-seeded.log)
 
-Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+Command, from `control-plane/`, with `QA_SKIP_TABS` unset:
+
+```bash
+GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
+  CHROME_PATH=/usr/local/bin/google-chrome npm run qa:tabs
+```
+
+Gateway was `go run ./gateway/cmd/goso-gateway` from this working tree, fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Nothing was skipped.
+
+The earlier seeded log [qa-tabs-branch-seeded.log](qa-tabs-branch-seeded.log) is the same command on the pre-B4/B5 tree. It is kept so the first evidence commit stays readable.
 
 Every sidebar hash, every alias, and the folded routes `#/teams`, `#/heatmap`, `#/marketing` passed. Honest empty states, not failures: `#/decision`, `#/decision-flow`, `#/hooks`, `#/meetings`, and the matching aliases. Chat send, agent menu, model menu, `@`, search, rename, archive, and restore passed.
 
@@ -100,6 +112,8 @@ GOSO_TEST_POSTGRES_DSN=... go test ./gateway/internal/vault/ \
 | [go-test-before-9b1b6f3-http-store.txt](go-test-before-9b1b6f3-http-store.txt) | Same, HTTP and store packages |
 | [go-test-after-7a3ee90-vault-http-store.txt](go-test-after-7a3ee90-vault-http-store.txt) | Passing run on the fixed tree `7a3ee90` |
 | [go-test-after-head-vault-http-store.txt](go-test-after-head-vault-http-store.txt) | Passing run including the admin inventory allow case |
+| [go-test-before-b4b5.txt](go-test-before-b4b5.txt) | New B4/B5 tests against the pre-fix publish and symlink behavior. Memory, SQLite, and Postgres each fail |
+| [go-test-after-b4b5.txt](go-test-after-b4b5.txt) | Same tests after the fail-closed publish and symlink checks. Each backend passes |
 
 Before, per backend where the test has one:
 
@@ -117,6 +131,25 @@ Before, per backend where the test has one:
 
 After: each of those tests PASS, including B1 `/sqlite`, `/memory`, and `/postgres`.
 
+B4 and B5 below were still open on `7a3ee90`. The new tests failed on that behavior, then passed after the change. Verbose output is in the two B4/B5 files. Each subtest name is the backend.
+
+Before, on memory, SQLite, and Postgres:
+
+- `TestB4_AfterCommitReadersFailClosed`: after the registry commit and before rename, get returned `original-body` with `body_status=current` and the new hash.
+- `TestB4_RenameFailureUnconfirmed`: a failed rename still returned the old body as current.
+- `TestB4_ReadFileErrorFailClosed`: a read error still returned `cached-body-8841` as current.
+- `TestB4_RestartAcrossPersistentStore`: SQLite and Postgres, after close and reopen, still returned the old body as current. Memory has no restart case.
+- `TestB5a_PartialSymlinkLeavesOtherTenantUnchanged`: `db-ok` followed the `.partial` symlink; `db-fail` replaced the other tenant's file with `SALES-OVERWRITE-8841`. This is local filesystem access, not a remote exploit.
+- `TestB5b_DirSymlinkDoesNotDeleteChild`: sync deleted `nhom/note.md` (`Deleted:1`) after `nhom` was replaced by a symlink.
+
+After: those tests PASS on memory, SQLite, and Postgres (restart is SQLite and Postgres only). `go test ./gateway/... -count=1` also passed.
+
+Get, list, and search return a body, hash, and snippet only when the file bytes match the registry hash. Otherwise `body_status` is `unconfirmed` and the body, hash, and snippet are empty. A read error fails closed. Two operating-system processes writing the same vault root are unsupported; the namespace lock is process-local.
+
 ## Who may GET the inventory
 
-Under the existing contract, unauth, the view token, and issued keys scoped only `read` or only `write` are denied. The dry-run stays usable by the existing admin bearer (`GOSO_ADMIN_TOKEN`) and by an issued key that already has scope `admin` (`Grant.Has("admin")` already allows every route). No grant was added or widened. `TestB2_InventoryDenyLeaksNoMetadata` covers the denies and those two allows.
+No new grant. Unauth, the view token, and issued keys scoped only `read` or only `write` are denied. The dry-run is readable by the existing admin bearer (`GOSO_ADMIN_TOKEN`) and by an issued key that already has scope `admin`. An issued key cannot switch tenant with `X-Goso-Tenant`; `TestB2_IssuedKeyCannotSwitchTenant` covers that. The admin bearer can. `TestB2_InventoryDenyLeaksNoMetadata` covers the denies and the two allows.
+
+## Schema
+
+Turning `GOSO_VAULT_SCOPED_SYNC` off does not roll the schema back. Compatibility with the old binary is unproven. There is no automatic rollback.
