@@ -328,6 +328,7 @@ func (s *Store) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 		out = append(out, VaultSearchHit{
 			ID: d.ID, Title: d.Title, Path: d.Path,
 			Snippet: SnippetAround(hay, q, 80),
+			SHA256:  d.SHA256,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Title < out[j].Title })

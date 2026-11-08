@@ -398,9 +398,16 @@ var (
 	barrierAfterScan    func()
 	barrierBeforeDelete func()
 	barrierAfterCommit  func()
+	barrierAfterSearch  func()
 	publishRename       = os.Rename
 	readVaultFile       = os.ReadFile
 )
+
+// SetSearchBarrier runs after SearchVault has returned hits and before Search
+// refetches each row. It exists so a test can publish a newer version in that gap.
+func SetSearchBarrier(fn func()) {
+	barrierAfterSearch = fn
+}
 
 // SetPublishHooks installs test-only hooks around publication.
 // rename defaults to os.Rename and read defaults to os.ReadFile when nil.

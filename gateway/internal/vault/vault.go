@@ -366,13 +366,21 @@ func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
 	if hits == nil {
 		hits = []store.VaultSearchHit{}
 	}
+	if barrierAfterSearch != nil {
+		barrierAfterSearch()
+	}
 	out := make([]store.VaultSearchHit, 0, len(hits))
 	for _, h := range hits {
 		d, err := s.Store.GetVaultDoc(h.ID)
 		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) {
 			continue
 		}
-		if _, _, ok := s.published(d); !ok {
+		// The snippet was built from h.SHA256. published verifies the file against
+		// the row fetched now, which may already be a newer write. Keep the hit:
+		// it was inside the tenant predicate and limit. Do not rebuild a snippet
+		// from the later body. An empty snippet with unconfirmed is one version.
+		_, sum, ok := s.published(d)
+		if !ok || h.SHA256 == "" || h.SHA256 != sum {
 			h.Snippet = ""
 			h.BodyStatus = "unconfirmed"
 		} else {

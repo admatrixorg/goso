@@ -307,7 +307,7 @@ func (s *SQLiteStore) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 
 func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error) {
 	phrase := strings.ReplaceAll(q, `"`, `""`)
-	rows, err := s.db.Query(`SELECT vault_fts.id, vault_docs.title, vault_docs.path, snippet(vault_fts, 2, '', '', '…', 16)
+	rows, err := s.db.Query(`SELECT vault_fts.id, vault_docs.title, vault_docs.path, snippet(vault_fts, 2, '', '', '…', 16), vault_docs.sha256
 		FROM vault_fts
 		JOIN vault_docs ON vault_docs.id = vault_fts.id
 		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ? AND vault_docs.owner_explicit<>0
@@ -319,7 +319,7 @@ func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error)
 	var out []VaultSearchHit
 	for rows.Next() {
 		var h VaultSearchHit
-		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &h.Snippet); err != nil {
+		if err := rows.Scan(&h.ID, &h.Title, &h.Path, &h.Snippet, &h.SHA256); err != nil {
 			continue
 		}
 		out = append(out, h)
@@ -331,7 +331,7 @@ func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error)
 }
 
 func (s *SQLiteStore) searchVaultInstr(tenant, q string) ([]VaultSearchHit, error) {
-	rows, err := s.db.Query(`SELECT id, title, path, body FROM vault_docs
+	rows, err := s.db.Query(`SELECT id, title, path, body, sha256 FROM vault_docs
 		WHERE tenant_id = ? AND owner_explicit<>0 AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)
 		ORDER BY lower(title) LIMIT ?`, tenant, q, q, VaultSearchLimit)
 	if err != nil {
@@ -340,15 +340,15 @@ func (s *SQLiteStore) searchVaultInstr(tenant, q string) ([]VaultSearchHit, erro
 	defer rows.Close()
 	var out []VaultSearchHit
 	for rows.Next() {
-		var id, title, path, body string
-		if err := rows.Scan(&id, &title, &path, &body); err != nil {
+		var id, title, path, body, sum string
+		if err := rows.Scan(&id, &title, &path, &body, &sum); err != nil {
 			continue
 		}
 		hay := body
 		if !strings.Contains(strings.ToLower(body), strings.ToLower(q)) {
 			hay = title
 		}
-		out = append(out, VaultSearchHit{ID: id, Title: title, Path: path, Snippet: SnippetAround(hay, q, 80)})
+		out = append(out, VaultSearchHit{ID: id, Title: title, Path: path, Snippet: SnippetAround(hay, q, 80), SHA256: sum})
 	}
 	if out == nil {
 		out = []VaultSearchHit{}

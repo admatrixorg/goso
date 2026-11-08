@@ -335,12 +335,15 @@ type VaultLink struct {
 }
 
 // VaultSearchHit is one lexical (FTS5 / substring) vault match. Semantic search is DI-09.
+// SHA256 is the registry hash of the body the snippet was taken from. It is not
+// a response field. Search uses it to avoid pairing that snippet with a later version.
 type VaultSearchHit struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Path       string `json:"path"`
 	Snippet    string `json:"snippet"`
 	BodyStatus string `json:"body_status,omitempty"`
+	SHA256     string `json:"-"`
 }
 
 // ConnectorRecord is a persisted connector registration (config only, no secrets).

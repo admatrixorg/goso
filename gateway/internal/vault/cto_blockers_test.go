@@ -767,3 +767,63 @@ func TestB5b_DirSymlinkDoesNotDeleteChild(t *testing.T) {
 		})
 	}
 }
+
+func TestB4_SearchDoesNotPairOldSnippetWithNewVersion(t *testing.T) {
+	for _, name := range []string{"memory", "sqlite", "postgres"} {
+		t.Run(name, func(t *testing.T) {
+			st := openNamedVaultStore(t, name)
+			if st == nil {
+				t.Skip("postgres DSN unset")
+			}
+			svc := New(st, t.TempDir())
+			if _, err := svc.PutTenant("Giữ", "V1-ONLY-8841 shared", "minh-an-sales"); err != nil {
+				t.Fatal(err)
+			}
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			var once sync.Once
+			SetSearchBarrier(func() {
+				once.Do(func() { close(entered) })
+				<-release
+			})
+			t.Cleanup(func() {
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				SetSearchBarrier(nil)
+			})
+			type searchResult struct {
+				hits []store.VaultSearchHit
+				err  error
+			}
+			done := make(chan searchResult, 1)
+			go func() {
+				hits, err := svc.Search("minh-an-sales", "V1-ONLY-8841")
+				done <- searchResult{hits, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("search did not pause after the query")
+			}
+			if _, err := svc.PutTenant("Giữ", "V2-ONLY-8841 shared", "minh-an-sales"); err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			res := <-done
+			if res.err != nil {
+				t.Fatal(res.err)
+			}
+			for _, h := range res.hits {
+				if h.BodyStatus == "current" && strings.Contains(h.Snippet, "V1-ONLY-8841") {
+					t.Fatalf("snippet v1 paired with current v2 %#v", h)
+				}
+			}
+			if len(res.hits) != 1 || res.hits[0].BodyStatus != "unconfirmed" || res.hits[0].Snippet != "" || strings.Contains(res.hits[0].Snippet, "V1-ONLY-8841") {
+				t.Fatalf("want the v1 hit kept unconfirmed with an empty snippet %#v", res.hits)
+			}
+		})
+	}
+}
