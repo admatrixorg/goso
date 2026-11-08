@@ -13,8 +13,10 @@ No customer data and no secret values. Env vars are named, not filled in.
 | `55d9b9ab0a6278685f14fd7eb04b629b13f3ec91` | First evidence directory and the admin inventory GET test |
 | `57894583ff6b35885ec99968ac76012e8c69e916` | Fail-closed publish and the symlink checks. [Actions run 42492310792](https://github.com/admatrixorg/goso/actions/runs/42492310792) succeeded |
 | `5984781feb4e76a857ade2b173d0c03f2da8a186` | Search keeps the snippet hash. The verbose transcripts below that name this tree were run here. Their stdout does not print a SHA |
+| `191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c` | Evidence for the Search race. Also the clean tree under `qa:tabs` after the Search fix |
+| `6845ede7e55079625e1301b699b52e2701b0b5b1` | Adds `qa-tabs-final-191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c-seeded.log`. No code change. qa:tabs was not re-run |
 
-The commit that adds the Search transcripts and the corrected B5 note does not change gateway code. It was not the tree under test.
+`191ba443d0f0acfe41ecb0b00e7e7f6ff41cd11c` adds the Search transcripts and the corrected B5 note. It does not change gateway code. The Search tests were run on its parent, `5984781`. `6845ede7e55079625e1301b699b52e2701b0b5b1` adds the qa:tabs log for `191ba44` and does not change code either.
 
 Postgres for the local `go test` lines was **16.15** (Ubuntu package). CI uses the workflow service image `postgres:16`. The DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
@@ -41,7 +43,7 @@ Gateway was `go run ./gateway/cmd/goso-gateway` started from that clean tree, fr
 
 Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Nothing was skipped.
 
-The commit that adds this log does not change gateway or control-plane code. qa:tabs was not run again for that commit. That commit's SHA is filled in by the following README-only commit, after `git rev-parse` of the log commit. It is not invented in the qa:tabs stdout.
+The commit that adds this log is `6845ede7e55079625e1301b699b52e2701b0b5b1`. It does not change gateway or control-plane code. qa:tabs was not run again for that commit, or for the README line that records its SHA. The stdout does not print either SHA.
 
 [qa-tabs-b4b5-seeded.log](qa-tabs-b4b5-seeded.log) is the same command on the tree before the Search fix. It does not confirm the final code. [qa-tabs-branch-seeded.log](qa-tabs-branch-seeded.log) is the earlier pre-B4/B5 run. Both are kept.
 
