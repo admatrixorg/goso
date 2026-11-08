@@ -6,11 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -18,9 +18,15 @@ import (
 )
 
 // Service is the knowledge vault: registry + markdown/text files on disk.
+// Files for a tenant live under Root/t/<tenant>/, a server-assigned namespace.
+// The logical path is not an agent, project, or customer grant.
 type Service struct {
 	Store store.StoreIface
 	Root  string
+	mu    sync.Mutex
+	// collectHook, when set, replaces the tenant directory walk. Tests use it
+	// for empty, failed, and partial scans. Production leaves it nil.
+	collectHook func(tenant string) ([]diskFile, error)
 }
 
 // SyncResult counts filesystem reconciliation work.
@@ -197,23 +203,32 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 		return nil, errors.New("title is required")
 	}
 	tenantID = store.NormalizeTenant(tenantID)
-	if err := security.Confine(s.Root); err != nil {
+	dir, err := s.tenantDir(tenantID)
+	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
+	if err := security.Confine(dir); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var rel string
-	existing, err := s.Store.FindVaultDocByTitle(title)
-	if err == nil && existing != nil && !store.SameTenant(existing.TenantID, tenantID) {
-		existing = nil
+	existing, err := s.Store.FindVaultDocByTitle(tenantID, title)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
 	}
-	if err == nil && existing != nil && existing.Path != "" {
+	if existing != nil && !store.SameTenant(existing.TenantID, tenantID) {
+		return nil, ErrTargetTenant
+	}
+	if existing != nil && existing.Path != "" {
 		rel = existing.Path
 	} else {
-		rel = uniqueRel(s.Root, Slug(title)+".md")
+		rel = uniqueRel(dir, Slug(title)+".md")
 	}
-	abs, err := s.absPath(rel)
+	abs, err := s.namespaced(tenantID, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -228,16 +243,17 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 		return nil, err
 	}
 	doc := store.VaultDoc{
-		Title:    title,
-		Path:     filepath.ToSlash(rel),
-		SHA256:   sha256Hex([]byte(body)),
-		Mtime:    fi.ModTime().UTC(),
-		Body:     body,
-		TenantID: tenantID,
+		Title:         title,
+		Path:          filepath.ToSlash(rel),
+		SHA256:        sha256Hex([]byte(body)),
+		Mtime:         fi.ModTime().UTC(),
+		Body:          body,
+		TenantID:      tenantID,
+		OwnerExplicit: true,
 	}
 	if existing != nil {
 		doc.ID = existing.ID
-		doc.TenantID = existing.TenantID
+		doc.TenantID = tenantID
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {
@@ -250,25 +266,22 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	return saved, nil
 }
 
-// Get returns a registry row, preferring on-disk body when the file is still under root.
-func (s *Service) Get(id string) (*store.VaultDoc, error) {
+// Get returns one tenant's registry row. A different tenant is not found and
+// its file is not read. On-disk body is preferred when the file is inside
+// that tenant's namespace, or a legacy path owned by this row alone.
+func (s *Service) Get(tenant, id string) (*store.VaultDoc, error) {
 	d, err := s.Store.GetVaultDoc(id)
 	if err != nil {
 		return nil, err
 	}
-	if d.Path == "" {
-		return d, nil
+	if !store.SameTenant(d.TenantID, tenant) {
+		return nil, store.ErrNotFound
 	}
-	abs, err := s.absPath(d.Path)
-	if err != nil {
-		return d, nil
-	}
-	if !fileInsideRoot(s.Root, abs) {
-		return d, nil
-	}
-	b, err := os.ReadFile(abs)
-	if err == nil {
-		d.Body = string(b)
+	if abs, ok := s.locate(d); ok {
+		b, err := os.ReadFile(abs)
+		if err == nil {
+			d.Body = string(b)
+		}
 	}
 	return d, nil
 }
@@ -287,9 +300,10 @@ func (s *Service) Links(id string) (outbound, inbound []store.VaultLink, err err
 	return s.Store.ListVaultDocLinks(id)
 }
 
-// Search is lexical FTS5 / substring. Semantic search is DI-09.
-func (s *Service) Search(q string) ([]store.VaultSearchHit, error) {
-	hits, err := s.Store.SearchVault(q)
+// Search is lexical FTS5 / substring inside one tenant. The store applies the
+// tenant predicate before rank and LIMIT. Semantic search is DI-09.
+func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
+	hits, err := s.Store.SearchVault(tenant, q)
 	if err != nil {
 		return nil, err
 	}
@@ -299,132 +313,10 @@ func (s *Service) Search(q string) ([]store.VaultSearchHit, error) {
 	return hits, nil
 }
 
-type diskFile struct {
-	Rel  string
-	Body []byte
-	Hash string
-	Mod  os.FileInfo
-}
-
-func fileInsideRoot(root, path string) bool {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	target := path
-	if info.Mode()&os.ModeSymlink != 0 {
-		ev, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return false
-		}
-		target = ev
-	}
-	return underRoot(root, target)
-}
-
-func (s *Service) collectFiles() ([]diskFile, error) {
-	if err := security.Confine(s.Root); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
-		return nil, err
-	}
-	var out []diskFile
-	err := filepath.WalkDir(s.Root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if path == s.Root {
-			return nil
-		}
-		if d.IsDir() {
-			if d.Type()&os.ModeSymlink != 0 && !fileInsideRoot(s.Root, path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		if ext != ".md" && ext != ".txt" {
-			return nil
-		}
-		if !fileInsideRoot(s.Root, path) {
-			return nil
-		}
-		rel, err := filepath.Rel(s.Root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
-			return nil
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil
-		}
-		out = append(out, diskFile{Rel: rel, Body: body, Hash: sha256Hex(body), Mod: info})
-		return nil
-	})
-	return out, err
-}
-
-// Sync walks GOSO_VAULT_DIR for *.md / *.txt, upserts by relative path, drops vanished rows.
+// Sync is the old global reconcile. It no longer scans or deletes. Scoped
+// sync is SyncTenant, and only when vault_scoped_sync is on.
 func (s *Service) Sync() (*SyncResult, error) {
-	files, err := s.collectFiles()
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{}, len(files))
-	res := &SyncResult{}
-	for _, f := range files {
-		seen[f.Rel] = struct{}{}
-		existing, err := s.Store.FindVaultDocByPath(f.Rel)
-		if err == nil && existing != nil && existing.SHA256 == f.Hash {
-			res.Skipped++
-			continue
-		}
-		body := string(f.Body)
-		title := titleFrom(f.Rel, body)
-		if existing != nil && !hasH1(body) {
-			title = existing.Title
-		}
-		doc := store.VaultDoc{
-			Title:  title,
-			Path:   f.Rel,
-			SHA256: f.Hash,
-			Mtime:  f.Mod.ModTime().UTC(),
-			Body:   body,
-		}
-		if existing != nil {
-			doc.ID = existing.ID
-		}
-		saved, err := s.Store.PutVaultDoc(doc)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.refreshLinks(saved.ID, body); err != nil {
-			return nil, err
-		}
-		res.Upserted++
-	}
-	for _, d := range s.Store.ListVaultDocs() {
-		if d == nil {
-			continue
-		}
-		if _, ok := seen[d.Path]; ok {
-			continue
-		}
-		if err := s.Store.DeleteVaultDoc(d.ID); err != nil {
-			return nil, err
-		}
-		res.Deleted++
-	}
-	_ = s.Store.ReResolveVaultLinks()
-	return res, nil
+	return nil, ErrSyncDisabled
 }
 
 func hasH1(body string) bool {

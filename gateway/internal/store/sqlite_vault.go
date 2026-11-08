@@ -9,32 +9,49 @@ import (
 	"time"
 )
 
-func (s *SQLiteStore) resolveVaultInner(inner string) string {
+const vaultDocSelect = `id, title, path, sha256, mtime, body, tenant_id, owner_explicit`
+
+func (s *SQLiteStore) resolveVaultInner(tenant, inner string) string {
 	inner = strings.TrimSpace(inner)
 	if inner == "" {
 		return ""
 	}
+	tenant = NormalizeTenant(tenant)
 	var id string
-	err := s.db.QueryRow(`SELECT id FROM vault_docs WHERE lower(title)=lower(?) ORDER BY path LIMIT 1`, inner).Scan(&id)
+	err := s.db.QueryRow(`SELECT id FROM vault_docs WHERE lower(title)=lower(?) AND tenant_id=? ORDER BY path LIMIT 1`, inner, tenant).Scan(&id)
 	if err == nil && id != "" {
 		return id
 	}
-	err = s.db.QueryRow(`SELECT id FROM vault_docs WHERE id=?`, inner).Scan(&id)
+	err = s.db.QueryRow(`SELECT id FROM vault_docs WHERE id=? AND tenant_id=?`, inner, tenant).Scan(&id)
 	if err == nil && id != "" {
 		return id
 	}
 	return ""
 }
 
+func (s *SQLiteStore) vaultTenant(id string) (string, error) {
+	var tenant sql.NullString
+	err := s.db.QueryRow(`SELECT tenant_id FROM vault_docs WHERE id=?`, id).Scan(&tenant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return NormalizeTenant(tenant.String), nil
+}
+
 func scanVaultDoc(sc scanner) (*VaultDoc, error) {
 	var d VaultDoc
 	var ts string
 	var body, tenant sql.NullString
-	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body, &tenant); err != nil {
+	var explicit int
+	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body, &tenant, &explicit); err != nil {
 		return nil, err
 	}
 	d.Mtime = parseTime(ts)
 	d.TenantID = NormalizeTenant(tenant.String)
+	d.OwnerExplicit = explicit != 0
 	if body.Valid {
 		d.Body = body.String
 	}
@@ -60,20 +77,32 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 
 	var existing *VaultDoc
 	if d.ID != "" {
-		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE id=?`, d.ID)
+		row := s.db.QueryRow(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE id=?`, d.ID)
 		existing, _ = scanVaultDoc(row)
+		if existing != nil && !SameTenant(existing.TenantID, d.TenantID) {
+			return nil, ErrConflict
+		}
 	}
 	if existing == nil {
-		row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE path=?`, d.Path)
+		row := s.db.QueryRow(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE path=? AND tenant_id=?`, d.Path, d.TenantID)
 		existing, _ = scanVaultDoc(row)
 	}
 	if existing != nil {
 		d.ID = existing.ID
 		d.TenantID = NormalizeTenant(existing.TenantID)
-		_, err = s.db.Exec(`UPDATE vault_docs SET title=?, path=?, sha256=?, mtime=?, body=? WHERE id=?`,
-			d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.ID)
+		explicit := 0
+		if existing.OwnerExplicit || d.OwnerExplicit {
+			explicit = 1
+			d.OwnerExplicit = true
+		}
+		res, err := s.db.Exec(`UPDATE vault_docs SET title=?, path=?, sha256=?, mtime=?, body=?, owner_explicit=? WHERE id=? AND tenant_id=?`,
+			d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, explicit, d.ID, d.TenantID)
 		if err != nil {
 			return nil, err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return nil, ErrConflict
 		}
 		_ = s.ReResolveVaultLinks()
 		cp := d
@@ -81,8 +110,12 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 	}
 	d.ID = newID()
 	d.TenantID = NormalizeTenant(d.TenantID)
-	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body, tenant_id) VALUES(?,?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.TenantID)
+	explicit := 0
+	if d.OwnerExplicit {
+		explicit = 1
+	}
+	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body, tenant_id, owner_explicit) VALUES(?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.TenantID, explicit)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +125,7 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 }
 
 func (s *SQLiteStore) GetVaultDoc(id string) (*VaultDoc, error) {
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE id=?`, id)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -104,7 +137,7 @@ func (s *SQLiteStore) GetVaultDoc(id string) (*VaultDoc, error) {
 }
 
 func (s *SQLiteStore) ListVaultDocs() []*VaultDoc {
-	rows, err := s.db.Query(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs ORDER BY lower(title), path`)
+	rows, err := s.db.Query(`SELECT ` + vaultDocSelect + ` FROM vault_docs ORDER BY lower(title), path`)
 	if err != nil {
 		return []*VaultDoc{}
 	}
@@ -123,12 +156,13 @@ func (s *SQLiteStore) ListVaultDocs() []*VaultDoc {
 	return out
 }
 
-func (s *SQLiteStore) FindVaultDocByPath(path string) (*VaultDoc, error) {
+func (s *SQLiteStore) FindVaultDocByPath(tenant, path string) (*VaultDoc, error) {
 	path, err := normalizeVaultPath(path)
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE path=?`, path)
+	tenant = NormalizeTenant(tenant)
+	row := s.db.QueryRow(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE path=? AND tenant_id=?`, path, tenant)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -139,12 +173,13 @@ func (s *SQLiteStore) FindVaultDocByPath(path string) (*VaultDoc, error) {
 	return d, nil
 }
 
-func (s *SQLiteStore) FindVaultDocByTitle(title string) (*VaultDoc, error) {
+func (s *SQLiteStore) FindVaultDocByTitle(tenant, title string) (*VaultDoc, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, errors.New("title is required")
 	}
-	row := s.db.QueryRow(`SELECT id, title, path, sha256, mtime, body, tenant_id FROM vault_docs WHERE lower(title)=lower(?) ORDER BY path LIMIT 1`, title)
+	tenant = NormalizeTenant(tenant)
+	row := s.db.QueryRow(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE lower(title)=lower(?) AND tenant_id=? ORDER BY path LIMIT 1`, title, tenant)
 	d, err := scanVaultDoc(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -194,7 +229,11 @@ func (s *SQLiteStore) ReplaceVaultLinks(fromID string, raws []string) error {
 			continue
 		}
 		seen[raw] = struct{}{}
-		toID := s.resolveVaultInner(inner)
+		tenant, err := s.vaultTenant(fromID)
+		if err != nil {
+			return err
+		}
+		toID := s.resolveVaultInner(tenant, inner)
 		if _, err := s.db.Exec(`INSERT INTO vault_links(from_id, to_id, raw) VALUES(?,?,?)`, fromID, toID, raw); err != nil {
 			return err
 		}
@@ -203,27 +242,36 @@ func (s *SQLiteStore) ReplaceVaultLinks(fromID string, raws []string) error {
 }
 
 func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLink, err error) {
-	var cnt int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM vault_docs WHERE id=?`, id).Scan(&cnt); err != nil {
+	tenant, err := s.vaultTenant(id)
+	if err != nil {
 		return nil, nil, err
 	}
-	if cnt == 0 {
-		return nil, nil, ErrNotFound
-	}
-	rows, err := s.db.Query(`SELECT from_id, to_id, raw FROM vault_links WHERE from_id=? ORDER BY raw`, id)
+	rows, err := s.db.Query(`SELECT l.from_id, l.to_id, l.raw, COALESCE(t.tenant_id, '')
+		FROM vault_links l
+		LEFT JOIN vault_docs t ON t.id = l.to_id
+		WHERE l.from_id=?
+		ORDER BY l.raw`, id)
 	if err != nil {
 		return nil, nil, err
 	}
 	outbound = []VaultLink{}
 	for rows.Next() {
 		var l VaultLink
-		if err := rows.Scan(&l.FromID, &l.ToID, &l.Raw); err != nil {
+		var toTenant string
+		if err := rows.Scan(&l.FromID, &l.ToID, &l.Raw, &toTenant); err != nil {
 			continue
+		}
+		if l.ToID != "" && !SameTenant(toTenant, tenant) {
+			l.ToID = ""
 		}
 		outbound = append(outbound, l)
 	}
 	rows.Close()
-	rows, err = s.db.Query(`SELECT from_id, to_id, raw FROM vault_links WHERE to_id=? ORDER BY raw`, id)
+	rows, err = s.db.Query(`SELECT l.from_id, l.to_id, l.raw
+		FROM vault_links l
+		JOIN vault_docs s ON s.id = l.from_id
+		WHERE l.to_id=? AND s.tenant_id=?
+		ORDER BY l.raw`, id, tenant)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -239,23 +287,27 @@ func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLin
 	return outbound, inbound, nil
 }
 
-func (s *SQLiteStore) SearchVault(q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []VaultSearchHit{}, nil
 	}
+	tenant = NormalizeTenant(tenant)
 	if s.vaultFTS {
-		if hits, err := s.searchVaultFTS(q); err == nil {
+		if hits, err := s.searchVaultFTS(tenant, q); err == nil {
 			return hits, nil
 		}
 	}
-	return s.searchVaultInstr(q)
+	return s.searchVaultInstr(tenant, q)
 }
 
-func (s *SQLiteStore) searchVaultFTS(q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error) {
 	phrase := strings.ReplaceAll(q, `"`, `""`)
-	rows, err := s.db.Query(`SELECT id, title, path, snippet(vault_fts, 2, '', '', '…', 16)
-		FROM vault_fts WHERE vault_fts MATCH ? ORDER BY rank LIMIT 50`, `"`+phrase+`"`)
+	rows, err := s.db.Query(`SELECT vault_fts.id, vault_docs.title, vault_docs.path, snippet(vault_fts, 2, '', '', '…', 16)
+		FROM vault_fts
+		JOIN vault_docs ON vault_docs.id = vault_fts.id
+		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ?
+		ORDER BY rank LIMIT ?`, `"`+phrase+`"`, tenant, VaultSearchLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -274,10 +326,10 @@ func (s *SQLiteStore) searchVaultFTS(q string) ([]VaultSearchHit, error) {
 	return out, nil
 }
 
-func (s *SQLiteStore) searchVaultInstr(q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) searchVaultInstr(tenant, q string) ([]VaultSearchHit, error) {
 	rows, err := s.db.Query(`SELECT id, title, path, body FROM vault_docs
-		WHERE instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0
-		ORDER BY lower(title) LIMIT 50`, q, q)
+		WHERE tenant_id = ? AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)
+		ORDER BY lower(title) LIMIT ?`, tenant, q, q, VaultSearchLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -301,22 +353,22 @@ func (s *SQLiteStore) searchVaultInstr(q string) ([]VaultSearchHit, error) {
 }
 
 func (s *SQLiteStore) ReResolveVaultLinks() error {
-	rows, err := s.db.Query(`SELECT from_id, raw FROM vault_links`)
+	rows, err := s.db.Query(`SELECT l.from_id, l.raw, d.tenant_id FROM vault_links l JOIN vault_docs d ON d.id = l.from_id`)
 	if err != nil {
 		return err
 	}
-	type pair struct{ from, raw string }
+	type pair struct{ from, raw, tenant string }
 	var all []pair
 	for rows.Next() {
 		var p pair
-		if err := rows.Scan(&p.from, &p.raw); err != nil {
+		if err := rows.Scan(&p.from, &p.raw, &p.tenant); err != nil {
 			continue
 		}
 		all = append(all, p)
 	}
 	rows.Close()
 	for _, p := range all {
-		toID := s.resolveVaultInner(vaultInner(p.raw))
+		toID := s.resolveVaultInner(p.tenant, vaultInner(p.raw))
 		_, _ = s.db.Exec(`UPDATE vault_links SET to_id=? WHERE from_id=? AND raw=?`, toID, p.from, p.raw)
 	}
 	return nil

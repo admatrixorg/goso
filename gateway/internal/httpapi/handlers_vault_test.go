@@ -14,6 +14,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/vault"
 )
 
 func TestVaultAPI_PutLinksSearchSync(t *testing.T) {
@@ -89,7 +90,15 @@ func TestVaultAPI_PutLinksSearchSync(t *testing.T) {
 		t.Fatalf("get %d %s", w.Code, w.Body.String())
 	}
 
-	if err := os.WriteFile(filepath.Join(root, "gamma.md"), []byte("# Gamma\nsee [[Alpha]]\n"), 0o644); err != nil {
+	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
+	dir, err := vault.StorageDir(root, store.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gamma.md"), []byte("# Gamma\nsee [[Alpha]]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	w = httptest.NewRecorder()
@@ -97,7 +106,7 @@ func TestVaultAPI_PutLinksSearchSync(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("sync %d %s", w.Code, w.Body.String())
 	}
-	got, err := st.FindVaultDocByTitle("Gamma")
+	got, err := st.FindVaultDocByTitle(store.DefaultTenant, "Gamma")
 	if err != nil || got == nil {
 		t.Fatalf("gamma after sync %v %#v", err, got)
 	}
@@ -195,7 +204,11 @@ func TestVaultAPI_HealthAndGraph(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil || health.Docs != 2 || health.Stale {
 		t.Fatalf("health body %v %s", err, w.Body.String())
 	}
-	if err := os.WriteFile(filepath.Join(root, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
+	dir, err := vault.StorageDir(root, store.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	w = httptest.NewRecorder()

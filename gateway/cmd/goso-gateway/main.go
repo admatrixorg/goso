@@ -117,6 +117,7 @@ Environment:
   GOSO_EVOLUTION_AUTO      1 = in-process auto-adapt ticker (per-agent auto_adapt still required). Default off
   GOSO_BACKUP_DIR          Snapshot dir for VACUUM INTO (default ./var/backups)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
+  GOSO_VAULT_SCOPED_SYNC   1 = vault_scoped_sync on. Off blocks sync and does not restore a global scan. Default off
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
   GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export /api/tts

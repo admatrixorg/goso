@@ -217,11 +217,11 @@ func TestStore_VaultWikilinksAndSearch(t *testing.T) {
 	if err != nil || len(obB) != 1 || obB[0].ToID != a.ID || len(ibB) != 1 {
 		t.Fatalf("beta edges %v %#v %#v", err, obB, ibB)
 	}
-	hits, err := s.SearchVault("needle")
+	hits, err := s.SearchVault(DefaultTenant, "needle")
 	if err != nil || len(hits) != 1 || hits[0].ID != a.ID {
 		t.Fatalf("search %v %#v", err, hits)
 	}
-	empty, err := s.SearchVault("no-such-token")
+	empty, err := s.SearchVault(DefaultTenant, "no-such-token")
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("empty %v %#v", err, empty)
 	}

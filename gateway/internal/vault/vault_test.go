@@ -32,15 +32,23 @@ func TestSlug(t *testing.T) {
 
 func TestSync_BidirectionalLinksAndSkipDelete(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "alpha.md"), []byte("# Alpha\n\nSee [[Beta]] pineapple\n"), 0o644); err != nil {
+	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
+	dir, err := StorageDir(root, store.DefaultTenant)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "beta.txt"), []byte("# Beta\n\nSee [[Alpha]] mango\n"), 0o644); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "alpha.md"), []byte("# Alpha\n\nSee [[Beta]] pineapple\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "beta.txt"), []byte("# Beta\n\nSee [[Alpha]] mango\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	st := store.New()
 	svc := New(st, root)
-	res, err := svc.Sync()
+	res, err := svc.SyncTenant(store.DefaultTenant)
 	if err != nil || res.Upserted != 2 {
 		t.Fatalf("sync %v %#v", err, res)
 	}
@@ -68,20 +76,20 @@ func TestSync_BidirectionalLinksAndSkipDelete(t *testing.T) {
 	if err != nil || len(obB) != 1 || obB[0].ToID != alpha.ID || len(ibB) != 1 {
 		t.Fatalf("beta edges %v %#v %#v", err, obB, ibB)
 	}
-	hits, err := svc.Search("pineapple")
+	hits, err := svc.Search(store.DefaultTenant, "pineapple")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("search %v %#v", err, hits)
 	}
 
-	res2, err := svc.Sync()
+	res2, err := svc.SyncTenant(store.DefaultTenant)
 	if err != nil || res2.Skipped != 2 || res2.Upserted != 0 {
 		t.Fatalf("skip %v %#v", err, res2)
 	}
 
-	if err := os.Remove(filepath.Join(root, "beta.txt")); err != nil {
+	if err := os.Remove(filepath.Join(dir, "beta.txt")); err != nil {
 		t.Fatal(err)
 	}
-	res3, err := svc.Sync()
+	res3, err := svc.SyncTenant(store.DefaultTenant)
 	if err != nil || res3.Deleted != 1 {
 		t.Fatalf("delete %v %#v", err, res3)
 	}
@@ -96,20 +104,28 @@ func TestSync_BidirectionalLinksAndSkipDelete(t *testing.T) {
 
 func TestSync_SkipSymlinkOutsideRoot(t *testing.T) {
 	root := t.TempDir()
+	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
+	dir, err := StorageDir(root, store.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	outside := t.TempDir()
 	ext := filepath.Join(outside, "secret.md")
 	if err := os.WriteFile(ext, []byte("# Secret\nleak\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(root, "secret.md")
+	link := filepath.Join(dir, "secret.md")
 	if err := os.Symlink(ext, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "ok.md"), []byte("# Ok\ninside\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "ok.md"), []byte("# Ok\ninside\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(store.New(), root)
-	res, err := svc.Sync()
+	res, err := svc.SyncTenant(store.DefaultTenant)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -126,7 +142,11 @@ func TestPut_WritesSlugAndResolves(t *testing.T) {
 	if err != nil || a.Path != "alpha.md" {
 		t.Fatalf("put alpha %v %#v", err, a)
 	}
-	if _, err := os.Stat(filepath.Join(root, "alpha.md")); err != nil {
+	dir, err := StorageDir(root, store.DefaultTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "alpha.md")); err != nil {
 		t.Fatalf("file: %v", err)
 	}
 	ob, _, err := svc.Links(a.ID)
@@ -145,10 +165,18 @@ func TestPut_WritesSlugAndResolves(t *testing.T) {
 
 func TestSync_SQLiteFTSHit(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "alpha.md"), []byte("# Other\n\nhello pineapple\n"), 0o644); err != nil {
+	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
+	dir, err := StorageDir(root, store.DefaultTenant)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "beta.md"), []byte("# Note\n\nSee [[Other]] mango\n"), 0o644); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "alpha.md"), []byte("# Other\n\nhello pineapple\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "beta.md"), []byte("# Note\n\nSee [[Other]] mango\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.OpenSQLite(filepath.Join(t.TempDir(), "vault.db"))
@@ -157,7 +185,7 @@ func TestSync_SQLiteFTSHit(t *testing.T) {
 	}
 	defer db.Close()
 	svc := New(db, root)
-	if _, err := svc.Sync(); err != nil {
+	if _, err := svc.SyncTenant(store.DefaultTenant); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 	var other, note *store.VaultDoc
@@ -180,7 +208,7 @@ func TestSync_SQLiteFTSHit(t *testing.T) {
 	if err != nil || len(ib) != 1 || ib[0].FromID != note.ID {
 		t.Fatalf("other inbound %v %#v", err, ib)
 	}
-	hits, err := svc.Search("pineapple")
+	hits, err := svc.Search(store.DefaultTenant, "pineapple")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("fts %v %#v", err, hits)
 	}
@@ -228,28 +256,33 @@ func TestHealth_UnindexedAndHealthy(t *testing.T) {
 	if _, err := svc.Put("Alpha", "hello"); err != nil {
 		t.Fatal(err)
 	}
-	h, err := svc.Health(nil)
+	h, err := svc.Health(store.DefaultTenant)
 	if err != nil || h == nil || h.Stale || h.Docs != 1 || h.DiskFiles != 1 {
 		t.Fatalf("healthy %v %#v", err, h)
 	}
-	if err := os.WriteFile(filepath.Join(root, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
+	dir, err := StorageDir(root, store.DefaultTenant)
+	if err != nil {
 		t.Fatal(err)
 	}
-	h, err = svc.Health(nil)
+	if err := os.WriteFile(filepath.Join(dir, "extra.md"), []byte("# Extra\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err = svc.Health(store.DefaultTenant)
 	if err != nil || h == nil || !h.Stale || h.Unindexed != 1 {
 		t.Fatalf("unindexed %v %#v", err, h)
 	}
-	if _, err := svc.Sync(); err != nil {
+	t.Setenv("GOSO_VAULT_SCOPED_SYNC", "1")
+	if _, err := svc.SyncTenant(store.DefaultTenant); err != nil {
 		t.Fatal(err)
 	}
-	h, err = svc.Health(nil)
+	h, err = svc.Health(store.DefaultTenant)
 	if err != nil || h == nil || h.Stale || h.Docs != 2 {
 		t.Fatalf("after sync %v %#v", err, h)
 	}
-	if err := os.Remove(filepath.Join(root, "extra.md")); err != nil {
+	if err := os.Remove(filepath.Join(dir, "extra.md")); err != nil {
 		t.Fatal(err)
 	}
-	h, err = svc.Health(nil)
+	h, err = svc.Health(store.DefaultTenant)
 	if err != nil || h == nil || !h.Stale || h.MissingOnDisk != 1 {
 		t.Fatalf("missing %v %#v", err, h)
 	}
@@ -266,7 +299,7 @@ func TestGraph_CapsNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := svc.Graph(40, nil)
+	g := svc.Graph(40, store.DefaultTenant)
 	if g == nil || g.Truncated || len(g.Nodes) != 2 || len(g.Edges) == 0 {
 		t.Fatalf("graph %#v", g)
 	}
@@ -280,11 +313,11 @@ func TestGraph_CapsNodes(t *testing.T) {
 	if _, ok := ids[b.ID]; !ok {
 		t.Fatalf("missing beta %#v", g.Nodes)
 	}
-	capped := svc.Graph(1, nil)
+	capped := svc.Graph(1, store.DefaultTenant)
 	if capped == nil || !capped.Truncated || len(capped.Nodes) != 1 || capped.NodeCap != 1 {
 		t.Fatalf("cap %#v", capped)
 	}
-	denied := svc.Graph(40, func(*store.VaultDoc) bool { return false })
+	denied := svc.Graph(40, "minh-an-legal")
 	if denied == nil || len(denied.Nodes) != 0 {
 		t.Fatalf("deny %#v", denied)
 	}

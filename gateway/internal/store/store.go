@@ -308,16 +308,22 @@ type KGExpand struct {
 	Relations []KGRelationExpand `json:"relations"`
 }
 
+// VaultSearchLimit is applied after the tenant predicate, never before it.
+const VaultSearchLimit = 50
+
 // VaultDoc is a knowledge-vault registry row. Disk is source of truth after sync;
-// Body is an optional cache.
+// Body is an optional cache. Path is logical and unique per tenant, not globally.
+// OwnerExplicit is set only when this process recorded a resolved tenant on a
+// write. Legacy rows stay false; inventory reports them and does not assign one.
 type VaultDoc struct {
-	ID       string    `json:"id"`
-	TenantID string    `json:"tenant_id"`
-	Title    string    `json:"title"`
-	Path     string    `json:"path"`
-	SHA256   string    `json:"sha256"`
-	Mtime    time.Time `json:"mtime"`
-	Body     string    `json:"body,omitempty"`
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	Title         string    `json:"title"`
+	Path          string    `json:"path"`
+	SHA256        string    `json:"sha256"`
+	Mtime         time.Time `json:"mtime"`
+	Body          string    `json:"body,omitempty"`
+	OwnerExplicit bool      `json:"-"`
 }
 
 // VaultLink is one [[wikilink]] edge. ToID is empty until the target resolves.
@@ -461,12 +467,12 @@ type StoreIface interface {
 	PutVaultDoc(VaultDoc) (*VaultDoc, error)
 	GetVaultDoc(string) (*VaultDoc, error)
 	ListVaultDocs() []*VaultDoc
-	FindVaultDocByPath(string) (*VaultDoc, error)
-	FindVaultDocByTitle(string) (*VaultDoc, error)
+	FindVaultDocByPath(tenant, path string) (*VaultDoc, error)
+	FindVaultDocByTitle(tenant, title string) (*VaultDoc, error)
 	DeleteVaultDoc(string) error
 	ReplaceVaultLinks(fromID string, raws []string) error
 	ListVaultDocLinks(id string) ([]VaultLink, []VaultLink, error)
-	SearchVault(q string) ([]VaultSearchHit, error)
+	SearchVault(tenant, q string) ([]VaultSearchHit, error)
 	ReResolveVaultLinks() error
 	UpdateAgent(Agent) (*Agent, error)
 	CreateTeam(Team) (*Team, error)

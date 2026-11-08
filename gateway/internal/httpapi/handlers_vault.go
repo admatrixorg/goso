@@ -34,7 +34,7 @@ func handleGetVaultDoc(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		d, err := vaultSvc(st).Get(id)
+		d, err := vaultSvc(st).Get(requestTenant(r), id)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -53,8 +53,13 @@ func handleGetVaultDoc(st store.StoreIface) http.HandlerFunc {
 func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Title string `json:"title"`
-			Body  string `json:"body"`
+			Title       string `json:"title"`
+			Body        string `json:"body"`
+			TenantID    string `json:"tenant_id"`
+			Path        string `json:"path"`
+			AgentID     string `json:"agent_id"`
+			ProjectID   string `json:"project_id"`
+			CustomerKey string `json:"customer_key"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -67,9 +72,26 @@ func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 		}
 		svc := vaultSvc(st)
 		tid := requestTenant(r)
-		existed, _ := st.FindVaultDocByTitle(body.Title)
+		// Target tenant, path, agent, project, and customer fields are not
+		// grants. A mismatched tenant is rejected. The others are ignored.
+		if strings.TrimSpace(body.TenantID) != "" && !store.SameTenant(body.TenantID, tid) {
+			writeErr(w, http.StatusForbidden, "target tenant denied")
+			return
+		}
+		if strings.TrimSpace(body.Path) != "" {
+			if _, err := vault.LogicalPath(body.Path); err != nil {
+				writeErr(w, http.StatusBadRequest, "path escape")
+				return
+			}
+		}
+		existed, err := st.FindVaultDocByTitle(tid, body.Title)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if existed != nil && !store.SameTenant(existed.TenantID, tid) {
-			existed = nil
+			writeErr(w, http.StatusForbidden, "target tenant denied")
+			return
 		}
 		d, err := svc.PutTenant(body.Title, body.Body, tid)
 		if err != nil {
@@ -91,7 +113,7 @@ func handleVaultDocLinks(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		d, gerr := vaultSvc(st).Get(id)
+		d, gerr := vaultSvc(st).Get(requestTenant(r), id)
 		if gerr != nil {
 			if errors.Is(gerr, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -129,7 +151,7 @@ func handleSearchVault(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "q is required")
 			return
 		}
-		hits, err := vaultSvc(st).Search(q)
+		hits, err := vaultSvc(st).Search(requestTenant(r), q)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -137,22 +159,20 @@ func handleSearchVault(st store.StoreIface) http.HandlerFunc {
 		if hits == nil {
 			hits = []store.VaultSearchHit{}
 		}
-		tid := requestTenant(r)
-		out := make([]store.VaultSearchHit, 0, len(hits))
-		for _, h := range hits {
-			d, err := st.GetVaultDoc(h.ID)
-			if err == nil && d != nil && store.SameTenant(d.TenantID, tid) {
-				out = append(out, h)
-			}
-		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, http.StatusOK, hits)
 	}
 }
 
 func handleSyncVault(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		res, err := vaultSvc(st).Sync()
+		// Query and header scope are not a second tenant. requestTenant is
+		// the existing resolver (admin token + multi-tenant, otherwise default).
+		res, err := vaultSvc(st).SyncTenant(requestTenant(r))
 		if err != nil {
+			if errors.Is(err, vault.ErrSyncDisabled) || errors.Is(err, vault.ErrTargetTenant) {
+				writeErr(w, http.StatusForbidden, err.Error())
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -160,16 +180,21 @@ func handleSyncVault(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func vaultTenantAllow(r *http.Request) func(*store.VaultDoc) bool {
-	tid := requestTenant(r)
-	return func(d *store.VaultDoc) bool {
-		return d != nil && store.SameTenant(d.TenantID, tid)
+func handleVaultInventory(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// apply=1 is ignored. This handler never writes.
+		inv, err := vaultSvc(st).Inventory(requestTenant(r))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, inv)
 	}
 }
 
 func handleVaultHealth(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		h, err := vaultSvc(st).Health(vaultTenantAllow(r))
+		h, err := vaultSvc(st).Health(requestTenant(r))
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -187,7 +212,7 @@ func handleVaultGraph(st store.StoreIface) http.HandlerFunc {
 				limit = n
 			}
 		}
-		g := vaultSvc(st).Graph(limit, vaultTenantAllow(r))
+		g := vaultSvc(st).Graph(limit, requestTenant(r))
 		if g.Nodes == nil {
 			g.Nodes = []vault.GraphNode{}
 		}

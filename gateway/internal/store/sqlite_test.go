@@ -449,15 +449,15 @@ func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
 	if err != nil || len(ob) != 1 || ob[0].ToID != b.ID || len(ib) != 1 {
 		t.Fatalf("edges %v %#v %#v", err, ob, ib)
 	}
-	hits, err := s.SearchVault("pineapple")
+	hits, err := s.SearchVault(DefaultTenant, "pineapple")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("fts pineapple %v %#v vaultFTS=%v", err, hits, s.vaultFTS)
 	}
-	hits, err = s.SearchVault("mango")
+	hits, err = s.SearchVault(DefaultTenant, "mango")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("fts mango %v %#v", err, hits)
 	}
-	none, err := s.SearchVault("zzzz-absent")
+	none, err := s.SearchVault(DefaultTenant, "zzzz-absent")
 	if err != nil || none == nil || len(none) != 0 {
 		t.Fatalf("empty %v %#v", err, none)
 	}
