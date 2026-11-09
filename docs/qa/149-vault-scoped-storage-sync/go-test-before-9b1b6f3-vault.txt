@@ -1,0 +1,32 @@
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata
+2026/11/08 14:29:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/postgres
+    cto_blockers_test.go:55: get served legacy row: <nil>
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/sqlite
+    cto_blockers_test.go:55: get served legacy row: <nil>
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/memory
+    cto_blockers_test.go:55: get served legacy row: <nil>
+--- FAIL: TestB1_UnclearOwnerDeniedBodyAndMetadata (0.12s)
+    --- FAIL: TestB1_UnclearOwnerDeniedBodyAndMetadata/postgres (0.00s)
+    --- FAIL: TestB1_UnclearOwnerDeniedBodyAndMetadata/sqlite (0.00s)
+    --- FAIL: TestB1_UnclearOwnerDeniedBodyAndMetadata/memory (0.00s)
+=== RUN   TestB4_TwoServicesSameTenantDoNotDropPut
+    cto_blockers_test.go:143: put finished during scan barrier: <nil>
+--- FAIL: TestB4_TwoServicesSameTenantDoNotDropPut (0.00s)
+=== RUN   TestB4_DBFailureDoesNotPublishFile
+    cto_blockers_test.go:181: file published despite db error "changed-bytes"
+--- FAIL: TestB4_DBFailureDoesNotPublishFile (0.00s)
+=== RUN   TestB5_NamespaceSymlinkRejected
+    cto_blockers_test.go:211: put followed namespace symlink
+--- FAIL: TestB5_NamespaceSymlinkRejected (0.00s)
+=== RUN   TestB5_ParentAndNestedSymlink
+--- PASS: TestB5_ParentAndNestedSymlink (0.00s)
+=== RUN   TestEmptyScan_DoesNotPresentCachedBody
+    cto_blockers_test.go:304: cached body presented as current &store.VaultDoc{ID:"20261108-1", TenantID:"minh-an-sales", Title:"Một", Path:"một.md", SHA256:"702caf3db88b39e6250e54cc8f6462e6218b9262d4412d5ce2e6921c952143a2", Mtime:time.Date(2026, time.November, 8, 14, 29, 2, 470033123, time.UTC), Body:"CACHED-BODY-7712", BodyStatus:"", OwnerExplicit:true}
+--- FAIL: TestEmptyScan_DoesNotPresentCachedBody (0.00s)
+=== RUN   TestPartialSkip_DoesNotAuthoritativelyDelete
+    cto_blockers_test.go:354: skip caused delete &vault.SyncResult{Upserted:0, Skipped:1, Deleted:1}
+--- FAIL: TestPartialSkip_DoesNotAuthoritativelyDelete (0.00s)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/vault	0.121s
+FAIL

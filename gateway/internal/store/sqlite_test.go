@@ -430,14 +430,14 @@ func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer s.Close()
-	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "wikilink pineapple [[Beta]]"})
+	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "wikilink pineapple [[Beta]]", OwnerExplicit: true})
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if err := s.ReplaceVaultLinks(a.ID, []string{"Beta"}); err != nil {
 		t.Fatalf("links: %v", err)
 	}
-	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "mango [[Alpha]]"})
+	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "mango [[Alpha]]", OwnerExplicit: true})
 	if err != nil {
 		t.Fatalf("beta: %v", err)
 	}
@@ -449,15 +449,15 @@ func TestSQLiteStore_VaultFTSAndLinks(t *testing.T) {
 	if err != nil || len(ob) != 1 || ob[0].ToID != b.ID || len(ib) != 1 {
 		t.Fatalf("edges %v %#v %#v", err, ob, ib)
 	}
-	hits, err := s.SearchVault("pineapple")
+	hits, err := s.SearchVault(DefaultTenant, "pineapple")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("fts pineapple %v %#v vaultFTS=%v", err, hits, s.vaultFTS)
 	}
-	hits, err = s.SearchVault("mango")
+	hits, err = s.SearchVault(DefaultTenant, "mango")
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("fts mango %v %#v", err, hits)
 	}
-	none, err := s.SearchVault("zzzz-absent")
+	none, err := s.SearchVault(DefaultTenant, "zzzz-absent")
 	if err != nil || none == nil || len(none) != 0 {
 		t.Fatalf("empty %v %#v", err, none)
 	}

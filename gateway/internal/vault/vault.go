@@ -6,11 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -18,9 +19,15 @@ import (
 )
 
 // Service is the knowledge vault: registry + markdown/text files on disk.
+// Files for a tenant live under Root/t/<tenant>/, a server-assigned namespace.
+// The logical path is not an agent, project, or customer grant.
 type Service struct {
 	Store store.StoreIface
 	Root  string
+	// collectHook, when set, replaces the tenant directory walk. Tests use it
+	// for empty, failed, and partial scans. Production leaves it nil.
+	collectHook func(tenant string) ([]diskFile, error)
+	skipped     []string
 }
 
 // SyncResult counts filesystem reconciliation work.
@@ -197,50 +204,64 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 		return nil, errors.New("title is required")
 	}
 	tenantID = store.NormalizeTenant(tenantID)
-	if err := security.Confine(s.Root); err != nil {
+	dir, err := s.tenantDir(tenantID)
+	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
+	if err := security.Confine(dir); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	unlock := lockNamespace(s.Root)
+	defer unlock()
 	var rel string
-	existing, err := s.Store.FindVaultDocByTitle(title)
-	if err == nil && existing != nil && !store.SameTenant(existing.TenantID, tenantID) {
+	existing, err := s.Store.FindVaultDocByTitle(tenantID, title)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	if existing != nil && (!store.SameTenant(existing.TenantID, tenantID) || !existing.OwnerExplicit) {
 		existing = nil
 	}
-	if err == nil && existing != nil && existing.Path != "" {
+	if existing != nil && existing.Path != "" {
 		rel = existing.Path
 	} else {
-		rel = uniqueRel(s.Root, Slug(title)+".md")
+		rel = s.freeLogical(dir, tenantID, Slug(title)+".md")
 	}
-	abs, err := s.absPath(rel)
+	abs, err := s.namespaced(tenantID, rel)
 	if err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
-		return nil, err
-	}
-	fi, err := os.Stat(abs)
+	tmp, err := writeExclusive(filepath.Dir(abs), filepath.Base(abs)+".partial", []byte(body))
 	if err != nil {
 		return nil, err
 	}
 	doc := store.VaultDoc{
-		Title:    title,
-		Path:     filepath.ToSlash(rel),
-		SHA256:   sha256Hex([]byte(body)),
-		Mtime:    fi.ModTime().UTC(),
-		Body:     body,
-		TenantID: tenantID,
+		Title:         title,
+		Path:          filepath.ToSlash(rel),
+		SHA256:        sha256Hex([]byte(body)),
+		Mtime:         time.Now().UTC(),
+		Body:          body,
+		TenantID:      tenantID,
+		OwnerExplicit: true,
 	}
 	if existing != nil {
 		doc.ID = existing.ID
-		doc.TenantID = existing.TenantID
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {
+		removeRegular(tmp)
+		return nil, err
+	}
+	if barrierAfterCommit != nil {
+		barrierAfterCommit()
+	}
+	if err := publishRename(tmp, abs); err != nil {
+		removeRegular(tmp)
 		return nil, err
 	}
 	if err := s.refreshLinks(saved.ID, body); err != nil {
@@ -250,36 +271,84 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	return saved, nil
 }
 
-// Get returns a registry row, preferring on-disk body when the file is still under root.
-func (s *Service) Get(id string) (*store.VaultDoc, error) {
+// writeExclusive creates name inside dir. An existing symlink at that name is
+// not followed and not replaced. The directory must already have been checked.
+func writeExclusive(dir, name string, body []byte) (string, error) {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return "", errors.New("path escape")
+	}
+	path := filepath.Join(dir, name)
+	if err := rejectSymlinks(dir, path); err != nil {
+		return "", err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(body); err != nil {
+		_ = f.Close()
+		removeRegular(path)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		removeRegular(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func removeRegular(path string) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return
+	}
+	_ = os.Remove(path)
+}
+
+func (s *Service) freeLogical(dir, tenant, rel string) string {
+	ext := filepath.Ext(rel)
+	stem := strings.TrimSuffix(rel, ext)
+	candidate := rel
+	for n := 2; ; n++ {
+		row, err := s.Store.FindVaultDocByPath(tenant, candidate)
+		taken := err == nil && row != nil
+		if !taken {
+			if _, statErr := os.Lstat(filepath.Join(dir, filepath.FromSlash(candidate))); statErr != nil {
+				return candidate
+			}
+		}
+		candidate = stem + "-" + strconv.Itoa(n) + ext
+	}
+}
+
+// Get returns one tenant's registry row. A different tenant is not found and
+// its file is not read. On-disk body is preferred when the file is inside
+// that tenant's namespace, or a legacy path owned by this row alone.
+func (s *Service) Get(tenant, id string) (*store.VaultDoc, error) {
 	d, err := s.Store.GetVaultDoc(id)
 	if err != nil {
 		return nil, err
 	}
-	if d.Path == "" {
-		return d, nil
+	if !store.SameTenant(d.TenantID, tenant) || !served(d) {
+		return nil, store.ErrNotFound
 	}
-	abs, err := s.absPath(d.Path)
-	if err != nil {
-		return d, nil
-	}
-	if !fileInsideRoot(s.Root, abs) {
-		return d, nil
-	}
-	b, err := os.ReadFile(abs)
-	if err == nil {
-		d.Body = string(b)
-	}
-	return d, nil
+	return s.present(d), nil
 }
 
-// List returns registry rows.
+// List returns rows that may be served. Unclear-owner rows are omitted.
 func (s *Service) List() []*store.VaultDoc {
 	list := s.Store.ListVaultDocs()
 	if list == nil {
-		return []*store.VaultDoc{}
+		list = []*store.VaultDoc{}
 	}
-	return list
+	out := make([]*store.VaultDoc, 0, len(list))
+	for _, d := range list {
+		if !served(d) {
+			continue
+		}
+		out = append(out, s.present(d))
+	}
+	return out
 }
 
 // Links returns outbound and inbound [[wikilink]] edges.
@@ -287,144 +356,45 @@ func (s *Service) Links(id string) (outbound, inbound []store.VaultLink, err err
 	return s.Store.ListVaultDocLinks(id)
 }
 
-// Search is lexical FTS5 / substring. Semantic search is DI-09.
-func (s *Service) Search(q string) ([]store.VaultSearchHit, error) {
-	hits, err := s.Store.SearchVault(q)
+// Search is lexical FTS5 / substring inside one tenant. The store applies the
+// tenant predicate before rank and LIMIT. Semantic search is DI-09.
+func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
+	hits, err := s.Store.SearchVault(tenant, q)
 	if err != nil {
 		return nil, err
 	}
 	if hits == nil {
 		hits = []store.VaultSearchHit{}
 	}
-	return hits, nil
+	if barrierAfterSearch != nil {
+		barrierAfterSearch()
+	}
+	out := make([]store.VaultSearchHit, 0, len(hits))
+	for _, h := range hits {
+		d, err := s.Store.GetVaultDoc(h.ID)
+		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) {
+			continue
+		}
+		// The snippet was built from h.SHA256. published verifies the file against
+		// the row fetched now, which may already be a newer write. Keep the hit:
+		// it was inside the tenant predicate and limit. Do not rebuild a snippet
+		// from the later body. An empty snippet with unconfirmed is one version.
+		_, sum, ok := s.published(d)
+		if !ok || h.SHA256 == "" || h.SHA256 != sum {
+			h.Snippet = ""
+			h.BodyStatus = "unconfirmed"
+		} else {
+			h.BodyStatus = "current"
+		}
+		out = append(out, h)
+	}
+	return out, nil
 }
 
-type diskFile struct {
-	Rel  string
-	Body []byte
-	Hash string
-	Mod  os.FileInfo
-}
-
-func fileInsideRoot(root, path string) bool {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	target := path
-	if info.Mode()&os.ModeSymlink != 0 {
-		ev, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return false
-		}
-		target = ev
-	}
-	return underRoot(root, target)
-}
-
-func (s *Service) collectFiles() ([]diskFile, error) {
-	if err := security.Confine(s.Root); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
-		return nil, err
-	}
-	var out []diskFile
-	err := filepath.WalkDir(s.Root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if path == s.Root {
-			return nil
-		}
-		if d.IsDir() {
-			if d.Type()&os.ModeSymlink != 0 && !fileInsideRoot(s.Root, path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		if ext != ".md" && ext != ".txt" {
-			return nil
-		}
-		if !fileInsideRoot(s.Root, path) {
-			return nil
-		}
-		rel, err := filepath.Rel(s.Root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
-			return nil
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil
-		}
-		out = append(out, diskFile{Rel: rel, Body: body, Hash: sha256Hex(body), Mod: info})
-		return nil
-	})
-	return out, err
-}
-
-// Sync walks GOSO_VAULT_DIR for *.md / *.txt, upserts by relative path, drops vanished rows.
+// Sync is the old global reconcile. It no longer scans or deletes. Scoped
+// sync is SyncTenant, and only when vault_scoped_sync is on.
 func (s *Service) Sync() (*SyncResult, error) {
-	files, err := s.collectFiles()
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{}, len(files))
-	res := &SyncResult{}
-	for _, f := range files {
-		seen[f.Rel] = struct{}{}
-		existing, err := s.Store.FindVaultDocByPath(f.Rel)
-		if err == nil && existing != nil && existing.SHA256 == f.Hash {
-			res.Skipped++
-			continue
-		}
-		body := string(f.Body)
-		title := titleFrom(f.Rel, body)
-		if existing != nil && !hasH1(body) {
-			title = existing.Title
-		}
-		doc := store.VaultDoc{
-			Title:  title,
-			Path:   f.Rel,
-			SHA256: f.Hash,
-			Mtime:  f.Mod.ModTime().UTC(),
-			Body:   body,
-		}
-		if existing != nil {
-			doc.ID = existing.ID
-		}
-		saved, err := s.Store.PutVaultDoc(doc)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.refreshLinks(saved.ID, body); err != nil {
-			return nil, err
-		}
-		res.Upserted++
-	}
-	for _, d := range s.Store.ListVaultDocs() {
-		if d == nil {
-			continue
-		}
-		if _, ok := seen[d.Path]; ok {
-			continue
-		}
-		if err := s.Store.DeleteVaultDoc(d.ID); err != nil {
-			return nil, err
-		}
-		res.Deleted++
-	}
-	_ = s.Store.ReResolveVaultLinks()
-	return res, nil
+	return nil, ErrSyncDisabled
 }
 
 func hasH1(body string) bool {

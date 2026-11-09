@@ -83,6 +83,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.finishMemoryCustomerKey(); err != nil {
 		return fmt.Errorf("postgres migrate: %w", err)
 	}
+	if err := s.migrateVaultScope(); err != nil {
+		return fmt.Errorf("postgres migrate vault scope: %w", err)
+	}
 	s.tryVector()
 	return nil
 }
@@ -182,11 +185,13 @@ var postgresSchema = []string{
 	`CREATE TABLE IF NOT EXISTS vault_docs (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
-		path TEXT NOT NULL UNIQUE,
+		path TEXT NOT NULL,
 		sha256 TEXT NOT NULL,
 		mtime TEXT NOT NULL,
 		body TEXT,
-		tenant_id TEXT NOT NULL DEFAULT 'default'
+		tenant_id TEXT NOT NULL DEFAULT 'default',
+		owner_explicit INTEGER NOT NULL DEFAULT 0,
+		UNIQUE (tenant_id, path)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_vault_docs_title ON vault_docs(title)`,
 	`CREATE INDEX IF NOT EXISTS idx_vault_docs_tenant ON vault_docs(tenant_id)`,

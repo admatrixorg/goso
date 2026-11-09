@@ -43,9 +43,11 @@ func clampGraphLimit(limit int) int {
 	return limit
 }
 
-// Graph returns a bounded relationship list. allow filters tenant rows.
-func (s *Service) Graph(limit int, allow func(*store.VaultDoc) bool) *Graph {
+// Graph returns a bounded relationship list for one tenant. Edges whose
+// target is outside that tenant are omitted, including the target id.
+func (s *Service) Graph(limit int, tenant string) *Graph {
 	limit = clampGraphLimit(limit)
+	tenant = store.NormalizeTenant(tenant)
 	g := &Graph{
 		Nodes:   []GraphNode{},
 		Edges:   []GraphEdge{},
@@ -54,10 +56,7 @@ func (s *Service) Graph(limit int, allow func(*store.VaultDoc) bool) *Graph {
 	byID := map[string]*store.VaultDoc{}
 	var allowed []*store.VaultDoc
 	for _, d := range s.List() {
-		if d == nil {
-			continue
-		}
-		if allow != nil && !allow(d) {
+		if d == nil || !store.SameTenant(d.TenantID, tenant) {
 			continue
 		}
 		byID[d.ID] = d
@@ -145,7 +144,13 @@ func (s *Service) Graph(limit int, allow func(*store.VaultDoc) bool) *Graph {
 				g.Truncated = true
 				break
 			}
-			g.Edges = append(g.Edges, GraphEdge{FromID: l.FromID, ToID: l.ToID, Raw: l.Raw})
+			toID := l.ToID
+			if toID != "" {
+				if _, ok := byID[toID]; !ok {
+					toID = ""
+				}
+			}
+			g.Edges = append(g.Edges, GraphEdge{FromID: l.FromID, ToID: toID, Raw: l.Raw})
 		}
 	}
 	return g

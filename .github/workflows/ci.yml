@@ -6,8 +6,23 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: goso
+          POSTGRES_PASSWORD: goso
+          POSTGRES_DB: goso
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U goso -d goso"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CI: "true"
+      GOSO_TEST_POSTGRES_DSN: postgres://goso:goso@localhost:5432/goso?sslmode=disable
     steps:
       - uses: actions/checkout@v4
 

@@ -14,10 +14,11 @@ type Health struct {
 	Stale         bool `json:"stale"`
 }
 
-// Health reports index vs disk. allow limits registry rows (tenant). Disk files
-// that are not in the allowed set count as unindexed.
-func (s *Service) Health(allow func(*store.VaultDoc) bool) (*Health, error) {
-	files, err := s.collectFiles()
+// Health reports one tenant's index vs that tenant's namespace. Other tenants'
+// files are not counted.
+func (s *Service) Health(tenant string) (*Health, error) {
+	tenant = store.NormalizeTenant(tenant)
+	files, err := s.collectTenant(tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -25,18 +26,24 @@ func (s *Service) Health(allow func(*store.VaultDoc) bool) (*Health, error) {
 	for _, f := range files {
 		byRel[f.Rel] = f
 	}
-	h := &Health{DiskFiles: len(files)}
+	h := &Health{}
 	seen := make(map[string]struct{})
-	for _, d := range s.List() {
-		if d == nil {
+	hidden := make(map[string]struct{})
+	for _, d := range s.Store.ListVaultDocs() {
+		if d == nil || !store.SameTenant(d.TenantID, tenant) {
 			continue
 		}
-		if allow != nil && !allow(d) {
+		if !served(d) {
+			hidden[d.Path] = struct{}{}
 			continue
 		}
 		h.Docs++
 		seen[d.Path] = struct{}{}
 		f, ok := byRel[d.Path]
+		if !ok && s.legacyOwned(d) {
+			h.DiskFiles++
+			continue
+		}
 		if !ok {
 			h.MissingOnDisk++
 			continue
@@ -46,9 +53,13 @@ func (s *Service) Health(allow func(*store.VaultDoc) bool) (*Health, error) {
 		}
 	}
 	for rel := range byRel {
+		if _, skip := hidden[rel]; skip {
+			continue
+		}
 		if _, ok := seen[rel]; !ok {
 			h.Unindexed++
 		}
+		h.DiskFiles++
 	}
 	h.Stale = h.MissingOnDisk > 0 || h.Unindexed > 0 || h.HashMismatch > 0
 	return h, nil

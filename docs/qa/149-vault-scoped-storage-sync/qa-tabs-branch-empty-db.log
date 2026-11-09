@@ -1,0 +1,57 @@
+
+> @goso/control-plane@0.1.0 qa:tabs
+> node --experimental-strip-types scripts/qa-tabs.ts
+
+tab #/overview
+tab #/chat
+tab #/agents
+tab #/sessions
+tab #/pending
+tab #/contacts
+tab #/channels
+tab #/connectors
+tab #/nodes
+tab #/workstations
+tab #/skills
+tab #/decision
+tab #/decision-flow
+tab #/tools
+tab #/mcp
+tab #/tts
+tab #/cron
+tab #/hooks
+tab #/memory
+tab #/vault
+tab #/meetings
+tab #/kg
+tab #/storage
+tab #/traces
+tab #/events
+tab #/activity
+tab #/logs
+tab #/tenants
+tab #/providers
+tab #/apikeys
+tab #/packages
+tab #/config
+tab #/approvals
+tab #/impexp
+tab #/backup
+alias #projects
+alias #agent-team
+alias #agent-link
+alias #webhooks
+alias #/functions
+alias #api-keys
+alias #import-export
+alias #backup-restore
+alias #kgraph
+alias #meetings
+alias #decision-flow
+folded #/teams
+folded #/heatmap
+folded #/marketing
+flow chat
+FAIL chat no agent to start a conversation
+empty (honest, not chưa dựng): #/decision, #/decision-flow, #/hooks, #/meetings, #webhooks, #meetings, #decision-flow
+qa:tabs 1 failure(s)

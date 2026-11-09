@@ -187,7 +187,7 @@ func TestStore_MemoryAndSearch(t *testing.T) {
 
 func TestStore_VaultWikilinksAndSearch(t *testing.T) {
 	s := New()
-	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "see [[Beta]] needle"})
+	a, err := s.PutVaultDoc(VaultDoc{Title: "Alpha", Path: "alpha.md", SHA256: "aa", Body: "see [[Beta]] needle", OwnerExplicit: true})
 	if err != nil || a.ID == "" {
 		t.Fatalf("put alpha: %v %#v", err, a)
 	}
@@ -198,7 +198,7 @@ func TestStore_VaultWikilinksAndSearch(t *testing.T) {
 	if err != nil || len(ob) != 1 || ob[0].ToID != "" || ob[0].Raw != "[[Beta]]" {
 		t.Fatalf("unresolved %v %#v %#v", err, ob, ib)
 	}
-	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "see [[Alpha]]"})
+	b, err := s.PutVaultDoc(VaultDoc{Title: "Beta", Path: "beta.md", SHA256: "bb", Body: "see [[Alpha]]", OwnerExplicit: true})
 	if err != nil {
 		t.Fatalf("put beta: %v", err)
 	}
@@ -217,11 +217,11 @@ func TestStore_VaultWikilinksAndSearch(t *testing.T) {
 	if err != nil || len(obB) != 1 || obB[0].ToID != a.ID || len(ibB) != 1 {
 		t.Fatalf("beta edges %v %#v %#v", err, obB, ibB)
 	}
-	hits, err := s.SearchVault("needle")
+	hits, err := s.SearchVault(DefaultTenant, "needle")
 	if err != nil || len(hits) != 1 || hits[0].ID != a.ID {
 		t.Fatalf("search %v %#v", err, hits)
 	}
-	empty, err := s.SearchVault("no-such-token")
+	empty, err := s.SearchVault(DefaultTenant, "no-such-token")
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("empty %v %#v", err, empty)
 	}

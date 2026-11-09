@@ -1,0 +1,37 @@
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata
+2026/11/08 14:47:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/memory
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/postgres
+=== RUN   TestB1_UnclearOwnerDeniedBodyAndMetadata/sqlite
+--- PASS: TestB1_UnclearOwnerDeniedBodyAndMetadata (0.17s)
+    --- PASS: TestB1_UnclearOwnerDeniedBodyAndMetadata/memory (0.00s)
+    --- PASS: TestB1_UnclearOwnerDeniedBodyAndMetadata/postgres (0.01s)
+    --- PASS: TestB1_UnclearOwnerDeniedBodyAndMetadata/sqlite (0.01s)
+=== RUN   TestB4_TwoServicesSameTenantDoNotDropPut
+--- PASS: TestB4_TwoServicesSameTenantDoNotDropPut (0.08s)
+=== RUN   TestB4_DBFailureDoesNotPublishFile
+--- PASS: TestB4_DBFailureDoesNotPublishFile (0.00s)
+=== RUN   TestB5_NamespaceSymlinkRejected
+--- PASS: TestB5_NamespaceSymlinkRejected (0.00s)
+=== RUN   TestB5_ParentAndNestedSymlink
+--- PASS: TestB5_ParentAndNestedSymlink (0.00s)
+=== RUN   TestEmptyScan_DoesNotPresentCachedBody
+--- PASS: TestEmptyScan_DoesNotPresentCachedBody (0.00s)
+=== RUN   TestPartialSkip_DoesNotAuthoritativelyDelete
+--- PASS: TestPartialSkip_DoesNotAuthoritativelyDelete (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.270s
+=== RUN   TestB2_InventoryDenyLeaksNoMetadata
+--- PASS: TestB2_InventoryDenyLeaksNoMetadata (0.00s)
+=== RUN   TestB4_TwoHTTPRequestsSameTenant
+--- PASS: TestB4_TwoHTTPRequestsSameTenant (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	0.017s
+=== RUN   TestB3_SQLiteMigrationFaultIsReplaySafe
+--- PASS: TestB3_SQLiteMigrationFaultIsReplaySafe (0.05s)
+=== RUN   TestB3_PostgresMigrationFaultRollsBack
+2026/11/08 14:47:03 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/08 14:47:03 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestB3_PostgresMigrationFaultRollsBack (0.13s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	0.183s
