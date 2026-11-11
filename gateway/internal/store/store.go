@@ -541,6 +541,13 @@ type StoreIface interface {
 	ClaimWebhookJob(now time.Time, lease string) (*WebhookJob, error)
 	GetGatewaySettings() (*GatewaySettings, error)
 	PutGatewaySettings(GatewaySettings) (*GatewaySettings, error)
+	// Context files are named instruction/persona/notes documents. They are not
+	// memories and not vault docs. Every method takes the tenant; user scope
+	// also takes that user's key. Reads never scan another tenant.
+	PutContextFile(ContextFile) (*ContextFile, error)
+	GetContextFile(tenant, scope, ownerID, name string) (*ContextFile, error)
+	ListContextFiles(tenant, scope, ownerID string) ([]*ContextFile, error)
+	DeleteContextFile(tenant, scope, ownerID, name string) error
 }
 
 // GatewaySettings is the persisted overlay for GET/PUT /api/config.
@@ -614,6 +621,7 @@ type Store struct {
 	channelConfig   map[string]*ChannelConfig
 	channelPairing  map[string]*ChannelPairing
 	gatewaySettings *GatewaySettings
+	contextFiles    map[string]*ContextFile
 	seq             int64
 }
 
@@ -675,6 +683,7 @@ func New() *Store {
 		kgRelations:    make(map[string]*KGRelation),
 		channelConfig:  make(map[string]*ChannelConfig),
 		channelPairing: make(map[string]*ChannelPairing),
+		contextFiles:   make(map[string]*ContextFile),
 	}
 }
 

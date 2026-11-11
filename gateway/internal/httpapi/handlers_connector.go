@@ -17,6 +17,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/contextfile"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -495,6 +496,11 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		if rejectIfQuotaExceeded(w, meter) {
 			return
 		}
+		ctx, err := chatContext(r, body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid context file")
+			return
+		}
 		name := "echo"
 		if provider != nil {
 			name = provider.Name()
@@ -502,7 +508,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 		turn := agent.ChatTurn{MentionAgentID: mention}
 		if chatWantsStream(r, body) {
 			sw := newSSEWriter(w)
-			out, err := rt.ChatWithTurn(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, sw.delta)
+			out, err := rt.ChatWithTurn(ctx, body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, sw.delta)
 			if err != nil {
 				if errors.Is(err, llm.ErrProviderNotFound) {
 					writeErr(w, http.StatusBadRequest, "provider not found")
@@ -520,6 +526,14 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 					writeErr(w, http.StatusBadRequest, err.Error())
 					return
 				}
+				if errors.Is(err, store.ErrContextOwnerCap) {
+					sw.errEvent("too_large")
+					return
+				}
+				if errors.Is(err, contextfile.ErrUnavailable) {
+					sw.errEvent("store")
+					return
+				}
 				sw.errEvent(err.Error())
 				return
 			}
@@ -531,7 +545,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			sw.data("[DONE]")
 			return
 		}
-		out, err := rt.ChatWithTurn(r.Context(), body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, nil)
+		out, err := rt.ChatWithTurn(ctx, body.SessionID, body.Message, body.PromptMode, bool(body.Summarize), turn, nil)
 		if err != nil {
 			if errors.Is(err, llm.ErrProviderNotFound) {
 				writeErr(w, http.StatusBadRequest, "provider not found")
@@ -547,6 +561,14 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			}
 			if strings.Contains(err.Error(), "unknown prompt_mode") {
 				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if errors.Is(err, store.ErrContextOwnerCap) {
+				writeErr(w, http.StatusBadRequest, "too_large")
+				return
+			}
+			if errors.Is(err, contextfile.ErrUnavailable) {
+				writeErr(w, http.StatusInternalServerError, "store")
 				return
 			}
 			respondChat(w, r, body, "", nil, err, http.StatusBadGateway)

@@ -101,6 +101,7 @@ Environment:
   GOSO_MEDIA / GOSO_MEDIA_* 1 = PATH ffmpeg for media, and image_gen/tts only with an injected test double (never a paid API)
   GOSO_SKILLS_DIR          One-level SKILL.md folders for use_skill / skill_search / POST-DELETE /api/skills; empty = fail-closed
   GOSO_CONTEXT_DIR         Direct children SOUL.md IDENTITY.md AGENTS.md (optional USER.md); empty = no inject
+  GOSO_CONTEXT_FILES       1 = durable per-tenant agent and user context files. Default off (routes 404, chat unchanged)
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)
   GOSO_ZALO_OA_ACCESS_TOKEN Zalo OA access token (optional)
   GOSO_ZALO_PERSONAL_TOKEN Zalo Personal token (optional)

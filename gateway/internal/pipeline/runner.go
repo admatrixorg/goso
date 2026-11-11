@@ -4,9 +4,11 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/contextfile"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -68,6 +70,12 @@ type State struct {
 	// memory is scoped to CustomerKey; web/API sessions recall agent-wide.
 	Channel     bool
 	CustomerKey string
+	// ContextUserKey selects user-scoped context files for this turn.
+	// Empty means agent files only. Ignored unless GOSO_CONTEXT_FILES is on.
+	ContextUserKey string
+	// ContextFiles is labeled context-file text for the system message.
+	// Empty when the flag is off, the mode is none, or the owner has no files.
+	ContextFiles string
 }
 
 // Result is returned to Runtime.Chat.
@@ -152,6 +160,12 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 
 	st, err := r.loadContext(sessionID, mode)
 	if err != nil {
+		return nil, err
+	}
+	if contextfile.Enabled() {
+		st.ContextUserKey = contextfile.UserFrom(ctx)
+	}
+	if err := r.loadContextFiles(st); err != nil {
 		return nil, err
 	}
 	if st.AgentID != "" {
@@ -267,6 +281,26 @@ func (r *Runner) loadHistory(st *State) error {
 	return nil
 }
 
+// loadContextFiles reads agent and user context files into st.ContextFiles.
+// The flag default is off: this returns before any store call, so chat matches
+// today. A store error is returned (not dropped) so the turn does not answer
+// without the files that were supposed to be there.
+func (r *Runner) loadContextFiles(st *State) error {
+	if r == nil || st == nil || st.Mode == ModeNone || !contextfile.Enabled() {
+		return nil
+	}
+	text, err := contextfile.Prompt(r.Store, st.TenantID, st.AgentID, st.ContextUserKey)
+	if err != nil {
+		contextfile.LogFailure("prompt", err)
+		if errors.Is(err, store.ErrContextOwnerCap) {
+			return err
+		}
+		return contextfile.ErrUnavailable
+	}
+	st.ContextFiles = text
+	return nil
+}
+
 func (r *Runner) attachPrompt(st *State) {
 	sys := SystemPrompt(st.Mode, st.DisplayName)
 	if note := strings.TrimSpace(st.TeamNote); note != "" {
@@ -286,11 +320,11 @@ func (r *Runner) attachPrompt(st *State) {
 	// some OpenAI-compatible routers drop every system message after the
 	// first (9router/gcli, measured 01/11/2026), which silently discarded the
 	// SPEC 132 recall note. Order: agent prompt, prior-session memory,
-	// bootstrap files, then the same-session summary that loadHistory put in
-	// front of the history.
+	// bootstrap files, context files (only when GOSO_CONTEXT_FILES is on),
+	// then the same-session summary that loadHistory put in front of the history.
 	parts := []string{sys}
 	if st.Mode != ModeNone {
-		parts = append(parts, strings.TrimSpace(st.RecallNote), strings.TrimSpace(BootstrapText()))
+		parts = append(parts, strings.TrimSpace(st.RecallNote), strings.TrimSpace(BootstrapText()), strings.TrimSpace(st.ContextFiles))
 	}
 	rest := st.Messages
 	for len(rest) > 0 && rest[0].Role == "system" {

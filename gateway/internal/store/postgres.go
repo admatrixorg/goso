@@ -380,4 +380,16 @@ var postgresSchema = []string{
 		values_json TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS context_files (
+		id TEXT PRIMARY KEY,
+		tenant_id TEXT NOT NULL,
+		scope TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		body TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE (tenant_id, scope, owner_id, name)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_context_files_owner ON context_files(tenant_id, scope, owner_id)`,
 }
