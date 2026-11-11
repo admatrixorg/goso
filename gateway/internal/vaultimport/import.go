@@ -12,6 +12,11 @@
 // Link type and context are stored in the existing vault_links.raw text
 // ("[[<goso id>|<type>: <context>]]"). Resolution still uses the goso id.
 //
+// Each imported body ends with a one-line provenance marker (source id and
+// a hash of the title plus the body prefix). A later run overwrites a row
+// only when that marker names the same GoClaw document and the hash still
+// matches. Every other explicit row at the path is rejected as path-taken.
+//
 // A run names one source tenant id and one root folder. A document is imported
 // only when both match. Paths that leave the root, walk with "..", are
 // absolute, look like a symlink, or enter tenants/<other> are rejected and
@@ -224,11 +229,13 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			continue
 		}
 		id := strings.TrimSpace(doc.ID)
-		if id != "" {
-			if _, ok := bySource[id]; ok {
-				reject(rep, logf, "doc", path, "", "duplicate-id")
-				continue
-			}
+		if !sourceIDOK(id) {
+			reject(rep, logf, "doc", path, "", "source-id")
+			continue
+		}
+		if _, ok := bySource[id]; ok {
+			reject(rep, logf, "doc", path, "", "duplicate-id")
+			continue
 		}
 		content := ""
 		var versionAt time.Time
@@ -241,7 +248,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			"scope":        doc.Scope,
 			"custom_scope": doc.CustomScope,
 		})
-		body := composeBody(content, doc.Summary, meta)
+		plain := composeBody(content, doc.Summary, meta)
 		title := strings.TrimSpace(doc.Title)
 		if title == "" {
 			title = titleFromLogical(d.Logical)
@@ -250,6 +257,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			reject(rep, logf, "doc", path, "", "title-required")
 			continue
 		}
+		body := stampImport(title, plain, id)
 		mtime := versionAt
 		if t, ok := parseTS(doc.UpdatedAt); ok && t.After(mtime) {
 			mtime = t
@@ -286,6 +294,14 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 		if existing != nil && !existing.OwnerExplicit {
 			reject(rep, logf, "doc", strings.TrimSpace(item.src.Path), "", "owner-unclear")
+			item.drop = true
+			delete(bySource, strings.TrimSpace(item.src.ID))
+			continue
+		}
+		// Same logical path is not enough. Overwrite only a row this importer
+		// wrote from the same GoClaw id and that nobody has edited since.
+		if existing != nil && !importUntouched(existing.Title, existing.Body, strings.TrimSpace(item.src.ID)) {
+			reject(rep, logf, "doc", strings.TrimSpace(item.src.Path), "", "path-taken")
 			item.drop = true
 			delete(bySource, strings.TrimSpace(item.src.ID))
 			continue

@@ -335,6 +335,175 @@ func TestImportLeavesUnclearOwner(t *testing.T) {
 	}
 }
 
+func TestImportPathTakenPreexisting(t *testing.T) {
+	st := store.New()
+	prior, err := st.PutVaultDoc(store.VaultDoc{
+		Title: "Quy trinh Minh An", Path: "notes/quy-trinh.md", Body: "GOSOCREATEDMARKER",
+		SHA256: "prior", TenantID: destTenant, OwnerExplicit: true, Mtime: time.Unix(30, 0).UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := minhAnOne("doc-a", "tenants/minh-an/notes/quy-trinh.md", "Quy trinh Minh An", bodyMarker)
+	logBuf := &bytes.Buffer{}
+	opt := Options{
+		SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant,
+		DryRun: true, Log: bufLog{logBuf},
+	}
+	cs := &countingStore{StoreIface: st}
+	dry, err := Import(cs, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, dry, 0, 0, 0, 1)
+	if !hasReason(dry, "doc", "tenants/minh-an/notes/quy-trinh.md", "path-taken") {
+		t.Fatalf("dry-run rejections %+v", dry.Rejections)
+	}
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("dry-run wrote")
+	}
+	opt.DryRun = false
+	cs.reset()
+	rep, err := Import(cs, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, rep, 0, 0, 0, 1)
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("path-taken wrote")
+	}
+	got, err := st.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	if err != nil || got.ID != prior.ID || got.Body != "GOSOCREATEDMARKER" {
+		t.Fatalf("preexisting changed %#v %v", got, err)
+	}
+	if strings.Contains(logBuf.String(), "GOSOCREATEDMARKER") || strings.Contains(logBuf.String(), bodyMarker) {
+		t.Fatalf("log leaked body %s", logBuf.String())
+	}
+	if !strings.Contains(logBuf.String(), "tenants/minh-an/notes/quy-trinh.md") {
+		t.Fatalf("log %s", logBuf.String())
+	}
+}
+
+func TestImportPathTakenDifferentRoots(t *testing.T) {
+	st := store.New()
+	notes := minhAnOne("doc-notes", "tenants/minh-an/notes/a.md", "Ghi chu Minh An", "NOTESBODYMARKER")
+	projects := minhAnOne("doc-projects", "tenants/minh-an/projects/a.md", "Du an Minh An", "PROJECTSBODYMARKER")
+	noteOpt := Options{SourceTenant: sourceTenant, Root: "tenants/minh-an/notes", DestTenant: destTenant}
+	if _, err := Import(st, notes, noteOpt); err != nil {
+		t.Fatal(err)
+	}
+	first, err := st.FindVaultDocByPath(destTenant, "a.md")
+	if err != nil || !strings.Contains(first.Body, "NOTESBODYMARKER") || !strings.Contains(first.Body, "src=doc-notes") {
+		t.Fatalf("first import %#v %v", first, err)
+	}
+	snap := snapshot(t, st)
+	logBuf := &bytes.Buffer{}
+	projOpt := Options{
+		SourceTenant: sourceTenant, Root: "tenants/minh-an/projects", DestTenant: destTenant,
+		DryRun: true, Log: bufLog{logBuf},
+	}
+	cs := &countingStore{StoreIface: st}
+	dry, err := Import(cs, projects, projOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, dry, 0, 0, 0, 1)
+	if !hasReason(dry, "doc", "tenants/minh-an/projects/a.md", "path-taken") {
+		t.Fatalf("dry-run %+v", dry.Rejections)
+	}
+	projOpt.DryRun = false
+	cs.reset()
+	rep, err := Import(cs, projects, projOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, rep, 0, 0, 0, 1)
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("colliding root wrote")
+	}
+	if snapshot(t, st) != snap {
+		t.Fatal("colliding root changed the first import")
+	}
+	if strings.Contains(logBuf.String(), "NOTESBODYMARKER") || strings.Contains(logBuf.String(), "PROJECTSBODYMARKER") {
+		t.Fatalf("log leaked body %s", logBuf.String())
+	}
+
+	cs.reset()
+	again, err := Import(cs, notes, noteOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Inserted != 0 || again.Updated != 0 || again.Rejected != 0 || again.Skipped != 1 {
+		t.Fatalf("same source re-run %+v", again)
+	}
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("same source re-run wrote")
+	}
+	if snapshot(t, st) != snap {
+		t.Fatal("same source re-run changed rows")
+	}
+}
+
+func TestImportEditedSinceImportIsPathTaken(t *testing.T) {
+	st := store.New()
+	ex := minhAnOne("doc-a", "tenants/minh-an/notes/quy-trinh.md", "Quy trinh Minh An", bodyMarker)
+	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}
+	if _, err := Import(st, ex, opt); err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(current.Body, bodyMarker, bodyMarker+"EDITED", 1)
+	if _, err := st.PutVaultDoc(store.VaultDoc{
+		ID: current.ID, Title: current.Title, Path: current.Path, Body: edited,
+		SHA256: hashBody(edited), Mtime: current.Mtime, TenantID: destTenant, OwnerExplicit: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cs := &countingStore{StoreIface: st}
+	rep, err := Import(cs, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, rep, 0, 0, 0, 1)
+	if !hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "path-taken") {
+		t.Fatalf("rejections %+v", rep.Rejections)
+	}
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("edited doc was overwritten")
+	}
+	got, err := st.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	if err != nil || !strings.Contains(got.Body, bodyMarker+"EDITED") {
+		t.Fatalf("edit lost %#v %v", got, err)
+	}
+	if importUntouched(got.Title, got.Body, "doc-a") {
+		t.Fatal("hand edit still matches the import snapshot")
+	}
+}
+
+func minhAnOne(id, path, title, content string) *Export {
+	return &Export{
+		Documents: []Document{{
+			ID: id, TenantID: sourceTenant, Path: path, Title: title,
+			Summary: summaryMarker, UpdatedAt: "2026-03-01T04:05:06Z",
+		}},
+		Versions: []Version{{
+			DocID: id, Version: 1, Content: content, CreatedAt: "2026-03-01T04:05:06Z",
+		}},
+	}
+}
+
+func hasReason(rep *Report, kind, path, reason string) bool {
+	for _, r := range rep.Rejections {
+		if r.Kind == kind && r.Path == path && r.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
 func TestImportDoesNotFollowSymlink(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "outside.txt")
@@ -499,7 +668,7 @@ func assertImported(t *testing.T, st store.StoreIface, vaultRoot string) {
 		t.Fatal("imported body missing latest text, summary, or safe metadata")
 	}
 	b, err := st.FindVaultDocByPath(destTenant, "notes/lien-he.md")
-	if err != nil || b.Body != lienHeMarker {
+	if err != nil || !strings.HasPrefix(b.Body, lienHeMarker+"\n") || !strings.Contains(b.Body, "<!-- goso-import src=doc-b ") {
 		t.Fatalf("lien he %#v %v", b, err)
 	}
 	for _, path := range []string{"tenants/mq-capital/bien-ban.md", "notes/foreign.md", "notes/outside.md", "via/note.md"} {

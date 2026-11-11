@@ -47,6 +47,96 @@ func hashBody(body string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// importMarker records provenance in the existing body. vault_docs has no
+// source-id column, and a new table would sit beside the vault the importer
+// is not allowed to extend. The marker is the last line:
+//
+//	<!-- goso-import src=<id> sum=<sha256> -->
+//
+// sum is sha256(title + "\n" + canonical body prefix). A later run may
+// overwrite the row only when the source id matches and that sum still
+// matches the stored title and prefix. A hand edit, a goso-created note, or
+// another source id at the same path fails the check.
+func stampImport(title, plain, src string) string {
+	prefix := canonicalPrefix(plain)
+	sum := hashBody(title + "\n" + prefix)
+	marker := "<!-- goso-import src=" + src + " sum=" + sum + " -->"
+	return prefix + marker + "\n"
+}
+
+func canonicalPrefix(plain string) string {
+	if plain == "" || strings.HasSuffix(plain, "\n") {
+		return plain
+	}
+	return plain + "\n"
+}
+
+func splitImportMarker(body string) (prefix, src, sum string, ok bool) {
+	if !strings.HasSuffix(body, "\n") {
+		return "", "", "", false
+	}
+	trimmed := strings.TrimSuffix(body, "\n")
+	line := trimmed
+	prefix = ""
+	if i := strings.LastIndex(trimmed, "\n"); i >= 0 {
+		line = trimmed[i+1:]
+		prefix = trimmed[:i+1]
+	}
+	src, sum, ok = parseMarkerLine(line)
+	return prefix, src, sum, ok
+}
+
+func parseMarkerLine(line string) (src, sum string, ok bool) {
+	const pre = "<!-- goso-import src="
+	const mid = " sum="
+	const suf = " -->"
+	if !strings.HasPrefix(line, pre) || !strings.HasSuffix(line, suf) {
+		return "", "", false
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(line, pre), suf)
+	src, sum, found := strings.Cut(inner, mid)
+	if !found || !sourceIDOK(src) || len(sum) != 64 || !hexOnly(sum) {
+		return "", "", false
+	}
+	return src, sum, true
+}
+
+func sourceIDOK(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '_' || r == ':' || r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func hexOnly(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// importUntouched reports that this importer wrote the row from srcID and
+// neither the title nor the body prefix has changed since that write.
+func importUntouched(title, body, srcID string) bool {
+	prefix, src, sum, ok := splitImportMarker(body)
+	if !ok || src != srcID {
+		return false
+	}
+	return hashBody(title+"\n"+prefix) == sum
+}
+
 func normalizeNewlines(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
