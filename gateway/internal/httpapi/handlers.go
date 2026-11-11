@@ -249,6 +249,8 @@ func routerBase(opt Options) *http.ServeMux {
 	aliasAPI(mux, "POST /api/skills", handleCreateSkill())
 	aliasAPI(mux, "DELETE /api/skills/{name}", handleDeleteSkill())
 
+	registerContextFileRoutes(mux, st)
+
 	registerTeamRoutes(mux, opt)
 
 	// WebSocket is registered separately via RegisterWS to keep gorilla dep isolated.
@@ -771,6 +773,7 @@ type chatBody struct {
 	Message    string  `json:"message"`
 	PromptMode string  `json:"prompt_mode"`
 	AgentID    string  `json:"agent_id"`
+	UserKey    string  `json:"user_key,omitempty"`
 	Summarize  boolish `json:"summarize"`
 	Stream     bool    `json:"stream"`
 }
