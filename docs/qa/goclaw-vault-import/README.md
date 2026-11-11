@@ -9,6 +9,7 @@ Offline importer for one tenant into the existing `vault_docs` and `vault_links`
 | `ffa94f9788fbaa5bb46f90bf11605bb5053deb53` | Importer. First `go test ./...` and `qa:tabs` |
 | `72808cca31ddae7cae4849983eafc6054c8021af` | Same code plus these notes. Both commands were run again |
 | `13021f2eb2512a8d0e5f47df99021725f01db0d7` | Path ownership, keep-prefix, foreign-tenant, path-missing, scope-conflict. Both commands run on a clean tree |
+| `2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8` | Personal scope held unless `--include-personal`. Both commands run on a clean tree |
 
 `git status --porcelain` was empty before and after each command. The second pair of logs is from `72808cca31ddae7cae4849983eafc6054c8021af`, which does not change gateway or control-plane code relative to the importer commit.
 
@@ -58,3 +59,8 @@ The same two commands were run again on `72808cca31ddae7cae4849983eafc6054c8021a
 - [qa-tabs-13021f2eb2512a8d0e5f47df99021725f01db0d7.log](qa-tabs-13021f2eb2512a8d0e5f47df99021725f01db0d7.log)
 
 No customer export and no import report from a real tenant is in this directory.
+
+`2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8` holds scope `personal` unless the run sets the include flag. `git status --porcelain` was empty before and after. Fresh database, same Minh An seed. `qa:tabs` ended `flow chat` then `qa:tabs ok`.
+
+- [go-test-2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8.txt](go-test-2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8.txt)
+- [qa-tabs-2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8.log](qa-tabs-2c9a1d378b8c69572c7465bb9c2cfc9d116b35b8.log)
