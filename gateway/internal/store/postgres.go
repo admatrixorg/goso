@@ -90,6 +90,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateContacts(); err != nil {
 		return fmt.Errorf("postgres migrate contacts: %w", err)
 	}
+	if err := s.migrateTenantRegistry(); err != nil {
+		return fmt.Errorf("postgres migrate tenant registry: %w", err)
+	}
 	return nil
 }
 

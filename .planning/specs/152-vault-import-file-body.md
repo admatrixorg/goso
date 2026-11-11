@@ -9,7 +9,7 @@ Sample data is Minh An only. This spec does not read customer data and does not 
 | Number | Where it is used |
 |---|---|
 | 150 | Open PR #35, branch `cursor/context-files-store-8978`: durable agent and user context files. |
-| 151 | Open PR #36: durable tenant registry (`.planning/specs/151-durable-tenant-registry.md`). |
+| 151 | On `main` (`a87b1fb`): durable tenant registry (`.planning/specs/151-durable-tenant-registry.md`). |
 | 152 | This spec. Not a file on `main` at `acd85f1`. |
 
 ## Why

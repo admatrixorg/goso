@@ -30,6 +30,11 @@ var (
 	ErrMemberExists    = errors.New("member already exists")
 	ErrCap             = errors.New("too many tenants")
 	ErrMemberCap       = errors.New("too many members")
+	// ErrStore is a failed registry write. The text is fixed and carries no
+	// slug, name, or member label. The cached rows are unchanged.
+	ErrStore = errors.New("tenant registry save failed")
+	// ErrLoad is a failed registry read at startup. The text is fixed.
+	ErrLoad = errors.New("tenant registry load failed")
 )
 
 const (
@@ -75,12 +80,16 @@ type record struct {
 	Members   []Member
 }
 
-// Registry is an in-memory tenant lifecycle store. Master (default) is always present.
+// Registry is the tenant lifecycle store. Master (default) is always present.
+// Rows are cached in memory. With a SQLite or Postgres store attached, create,
+// status, and member changes write through in the same call. A failed write
+// returns an error and leaves the cached rows unchanged.
 type Registry struct {
 	mu   sync.Mutex
 	seq  atomic.Int64
 	now  func() time.Time
 	rows map[string]*record
+	save registryDB
 }
 
 var (
@@ -340,6 +349,9 @@ func (r *Registry) Create(slug, name string) (Public, error) {
 		CreatedAt: r.clock(),
 		Members:   []Member{},
 	}
+	if err := r.persist("create", rec); err != nil {
+		return Public{}, err
+	}
 	r.rows[slug] = rec
 	return rec.public(true), nil
 }
@@ -374,6 +386,11 @@ func (r *Registry) SetStatus(id, status, confirm string) (Public, error) {
 		if !ConfirmOK(confirm, rec.public(false)) {
 			return Public{}, ErrConfirm
 		}
+	}
+	next := cloneRecord(rec)
+	next.Status = status
+	if err := r.persist("status", next); err != nil {
+		return Public{}, err
 	}
 	rec.Status = status
 	return rec.public(true), nil
@@ -417,7 +434,12 @@ func (r *Registry) AddMember(id, subject, role string) (Public, Member, error) {
 		}
 	}
 	mem := Member{ID: r.nextMemberID(), Subject: subject, Role: role, CreatedAt: r.clock()}
-	rec.Members = append(rec.Members, mem)
+	next := cloneRecord(rec)
+	next.Members = append(next.Members, mem)
+	if err := r.persist("member_add", next); err != nil {
+		return Public{}, Member{}, err
+	}
+	rec.Members = next.Members
 	return rec.public(true), mem, nil
 }
 
@@ -442,10 +464,16 @@ func (r *Registry) SetMemberRole(id, memberID, role string) (Public, Member, err
 		return Public{}, Member{}, ErrNotFound
 	}
 	for i := range rec.Members {
-		if rec.Members[i].ID == memberID {
-			rec.Members[i].Role = role
-			return rec.public(true), rec.Members[i], nil
+		if rec.Members[i].ID != memberID {
+			continue
 		}
+		next := cloneRecord(rec)
+		next.Members[i].Role = role
+		if err := r.persist("member_role", next); err != nil {
+			return Public{}, Member{}, err
+		}
+		rec.Members[i].Role = role
+		return rec.public(true), rec.Members[i], nil
 	}
 	return Public{}, Member{}, ErrNotFound
 }
@@ -476,8 +504,14 @@ func (r *Registry) RemoveMember(id, memberID, confirm string) (Public, Member, e
 		if strings.TrimSpace(confirm) != m.ID && strings.TrimSpace(confirm) != m.Subject {
 			return Public{}, Member{}, ErrConfirm
 		}
-		rec.Members = append(rec.Members[:i], rec.Members[i+1:]...)
-		return rec.public(true), m, nil
+		next := cloneRecord(rec)
+		removed := next.Members[i]
+		next.Members = append(next.Members[:i], next.Members[i+1:]...)
+		if err := r.persist("member_remove", next); err != nil {
+			return Public{}, Member{}, err
+		}
+		rec.Members = next.Members
+		return rec.public(true), removed, nil
 	}
 	return Public{}, Member{}, ErrNotFound
 }
