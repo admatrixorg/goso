@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -291,6 +292,9 @@ func (r *Runner) loadContextFiles(st *State) error {
 	text, err := contextfile.Prompt(r.Store, st.TenantID, st.AgentID, st.ContextUserKey)
 	if err != nil {
 		contextfile.LogFailure("prompt", err)
+		if errors.Is(err, store.ErrContextOwnerCap) {
+			return err
+		}
 		return contextfile.ErrUnavailable
 	}
 	st.ContextFiles = text

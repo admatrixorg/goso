@@ -526,6 +526,10 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 					writeErr(w, http.StatusBadRequest, err.Error())
 					return
 				}
+				if errors.Is(err, store.ErrContextOwnerCap) {
+					sw.errEvent("too_large")
+					return
+				}
 				if errors.Is(err, contextfile.ErrUnavailable) {
 					sw.errEvent("store")
 					return
@@ -557,6 +561,10 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 			}
 			if strings.Contains(err.Error(), "unknown prompt_mode") {
 				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			if errors.Is(err, store.ErrContextOwnerCap) {
+				writeErr(w, http.StatusBadRequest, "too_large")
 				return
 			}
 			if errors.Is(err, contextfile.ErrUnavailable) {

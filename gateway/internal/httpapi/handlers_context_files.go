@@ -32,6 +32,8 @@ func writeContextErr(w http.ResponseWriter, op string, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "not found")
+	case errors.Is(err, store.ErrContextOwnerCap):
+		writeErr(w, http.StatusBadRequest, "too_large")
 	case errors.Is(err, store.ErrContextTooLarge):
 		writeErr(w, http.StatusBadRequest, "context file too large")
 	case errors.Is(err, store.ErrContextInvalid):

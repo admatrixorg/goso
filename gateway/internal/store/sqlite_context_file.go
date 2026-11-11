@@ -33,17 +33,54 @@ func (s *SQLiteStore) PutContextFile(in ContextFile) (*ContextFile, error) {
 	if err := s.agentContextOwner(f); err != nil {
 		return nil, err
 	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	rows, err := tx.Query(`SELECT name, body FROM context_files WHERE tenant_id=? AND scope=? AND owner_id=?`,
+		f.TenantID, f.Scope, f.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	var existing []ContextFile
+	for rows.Next() {
+		var name, body string
+		if err := rows.Scan(&name, &body); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		existing = append(existing, ContextFile{Name: name, Body: body})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := contextOwnerFits(existing, f.Name, f.Body); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	id := newID()
-	_, err = s.db.Exec(`INSERT INTO context_files(id, tenant_id, scope, owner_id, name, body, created_at, updated_at)
+	if _, err := tx.Exec(`INSERT INTO context_files(id, tenant_id, scope, owner_id, name, body, created_at, updated_at)
 		VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(tenant_id, scope, owner_id, name) DO UPDATE SET
 			body=excluded.body,
 			updated_at=excluded.updated_at`,
-		id, f.TenantID, f.Scope, f.OwnerID, f.Name, f.Body, formatTime(now), formatTime(now))
-	if err != nil {
+		id, f.TenantID, f.Scope, f.OwnerID, f.Name, f.Body, formatTime(now), formatTime(now)); err != nil {
 		return nil, err
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
 	return s.GetContextFile(f.TenantID, f.Scope, f.OwnerID, f.Name)
 }
 

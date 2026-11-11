@@ -1,6 +1,6 @@
 # SPEC 150 — context files store
 
-Transcripts for the agent and user context-file store. No customer data and no secret values. The Postgres DSN is not stored here.
+Transcripts after the owner cap, the view-token write check, and the merge of `main` at `acd85f1`. No customer data and no secret values. The Postgres DSN is not stored here.
 
 No control-plane tab changed, so there are no prototype-versus-Goso screenshots.
 
@@ -13,7 +13,7 @@ No control-plane tab changed, so there are no prototype-versus-Goso screenshots.
 | [go-test.txt](go-test.txt) | `GOSO_TEST_POSTGRES_DSN` unset. Postgres cases skip. CI sets the DSN. | exit 0 |
 | [go-test-postgres.txt](go-test-postgres.txt) | Local Postgres **16.15**. `CI=true` and `GOSO_TEST_POSTGRES_DSN` set (same user, database, and host shape as `.github/workflows/ci.yml`). | exit 0 |
 
-Both runs finished with `EXIT:0`. No `FAIL` lines.
+Both runs finished with `EXIT:0`. No `FAIL` lines. The suite includes the Minh An owner-cap cases (17th file and a byte total over 64KiB write nothing; a chat turn over the cap returns `too_large` and does not call the model) and the view-token PUT/DELETE denial.
 
 ## qa:tabs
 

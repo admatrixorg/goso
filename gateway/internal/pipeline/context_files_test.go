@@ -5,6 +5,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -232,4 +233,48 @@ func TestRun_ContextFileAnswersForTenantUser(t *testing.T) {
 			t.Fatalf("partial turn stored: %v %+v", err, msgs)
 		}
 	})
+}
+
+type overCapList struct{ store.StoreIface }
+
+func (overCapList) ListContextFiles(tenant, scope, owner string) ([]*store.ContextFile, error) {
+	if scope != store.ContextScopeAgent {
+		return []*store.ContextFile{}, nil
+	}
+	out := make([]*store.ContextFile, store.MaxContextFilesPerOwner+1)
+	for i := range out {
+		out[i] = &store.ContextFile{
+			TenantID: tenant, Scope: scope, AgentID: owner,
+			Name: fmt.Sprintf("n%02d.md", i+1), Body: "Minh An ghi chu.",
+		}
+	}
+	return out, nil
+}
+
+func TestRun_ContextFilesOverCap(t *testing.T) {
+	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	st := store.New()
+	ag, err := st.CreateAgent(store.Agent{
+		AgentKey: "tu-van-cap", DisplayName: "Cố vấn Minh An", TenantID: "minh-an-sales",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession(store.Session{AgentID: ag.ID, TenantID: "minh-an-sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &answerFromFile{}
+	r := NewRunner(overCapList{StoreIface: st}, nil, p, nil)
+	_, err = r.Run(context.Background(), sess.ID, "Chiết khấu tối đa là bao nhiêu?", ModeFull)
+	if !errors.Is(err, store.ErrContextOwnerCap) {
+		t.Fatalf("err %v", err)
+	}
+	if len(p.seen) != 0 {
+		t.Fatal("model ran on an over-cap context")
+	}
+	msgs, err := st.ListMessages(sess.ID)
+	if err != nil || len(msgs) != 0 {
+		t.Fatalf("partial turn: %v %+v", err, msgs)
+	}
 }

@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -194,5 +196,136 @@ func TestContextFilesHTTP_StoreFailure(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "Chiết") || strings.Contains(rec.Body.String(), "Lan") || strings.Contains(rec.Body.String(), "disk") {
 		t.Fatalf("leaked %s", rec.Body.String())
+	}
+}
+
+func TestContextFilesHTTP_OwnerCap(t *testing.T) {
+	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	st := store.New()
+	ag, err := st.CreateAgent(store.Agent{
+		AgentKey: "tu-van-http-cap", DisplayName: "Cố vấn Minh An",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewRouter(Options{Store: st, Version: "t"})
+	put := func(name, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		raw := fmt.Sprintf(`{"scope":"agent","agent_id":"%s","name":"%s","body":"%s"}`, ag.ID, name, body)
+		req := httptest.NewRequest(http.MethodPut, "/api/context-files", strings.NewReader(raw))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for i := 1; i <= store.MaxContextFilesPerOwner; i++ {
+		rec := put(fmt.Sprintf("n%02d.md", i), "Minh An ghi chu.")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("file %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+	}
+	rec := put("n17.md", "Minh An vuot so file.")
+	if rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != `{"error":"too_large"}` {
+		t.Fatalf("17th: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := st.GetContextFile("default", store.ContextScopeAgent, ag.ID, "n17.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("17th stored: %v", err)
+	}
+	listed, err := st.ListContextFiles("default", store.ContextScopeAgent, ag.ID)
+	if err != nil || len(listed) != store.MaxContextFilesPerOwner {
+		t.Fatalf("rows %v %d", err, len(listed))
+	}
+}
+
+type httpOverCap struct{ store.StoreIface }
+
+func (httpOverCap) ListContextFiles(tenant, scope, owner string) ([]*store.ContextFile, error) {
+	out := make([]*store.ContextFile, store.MaxContextFilesPerOwner+1)
+	for i := range out {
+		out[i] = &store.ContextFile{
+			TenantID: tenant, Scope: scope, AgentID: owner,
+			Name: fmt.Sprintf("n%02d.md", i+1), Body: "Minh An ghi chu.",
+		}
+	}
+	return out, nil
+}
+
+type callCount struct{ calls int }
+
+func (c *callCount) Name() string      { return "obey" }
+func (c *callCount) ModelName() string { return "obey" }
+func (c *callCount) Chat(context.Context, []llm.Message) (string, error) {
+	c.calls++
+	return "không rõ", nil
+}
+
+func TestContextFilesHTTP_ChatOverCap(t *testing.T) {
+	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	inner := store.New()
+	ag, err := inner.CreateAgent(store.Agent{
+		AgentKey: "tu-van-chat-cap", DisplayName: "Cố vấn Minh An",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := inner.CreateSession(store.Session{AgentID: ag.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := httpOverCap{StoreIface: inner}
+	model := &callCount{}
+	h := NewRouter(Options{Store: st, Version: "t", Runtime: agent.New(st, nil, nil, nil, model)})
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(
+		`{"session_id":"`+sess.ID+`","message":"Chiết khấu tối đa là bao nhiêu?","prompt_mode":"full"}`))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != `{"error":"too_large"}` {
+		t.Fatalf("chat %d %s", rec.Code, rec.Body.String())
+	}
+	if model.calls != 0 {
+		t.Fatal("model ran")
+	}
+	msgs, err := inner.ListMessages(sess.ID)
+	if err != nil || len(msgs) != 0 {
+		t.Fatalf("partial turn: %v %d", err, len(msgs))
+	}
+}
+
+func TestContextFilesHTTP_ViewTokenCannotWrite(t *testing.T) {
+	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	t.Setenv("GOSO_ADMIN_TOKEN", "admin-ctx")
+	t.Setenv("GOSO_VIEW_TOKEN", "view-ctx")
+	st := store.New()
+	ag, err := st.CreateAgent(store.Agent{
+		AgentKey: "tu-van-view", DisplayName: "Cố vấn Minh An",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := "Minh An giu nguyen."
+	if _, err := st.PutContextFile(store.ContextFile{
+		TenantID: "default", Scope: store.ContextScopeAgent, AgentID: ag.ID,
+		Name: "AGENTS.md", Body: original,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := auth.RequireTokens("admin-ctx", "view-ctx", nil)(NewRouter(Options{Store: st, Version: "t"}))
+	put := httptest.NewRequest(http.MethodPut, "/api/context-files", strings.NewReader(
+		`{"scope":"agent","agent_id":"`+ag.ID+`","name":"AGENTS.md","body":"Minh An bi sua."}`))
+	put.Header.Set("Authorization", "Bearer view-ctx")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, put)
+	if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
+		t.Fatalf("put status %d %s", rec.Code, rec.Body.String())
+	}
+	del := httptest.NewRequest(http.MethodDelete, "/api/context-files?scope=agent&agent_id="+ag.ID+"&name=AGENTS.md", nil)
+	del.Header.Set("Authorization", "Bearer view-ctx")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, del)
+	if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
+		t.Fatalf("delete status %d %s", rec.Code, rec.Body.String())
+	}
+	got, err := st.GetContextFile("default", store.ContextScopeAgent, ag.ID, "AGENTS.md")
+	if err != nil || got.Body != original {
+		t.Fatalf("row changed: %v %+v", err, got)
 	}
 }

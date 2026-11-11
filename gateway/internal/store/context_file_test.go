@@ -4,6 +4,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -208,6 +209,101 @@ func TestContextFile_TenantAndUserIsolation(t *testing.T) {
 			}
 			if docs := s.ListVaultDocs(); len(docs) != 0 {
 				t.Fatalf("context file landed in vault: %d", len(docs))
+			}
+		})
+	}
+}
+
+func minhAnSized(n int) string {
+	const prefix = "Minh An "
+	if n < len(prefix) {
+		return prefix
+	}
+	return prefix + strings.Repeat("x", n-len(prefix))
+}
+
+func TestContextFile_OwnerCap(t *testing.T) {
+	for name, s := range contextStores(t) {
+		t.Run(name, func(t *testing.T) {
+			ag, err := s.CreateAgent(Agent{
+				AgentKey: "tu-van-cap-" + name, DisplayName: "Cố vấn Minh An", TenantID: "minh-an-sales",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 1; i <= MaxContextFilesPerOwner; i++ {
+				if _, err := s.PutContextFile(ContextFile{
+					TenantID: "minh-an-sales", Scope: ContextScopeAgent, AgentID: ag.ID,
+					Name: fmt.Sprintf("n%02d.md", i), Body: "Minh An ghi chu.",
+				}); err != nil {
+					t.Fatalf("file %d: %v", i, err)
+				}
+			}
+			if _, err := s.PutContextFile(ContextFile{
+				TenantID: "minh-an-sales", Scope: ContextScopeAgent, AgentID: ag.ID,
+				Name: "n17.md", Body: "Minh An vuot so file.",
+			}); !errors.Is(err, ErrContextOwnerCap) {
+				t.Fatalf("17th file: %v", err)
+			}
+			if _, err := s.GetContextFile("minh-an-sales", ContextScopeAgent, ag.ID, "n17.md"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("17th file was stored: %v", err)
+			}
+			listed, err := s.ListContextFiles("minh-an-sales", ContextScopeAgent, ag.ID)
+			if err != nil || len(listed) != MaxContextFilesPerOwner {
+				t.Fatalf("list after refused write: %v %d", err, len(listed))
+			}
+			if _, err := s.PutContextFile(ContextFile{
+				TenantID: "minh-an-sales", Scope: ContextScopeAgent, AgentID: ag.ID,
+				Name: "n01.md", Body: "Minh An ghi chu moi.",
+			}); err != nil {
+				t.Fatalf("replace inside the cap: %v", err)
+			}
+			got, err := s.GetContextFile("minh-an-sales", ContextScopeAgent, ag.ID, "n01.md")
+			if err != nil || got.Body != "Minh An ghi chu moi." {
+				t.Fatalf("replace: %v %+v", err, got)
+			}
+
+			part := minhAnSized(20000)
+			for _, n := range []string{"a.md", "b.md", "c.md"} {
+				if _, err := s.PutContextFile(ContextFile{
+					TenantID: "minh-an-sales", Scope: ContextScopeUser, UserKey: "lan",
+					Name: n, Body: part,
+				}); err != nil {
+					t.Fatalf("size seed %s: %v", n, err)
+				}
+			}
+			before, err := s.GetContextFile("minh-an-sales", ContextScopeUser, "lan", "c.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.PutContextFile(ContextFile{
+				TenantID: "minh-an-sales", Scope: ContextScopeUser, UserKey: "lan",
+				Name: "c.md", Body: minhAnSized(30000),
+			}); !errors.Is(err, ErrContextOwnerCap) {
+				t.Fatalf("byte cap update: %v", err)
+			}
+			after, err := s.GetContextFile("minh-an-sales", ContextScopeUser, "lan", "c.md")
+			if err != nil || after.Body != before.Body {
+				t.Fatalf("update wrote past the cap: %v before %d after %d", err, len(before.Body), len(after.Body))
+			}
+
+			full := minhAnSized(MaxContextFileBytes)
+			for _, n := range []string{"full-a.md", "full-b.md"} {
+				if _, err := s.PutContextFile(ContextFile{
+					TenantID: "minh-an-sales", Scope: ContextScopeUser, UserKey: "hoa",
+					Name: n, Body: full,
+				}); err != nil {
+					t.Fatalf("exact cap %s: %v", n, err)
+				}
+			}
+			if _, err := s.PutContextFile(ContextFile{
+				TenantID: "minh-an-sales", Scope: ContextScopeUser, UserKey: "hoa",
+				Name: "full-c.md", Body: "Minh An them.",
+			}); !errors.Is(err, ErrContextOwnerCap) {
+				t.Fatalf("byte over exact cap: %v", err)
+			}
+			if _, err := s.GetContextFile("minh-an-sales", ContextScopeUser, "hoa", "full-c.md"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("over-cap file stored: %v", err)
 			}
 		})
 	}

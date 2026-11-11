@@ -89,6 +89,9 @@ func Prompt(st store.StoreIface, tenant, agentID, userKey string) (string, error
 		if err != nil {
 			return "", err
 		}
+		if err := store.ContextFilesOverCap(files); err != nil {
+			return "", err
+		}
 		blocks, err := blocksFor(files, tenant, store.ContextScopeAgent, id)
 		if err != nil {
 			return "", err
@@ -101,6 +104,9 @@ func Prompt(st store.StoreIface, tenant, agentID, userKey string) (string, error
 		}
 		files, err := st.ListContextFiles(tenant, store.ContextScopeUser, key)
 		if err != nil {
+			return "", err
+		}
+		if err := store.ContextFilesOverCap(files); err != nil {
 			return "", err
 		}
 		blocks, err := blocksFor(files, tenant, store.ContextScopeUser, key)
@@ -147,7 +153,7 @@ func Class(err error) string {
 		return "not_found"
 	case errors.Is(err, store.ErrContextInvalid):
 		return "invalid"
-	case errors.Is(err, store.ErrContextTooLarge):
+	case errors.Is(err, store.ErrContextTooLarge), errors.Is(err, store.ErrContextOwnerCap):
 		return "too_large"
 	default:
 		return "store"
