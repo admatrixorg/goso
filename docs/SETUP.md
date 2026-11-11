@@ -99,7 +99,7 @@ Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080`
 | GOSO_RATE_LIMIT | 60 | Giới hạn req/phút/IP (0 = tắt) |
 | GOSO_DB_PATH | :memory: (gateway) / OS app-support (desktop) | File SQLite (vd data/goso.db; Docker: `/data/goso.db`) |
 | GOSO_DATABASE_URL | (unset) | `postgres://…` opens pgx (connect fail = error, **no** SQLite fallback). Unset = SQLite `GOSO_DB_PATH`. Local: `docker compose --profile postgres up -d postgres` then `postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable`. See `docs/qa/085-postgres-local.md`. |
-| GOSO_MULTI_TENANT | (off) | `1` honors `X-Goso-Tenant` (admin token required for non-default). Unset/demo = always `default`. |
+| GOSO_MULTI_TENANT | (off) | `1` honors `X-Goso-Tenant` (admin token required for non-default). Unset/demo = always `default`. Tenant lifecycle rows are a separate store: see below. |
 | GOSO_KG_EXTRACT | (off) | `1` may insert an L2 entity from assistant lines `Name:` / `Entity:` after chat. Default off so demo chat is unchanged. Tests use `POST /api/kg/entities`. |
 | GOSO_EVOLUTION_AUTO | (off) | `1` starts an in-process 1-minute ticker that calls `POST`-equivalent tick per agent. Each agent still needs `auto_adapt=true` (default false). Default off so demo is unchanged. Name/key never auto-change. |
 | GOSO_HEARTBEAT | (off) | `1` starts an in-process ticker that stamps `last_heartbeat` (RFC3339 UTC) on `GET /api/stats`. Default **off**. Application-level stamp, not WebSocket ping. Does not run HEARTBEAT.md or channel delivery. |
@@ -135,6 +135,8 @@ Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080`
 | GOSO_TOKEN | (rỗng) | Bearer token MCP → gateway |
 | GOSO_MCP_PORT | 3100 | Cổng Streamable HTTP của MCP |
 | GOSO_OTEL_ENDPOINT | (rỗng = noop) | Optional OTLP HTTP JSON collector URL (SPEC 042/087). Empty = no export. Local Jaeger: `docker compose --profile otel up -d jaeger` then host `http://127.0.0.1:4318/v1/traces` or compose-network `http://jaeger:4318/v1/traces`. Do **not** put Grafana Cloud keys here (DI-18). |
+
+Tenant lifecycle (SPEC 151) uses the same database as the rest of the gateway. A SQLite file (`GOSO_DB_PATH`) and Postgres (`GOSO_DATABASE_URL`) create `tenant_registry` and `tenant_registry_members` on open. Those statements only add tables. They do not alter memories, vault, contacts, or any older table. An empty `tenant_registry` loads the master tenant and nothing else, which is the previous startup, so there is no on/off flag. Create, status, and member changes write through in the same call. If that write fails, the API returns an error and the in-memory rows stay as they were. With `GOSO_DB_PATH` unset or `:memory:`, the registry stays in the process, because that mode has no database to reopen.
 
 Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute ticker. `GET/POST/DELETE /api/cron` (aliased at `/v1/cron`). Specs: `every:Nm|Nh` or optional 5-field (`*`, decimal, `*/n`) evaluated in **UTC**. Cap 20 jobs. Empty list is a no-op. Failed fires are retried next tick. No OS crontab and no extra env.
 

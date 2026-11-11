@@ -236,6 +236,8 @@ func writeTenantErr(w http.ResponseWriter, err error) bool {
 		writeErr(w, http.StatusBadRequest, "role must be owner, admin, member, or viewer")
 	case errors.Is(err, tenant.ErrSecret):
 		writeErr(w, http.StatusBadRequest, "secret-shaped value is not allowed")
+	case errors.Is(err, tenant.ErrStore):
+		writeErr(w, http.StatusInternalServerError, "tenant registry save failed")
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid request")
 	}

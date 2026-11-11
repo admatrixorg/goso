@@ -32,6 +32,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
 // fatalf is log.Fatalf; tests replace it so production refuse does not os.Exit.
@@ -128,6 +129,15 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)
 	loadGatewayOverlay(st)
+	tenants, err := tenant.Load(st)
+	if err != nil {
+		fatalf("tenant registry: %v", err)
+	}
+	if tenants != nil {
+		tenant.SetDefault(tenants)
+	} else {
+		tenants = tenant.DefaultRegistry()
+	}
 	gate := approval.New(0)
 	ev := eventstore.New(1024)
 	logs := logstore.New(1024)
@@ -140,6 +150,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
 		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr, APIKeys: apikey.Default(),
+		Tenants: tenants,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.SetWsUp(true)
@@ -186,7 +197,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 
 	devMode := envTruthy(os.Getenv("GOSO_DEV_MODE"))
 	var handler http.Handler = security.LimitAPI(mux)
-	handler = httpapi.GuardDeactivatedTenant(nil, handler)
+	handler = httpapi.GuardDeactivatedTenant(tenant.DefaultRegistry(), handler)
 	handler = httpapi.RejectInvalidTenant(handler)
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)

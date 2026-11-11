@@ -125,7 +125,7 @@ Environment:
   GOSO_VIEW_TOKEN          Optional GET-only token for /healthz /api/agents /api/sessions /api/nodes /api/workstations /api/storage /api/events /api/activity /api/logs /api/tenant /api/tenants /api/api-keys /api/packages /api/approvals /api/import-export /api/tts
   Activity                 GET /api/activity append-only admin audit (action/actor/entity/IP/time, before cursor). Separate from Events. GET never returns secrets
   Logs                     GET /api/logs redacted tail (component/q/level, limit). SSE GET /api/logs/stream. GET never returns credentials
-  Tenants                  GET /api/tenants list/detail; POST create/status/members. Master-admin lifecycle. GET never returns secrets. Deactivated tenants reject writes.
+  Tenants                  GET /api/tenants list/detail; POST create/status/members. Master-admin lifecycle. Rows persist in the gateway DB (SQLite file or Postgres). An empty table starts as master only. GET never returns secrets. Deactivated tenants reject writes.
   API Keys                 GET /api/api-keys list/detail (prefix+hash metadata, never secret). POST create reveals secret once. POST revoke with confirm. Audit create/revoke without the secret.
   Packages                 GET /api/packages runtime+inventory+jobs+allowlist+CLI metadata (never tokens). Allowlist pins required. Install/uninstall/recover need confirm. CLI credentials are a separate write-only surface.
   Approvals                GET /api/approvals execution inbox (requester/agent/tool/arg_preview/risk/expiry). Distinct from channel pairing. POST decision approve|deny (deny needs reason). GET never returns args or secrets. Audit resolution.

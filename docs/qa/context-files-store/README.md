@@ -1,6 +1,6 @@
 # SPEC 150 — context files store
 
-Transcripts after the owner cap, the view-token write check, and the merge of `main` at `acd85f1`. No customer data and no secret values. The Postgres DSN is not stored here.
+Transcripts after merging `main` at `a87b1fb` (SPEC 151 tenant registry) into the context-file branch. The only conflict was `CHANGELOG.md`; both SPEC 150 and SPEC 151 bullets are kept. `context_files` and `tenant_registry` both migrate. No customer data and no secret values. The Postgres DSN is not stored here.
 
 No control-plane tab changed, so there are no prototype-versus-Goso screenshots.
 
