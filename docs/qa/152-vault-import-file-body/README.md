@@ -4,9 +4,25 @@ Evidence for reading a document body from `--src-dir` when the export has no `va
 
 ## Tested SHA
 
+`852a7c66dcf2d231b0265ae36c6b732b83cfcdc3`
+
+This commit merges `origin/main` `a87b1fb` (SPEC 151 tenant registry) into the SPEC 152 branch. `CHANGELOG.md` was the only conflict. Both unreleased entries are kept. Importer behavior is unchanged by the resolution.
+
+`git status --porcelain` was empty before `go test` and before `qa:tabs`.
+
+[go-test-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.txt](go-test-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.txt)
+
+[go-test-cases-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.txt](go-test-cases-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.txt)
+
+[qa-tabs-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.log](qa-tabs-852a7c66dcf2d231b0265ae36c6b732b83cfcdc3.log)
+
+`TestFileBodyMinhAn` passed on `sqlite`, `postgres`, and `memory`. Tenant registry restart tests passed on SQLite and Postgres in the same Postgres 16.15 run. `qa:tabs` exited 0 (`flow chat`, then `qa:tabs ok`).
+
+## Earlier SHA
+
 `e82c22019f07926d85bfff1c860c236972e2173f`
 
-`git status --porcelain` was empty before `go test` and before `qa:tabs`. This notes commit does not change gateway or control-plane code.
+`git status --porcelain` was empty before `go test` and before `qa:tabs`. That run is before the merge of main.
 
 Postgres for the local `go test` was **16.15** (Ubuntu package `16.15-0ubuntu0.24.04.1`). The DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here. This Postgres has no pgvector extension; the store logs that `CREATE EXTENSION vector` was skipped and continues. SQLite cases run in the same command. Postgres cases run because the DSN is set.
 
