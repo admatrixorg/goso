@@ -8,6 +8,7 @@ Offline importer for one tenant into the existing `vault_docs` and `vault_links`
 |---|---|
 | `ffa94f9788fbaa5bb46f90bf11605bb5053deb53` | Importer. First `go test ./...` and `qa:tabs` |
 | `72808cca31ddae7cae4849983eafc6054c8021af` | Same code plus these notes. Both commands were run again |
+| `13021f2eb2512a8d0e5f47df99021725f01db0d7` | Path ownership, keep-prefix, foreign-tenant, path-missing, scope-conflict. Both commands run on a clean tree |
 
 `git status --porcelain` was empty before and after each command. The second pair of logs is from `72808cca31ddae7cae4849983eafc6054c8021af`, which does not change gateway or control-plane code relative to the importer commit.
 
@@ -48,3 +49,12 @@ The same two commands were run again on `72808cca31ddae7cae4849983eafc6054c8021a
 
 - [go-test-72808cca31ddae7cae4849983eafc6054c8021af.txt](go-test-72808cca31ddae7cae4849983eafc6054c8021af.txt)
 - [qa-tabs-72808cca31ddae7cae4849983eafc6054c8021af.log](qa-tabs-72808cca31ddae7cae4849983eafc6054c8021af.log)
+
+## Rules added after review
+
+`13021f2eb2512a8d0e5f47df99021725f01db0d7` is the code under test. `git status --porcelain` was empty before and after. `GOSO_TEST_POSTGRES_DSN` was unset. The gateway was started from this commit with a fresh database and the same Minh An seed. `qa:tabs` ended `flow chat` then `qa:tabs ok`.
+
+- [go-test-13021f2eb2512a8d0e5f47df99021725f01db0d7.txt](go-test-13021f2eb2512a8d0e5f47df99021725f01db0d7.txt)
+- [qa-tabs-13021f2eb2512a8d0e5f47df99021725f01db0d7.log](qa-tabs-13021f2eb2512a8d0e5f47df99021725f01db0d7.log)
+
+No customer export and no import report from a real tenant is in this directory.
