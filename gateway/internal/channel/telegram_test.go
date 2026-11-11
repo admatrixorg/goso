@@ -188,7 +188,10 @@ func TestTelegram_DisabledAgentBuffers(t *testing.T) {
 	if strings.Contains(string(raw), "bot_token") || strings.Contains(string(raw), "12345:AA") {
 		t.Fatalf("payload in listing %s", raw)
 	}
-	contacts := dir.List("", "", "", "")
+	contacts, err := dir.List("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(contacts) != 1 || contacts[0].Dest != "777" {
 		t.Fatalf("contacts %#v", contacts)
 	}

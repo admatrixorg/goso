@@ -427,6 +427,9 @@ func (s *SQLiteStore) migrate() error {
 	s.initFTS()
 	s.initVaultFTS()
 	s.initKGFTS()
+	if err := s.migrateContacts(); err != nil {
+		return err
+	}
 	return nil
 }
 
