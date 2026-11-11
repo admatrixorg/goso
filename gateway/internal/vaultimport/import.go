@@ -17,6 +17,13 @@
 // only when that marker names the same GoClaw document and the hash still
 // matches. Every other explicit row at the path is rejected as path-taken.
 //
+// KeepPrefix stores the path with the root still attached. The default
+// strips that prefix. A workspace root (".", "/app/workspace") accepts
+// every safe relative path in one run. Any tenants/<other> path is
+// foreign-tenant. Two scopes at one logical path keep the narrower
+// document (personal before team) and report scope-conflict. goso has no
+// scope column, so the winner is an ordinary tenant row.
+//
 // A run names one source tenant id and one root folder. A document is imported
 // only when both match. Paths that leave the root, walk with "..", are
 // absolute, look like a symlink, or enter tenants/<other> are rejected and
@@ -50,6 +57,14 @@ type Options struct {
 	// VaultRoot, when set, also publishes the body under t/<tenant>/ so the
 	// existing vault service can confirm the file. Empty writes the registry only.
 	VaultRoot string
+	// KeepPrefix stores the cleaned source path without removing Root.
+	// The default strips Root. Use KeepPrefix with root "." or /app/workspace
+	// to keep original folder prefixes in one run.
+	KeepPrefix bool
+	// SrcDir, when set, is the source workspace. A document whose file is
+	// missing there is path-missing and is not inserted. The version text in
+	// the export is still the body when the file exists.
+	SrcDir string
 	// DryRun reports counts and rejections and does not write.
 	DryRun bool
 	// Log receives rejection lines. Nil discards them. Arguments are paths and
@@ -182,6 +197,11 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	if !store.TenantOK(dest) {
 		return nil, errConfig("dest tenant id is empty or not a goso tenant id")
 	}
+	if strings.TrimSpace(opt.SrcDir) != "" {
+		if err := checkSrcDir(opt.SrcDir); err != nil {
+			return nil, err
+		}
+	}
 	rep := &Report{DryRun: opt.DryRun}
 	logf := opt.Log
 	if logf == nil {
@@ -204,13 +224,12 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		return docs[i].ID < docs[j].ID
 	})
 
-	bySource := map[string]*keptDoc{}
-	var kept []*keptDoc
-	seenLogical := map[string]struct{}{}
+	seenID := map[string]struct{}{}
+	var candidates []*keptDoc
 	for _, doc := range docs {
 		path := strings.TrimSpace(doc.Path)
 		if !tenantMatch(doc.TenantID, source) {
-			d := classifyPath(doc.Path, root)
+			d := classifyPath(doc.Path, root, opt.KeepPrefix)
 			if d.Reason != "" {
 				reject(rep, logf, "doc", path, "", d.Reason)
 				continue
@@ -219,13 +238,9 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			logf.Printf("vaultimport: skipped doc path=%q reason=%s", path, "tenant-mismatch")
 			continue
 		}
-		d := classifyPath(doc.Path, root)
+		d := classifyPath(doc.Path, root, opt.KeepPrefix)
 		if d.Reason != "" {
 			reject(rep, logf, "doc", path, "", d.Reason)
-			continue
-		}
-		if _, ok := seenLogical[d.Logical]; ok {
-			reject(rep, logf, "doc", path, "", "path-collision")
 			continue
 		}
 		id := strings.TrimSpace(doc.ID)
@@ -233,10 +248,11 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			reject(rep, logf, "doc", path, "", "source-id")
 			continue
 		}
-		if _, ok := bySource[id]; ok {
+		if _, ok := seenID[id]; ok {
 			reject(rep, logf, "doc", path, "", "duplicate-id")
 			continue
 		}
+		seenID[id] = struct{}{}
 		content := ""
 		var versionAt time.Time
 		if v, ok := latest[id]; ok {
@@ -278,11 +294,36 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			sum:     hashBody(body),
 			mtime:   mtime.UTC(),
 		}
-		seenLogical[d.Logical] = struct{}{}
-		kept = append(kept, item)
-		if id != "" {
-			bySource[id] = item
+		candidates = append(candidates, item)
+	}
+	kept, losers := preferNarrowerScope(candidates)
+	for _, loser := range losers {
+		reject(rep, logf, "doc", strings.TrimSpace(loser.item.src.Path), "", loser.reason)
+	}
+	bySource := map[string]*keptDoc{}
+	for _, item := range kept {
+		bySource[strings.TrimSpace(item.src.ID)] = item
+	}
+	if strings.TrimSpace(opt.SrcDir) != "" {
+		var present []*keptDoc
+		for _, item := range kept {
+			state, err := sourceFileState(opt.SrcDir, item.src.Path)
+			if err != nil {
+				return rep, err
+			}
+			if state == sourceMissing {
+				reject(rep, logf, "doc", strings.TrimSpace(item.src.Path), "", "path-missing")
+				delete(bySource, strings.TrimSpace(item.src.ID))
+				continue
+			}
+			if state == sourceSymlink {
+				reject(rep, logf, "doc", strings.TrimSpace(item.src.Path), "", reasonSymlink)
+				delete(bySource, strings.TrimSpace(item.src.ID))
+				continue
+			}
+			present = append(present, item)
 		}
+		kept = present
 	}
 
 	for _, item := range kept {
@@ -471,6 +512,68 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 	}
 	return rep, nil
+}
+
+type scopeLoser struct {
+	item   *keptDoc
+	reason string
+}
+
+// preferNarrowerScope keeps one document per logical path. personal beats
+// team, team beats shared, shared beats custom, and a named scope beats an
+// empty one. Same-scope extras are path-collision. vault_docs has no scope
+// column, so this is the only distinction the existing row can carry.
+func preferNarrowerScope(items []*keptDoc) ([]*keptDoc, []scopeLoser) {
+	groups := map[string][]*keptDoc{}
+	var order []string
+	for _, item := range items {
+		if _, ok := groups[item.logical]; !ok {
+			order = append(order, item.logical)
+		}
+		groups[item.logical] = append(groups[item.logical], item)
+	}
+	var winners []*keptDoc
+	var losers []scopeLoser
+	for _, logical := range order {
+		group := append([]*keptDoc(nil), groups[logical]...)
+		sort.Slice(group, func(i, j int) bool {
+			return strings.TrimSpace(group[i].src.ID) < strings.TrimSpace(group[j].src.ID)
+		})
+		best := group[0]
+		for _, item := range group[1:] {
+			if scopeRank(item.src.Scope) < scopeRank(best.src.Scope) {
+				best = item
+			}
+		}
+		winners = append(winners, best)
+		bestRank := scopeRank(best.src.Scope)
+		for _, item := range group {
+			if item == best {
+				continue
+			}
+			reason := "path-collision"
+			if scopeRank(item.src.Scope) != bestRank {
+				reason = "scope-conflict"
+			}
+			losers = append(losers, scopeLoser{item: item, reason: reason})
+		}
+	}
+	return winners, losers
+}
+
+func scopeRank(scope string) int {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "personal":
+		return 0
+	case "team":
+		return 1
+	case "shared":
+		return 2
+	case "custom":
+		return 3
+	default:
+		return 4
+	}
 }
 
 type versionPick struct {

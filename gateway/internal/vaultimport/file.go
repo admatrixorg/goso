@@ -15,6 +15,63 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/vault"
 )
 
+const (
+	sourcePresent = iota
+	sourceMissing
+	sourceSymlink
+)
+
+func checkSrcDir(srcDir string) error {
+	info, err := os.Lstat(srcDir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errConfig("source dir is not a directory")
+	}
+	return nil
+}
+
+// sourceFileState reports whether exportPath is a regular file inside srcDir.
+// A missing file is sourceMissing. A symlink is not followed.
+func sourceFileState(srcDir, exportPath string) (int, error) {
+	rel := strings.TrimSpace(strings.ReplaceAll(exportPath, "\\", "/"))
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "" || unsafePath(rel) != "" {
+		return sourceMissing, nil
+	}
+	cleaned, ok := lexical(rel)
+	if !ok || cleaned == "" {
+		return sourceMissing, nil
+	}
+	root := strings.TrimSpace(srcDir)
+	abs := filepath.Join(root, filepath.FromSlash(cleaned))
+	relToRoot, err := filepath.Rel(root, abs)
+	if err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(os.PathSeparator)) {
+		return sourceMissing, nil
+	}
+	if err := walkNoSymlink(root, abs); err != nil {
+		if errors.Is(err, errSymlink) {
+			return sourceSymlink, nil
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return sourceMissing, nil
+		}
+		return 0, err
+	}
+	info, err := os.Lstat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		return sourceMissing, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return sourceSymlink, nil
+	}
+	if !info.Mode().IsRegular() {
+		return sourceMissing, nil
+	}
+	return sourcePresent, nil
+}
+
 // publishFile writes body under the existing tenant namespace
 // (GOSO_VAULT_DIR/t/<tenant>/<logical>). A matching file is left untouched.
 // A symlink at the destination or on the way there is not followed and not replaced.

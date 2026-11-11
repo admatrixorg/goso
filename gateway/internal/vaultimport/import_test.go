@@ -166,7 +166,7 @@ func TestClassifyPath(t *testing.T) {
 	}{
 		{"tenants/minh-an/notes/a.md", "", "notes/a.md"},
 		{"tenants/minh-an/./notes/a.md", "", "notes/a.md"},
-		{"tenants/mq-capital/bien-ban.md", reasonOtherTenant, ""},
+		{"tenants/mq-capital/bien-ban.md", reasonForeignTenant, ""},
 		{"tenants/minh-an/../../tenants/mq-capital/leak.md", reasonTraversal, ""},
 		{"tenants\\minh-an\\..\\..\\tenants\\mq-capital\\x.md", reasonTraversal, ""},
 		{"/etc/passwd", reasonAbsolute, ""},
@@ -174,13 +174,13 @@ func TestClassifyPath(t *testing.T) {
 		{"file:/tmp/note.md", reasonAbsolute, ""},
 		{"tenants/minh-an/notes/alias -> tenants/mq-capital/x.md", reasonSymlink, ""},
 		{"tenants/minh-an/%2e%2e/tenants/mq-capital/enc.md", reasonEncoded, ""},
-		{"tenants/minh-an/tenants/mq-capital/nested.md", reasonOtherTenant, ""},
+		{"tenants/minh-an/tenants/mq-capital/nested.md", reasonForeignTenant, ""},
 		{"notes/outside.md", reasonOutside, ""},
-		{"tenants/minh-an-evil/notes/a.md", reasonOtherTenant, ""},
+		{"tenants/minh-an-evil/notes/a.md", reasonForeignTenant, ""},
 		{"tenants/minh-an/notes/a\ninjected.md", reasonIllegal, ""},
 	}
 	for _, tc := range cases {
-		got := classifyPath(tc.path, root)
+		got := classifyPath(tc.path, root, false)
 		if got.Reason != tc.reason || got.Logical != tc.logic {
 			t.Fatalf("path %q got logical %q reason %q", tc.path, got.Logical, got.Reason)
 		}
@@ -579,6 +579,148 @@ func TestImportDoesNotFollowSymlink(t *testing.T) {
 	}
 	if strings.Contains(logBuf.String(), "SHOULDNOTWRITE") || strings.Contains(logBuf.String(), "SENTINELOUTSIDE") {
 		t.Fatalf("log leaked file bytes %s", logBuf.String())
+	}
+}
+
+func TestKeepPrefixAndWorkspaceRoot(t *testing.T) {
+	st := store.New()
+	ex := &Export{Documents: []Document{
+		{ID: "doc-notes", TenantID: sourceTenant, Scope: "personal", Path: "notes/hop-dong.md", Title: "Hop dong Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-projects", TenantID: sourceTenant, Scope: "personal", Path: "projects/hop-dong.md", Title: "Du an Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-root", TenantID: sourceTenant, Scope: "personal", Path: "README.md", Title: "Readme Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-foreign", TenantID: sourceTenant, Scope: "personal", Path: "tenants/mq-capital/bien-ban.md", Title: "Khong nhap", UpdatedAt: "2026-03-01T04:05:06Z"},
+	}, Versions: []Version{
+		{DocID: "doc-notes", Version: 1, Content: "NOTESBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+		{DocID: "doc-projects", Version: 1, Content: "PROJECTSBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+		{DocID: "doc-root", Version: 1, Content: "ROOTFILEMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+		{DocID: "doc-foreign", Version: 1, Content: "FOREIGNBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+	}}
+	logBuf := &bytes.Buffer{}
+	opt := Options{
+		SourceTenant: sourceTenant, Root: "/app/workspace", DestTenant: destTenant,
+		KeepPrefix: true, Log: bufLog{logBuf},
+	}
+	rep, err := Import(st, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Inserted != 3 || rep.Rejected != 1 {
+		t.Fatalf("counts %+v", rep)
+	}
+	if !hasReason(rep, "doc", "tenants/mq-capital/bien-ban.md", reasonForeignTenant) {
+		t.Fatalf("foreign %+v", rep.Rejections)
+	}
+	for _, pair := range []struct{ path, marker string }{
+		{"notes/hop-dong.md", "NOTESBODYMARKER"},
+		{"projects/hop-dong.md", "PROJECTSBODYMARKER"},
+		{"README.md", "ROOTFILEMARKER"},
+	} {
+		doc, err := st.FindVaultDocByPath(destTenant, pair.path)
+		if err != nil || !strings.Contains(doc.Body, pair.marker) {
+			t.Fatalf("kept %s %#v %v", pair.path, doc, err)
+		}
+	}
+	if _, err := st.FindVaultDocByPath(destTenant, "hop-dong.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("prefix was stripped")
+	}
+	if strings.Contains(logBuf.String(), "FOREIGNBODYMARKER") || strings.Contains(logBuf.String(), "NOTESBODYMARKER") {
+		t.Fatalf("log leaked %s", logBuf.String())
+	}
+
+	stripped := store.New()
+	one := minhAnOne("doc-a", "tenants/minh-an/notes/a.md", "Ghi chu Minh An", "NOTESBODYMARKER")
+	if _, err := Import(stripped, one, Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stripped.FindVaultDocByPath(destTenant, "notes/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	keptPrefix := store.New()
+	if _, err := Import(keptPrefix, one, Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant, KeepPrefix: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keptPrefix.FindVaultDocByPath(destTenant, "tenants/minh-an/notes/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keptPrefix.FindVaultDocByPath(destTenant, "notes/a.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("keep-prefix stripped the root")
+	}
+}
+
+func TestScopeConflictKeepsPersonal(t *testing.T) {
+	st := store.New()
+	ex := &Export{Documents: []Document{
+		{ID: "doc-team", TenantID: sourceTenant, Scope: "team", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh team", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+	}, Versions: []Version{
+		{DocID: "doc-team", Version: 1, Content: "TEAMBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+		{DocID: "doc-personal", Version: 1, Content: "PERSONALBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+	}}
+	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}
+	rep, err := Import(st, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Inserted != 1 || rep.Rejected != 1 || !hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-conflict") {
+		t.Fatalf("counts %+v", rep)
+	}
+	doc, err := st.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	if err != nil || !strings.Contains(doc.Body, "PERSONALBODYMARKER") || strings.Contains(doc.Body, "TEAMBODYMARKER") {
+		t.Fatalf("winner %#v %v", doc, err)
+	}
+	if !strings.Contains(doc.Body, `"scope":"personal"`) {
+		t.Fatalf("scope not recorded in body %s", doc.Body)
+	}
+	cs := &countingStore{StoreIface: st}
+	again, err := Import(cs, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 1 || again.Rejected != 1 {
+		t.Fatalf("rerun %+v", again)
+	}
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("scope rerun wrote")
+	}
+}
+
+func TestPathMissingDoesNotCreateDoc(t *testing.T) {
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "notes", "co-file.md"), []byte("FILEBYTESNOTIMPORTED"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ex := &Export{Documents: []Document{
+		{ID: "doc-have", TenantID: sourceTenant, Scope: "personal", Path: "notes/co-file.md", Title: "Co file Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-miss", TenantID: sourceTenant, Scope: "personal", Path: "notes/missing.md", Title: "Thieu file", UpdatedAt: "2026-03-01T04:05:06Z"},
+	}, Versions: []Version{
+		{DocID: "doc-have", Version: 1, Content: "DBTEXTMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+		{DocID: "doc-miss", Version: 1, Content: "MISSINGBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
+	}}
+	logBuf := &bytes.Buffer{}
+	opt := Options{
+		SourceTenant: sourceTenant, Root: "/app/workspace", DestTenant: destTenant,
+		KeepPrefix: true, SrcDir: src, Log: bufLog{logBuf},
+	}
+	st := store.New()
+	rep, err := Import(st, ex, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Inserted != 1 || rep.Rejected != 1 || !hasReason(rep, "doc", "notes/missing.md", "path-missing") {
+		t.Fatalf("counts %+v", rep)
+	}
+	got, err := st.FindVaultDocByPath(destTenant, "notes/co-file.md")
+	if err != nil || !strings.Contains(got.Body, "DBTEXTMARKER") || strings.Contains(got.Body, "FILEBYTESNOTIMPORTED") {
+		t.Fatalf("db text %#v %v", got, err)
+	}
+	if _, err := st.FindVaultDocByPath(destTenant, "notes/missing.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("missing file created a doc")
+	}
+	if strings.Contains(logBuf.String(), "DBTEXTMARKER") || strings.Contains(logBuf.String(), "MISSINGBODYMARKER") || strings.Contains(logBuf.String(), "FILEBYTESNOTIMPORTED") {
+		t.Fatalf("log leaked %s", logBuf.String())
 	}
 }
 

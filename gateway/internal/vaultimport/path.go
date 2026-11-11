@@ -11,15 +11,15 @@ import (
 
 // Path reasons are stable report codes. They describe the path, never a body.
 const (
-	reasonAbsolute    = "absolute"
-	reasonTraversal   = "traversal"
-	reasonEncoded     = "encoded-path"
-	reasonSymlink     = "symlink"
-	reasonIllegal     = "illegal-path"
-	reasonOtherTenant = "other-tenant"
-	reasonOutside     = "outside-root"
-	reasonEmpty       = "empty-path"
-	reasonLogical     = "logical-path"
+	reasonAbsolute      = "absolute"
+	reasonTraversal     = "traversal"
+	reasonEncoded       = "encoded-path"
+	reasonSymlink       = "symlink"
+	reasonIllegal       = "illegal-path"
+	reasonForeignTenant = "foreign-tenant"
+	reasonOutside       = "outside-root"
+	reasonEmpty         = "empty-path"
+	reasonLogical       = "logical-path"
 )
 
 // decision is the confinement result for one export path.
@@ -32,6 +32,9 @@ type decision struct {
 // configuration error, not a per-document rejection.
 func cleanRoot(root string) (string, error) {
 	root = strings.TrimSpace(strings.ReplaceAll(root, "\\", "/"))
+	if root == "." || root == "./" {
+		return ".", nil
+	}
 	root = strings.Trim(root, "/")
 	if root == "" {
 		return "", errConfig("tenant root is required")
@@ -46,6 +49,13 @@ func cleanRoot(root string) (string, error) {
 	return cleaned, nil
 }
 
+// workspaceRoot is the GoClaw workspace boundary. "." and app/workspace
+// (also written /app/workspace) accept paths that are already relative to
+// that workspace, including several top-level folders in one run.
+func workspaceRoot(root string) bool {
+	return root == "." || root == "app/workspace"
+}
+
 func tenantSlug(root string) string {
 	parts := strings.Split(root, "/")
 	for i := 0; i < len(parts)-1; i++ {
@@ -57,14 +67,21 @@ func tenantSlug(root string) string {
 }
 
 // classifyPath keeps a path only when it sits inside root and does not enter
-// another tenants/<slug> folder. The logged path is the original string; the
-// returned logical path is relative to root.
-func classifyPath(raw, root string) decision {
+// another tenants/<slug> folder. keepPrefix stores the cleaned path with the
+// root still on it. The default strips the root, which is the tenant-folder
+// import. The logged path is the original string.
+func classifyPath(raw, root string, keepPrefix bool) decision {
 	original := strings.TrimSpace(raw)
 	if original == "" {
 		return decision{Reason: reasonEmpty}
 	}
 	slashed := strings.ReplaceAll(original, "\\", "/")
+	if strings.HasPrefix(slashed, "/") && root != "." {
+		absRoot := "/" + root
+		if slashed == absRoot || strings.HasPrefix(slashed, absRoot+"/") {
+			slashed = strings.TrimPrefix(slashed, "/")
+		}
+	}
 	if reason := unsafePath(slashed); reason != "" {
 		return decision{Reason: reason}
 	}
@@ -73,21 +90,44 @@ func classifyPath(raw, root string) decision {
 		return decision{Reason: reasonTraversal}
 	}
 	if foreignTenant(slashed, tenantSlug(root)) || foreignTenant(cleaned, tenantSlug(root)) {
-		return decision{Reason: reasonOtherTenant}
+		return decision{Reason: reasonForeignTenant}
 	}
-	if cleaned != root && !strings.HasPrefix(cleaned, root+"/") {
+	rel, inside := relativeToRoot(cleaned, root)
+	if !inside {
 		return decision{Reason: reasonOutside}
 	}
-	if cleaned == root {
+	logical := rel
+	if keepPrefix {
+		logical = cleaned
+	}
+	if logical == "" || logical == "." {
 		return decision{Reason: reasonOutside}
 	}
-	logical := strings.TrimPrefix(cleaned, root+"/")
 	logical = withTextExt(logical)
 	checked, err := vault.LogicalPath(logical)
 	if err != nil || checked == "" {
 		return decision{Reason: reasonLogical}
 	}
 	return decision{Logical: checked}
+}
+
+// relativeToRoot reports the path with root removed when the path is inside
+// root. A workspace root also accepts paths that are already relative to it
+// (notes/a.md under /app/workspace).
+func relativeToRoot(cleaned, root string) (string, bool) {
+	if root == "." {
+		return cleaned, cleaned != ""
+	}
+	if cleaned == root {
+		return "", false
+	}
+	if strings.HasPrefix(cleaned, root+"/") {
+		return strings.TrimPrefix(cleaned, root+"/"), true
+	}
+	if workspaceRoot(root) && cleaned != "" && !strings.HasPrefix(cleaned, "/") {
+		return cleaned, true
+	}
+	return "", false
 }
 
 // unsafePath reports a path that must not be cleaned before rejection.
