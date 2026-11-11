@@ -150,6 +150,68 @@ func TestContactsHandlerTenantIsolation(t *testing.T) {
 	}
 }
 
+func TestContactsListDBFaultReturns500(t *testing.T) {
+	t.Setenv("GOSO_CONTACTS_DURABLE", "1")
+	t.Setenv("GOSO_LITE", "")
+	path := filepath.Join(t.TempDir(), "fault.db")
+	st, err := store.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := channel.NewContacts()
+	dir.BindStore(st)
+	const dest = "ext-minh-an-keep"
+	dir.Observe(channel.Sighting{
+		Channel: "telegram", Dest: dest, Kind: "user", TenantID: "minh-an",
+		At: time.Unix(9, 0).UTC(),
+	})
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := dir.List("minh-an", "", "", "")
+	if err == nil {
+		t.Fatal("list returned success after the database was closed")
+	}
+	if len(rows) != 0 {
+		t.Fatalf("partial list %#v", rows)
+	}
+	if strings.Contains(err.Error(), dest) || strings.Contains(err.Error(), "minh-an") {
+		t.Fatalf("error leaks identity %v", err)
+	}
+	h := NewRouter(Options{Store: st, Version: "t", Contacts: dir})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/contacts", nil)
+	req.Header.Set("X-Goso-Tenant", "minh-an")
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, `"contacts"`) || strings.Contains(body, dest) || strings.Contains(body, `"total"`) {
+		t.Fatalf("empty or partial success %s", body)
+	}
+	if !strings.Contains(body, "contact list failed") {
+		t.Fatalf("body %s", body)
+	}
+
+	t.Run("flag off still lists memory", func(t *testing.T) {
+		t.Setenv("GOSO_CONTACTS_DURABLE", "0")
+		mem := channel.NewContacts()
+		mem.BindStore(st)
+		mem.Observe(channel.Sighting{Channel: "telegram", Dest: "ma-memory", Kind: "user", At: time.Unix(1, 0).UTC()})
+		got, err := mem.List("", "", "", "")
+		if err != nil || len(got) != 1 || got[0].Dest != "ma-memory" {
+			t.Fatalf("flag off %#v %v", got, err)
+		}
+		h := NewRouter(Options{Store: st, Version: "t", Contacts: mem})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/contacts", nil))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"dest":"ma-memory"`) || strings.Contains(w.Body.String(), dest) {
+			t.Fatalf("flag off http %d %s", w.Code, w.Body.String())
+		}
+	})
+}
+
 func tail(s string) string {
 	if len(s) > 240 {
 		return s[:240]

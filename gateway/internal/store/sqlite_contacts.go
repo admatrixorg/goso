@@ -305,7 +305,7 @@ func (s *SQLiteStore) ObserveContact(in ContactSighting) (ContactRow, error) {
 		if contactUniqueErr(err) && attempt == 0 {
 			continue
 		}
-		return ContactRow{}, opaqueContactErr("observe")
+		return ContactRow{}, opaqueContactCause("observe", err)
 	}
 	return ContactRow{}, opaqueContactErr("observe")
 }
@@ -321,7 +321,7 @@ func (s *SQLiteStore) observeContactOnce(in ContactSighting, ch, dest string) (C
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return ContactRow{}, opaqueContactErr("observe")
+		return ContactRow{}, opaqueContactCause("observe", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	id, found, err := lookupContactID(tx, tenant, ch, dest)
@@ -745,7 +745,7 @@ func loadFullTx(q contactQuery, id, tenant string, liveOnly bool) (contactHead, 
 func (s *SQLiteStore) scanContacts(query string, args ...any) ([]contactHead, error) {
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, opaqueContactErr("list")
+		return nil, opaqueContactCause("list", err)
 	}
 	defer rows.Close()
 	out := []contactHead{}
@@ -757,7 +757,7 @@ func (s *SQLiteStore) scanContacts(query string, args ...any) ([]contactHead, er
 		out = append(out, head)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, opaqueContactErr("list")
+		return nil, opaqueContactCause("list", err)
 	}
 	return out, nil
 }
@@ -1023,8 +1023,66 @@ func clipContact(s string, n int) string {
 func newContactID() string      { return "ct_" + newID() }
 func newContactMergeID() string { return "cm_" + newID() }
 
+// ContactFault is a store failure whose text is safe to return to callers.
+// Class is a fixed token (closed, conflict, schema, driver, store). The
+// driver message is not retained, because it can echo bound values.
+type ContactFault struct {
+	Op    string
+	Class string
+}
+
+func (e *ContactFault) Error() string {
+	return "contact store " + safeContactStoreOp(e.Op) + " failed"
+}
+
 func opaqueContactErr(op string) error {
-	return fmt.Errorf("contact store %s failed", op)
+	return &ContactFault{Op: op, Class: "driver"}
+}
+
+func opaqueContactCause(op string, cause error) error {
+	if cause == nil {
+		return opaqueContactErr(op)
+	}
+	var inner *ContactFault
+	if errors.As(cause, &inner) && safeContactStoreClass(inner.Class) == inner.Class && inner.Class != "" {
+		return &ContactFault{Op: op, Class: inner.Class}
+	}
+	return &ContactFault{Op: op, Class: contactFaultClass(cause)}
+}
+
+func contactFaultClass(err error) string {
+	if err == nil {
+		return "driver"
+	}
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "closed"), strings.Contains(s, "conn done"):
+		return "closed"
+	case strings.Contains(s, "unique"), strings.Contains(s, "duplicate"):
+		return "conflict"
+	case strings.Contains(s, "no such"), strings.Contains(s, "syntax"):
+		return "schema"
+	default:
+		return "driver"
+	}
+}
+
+func safeContactStoreOp(op string) string {
+	switch op {
+	case "observe", "list", "upsert", "get", "merge", "undo", "count", "lookup":
+		return op
+	default:
+		return "op"
+	}
+}
+
+func safeContactStoreClass(class string) string {
+	switch class {
+	case "closed", "conflict", "schema", "driver", "store":
+		return class
+	default:
+		return "driver"
+	}
 }
 
 func contactUniqueErr(err error) bool {

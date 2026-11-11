@@ -50,7 +50,11 @@ func handleListContacts(dir *channel.Contacts, st store.StoreIface) http.Handler
 		if kind == "" {
 			kind = strings.TrimSpace(r.URL.Query().Get("type"))
 		}
-		rows := dir.List(requestTenant(r), q, ch, kind)
+		rows, err := dir.List(requestTenant(r), q, ch, kind)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "contact list failed")
+			return
+		}
 		if rows == nil {
 			rows = []channel.PublicContact{}
 		}

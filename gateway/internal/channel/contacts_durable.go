@@ -4,11 +4,18 @@ package channel
 
 import (
 	"errors"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
+
+// contactFaultLogf writes durable-store failures. The format is
+// "goso contacts: <op> failed class=<class>" with both tokens drawn from a
+// fixed set. Names, phones, dests, contact ids, tenants, and message text
+// are not passed in.
+var contactFaultLogf = log.Printf
 
 // ContactsDurableEnabled reports GOSO_CONTACTS_DURABLE.
 // Unset, empty, 0, false, no, and off keep the in-memory directory.
@@ -61,10 +68,12 @@ func contactDB(st store.StoreIface) *store.SQLiteStore {
 func (c *Contacts) observeDurable(in Sighting) PublicContact {
 	db := c.db.Load()
 	if db == nil {
+		logContactFault("observe", &store.ContactFault{Op: "observe", Class: "store"})
 		return PublicContact{}
 	}
-	out, err := db.ObserveContact(sightingStore(in))
+	out, err := observeContactStore(db, sightingStore(in))
 	if err != nil {
+		logContactFault("observe", err)
 		return PublicContact{}
 	}
 	sid := clip(in.SenderID, maxContactDest)
@@ -73,25 +82,71 @@ func (c *Contacts) observeDurable(in Sighting) PublicContact {
 		in.Dest = sid
 		in.Kind = "user"
 		in.SenderID = ""
-		_, _ = db.ObserveContact(sightingStore(in))
+		if _, err := observeContactStore(db, sightingStore(in)); err != nil {
+			logContactFault("observe", err)
+		}
 	}
 	return publicFromStore(out)
 }
 
-func (c *Contacts) listDurable(tenant, q, channelName, kind string) []PublicContact {
+// observeContactStore is the store call. Tests replace it to inject a failure.
+var observeContactStore = func(db *store.SQLiteStore, in store.ContactSighting) (store.ContactRow, error) {
+	if db == nil {
+		return store.ContactRow{}, &store.ContactFault{Op: "observe", Class: "store"}
+	}
+	return db.ObserveContact(in)
+}
+
+func (c *Contacts) listDurable(tenant, q, channelName, kind string) ([]PublicContact, error) {
 	db := c.db.Load()
 	if db == nil {
-		return []PublicContact{}
+		err := &store.ContactFault{Op: "list", Class: "store"}
+		logContactFault("list", err)
+		return nil, err
 	}
 	rows, err := db.ListContacts(tenant, q, channelName, kind)
 	if err != nil {
-		return []PublicContact{}
+		logContactFault("list", err)
+		return nil, err
 	}
 	out := make([]PublicContact, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, publicFromStore(row))
 	}
-	return out
+	return out, nil
+}
+
+func logContactFault(op string, err error) {
+	if err == nil {
+		return
+	}
+	class := "driver"
+	var fault *store.ContactFault
+	if errors.As(err, &fault) {
+		class = fault.Class
+		if fault.Op != "" {
+			op = fault.Op
+		}
+	}
+	contactFaultLogf("goso contacts: %s failed class=%s", safeContactOp(op), safeContactClass(class))
+}
+
+func safeContactOp(op string) string {
+	switch op {
+	case "observe", "list", "upsert", "get", "merge", "undo", "count", "lookup":
+		return op
+	default:
+		return "op"
+	}
+}
+
+func safeContactClass(class string) string {
+	switch class {
+	case "closed", "conflict", "schema", "driver", "store":
+		return class
+	default:
+		return "driver"
+	}
 }
 
 func (c *Contacts) getDurable(id, tenant string) (PublicContact, error) {

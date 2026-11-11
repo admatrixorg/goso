@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,7 +85,11 @@ func TestContactsFlagOnWithoutStoreKeepsCap(t *testing.T) {
 			TenantID: "minh-an", At: time.Unix(int64(1000+i), 0).UTC(),
 		})
 	}
-	if n := len(c.List("minh-an", "", "", "")); n != 200 {
+	rows, err := c.List("minh-an", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rows); n != 200 {
 		t.Fatalf("unbound durable flag list %d", n)
 	}
 }
@@ -120,7 +125,10 @@ func TestContactsDurableSurvivesReopen(t *testing.T) {
 	if again.ID != firstID || again.Count != 2 {
 		t.Fatalf("increment %#v", again)
 	}
-	list := c.List("minh-an", "", "", "")
+	list, err := c.List("minh-an", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(list) != n {
 		t.Fatalf("list %d", len(list))
 	}
@@ -131,7 +139,11 @@ func TestContactsDurableSurvivesReopen(t *testing.T) {
 		t.Fatal("list dropped a row")
 	}
 	other := c.Observe(Sighting{Channel: "telegram", Dest: "ext-minh-an-0000", Kind: "user", TenantID: "other-co", At: time.Unix(5, 0).UTC()})
-	if len(c.List("minh-an", "", "", "")) != n {
+	listed, err := c.List("minh-an", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != n {
 		t.Fatal("other tenant changed minh-an list")
 	}
 	if _, err := c.Get(other.ID, "minh-an"); !errors.Is(err, ErrContactNotFound) {
@@ -145,7 +157,10 @@ func TestContactsDurableSurvivesReopen(t *testing.T) {
 	if group.Dest != "-42" || group.Kind != "group" {
 		t.Fatalf("group %#v", group)
 	}
-	users := c.List("minh-an", "sender-minh-an", "", "user")
+	users, err := c.List("minh-an", "sender-minh-an", "", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(users) != 1 || users[0].Dest != "sender-minh-an" {
 		t.Fatalf("sender split %#v", users)
 	}
@@ -167,7 +182,10 @@ func TestContactsDurableSurvivesReopen(t *testing.T) {
 	defer st.Close()
 	re := NewContacts()
 	re.BindStore(st)
-	list = re.List("minh-an", "", "", "")
+	list, err = re.List("minh-an", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !listHas(list, "ext-minh-an-0000") || !listHas(list, fmt.Sprintf("ext-minh-an-%04d", n-1)) {
 		t.Fatalf("reopen dropped rows %d", len(list))
 	}
@@ -214,12 +232,105 @@ func contactScript(t *testing.T, c *Contacts) (string, int, int) {
 		})
 	}
 	c.Observe(Sighting{Channel: "telegram", Dest: "ma-other", Kind: "user", TenantID: "other-co", At: time.Unix(50, 0).UTC()})
-	list := c.List("minh-an", "", "", "")
+	list, err := c.List("minh-an", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	raw, err := json.Marshal(list)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(raw), len(list), len(c.List("other-co", "", "", ""))
+	other, err := c.List("other-co", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw), len(list), len(other)
+}
+
+func TestContactsObserveFailureLogsWithoutPII(t *testing.T) {
+	t.Setenv("GOSO_CONTACTS_DURABLE", "1")
+	prevLog := contactFaultLogf
+	prevCall := observeContactStore
+	t.Cleanup(func() {
+		contactFaultLogf = prevLog
+		observeContactStore = prevCall
+	})
+	var lines []string
+	contactFaultLogf = func(format string, args ...any) {
+		lines = append(lines, fmt.Sprintf(format, args...))
+	}
+	path := filepath.Join(t.TempDir(), "obs.db")
+	st, err := store.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewContacts()
+	c.BindStore(st)
+	dest := "ext-minh-an-7f3a"
+	sender := "0900000000"
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				t.Fatalf("panic %v", rec)
+			}
+		}()
+		c.Observe(Sighting{
+			Channel: "telegram", Dest: dest, Kind: "user", SenderID: sender,
+			TenantID: "minh-an", AgentID: "ag-minh-an", At: time.Unix(3, 0).UTC(),
+		})
+	}()
+	if len(lines) == 0 {
+		t.Fatal("observe failure was not logged")
+	}
+	assertContactFaultLog(t, lines, "observe")
+
+	lines = nil
+	observeContactStore = func(db *store.SQLiteStore, in store.ContactSighting) (store.ContactRow, error) {
+		return store.ContactRow{}, fmt.Errorf("phone=0900000000 dest=%s name=Minh An id=ct_secret tenant=%s body=hello", in.Dest, in.TenantID)
+	}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				t.Fatalf("panic %v", rec)
+			}
+		}()
+		c.Observe(Sighting{
+			Channel: "telegram", Dest: dest, Kind: "group", SenderID: sender,
+			TenantID: "minh-an", AgentID: "ag-minh-an", At: time.Unix(4, 0).UTC(),
+		})
+	}()
+	if len(lines) == 0 {
+		t.Fatal("injected observe failure was not logged")
+	}
+	joined := assertContactFaultLog(t, lines, "observe")
+	for _, leak := range []string{"0900000000", dest, "Minh An", "ct_secret", "minh-an", "ag-minh-an", "hello", "telegram"} {
+		if strings.Contains(joined, leak) {
+			t.Fatalf("log contains %q in %q", leak, joined)
+		}
+	}
+}
+
+func assertContactFaultLog(t *testing.T, lines []string, op string) string {
+	t.Helper()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "goso contacts: "+op+" failed class=") {
+		t.Fatalf("log %q", joined)
+	}
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "goso contacts: ") || !strings.Contains(line, " failed class=") {
+			t.Fatalf("unexpected log %q", line)
+		}
+		class := line[strings.LastIndex(line, "class=")+len("class="):]
+		switch class {
+		case "closed", "conflict", "schema", "driver", "store":
+		default:
+			t.Fatalf("class %q in %q", class, line)
+		}
+	}
+	return joined
 }
 
 func listHas(list []PublicContact, dest string) bool {

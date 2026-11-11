@@ -261,12 +261,14 @@ func ObserveDefault(in Sighting) PublicContact {
 }
 
 // List returns live (non-merged) contacts for tenant, newest last-seen first.
-func (c *Contacts) List(tenant, q, channel, kind string) []PublicContact {
+// The in-memory path returns a nil error. The durable path returns an error
+// when the store read fails, and it does not return a partial list.
+func (c *Contacts) List(tenant, q, channel, kind string) ([]PublicContact, error) {
 	if c.durable() {
 		return c.listDurable(tenant, q, channel, kind)
 	}
 	if c == nil {
-		return []PublicContact{}
+		return []PublicContact{}, nil
 	}
 	want := store.NormalizeTenant(tenant)
 	q = strings.ToLower(strings.TrimSpace(q))
@@ -303,7 +305,7 @@ func (c *Contacts) List(tenant, q, channel, kind string) []PublicContact {
 	if len(out) > maxContactList {
 		out = out[:maxContactList]
 	}
-	return out
+	return out, nil
 }
 
 func identHasChannel(ids []PublicIdent, channel string) bool {
