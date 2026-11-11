@@ -1,4 +1,4 @@
-# SPEC 151 — vault import file bodies
+# SPEC 152 — vault import file bodies
 
 Evidence for reading a document body from `--src-dir` when the export has no `vault_versions` row. No control-plane change, so prototype screenshots do not apply. No customer data and no secret values. Env vars are named, not filled in. Fixtures are synthetic Minh An rows.
 

@@ -2,7 +2,7 @@
 
 Offline importer for one tenant into the existing `vault_docs` and `vault_links` rows. No UI change, so prototype screenshots do not apply. No customer data and no secret values. Env vars are named, not filled in.
 
-SPEC 151 (`docs/qa/151-vault-import-file-body/`) is the file-body follow-up. Flags and reason codes for the current importer:
+SPEC 152 (`docs/qa/152-vault-import-file-body/`) is the file-body follow-up. Flags and reason codes for the current importer:
 
 | Flag | Meaning |
 |---|---|
