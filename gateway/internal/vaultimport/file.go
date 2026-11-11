@@ -10,9 +10,20 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/vault"
+)
+
+const (
+	// maxFileBodyBytes is the cap for a body read from --src-dir.
+	// 1 MiB matches security.MaxAPIBody and storage.MaxFileBytes.
+	maxFileBodyBytes = security.MaxAPIBody
+
+	reasonTooLarge      = "too-large"
+	reasonBinarySkipped = "binary-skipped"
+	reasonEmptyBody     = "empty-body"
 )
 
 const (
@@ -29,47 +40,97 @@ func checkSrcDir(srcDir string) error {
 	return nil
 }
 
-// sourceFileState reports whether exportPath is a regular file inside srcDir.
+// sourceInfo is the on-disk state of one export path under --src-dir.
+// Resolution matches the path-missing check: the export path is joined onto
+// the source directory, symlinks are not followed, and ".." is not a file.
+type sourceInfo struct {
+	state int
+	abs   string
+	size  int64
+}
+
+// inspectSource reports whether exportPath is a regular file inside srcDir.
 // A missing file is sourceMissing. A symlink is not followed.
-func sourceFileState(srcDir, exportPath string) (int, error) {
+func inspectSource(srcDir, exportPath string) (sourceInfo, error) {
 	rel := strings.TrimSpace(strings.ReplaceAll(exportPath, "\\", "/"))
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || unsafePath(rel) != "" {
-		return sourceMissing, nil
+		return sourceInfo{state: sourceMissing}, nil
 	}
 	cleaned, ok := lexical(rel)
 	if !ok || cleaned == "" {
-		return sourceMissing, nil
+		return sourceInfo{state: sourceMissing}, nil
 	}
 	root := strings.TrimSpace(srcDir)
 	abs := filepath.Join(root, filepath.FromSlash(cleaned))
 	relToRoot, err := filepath.Rel(root, abs)
 	if err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(os.PathSeparator)) {
-		return sourceMissing, nil
+		return sourceInfo{state: sourceMissing}, nil
 	}
 	if err := walkNoSymlink(root, abs); err != nil {
 		if errors.Is(err, errSymlink) {
-			return sourceSymlink, nil
+			return sourceInfo{state: sourceSymlink}, nil
 		}
 		if errors.Is(err, os.ErrNotExist) {
-			return sourceMissing, nil
+			return sourceInfo{state: sourceMissing}, nil
 		}
-		return 0, err
+		return sourceInfo{}, err
 	}
 	info, err := os.Lstat(abs)
 	if errors.Is(err, os.ErrNotExist) {
-		return sourceMissing, nil
+		return sourceInfo{state: sourceMissing}, nil
 	}
 	if err != nil {
-		return 0, err
+		return sourceInfo{}, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return sourceSymlink, nil
+		return sourceInfo{state: sourceSymlink}, nil
 	}
 	if !info.Mode().IsRegular() {
-		return sourceMissing, nil
+		return sourceInfo{state: sourceMissing}, nil
 	}
-	return sourcePresent, nil
+	return sourceInfo{state: sourcePresent, abs: abs, size: info.Size()}, nil
+}
+
+// loadFileBody reads a regular file that will become a document body.
+// Over the cap, empty, NUL, and non-UTF-8 are reason codes and are not errors.
+// The bytes are not logged. A read error is returned to the caller.
+func loadFileBody(abs string, size int64) ([]byte, string, error) {
+	if size > maxFileBodyBytes {
+		return nil, reasonTooLarge, nil
+	}
+	if size == 0 {
+		return nil, reasonEmptyBody, nil
+	}
+	f, err := os.OpenFile(abs, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, "path-missing", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, reasonSymlink, nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxFileBodyBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(raw)) > maxFileBodyBytes {
+		return nil, reasonTooLarge, nil
+	}
+	if len(raw) == 0 {
+		return nil, reasonEmptyBody, nil
+	}
+	if bytes.Contains(raw, []byte{0}) || !utf8.Valid(raw) {
+		return nil, reasonBinarySkipped, nil
+	}
+	return raw, "", nil
 }
 
 // publishFile writes body under the existing tenant namespace

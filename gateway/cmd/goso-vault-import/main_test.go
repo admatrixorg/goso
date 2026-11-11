@@ -4,6 +4,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +78,84 @@ func TestCLIDryRunWritesNothingThenImportIsIdempotent(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"inserted": 0`) || !strings.Contains(stdout.String(), `"updated": 0`) || !strings.Contains(stdout.String(), `"skipped": 1`) {
 		t.Fatalf("second stdout %s", stdout.String())
 	}
+}
+
+func TestCLIFileBodyNeedsSrcDirThenImports(t *testing.T) {
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	const marker = "FILEMARKERMINHAN"
+	body := `{
+	  "vault_documents": [
+	    {"id":"a","tenant_id":"11111111-1111-4111-8111-111111111111","path":"tenants/minh-an/notes/a.md","title":"Tu file Minh An","updated_at":"2026-03-01T04:05:06Z"}
+	  ],
+	  "vault_versions": [],
+	  "vault_links": []
+	}`
+	if err := os.WriteFile(exportPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "goso.db")
+	args := []string{
+		"--export", exportPath,
+		"--source-tenant", "11111111-1111-4111-8111-111111111111",
+		"--root", "tenants/minh-an",
+		"--dest-tenant", "minh-an",
+		"--db", dbPath,
+	}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := run(args, stdout, stderr); code == 0 {
+		t.Fatal("missing src-dir succeeded")
+	}
+	if !strings.Contains(stderr.String(), "source dir") || strings.Contains(stderr.String(), marker) || strings.Contains(stdout.String(), marker) {
+		t.Fatalf("stderr %s", stderr.String())
+	}
+	st, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.FindVaultDocByPath("minh-an", "notes/a.md"); err == nil {
+		t.Fatal("missing src-dir wrote a document")
+	}
+	_ = st.Close()
+
+	src := filepath.Join(dir, "src")
+	filePath := filepath.Join(src, "tenants", "minh-an", "notes", "a.md")
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(marker + "\n")
+	if err := os.WriteFile(filePath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--src-dir", src), stdout, stderr); code != 0 {
+		t.Fatalf("import exit %d %s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), marker) || strings.Contains(stderr.String(), marker) {
+		t.Fatal("cli leaked the file body")
+	}
+	if !strings.Contains(stdout.String(), `"inserted": 1`) {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	st, err = store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	got, err := st.FindVaultDocByPath("minh-an", "notes/a.md")
+	if err != nil || !strings.Contains(got.Body, marker) {
+		t.Fatal("file body missing")
+	}
+	sum := sha256Hex(raw)
+	if !strings.Contains(got.Body, "sum="+sum) {
+		t.Fatal("provenance sum is not the file hash")
+	}
+}
+
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 func TestCLIRefusesRemoteDatabase(t *testing.T) {

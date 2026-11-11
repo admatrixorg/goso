@@ -58,8 +58,17 @@ func hashBody(body string) string {
 // matches the stored title and prefix. A hand edit, a goso-created note, or
 // another source id at the same path fails the check.
 func stampImport(title, plain, src string) string {
+	return stampImportSum(title, plain, src, "")
+}
+
+// stampImportSum writes the provenance marker. An empty sum keeps the version
+// checksum sha256(title + "\n" + prefix). A file-sourced document passes
+// sha256 of the raw file bytes instead.
+func stampImportSum(title, plain, src, sum string) string {
 	prefix := canonicalPrefix(plain)
-	sum := hashBody(title + "\n" + prefix)
+	if sum == "" {
+		sum = hashBody(title + "\n" + prefix)
+	}
 	marker := "<!-- goso-import src=" + src + " sum=" + sum + " -->"
 	return prefix + marker + "\n"
 }
@@ -129,12 +138,52 @@ func hexOnly(s string) bool {
 
 // importUntouched reports that this importer wrote the row from srcID and
 // neither the title nor the body prefix has changed since that write.
+// Version-sourced rows use this checksum. File-sourced rows carry sha256 of
+// the file bytes, so they use importOwned.
 func importUntouched(title, body, srcID string) bool {
 	prefix, src, sum, ok := splitImportMarker(body)
 	if !ok || src != srcID {
 		return false
 	}
 	return hashBody(title+"\n"+prefix) == sum
+}
+
+// importOwned reports that this importer may refresh the stored row.
+// A version-sourced row is owned when its marker still matches the stored
+// title and prefix. A file-sourced row is owned when the marker names srcID,
+// the marker sum is sha256 of the current file bytes, the stored title is
+// still the import title, and the stored prefix still begins with that file's
+// text. A hand edit of the file text, or a different file, is not owned.
+func importOwned(existingTitle, existingBody, newTitle, srcID, fileSum, fileText string, fromFile bool) bool {
+	if importUntouched(existingTitle, existingBody, srcID) {
+		return true
+	}
+	if !fromFile || fileSum == "" || existingTitle != newTitle {
+		return false
+	}
+	prefix, src, sum, ok := splitImportMarker(existingBody)
+	if !ok || src != srcID || sum != fileSum {
+		return false
+	}
+	return fileTextIntact(prefix, fileText)
+}
+
+// fileTextIntact reports that prefix still starts with the normalized file
+// text and that anything after it is only the newline or summary trailer
+// this importer adds.
+func fileTextIntact(prefix, fileText string) bool {
+	if fileText == "" || !strings.HasPrefix(prefix, fileText) {
+		return false
+	}
+	rest := prefix[len(fileText):]
+	switch {
+	case rest == "" || rest == "\n":
+		return true
+	case strings.HasPrefix(rest, "\n---\n"), strings.HasPrefix(rest, "\n\n---\n"):
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeNewlines(s string) string {

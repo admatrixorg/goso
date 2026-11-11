@@ -2,6 +2,23 @@
 
 Offline importer for one tenant into the existing `vault_docs` and `vault_links` rows. No UI change, so prototype screenshots do not apply. No customer data and no secret values. Env vars are named, not filled in.
 
+SPEC 152 (`docs/qa/152-vault-import-file-body/`) is the file-body follow-up. Flags and reason codes for the current importer:
+
+| Flag | Meaning |
+|---|---|
+| `--export` | JSON with `vault_documents`, `vault_links`, and `vault_versions` |
+| `--source-tenant` | GoClaw `tenant_id` for this run |
+| `--root` | Tenant folder. `tenants/<tenant>`, `/app/workspace`, or `.` |
+| `--dest-tenant` | goso `tenant_id` written on `vault_docs` |
+| `--db` | Local SQLite file or loopback Postgres DSN |
+| `--vault-dir` | Optional. Also writes `t/<tenant>/` files |
+| `--src-dir` | Source workspace. Required when a kept document has no version row. The export path is joined onto this directory. A missing regular file is `path-missing` |
+| `--keep-prefix` | Store the path with the root still attached. Default strips the root |
+| `--include-personal` | Import `scope=personal`. Default holds those documents (`scope-personal-held`, once) |
+| `--dry-run` | Counts and rejections only. No write |
+
+A document with a version row still takes its body from that row. A document with no version row takes its body from the file, and the trailer `sum` is sha256 of the file bytes. Over 1 MiB is `too-large`. Non-UTF-8 or a NUL byte is `binary-skipped`. An empty file is `empty-body`. None of those write a row. The report `docs` and `links` arrays are per source tenant, and each tenant's `input` equals `inserted + updated + skipped + rejected`.
+
 ## Head
 
 | Commit | What it is |

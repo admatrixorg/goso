@@ -1,0 +1,65 @@
+# go test vaultimport tenant store -v
+# SHA 852a7c66dcf2d231b0265ae36c6b732b83cfcdc3
+# cwd gateway/
+# after merge of origin/main a87b1fb
+# GOSO_TEST_POSTGRES_DSN set (value not recorded). Postgres 16.15 local.
+# exit 0
+
+=== RUN   TestFileBodyMinhAn
+2026/11/11 14:28:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestFileBodyMinhAn/sqlite
+=== RUN   TestFileBodyMinhAn/postgres
+=== RUN   TestFileBodyMinhAn/memory
+--- PASS: TestFileBodyMinhAn (0.15s)
+    --- PASS: TestFileBodyMinhAn/sqlite (0.03s)
+    --- PASS: TestFileBodyMinhAn/postgres (0.02s)
+    --- PASS: TestFileBodyMinhAn/memory (0.00s)
+=== RUN   TestPersonalScopeHeldUnlessEnabled
+--- PASS: TestPersonalScopeHeldUnlessEnabled (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.158s
+=== RUN   TestRegistryPersistRestartSQLite
+--- PASS: TestRegistryPersistRestartSQLite (0.05s)
+=== RUN   TestRegistryPersistRestartPostgres
+2026/11/11 14:28:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestRegistryPersistRestartPostgres (0.11s)
+=== RUN   TestRegistryPersistWriteFailureSQLite
+--- PASS: TestRegistryPersistWriteFailureSQLite (0.03s)
+=== RUN   TestRegistryPersistWriteFailurePostgres
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestRegistryPersistWriteFailurePostgres (0.09s)
+=== RUN   TestRegistryEmptyTableRecreatesMaster
+--- PASS: TestRegistryEmptyTableRecreatesMaster (0.03s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/tenant	0.315s
+=== RUN   TestTenantRegistryMigrationTwiceSQLite
+--- PASS: TestTenantRegistryMigrationTwiceSQLite (0.05s)
+=== RUN   TestTenantRegistryMigrationFaultRollsBackSQLite
+--- PASS: TestTenantRegistryMigrationFaultRollsBackSQLite (0.04s)
+=== RUN   TestTenantRegistryMigrationLeavesMemoryVaultContacts
+2026/11/11 14:28:01 goso contacts: bulk upsert count=1
+--- PASS: TestTenantRegistryMigrationLeavesMemoryVaultContacts (0.03s)
+=== RUN   TestTenantRegistryRoundTripAndReplaceSQLite
+--- PASS: TestTenantRegistryRoundTripAndReplaceSQLite (0.03s)
+=== RUN   TestTenantRegistryPutErrorHidesLabels
+--- PASS: TestTenantRegistryPutErrorHidesLabels (0.03s)
+=== RUN   TestTenantRegistryMigrationTwicePostgres
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestTenantRegistryMigrationTwicePostgres (0.09s)
+=== RUN   TestTenantRegistryMigrationFaultRollsBackPostgres
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestTenantRegistryMigrationFaultRollsBackPostgres (0.09s)
+=== RUN   TestTenantRegistryRoundTripPostgres
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestTenantRegistryRoundTripPostgres (0.09s)
+=== RUN   TestTenantRegistryNeighborsPostgres
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/11 14:28:02 goso contacts: bulk upsert count=1
+2026/11/11 14:28:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestTenantRegistryNeighborsPostgres (0.09s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	0.532s
