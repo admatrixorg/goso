@@ -20,9 +20,13 @@
 // KeepPrefix stores the path with the root still attached. The default
 // strips that prefix. A workspace root (".", "/app/workspace") accepts
 // every safe relative path in one run. Any tenants/<other> path is
-// foreign-tenant. Two scopes at one logical path keep the narrower
-// document (personal before team) and report scope-conflict. goso has no
-// scope column, so the winner is an ordinary tenant row.
+// foreign-tenant. Scope personal is held back unless IncludePersonal is
+// set: goso has no per-person access control, so that body would be
+// readable by the whole tenant. When a path has both a personal and a
+// team document, the team document is stored and the personal one is
+// held, and the report records scope-conflict. With IncludePersonal, the
+// personal document wins that conflict and the team one is scope-conflict.
+// There is still no scope column.
 //
 // A run names one source tenant id and one root folder. A document is imported
 // only when both match. Paths that leave the root, walk with "..", are
@@ -65,6 +69,10 @@ type Options struct {
 	// missing there is path-missing and is not inserted. The version text in
 	// the export is still the body when the file exists.
 	SrcDir string
+	// IncludePersonal imports scope=personal documents. Default is off.
+	// Turn it on only after the tenant owner accepts that those notes are
+	// readable by the whole tenant. This flag is not per-person access control.
+	IncludePersonal bool
 	// DryRun reports counts and rejections and does not write.
 	DryRun bool
 	// Log receives rejection lines. Nil discards them. Arguments are paths and
@@ -296,7 +304,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 		candidates = append(candidates, item)
 	}
-	kept, losers := preferNarrowerScope(candidates)
+	kept, losers := preferNarrowerScope(candidates, opt.IncludePersonal)
 	for _, loser := range losers {
 		reject(rep, logf, "doc", strings.TrimSpace(loser.item.src.Path), "", loser.reason)
 	}
@@ -519,11 +527,17 @@ type scopeLoser struct {
 	reason string
 }
 
-// preferNarrowerScope keeps one document per logical path. personal beats
-// team, team beats shared, shared beats custom, and a named scope beats an
-// empty one. Same-scope extras are path-collision. vault_docs has no scope
-// column, so this is the only distinction the existing row can carry.
-func preferNarrowerScope(items []*keptDoc) ([]*keptDoc, []scopeLoser) {
+// preferNarrowerScope keeps one document per logical path.
+//
+// Scope personal is omitted unless includePersonal is set. goso cannot
+// restrict a vault row to one person, so the default is to hold those
+// documents (scope-personal-held) and, when a team document shares the
+// path, store the team document and also record scope-conflict.
+//
+// With includePersonal, personal is the narrowest scope and wins the
+// path. The other scopes are scope-conflict. Same-scope extras are
+// path-collision. Neither branch overwrites silently.
+func preferNarrowerScope(items []*keptDoc, includePersonal bool) ([]*keptDoc, []scopeLoser) {
 	groups := map[string][]*keptDoc{}
 	var order []string
 	for _, item := range items {
@@ -539,6 +553,26 @@ func preferNarrowerScope(items []*keptDoc) ([]*keptDoc, []scopeLoser) {
 		sort.Slice(group, func(i, j int) bool {
 			return strings.TrimSpace(group[i].src.ID) < strings.TrimSpace(group[j].src.ID)
 		})
+		if !includePersonal {
+			var personal, rest []*keptDoc
+			for _, item := range group {
+				if isPersonalScope(item.src.Scope) {
+					personal = append(personal, item)
+				} else {
+					rest = append(rest, item)
+				}
+			}
+			for _, item := range personal {
+				losers = append(losers, scopeLoser{item: item, reason: "scope-personal-held"})
+			}
+			if len(personal) > 0 && len(rest) > 0 {
+				losers = append(losers, scopeLoser{item: personal[0], reason: "scope-conflict"})
+			}
+			group = rest
+			if len(group) == 0 {
+				continue
+			}
+		}
 		best := group[0]
 		for _, item := range group[1:] {
 			if scopeRank(item.src.Scope) < scopeRank(best.src.Scope) {
@@ -559,6 +593,10 @@ func preferNarrowerScope(items []*keptDoc) ([]*keptDoc, []scopeLoser) {
 		}
 	}
 	return winners, losers
+}
+
+func isPersonalScope(scope string) bool {
+	return strings.EqualFold(strings.TrimSpace(scope), "personal")
 }
 
 func scopeRank(scope string) int {

@@ -196,12 +196,13 @@ func TestImportMinhAn(t *testing.T) {
 			cs := &countingStore{StoreIface: raw}
 			logBuf := &bytes.Buffer{}
 			opt := Options{
-				SourceTenant: sourceTenant,
-				Root:         tenantRoot,
-				DestTenant:   destTenant,
-				VaultRoot:    vaultRoot,
-				DryRun:       true,
-				Log:          bufLog{logBuf},
+				SourceTenant:    sourceTenant,
+				Root:            tenantRoot,
+				DestTenant:      destTenant,
+				VaultRoot:       vaultRoot,
+				IncludePersonal: true,
+				DryRun:          true,
+				Log:             bufLog{logBuf},
 			}
 			before := snapshot(t, raw)
 			dry, err := Import(cs, ex, opt)
@@ -275,7 +276,7 @@ func TestImportMinhAn(t *testing.T) {
 func TestImportUpdateThenNoop(t *testing.T) {
 	ex := readMinhAn(t)
 	raw := store.New()
-	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant, Log: discardLog{}}
+	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant, IncludePersonal: true, Log: discardLog{}}
 	if _, err := Import(raw, ex, opt); err != nil {
 		t.Fatal(err)
 	}
@@ -585,10 +586,10 @@ func TestImportDoesNotFollowSymlink(t *testing.T) {
 func TestKeepPrefixAndWorkspaceRoot(t *testing.T) {
 	st := store.New()
 	ex := &Export{Documents: []Document{
-		{ID: "doc-notes", TenantID: sourceTenant, Scope: "personal", Path: "notes/hop-dong.md", Title: "Hop dong Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
-		{ID: "doc-projects", TenantID: sourceTenant, Scope: "personal", Path: "projects/hop-dong.md", Title: "Du an Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
-		{ID: "doc-root", TenantID: sourceTenant, Scope: "personal", Path: "README.md", Title: "Readme Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
-		{ID: "doc-foreign", TenantID: sourceTenant, Scope: "personal", Path: "tenants/mq-capital/bien-ban.md", Title: "Khong nhap", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-notes", TenantID: sourceTenant, Scope: "team", Path: "notes/hop-dong.md", Title: "Hop dong Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-projects", TenantID: sourceTenant, Scope: "team", Path: "projects/hop-dong.md", Title: "Du an Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-root", TenantID: sourceTenant, Scope: "team", Path: "README.md", Title: "Readme Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-foreign", TenantID: sourceTenant, Scope: "team", Path: "tenants/mq-capital/bien-ban.md", Title: "Khong nhap", UpdatedAt: "2026-03-01T04:05:06Z"},
 	}, Versions: []Version{
 		{DocID: "doc-notes", Version: 1, Content: "NOTESBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
 		{DocID: "doc-projects", Version: 1, Content: "PROJECTSBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
@@ -647,40 +648,98 @@ func TestKeepPrefixAndWorkspaceRoot(t *testing.T) {
 	}
 }
 
-func TestScopeConflictKeepsPersonal(t *testing.T) {
+func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
+	path := "tenants/minh-an/notes/rieng.md"
+	personal := func() *Export {
+		return &Export{Documents: []Document{{
+			ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: path,
+			Title: "Ghi chu rieng Minh An", UpdatedAt: "2026-03-01T04:05:06Z",
+		}}, Versions: []Version{{
+			DocID: "doc-personal", Version: 1, Content: "PERSONALBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z",
+		}}}
+	}
+	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}
 	st := store.New()
-	ex := &Export{Documents: []Document{
+	logBuf := &bytes.Buffer{}
+	opt.Log = bufLog{logBuf}
+	opt.DryRun = true
+	cs := &countingStore{StoreIface: st}
+	dry, err := Import(cs, personal(), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, dry, 0, 0, 0, 1)
+	if !hasReason(dry, "doc", path, "scope-personal-held") {
+		t.Fatalf("dry-run %+v", dry.Rejections)
+	}
+	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
+		t.Fatal("dry-run wrote a personal doc")
+	}
+	opt.DryRun = false
+	rep, err := Import(cs, personal(), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, rep, 0, 0, 0, 1)
+	if _, err := st.FindVaultDocByPath(destTenant, "notes/rieng.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("personal doc was inserted")
+	}
+	if strings.Contains(logBuf.String(), "PERSONALBODYMARKER") {
+		t.Fatalf("log leaked %s", logBuf.String())
+	}
+
+	opt.IncludePersonal = true
+	opt.Log = discardLog{}
+	rep, err = Import(st, personal(), opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Inserted != 1 || rep.Rejected != 0 {
+		t.Fatalf("include-personal %+v", rep)
+	}
+	got, err := st.FindVaultDocByPath(destTenant, "notes/rieng.md")
+	if err != nil || !strings.Contains(got.Body, "PERSONALBODYMARKER") {
+		t.Fatalf("included %#v %v", got, err)
+	}
+
+	both := &Export{Documents: []Document{
 		{ID: "doc-team", TenantID: sourceTenant, Scope: "team", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh team", UpdatedAt: "2026-03-01T04:05:06Z"},
 		{ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
 	}, Versions: []Version{
 		{DocID: "doc-team", Version: 1, Content: "TEAMBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
 		{DocID: "doc-personal", Version: 1, Content: "PERSONALBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
 	}}
-	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}
-	rep, err := Import(st, ex, opt)
+	held := store.New()
+	teamOpt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant}
+	rep, err = Import(held, both, teamOpt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Inserted != 1 || rep.Rejected != 2 ||
+		!hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-conflict") ||
+		!hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-personal-held") {
+		t.Fatalf("conflict %+v", rep)
+	}
+	doc, err := held.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	if err != nil || !strings.Contains(doc.Body, "TEAMBODYMARKER") || strings.Contains(doc.Body, "PERSONALBODYMARKER") {
+		t.Fatalf("team winner %#v %v", doc, err)
+	}
+	if !strings.Contains(doc.Body, `"scope":"team"`) {
+		t.Fatalf("scope label %s", doc.Body)
+	}
+
+	chosen := store.New()
+	teamOpt.IncludePersonal = true
+	rep, err = Import(chosen, both, teamOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rep.Inserted != 1 || rep.Rejected != 1 || !hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-conflict") {
-		t.Fatalf("counts %+v", rep)
+		t.Fatalf("include conflict %+v", rep)
 	}
-	doc, err := st.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
+	doc, err = chosen.FindVaultDocByPath(destTenant, "notes/quy-trinh.md")
 	if err != nil || !strings.Contains(doc.Body, "PERSONALBODYMARKER") || strings.Contains(doc.Body, "TEAMBODYMARKER") {
-		t.Fatalf("winner %#v %v", doc, err)
-	}
-	if !strings.Contains(doc.Body, `"scope":"personal"`) {
-		t.Fatalf("scope not recorded in body %s", doc.Body)
-	}
-	cs := &countingStore{StoreIface: st}
-	again, err := Import(cs, ex, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 1 || again.Rejected != 1 {
-		t.Fatalf("rerun %+v", again)
-	}
-	if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
-		t.Fatal("scope rerun wrote")
+		t.Fatalf("personal winner %#v %v", doc, err)
 	}
 }
 
@@ -693,8 +752,8 @@ func TestPathMissingDoesNotCreateDoc(t *testing.T) {
 		t.Fatal(err)
 	}
 	ex := &Export{Documents: []Document{
-		{ID: "doc-have", TenantID: sourceTenant, Scope: "personal", Path: "notes/co-file.md", Title: "Co file Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
-		{ID: "doc-miss", TenantID: sourceTenant, Scope: "personal", Path: "notes/missing.md", Title: "Thieu file", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-have", TenantID: sourceTenant, Scope: "team", Path: "notes/co-file.md", Title: "Co file Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-miss", TenantID: sourceTenant, Scope: "team", Path: "notes/missing.md", Title: "Thieu file", UpdatedAt: "2026-03-01T04:05:06Z"},
 	}, Versions: []Version{
 		{DocID: "doc-have", Version: 1, Content: "DBTEXTMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
 		{DocID: "doc-miss", Version: 1, Content: "MISSINGBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},

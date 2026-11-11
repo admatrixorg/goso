@@ -36,12 +36,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	vaultDir := fs.String("vault-dir", "", "optional vault root; writes t/<tenant>/ files when set")
 	keepPrefix := fs.Bool("keep-prefix", false, "store the path with the root prefix kept (default strips the root)")
 	srcDir := fs.String("src-dir", "", "source workspace; a missing file is path-missing and is not imported")
+	includePersonal := fs.Bool("include-personal", false, "import scope=personal docs (default holds them; the whole tenant can read them)")
 	dry := fs.Bool("dry-run", false, "report counts and rejections without writing")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*source) == "" || strings.TrimSpace(*root) == "" || strings.TrimSpace(*dest) == "" || strings.TrimSpace(*dbPath) == "" {
-		fmt.Fprintln(stderr, "usage: goso-vault-import --export file.json --source-tenant id --root tenants/<tenant>|/app/workspace|. --dest-tenant id --db path [--vault-dir dir] [--src-dir dir] [--keep-prefix] [--dry-run]")
+		fmt.Fprintln(stderr, "usage: goso-vault-import --export file.json --source-tenant id --root tenants/<tenant>|/app/workspace|. --dest-tenant id --db path [--vault-dir dir] [--src-dir dir] [--keep-prefix] [--include-personal] [--dry-run]")
 		return 2
 	}
 	f, err := os.Open(*exportPath)
@@ -62,14 +63,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closeDB()
 	rep, err := vaultimport.Import(st, ex, vaultimport.Options{
-		SourceTenant: *source,
-		Root:         *root,
-		DestTenant:   *dest,
-		VaultRoot:    *vaultDir,
-		KeepPrefix:   *keepPrefix,
-		SrcDir:       *srcDir,
-		DryRun:       *dry,
-		Log:          stderrLog{w: stderr},
+		SourceTenant:    *source,
+		Root:            *root,
+		DestTenant:      *dest,
+		VaultRoot:       *vaultDir,
+		KeepPrefix:      *keepPrefix,
+		SrcDir:          *srcDir,
+		IncludePersonal: *includePersonal,
+		DryRun:          *dry,
+		Log:             stderrLog{w: stderr},
 	})
 	if err != nil {
 		var cfg *vaultimport.ConfigError
