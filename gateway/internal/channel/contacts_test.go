@@ -18,7 +18,10 @@ func TestContacts_ObserveListOmitsPayloads(t *testing.T) {
 	if g.ID == "" || g.Count != 1 {
 		t.Fatalf("first %#v", g)
 	}
-	list := c.List("", "", "", "")
+	list, err := c.List("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(list) != 1 || list[0].Count != 2 {
 		t.Fatalf("list %#v", list)
 	}
@@ -43,19 +46,31 @@ func TestContacts_SearchFilterAndSenderSplit(t *testing.T) {
 	c := NewContacts()
 	c.Observe(Sighting{Channel: "telegram", Dest: "-9", Kind: "group", SenderID: "42", At: time.Unix(2, 0).UTC()})
 	c.Observe(Sighting{Channel: "discord", Dest: "room", Kind: "user", At: time.Unix(3, 0).UTC()})
-	all := c.List("", "", "", "")
+	all, err := c.List("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(all) != 3 {
 		t.Fatalf("want group+sender+discord, got %#v", all)
 	}
-	tg := c.List("", "", "telegram", "")
+	tg, err := c.List("", "", "telegram", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(tg) != 2 {
 		t.Fatalf("telegram %#v", tg)
 	}
-	users := c.List("", "", "", "user")
+	users, err := c.List("", "", "", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(users) != 2 {
 		t.Fatalf("users %#v", users)
 	}
-	hit := c.List("", "room", "", "")
+	hit, err := c.List("", "room", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hit) != 1 || hit[0].Dest != "room" {
 		t.Fatalf("search %#v", hit)
 	}
@@ -84,7 +99,10 @@ func TestContacts_MergeKeepsIdentifiersAndUndo(t *testing.T) {
 	if !out.CanUndo || len(out.MergedFrom) != 1 || out.MergedFrom[0] != b.ID {
 		t.Fatalf("provenance %#v", out)
 	}
-	list := c.List("", "", "", "")
+	list, err := c.List("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(list) != 1 || list[0].ID != a.ID {
 		t.Fatalf("after merge %#v", list)
 	}
@@ -121,7 +139,10 @@ func TestContacts_MergeKeepsIdentifiersAndUndo(t *testing.T) {
 	if undone.CanUndo {
 		t.Fatalf("can_undo after undo %#v", undone)
 	}
-	list = c.List("", "", "", "")
+	list, err = c.List("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(list) != 2 {
 		t.Fatalf("after undo %#v", list)
 	}
@@ -138,13 +159,21 @@ func TestContacts_TenantIsolation(t *testing.T) {
 	c := NewContacts()
 	c.Observe(Sighting{Channel: "telegram", Dest: "1", TenantID: "alpha"})
 	c.Observe(Sighting{Channel: "telegram", Dest: "2", TenantID: "beta"})
-	if n := len(c.List("alpha", "", "", "")); n != 1 {
+	alphaRows, err := c.List("alpha", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(alphaRows); n != 1 {
 		t.Fatalf("alpha %d", n)
 	}
-	if n := len(c.List("beta", "", "", "")); n != 1 {
+	betaRows, err := c.List("beta", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(betaRows); n != 1 {
 		t.Fatalf("beta %d", n)
 	}
-	alpha := c.List("alpha", "", "", "")[0]
+	alpha := alphaRows[0]
 	if _, err := c.Get(alpha.ID, "beta"); !errors.Is(err, ErrContactNotFound) {
 		t.Fatalf("cross-tenant get %v", err)
 	}

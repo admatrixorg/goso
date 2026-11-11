@@ -87,6 +87,9 @@ func (s *PostgresStore) migratePostgres() error {
 		return fmt.Errorf("postgres migrate vault scope: %w", err)
 	}
 	s.tryVector()
+	if err := s.migrateContacts(); err != nil {
+		return fmt.Errorf("postgres migrate contacts: %w", err)
+	}
 	return nil
 }
 

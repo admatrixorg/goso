@@ -116,6 +116,9 @@ func (o *Options) defaults() {
 	if o.Contacts == nil {
 		o.Contacts = channel.DefaultContacts()
 	}
+	// Binding is a no-op for the in-memory store. The directory reads the
+	// database only when GOSO_CONTACTS_DURABLE is on.
+	channel.AttachContactsStore(o.Contacts, o.Store)
 	if o.Nodes == nil {
 		o.Nodes = node.Default()
 	}
