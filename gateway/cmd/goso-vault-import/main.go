@@ -35,7 +35,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	vaultDir := fs.String("vault-dir", "", "optional vault root; writes t/<tenant>/ files when set")
 	keepPrefix := fs.Bool("keep-prefix", false, "store the path with the root prefix kept (default strips the root)")
-	srcDir := fs.String("src-dir", "", "source workspace; a missing file is path-missing and is not imported")
+	srcDir := fs.String("src-dir", "", "source workspace; required when a kept document has no vault_versions row. Missing file: path-missing. Over 1MiB: too-large. Non-UTF-8 or NUL: binary-skipped. Empty file: empty-body")
 	includePersonal := fs.Bool("include-personal", false, "import scope=personal docs (default holds them; the whole tenant can read them)")
 	dry := fs.Bool("dry-run", false, "report counts and rejections without writing")
 	if err := fs.Parse(args); err != nil {

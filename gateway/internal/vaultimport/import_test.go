@@ -322,6 +322,8 @@ func TestImportLeavesUnclearOwner(t *testing.T) {
 	ex := &Export{Documents: []Document{{
 		ID: "leg", TenantID: sourceTenant, Path: "tenants/minh-an/notes/legacy.md",
 		Title: "Replacement", Summary: "NEWBODYMARKER", UpdatedAt: "2026-04-01T00:00:00Z",
+	}}, Versions: []Version{{
+		DocID: "leg", Version: 1, Content: "NEWBODYMARKER", CreatedAt: "2026-04-01T00:00:00Z",
 	}}}
 	rep, err := Import(st, ex, Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant})
 	if err != nil {
@@ -715,8 +717,8 @@ func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Inserted != 1 || rep.Rejected != 2 ||
-		!hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-conflict") ||
+	if rep.Inserted != 1 || rep.Rejected != 1 ||
+		hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-conflict") ||
 		!hasReason(rep, "doc", "tenants/minh-an/notes/quy-trinh.md", "scope-personal-held") {
 		t.Fatalf("conflict %+v", rep)
 	}
@@ -810,6 +812,9 @@ func readMinhAn(t *testing.T) *Export {
 
 func assertCounts(t *testing.T, rep *Report, inserted, updated, skipped, rejected int) {
 	t.Helper()
+	if err := rep.check(); err != nil {
+		t.Fatal(err)
+	}
 	if rep.Inserted != inserted || rep.Updated != updated || rep.Skipped != skipped || rep.Rejected != rejected {
 		t.Fatalf("counts inserted=%d updated=%d skipped=%d rejected=%d rejections=%v",
 			rep.Inserted, rep.Updated, rep.Skipped, rep.Rejected, rep.Rejections)
