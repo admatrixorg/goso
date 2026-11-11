@@ -108,6 +108,8 @@ type Contacts struct {
 	seq   atomic.Int64
 	rows  map[string]*contact // id -> contact
 	index map[string]string   // tenant|channel|dest -> id
+	// db is unused unless GOSO_CONTACTS_DURABLE is on.
+	db atomic.Pointer[store.SQLiteStore]
 }
 
 var (
@@ -181,6 +183,9 @@ func displayOf(channel, dest string) string {
 
 // Observe records one inbound identity. Payloads are discarded.
 func (c *Contacts) Observe(in Sighting) PublicContact {
+	if c.durable() {
+		return c.observeDurable(in)
+	}
 	if c == nil {
 		return PublicContact{}
 	}
@@ -257,6 +262,9 @@ func ObserveDefault(in Sighting) PublicContact {
 
 // List returns live (non-merged) contacts for tenant, newest last-seen first.
 func (c *Contacts) List(tenant, q, channel, kind string) []PublicContact {
+	if c.durable() {
+		return c.listDurable(tenant, q, channel, kind)
+	}
 	if c == nil {
 		return []PublicContact{}
 	}
@@ -330,6 +338,9 @@ func contactMatches(p PublicContact, q string) bool {
 
 // Get returns one live contact or ErrContactNotFound.
 func (c *Contacts) Get(id, tenant string) (PublicContact, error) {
+	if c.durable() {
+		return c.getDurable(id, tenant)
+	}
 	if c == nil {
 		return PublicContact{}, ErrContactNotFound
 	}
@@ -365,6 +376,9 @@ func UndoConfirmOK(typed string, target PublicContact, lastSource string) bool {
 
 // Merge moves source identifiers onto target. Requires a matching confirm name.
 func (c *Contacts) Merge(targetID, sourceID, tenant, confirm string) (PublicContact, error) {
+	if c.durable() {
+		return c.mergeDurable(targetID, sourceID, tenant, confirm)
+	}
 	if c == nil {
 		return PublicContact{}, ErrContactNotFound
 	}
@@ -442,6 +456,9 @@ func (c *Contacts) Merge(targetID, sourceID, tenant, confirm string) (PublicCont
 
 // Undo reverses the last non-undone merge on target. Requires confirm.
 func (c *Contacts) Undo(targetID, tenant, confirm string) (PublicContact, error) {
+	if c.durable() {
+		return c.undoDurable(targetID, tenant, confirm)
+	}
 	if c == nil {
 		return PublicContact{}, ErrContactNotFound
 	}
