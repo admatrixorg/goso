@@ -6,9 +6,10 @@ Offline importer for one tenant into the existing `vault_docs` and `vault_links`
 
 | Commit | What it is |
 |---|---|
-| `ffa94f9788fbaa5bb46f90bf11605bb5053deb53` | Importer. Both commands below ran on this commit |
+| `ffa94f9788fbaa5bb46f90bf11605bb5053deb53` | Importer. First `go test ./...` and `qa:tabs` |
+| `72808cca31ddae7cae4849983eafc6054c8021af` | Same code plus these notes. Both commands were run again |
 
-`git status --porcelain` was empty before and after each command. `git rev-parse HEAD` was `ffa94f9788fbaa5bb46f90bf11605bb5053deb53` before and after. The commit that adds this directory does not change gateway or control-plane code.
+`git status --porcelain` was empty before and after each command. The second pair of logs is from `72808cca31ddae7cae4849983eafc6054c8021af`, which does not change gateway or control-plane code relative to the importer commit.
 
 `GOSO_TEST_POSTGRES_DSN` was unset, so existing postgres cases skipped. SQLite and the in-memory store ran. CI sets that DSN.
 
@@ -42,3 +43,8 @@ Gateway was `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8
 Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
 
 Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Nothing was skipped. Honest empty states, not failures: `#/decision`, `#/decision-flow`, `#/hooks`, `#/meetings`, and the matching aliases.
+
+The same two commands were run again on `72808cca31ddae7cae4849983eafc6054c8021af` with a clean tree, a fresh database, and the same Minh An seed. Exit 0 both times.
+
+- [go-test-72808cca31ddae7cae4849983eafc6054c8021af.txt](go-test-72808cca31ddae7cae4849983eafc6054c8021af.txt)
+- [qa-tabs-72808cca31ddae7cae4849983eafc6054c8021af.log](qa-tabs-72808cca31ddae7cae4849983eafc6054c8021af.log)
