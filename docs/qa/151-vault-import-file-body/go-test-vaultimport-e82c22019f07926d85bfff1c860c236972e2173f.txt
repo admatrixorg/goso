@@ -1,0 +1,23 @@
+# go test ./internal/vaultimport -v -run TestFileBodyMinhAn|TestPersonalScopeHeldUnlessEnabled|TestImportLeavesUnclearOwner|TestPathMissing
+# SHA e82c22019f07926d85bfff1c860c236972e2173f
+# cwd gateway/
+# GOSO_TEST_POSTGRES_DSN set (value not recorded). Postgres 16.15 local.
+# Subtests memory, sqlite, and postgres. exit 0
+
+=== RUN   TestFileBodyMinhAn
+2026/11/11 14:20:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestFileBodyMinhAn/memory
+=== RUN   TestFileBodyMinhAn/sqlite
+=== RUN   TestFileBodyMinhAn/postgres
+--- PASS: TestFileBodyMinhAn (0.14s)
+    --- PASS: TestFileBodyMinhAn/memory (0.00s)
+    --- PASS: TestFileBodyMinhAn/sqlite (0.03s)
+    --- PASS: TestFileBodyMinhAn/postgres (0.01s)
+=== RUN   TestImportLeavesUnclearOwner
+--- PASS: TestImportLeavesUnclearOwner (0.00s)
+=== RUN   TestPersonalScopeHeldUnlessEnabled
+--- PASS: TestPersonalScopeHeldUnlessEnabled (0.00s)
+=== RUN   TestPathMissingDoesNotCreateDoc
+--- PASS: TestPathMissingDoesNotCreateDoc (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.146s
