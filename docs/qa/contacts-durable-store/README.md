@@ -4,15 +4,19 @@ Evidence for the tenant-scoped contacts tables. No customer data and no secret v
 
 ## Tested SHA
 
-`aa954f254c40be6754540f2d54c4095d2c6daf02`
+`d6e133fb5e28d96f761d280d5500f578023a26f0`
 
-`git status --porcelain` was empty before both commands. This directory is the only change after that SHA. The stdout does not print a later SHA.
+This SHA makes a durable list failure return an error. `GET /api/contacts` answers 500 and does not return an empty list. An observe failure logs `goso contacts: observe failed class=<token>` and does not log names, phones, dests, contact ids, tenants, or message text.
+
+`git status --porcelain` was empty before both commands. The stdout does not print a later SHA.
 
 Postgres for the local `go test` was **16.15** (Ubuntu package). The DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
+Pagination of the durable list, and the existing merge/undo audit rows that still store a contact id, are follow-ups. They are not in this change.
+
 ## Gateway tests
 
-[go-test-aa954f254c40be6754540f2d54c4095d2c6daf02.txt](go-test-aa954f254c40be6754540f2d54c4095d2c6daf02.txt)
+[go-test-d6e133fb5e28d96f761d280d5500f578023a26f0.txt](go-test-d6e133fb5e28d96f761d280d5500f578023a26f0.txt)
 
 From `gateway/`:
 
@@ -33,10 +37,12 @@ Contacts cases in that run:
 - HTTP tenant isolation with the flag off and on, including a view token that cannot switch tenants
 - migration twice, and a faulted migration that rolls back, on both backends
 - a memory note, a vault doc, a KG entity, and a KG relation survive the contacts migration
+- a closed database on list returns an error, and the HTTP handler answers 500
+- an observe failure logs an error class and does not panic
 
 ## qa:tabs
 
-[qa-tabs-aa954f254c40be6754540f2d54c4095d2c6daf02.log](qa-tabs-aa954f254c40be6754540f2d54c4095d2c6daf02.log)
+[qa-tabs-d6e133fb5e28d96f761d280d5500f578023a26f0.log](qa-tabs-d6e133fb5e28d96f761d280d5500f578023a26f0.log)
 
 Chrome: **Google Chrome 156.0.8078.47**.
 
@@ -58,3 +64,7 @@ This change does not alter the control plane. Prototype screenshots are not part
 ## Natural key
 
 A sighting is `(tenant_id, channel, dest)`. `dest` is goso's channel-external id (peer, group chat, or a sender id stored as its own row). The in-memory index already uses `tenant|channel|dest`. After a merge, one contact owns many of those pairs, so the unique key is on `contact_identifiers`, not on the contact row alone. Two tenants may share a channel and dest.
+
+## Earlier run
+
+`aa954f254c40be6754540f2d54c4095d2c6daf02` is the first cut, before the list-failure 500. Its transcripts stay in this directory: [go test](go-test-aa954f254c40be6754540f2d54c4095d2c6daf02.txt), [qa:tabs](qa-tabs-aa954f254c40be6754540f2d54c4095d2c6daf02.log). The current evidence is the `d6e133f` pair above.
