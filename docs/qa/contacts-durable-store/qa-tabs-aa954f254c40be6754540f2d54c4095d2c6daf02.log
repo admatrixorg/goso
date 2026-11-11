@@ -1,0 +1,69 @@
+# npm run qa:tabs
+# SHA aa954f254c40be6754540f2d54c4095d2c6daf02
+# date 2026-11-11T05:18:18Z
+# cwd control-plane/
+# command: GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 CHROME_PATH=$(command -v google-chrome) npm run qa:tabs
+# chrome: Google Chrome 156.0.8078.47
+# gateway: go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080
+# env names set: GOSO_DEV_MODE, GOSO_RATE_LIMIT=0, GOSO_ENV=development, GOSO_DB_PATH (fresh file), GOSO_VAULT_DIR (fresh dir)
+# env names unset: GOSO_DATABASE_URL, GOSO_ADMIN_TOKEN, GOSO_VIEW_TOKEN, GOSO_CONTACTS_DURABLE, GOSO_VAULT_SCOPED_SYNC, GOSO_LITE
+# seed: POST /api/agents agent_key minh-an-sales, display_name Cố vấn Minh An, model echo
+# git status --porcelain was empty before and after. exit 0
+# QA_SHOTS was not set. No UI change, so no prototype screenshots.
+
+
+> @goso/control-plane@0.1.0 qa:tabs
+> node --experimental-strip-types scripts/qa-tabs.ts
+
+tab #/overview
+tab #/chat
+tab #/agents
+tab #/sessions
+tab #/pending
+tab #/contacts
+tab #/channels
+tab #/connectors
+tab #/nodes
+tab #/workstations
+tab #/skills
+tab #/decision
+tab #/decision-flow
+tab #/tools
+tab #/mcp
+tab #/tts
+tab #/cron
+tab #/hooks
+tab #/memory
+tab #/vault
+tab #/meetings
+tab #/kg
+tab #/storage
+tab #/traces
+tab #/events
+tab #/activity
+tab #/logs
+tab #/tenants
+tab #/providers
+tab #/apikeys
+tab #/packages
+tab #/config
+tab #/approvals
+tab #/impexp
+tab #/backup
+alias #projects
+alias #agent-team
+alias #agent-link
+alias #webhooks
+alias #/functions
+alias #api-keys
+alias #import-export
+alias #backup-restore
+alias #kgraph
+alias #meetings
+alias #decision-flow
+folded #/teams
+folded #/heatmap
+folded #/marketing
+flow chat
+empty (honest, not chưa dựng): #/decision, #/decision-flow, #/hooks, #/meetings, #webhooks, #meetings, #decision-flow
+qa:tabs ok
