@@ -21,7 +21,6 @@ import (
 const (
 	tenantMinh = "11111111-1111-4111-8111-111111111111"
 	tenantPhap = "22222222-2222-4222-8222-222222222222"
-	tenantMQ   = "33333333-3333-4333-8333-333333333333"
 	tenantNope = "44444444-4444-4444-8444-444444444444"
 
 	agentMinhGC  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
@@ -72,6 +71,48 @@ func TestAdmitKeepsCustomerAndTeamOut(t *testing.T) {
 	}
 }
 
+func TestDenyFileAndDeniedTenant(t *testing.T) {
+	if _, err := ReadDenyFile(strings.NewReader("")); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatal(err)
+	}
+	if _, err := ReadDenyFile(strings.NewReader("# only a comment\n")); err == nil {
+		t.Fatal("comment-only file")
+	}
+	if _, err := ReadDenyFile(strings.NewReader("{")); err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatal(err)
+	}
+	if _, err := ReadDenyFile(strings.NewReader(`{"tenants":[]}`)); err == nil {
+		t.Fatal("empty json list")
+	}
+	st := store.New()
+	minh, phap := seedAgents(t, st)
+	ex := minhAnExport(t)
+	opt := options(t, minh.ID, phap.ID)
+	opt.DryRun = false
+	opt.Deny, _ = ReadDenyFile(strings.NewReader(tenantMinh + "\n"))
+	rep, err := Import(st, ex, opt)
+	if err == nil || rep == nil || rep.DeniedTenants != 1 {
+		t.Fatalf("source deny %+v %v", rep, err)
+	}
+	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != store.ErrNotFound {
+		t.Fatal("denied source wrote a row")
+	}
+	raw, _ := json.Marshal(rep)
+	if strings.Contains(string(raw), tenantMinh) {
+		t.Fatal("report named the denied tenant")
+	}
+	opt = options(t, minh.ID, phap.ID)
+	opt.DryRun = false
+	opt.Deny, _ = ReadDenyFile(strings.NewReader("minh-an\n"))
+	rep, err = Import(st, ex, opt)
+	if err == nil || rep == nil || rep.DeniedTenants < 1 {
+		t.Fatalf("dest deny %+v %v", rep, err)
+	}
+	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != store.ErrNotFound {
+		t.Fatal("denied dest wrote a row")
+	}
+}
+
 func TestCompactPropertiesOrdersKeys(t *testing.T) {
 	got, err := compactProperties(json.RawMessage(`{"b":1,"a":"mien tay"}`))
 	if err != nil || got != `{"a":"mien tay","b":1}` {
@@ -115,6 +156,12 @@ func runMinhAn(t *testing.T, st testStore) {
 	}
 	assertFirstCounts(t, rep)
 	assertStored(t, st, minh.ID)
+	optPhap := opt
+	optPhap.SourceTenant = tenantPhap
+	optPhap.DestTenant = "phap-che"
+	if _, err := Import(st, ex, optPhap); err != nil {
+		t.Fatal(err)
+	}
 	assertIsolation(t, st)
 	assertNoLeak(t, st)
 	assertNoCustomerKey(t, st)
@@ -128,7 +175,7 @@ func runMinhAn(t *testing.T, st testStore) {
 
 	live, other, liveRel := seedLive(t, st, minh.ID)
 	seedPrefixRows(t, st, minh)
-	dryRemove, err := Remove(st, "minh-an", true)
+	dryRemove, err := Remove(st, "minh-an", opt.Deny, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +185,7 @@ func runMinhAn(t *testing.T, st testStore) {
 	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != nil {
 		t.Fatal("dry remove deleted a row")
 	}
-	removed, err := Remove(st, "minh-an", false)
+	removed, err := Remove(st, "minh-an", opt.Deny, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +209,12 @@ func runMinhAn(t *testing.T, st testStore) {
 		t.Fatalf("live relation %+v %v", rels, err)
 	}
 	assertPrefixRows(t, st)
-	if _, err := Remove(st, "mq-capital", false); err == nil {
-		t.Fatal("mq-capital removal should be refused")
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "khach-a") || strings.Contains(string(raw), "denied-tenant") || strings.Contains(string(raw), "0900000111") {
+		t.Fatal("report named a customer or a denied tenant")
 	}
 }
 
@@ -189,7 +240,7 @@ func TestConflictDoesNotOverwrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			sec := mustSection(t, rep, tenantMinh, "kg_entities")
-			if sec.WillWrite != 2 || sec.Skipped[reasonExists] != 1 {
+			if sec.WillWrite != 2 || sec.Skipped[reasonNativeExists] != 1 || sec.Skipped[reasonExists] != 0 {
 				t.Fatalf("conflict counts %+v", sec)
 			}
 			got, err := st.GetKGEntity("gc-kg:" + idPlace)
@@ -210,16 +261,17 @@ func assertFirstCounts(t *testing.T, rep *Report) {
 		source, table     string
 		read, write       int
 		priv, team, unmap int
-		mq, missing, bad  int
+		missing, bad      int
 		exists            int
 	}{
-		{tenantMinh, "kg_entities", 10, 3, 1, 2, 3, 0, 0, 1, 0},
-		{tenantMinh, "kg_relations", 6, 1, 1, 1, 0, 0, 3, 0, 0},
-		{tenantPhap, "kg_entities", 2, 2, 0, 0, 0, 0, 0, 0, 0},
-		{tenantPhap, "kg_relations", 1, 1, 0, 0, 0, 0, 0, 0, 0},
-		{tenantMQ, "kg_entities", 1, 0, 0, 0, 0, 1, 0, 0, 0},
-		{tenantMQ, "kg_relations", 1, 0, 0, 0, 0, 1, 0, 0, 0},
-		{tenantNope, "kg_entities", 1, 0, 0, 0, 1, 0, 0, 0, 0},
+		{tenantMinh, "kg_entities", 10, 3, 1, 2, 3, 0, 1, 0},
+		{tenantMinh, "kg_relations", 6, 1, 1, 1, 0, 3, 0, 0},
+		{tenantPhap, "kg_entities", 2, 0, 0, 0, 2, 0, 0, 0},
+		{tenantPhap, "kg_relations", 1, 0, 0, 0, 1, 0, 0, 0},
+		{tenantNope, "kg_entities", 1, 0, 0, 0, 1, 0, 0, 0},
+	}
+	if rep.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
 	}
 	if len(rep.Tables) != len(want) {
 		t.Fatalf("sections %d %+v", len(rep.Tables), rep.Tables)
@@ -229,11 +281,8 @@ func assertFirstCounts(t *testing.T, rep *Report) {
 		if s.Read != w.read || s.WillWrite != w.write {
 			t.Fatalf("%s %s read/write %d/%d", w.table, w.source, s.Read, s.WillWrite)
 		}
-		if s.Skipped[reasonCustomerPrivate] != w.priv || s.Skipped[reasonTeamScope] != w.team || s.Skipped[reasonUnmapped] != w.unmap || s.Skipped[reasonMQ] != w.mq || s.Skipped[reasonMissingEndpoint] != w.missing || s.Skipped[reasonInvalid] != w.bad || s.Skipped[reasonExists] != w.exists || s.Skipped[reasonExpired] != 0 {
+		if s.Skipped[reasonCustomerPrivate] != w.priv || s.Skipped[reasonTeamScope] != w.team || s.Skipped[reasonUnmapped] != w.unmap || s.Skipped[reasonMissingEndpoint] != w.missing || s.Skipped[reasonInvalid] != w.bad || s.Skipped[reasonExists] != w.exists || s.Skipped[reasonNativeExists] != 0 || s.Skipped[reasonExpired] != 0 {
 			t.Fatalf("%s %s skipped %+v", w.table, w.source, s.Skipped)
-		}
-		if w.mq > 0 && s.DestTenant != "" {
-			t.Fatal("mq section names a dest")
 		}
 	}
 }
@@ -243,8 +292,6 @@ func assertSecondCounts(t *testing.T, rep *Report) {
 	for _, pair := range []struct{ source, table string }{
 		{tenantMinh, "kg_entities"},
 		{tenantMinh, "kg_relations"},
-		{tenantPhap, "kg_entities"},
-		{tenantPhap, "kg_relations"},
 	} {
 		s := mustSection(t, rep, pair.source, pair.table)
 		if s.WillWrite != 0 || s.Skipped[reasonExists] == 0 {
@@ -361,7 +408,7 @@ func assertIsolation(t *testing.T, st testStore) {
 
 func assertNoLeak(t *testing.T, st testStore) {
 	t.Helper()
-	for _, marker := range []string{"PRIVMARKER", "TEAMMARKER", "SCOPEMARKER", "MQMARKER", "EMBEDMARKER", "TSVMARKER", "UNMAPPEDMARKER", "BADMARKER"} {
+	for _, marker := range []string{"PRIVMARKER", "TEAMMARKER", "SCOPEMARKER", "DENIEDMARKER", "EMBEDMARKER", "TSVMARKER", "UNMAPPEDMARKER", "BADMARKER", "0900000111"} {
 		for _, tenant := range []string{"minh-an", "phap-che", "default"} {
 			hit, err := st.SearchProgressive(marker, tenant)
 			if err != nil || len(hit) != 0 {
@@ -535,8 +582,7 @@ func options(t *testing.T, minhID, phapID string) Options {
 	t.Helper()
 	tenants, err := ReadTenantMap(strings.NewReader(`{"tenants":[
 		{"source_tenant":"` + tenantMinh + `","dest_tenant":"minh-an","slug":"minh-an"},
-		{"source_tenant":"` + tenantPhap + `","dest_tenant":"phap-che","slug":"phap-che"},
-		{"source_tenant":"` + tenantMQ + `","dest_tenant":"mq-capital","slug":"mq-capital"}
+		{"source_tenant":"` + tenantPhap + `","dest_tenant":"phap-che","slug":"phap-che"}
 	]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -549,7 +595,24 @@ func options(t *testing.T, minhID, phapID string) Options {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Options{Tenants: tenants, Agents: agents, DryRun: true}
+	deny, err := ReadDenyFile(strings.NewReader("denied-tenant\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	customers, err := ReadCustomerMap(strings.NewReader(`{"customers":[{"channel":"zalo-personal","sender_id":"ext-minh-an-1","user_id":"khach-a"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveCustomerKey("khach-a", customers); got != "zalo-personal:ext-minh-an-1" {
+		t.Fatal(got)
+	}
+	if got := ResolveCustomerKey("user-minh-an-02", customers); got != "goclaw:user-minh-an-02" {
+		t.Fatal(got)
+	}
+	if ResolveCustomerKey("", customers) != "" {
+		t.Fatal("empty user")
+	}
+	return Options{SourceTenant: tenantMinh, DestTenant: "minh-an", Tenants: tenants, Agents: agents, Customers: customers, Deny: deny, DryRun: true}
 }
 
 func minhAnExport(t *testing.T) *Export {
@@ -558,7 +621,7 @@ func minhAnExport(t *testing.T) *Export {
 		rel("kg_relations", relKeep, tenantMinh, agentMinhGC, "", "", idPlace, idOrg, "cung_cap", map[string]any{"note": "mau"}, "2026-03-01T00:00:00Z", nil, nil),
 		ent(idPlace, tenantMinh, agentMinhGC, "", "", "", "Kho Cần Thơ", "place", "KEEPMARKER", map[string]any{"khu": "mien tay"}, "2026-01-15T00:00:00Z", nil, nil),
 		ent(idOrg, tenantMinh, agentMinhGC, "", "", "", "Đại lý mẫu", "org", "", map[string]any{}, "2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", "2027-06-01T00:00:00Z"),
-		ent(idPrivate, tenantMinh, agentMinhGC, "khach-a", "", "", "Ghi chu khach", "person", "PRIVMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
+		ent(idPrivate, tenantMinh, agentMinhGC, "khach-a", "", "", "Ghi chu khach", "person", "PRIVMARKER 0900000111", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		ent(idTeam, tenantMinh, agentMinhGC, "", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0", "", "Nhom mau", "team", "TEAMMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		ent(idScope, tenantMinh, agentMinhGC, "", "", "rieng", "Pham vi", "note", "SCOPEMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		ent(idNoAgent, tenantMinh, agentNopeGC, "", "", "", "Khong agent", "fact", "UNMAPPEDMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
@@ -568,7 +631,7 @@ func minhAnExport(t *testing.T) *Export {
 		ent(idWrongMap, tenantMinh, agentPhapGC, "", "", "", "Agent khac tenant", "fact", "UNMAPPEDMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		ent(idPhap, tenantPhap, agentPhapGC, "", "", "", "Điều khoản mẫu", "policy", "PHAPMARKER", nil, "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z", nil),
 		ent(idPhap2, tenantPhap, agentPhapGC, "", "", "", "Phụ lục mẫu", "policy", "", nil, "2026-05-02T00:00:00Z", "2026-05-02T00:00:00Z", nil),
-		ent(idMQ, tenantMQ, agentMinhGC, "", "", "", "Khong nhap", "org", "MQMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
+		ent(idMQ, "denied-tenant", agentMinhGC, "", "", "", "Khong nhap", "org", "DENIEDMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		ent(idUnknown, tenantNope, agentMinhGC, "", "", "", "Khong map", "org", "UNMAPPEDMARKER", nil, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil),
 		rel("kg_relations", relEndpoint, tenantMinh, agentMinhGC, "", "", idPlace, idPrivate, "thuoc", nil, "2026-03-02T00:00:00Z", "2026-03-02T00:00:00Z", nil),
 		rel("kg_relations", relPrivate, tenantMinh, agentMinhGC, "khach-a", "", idPrivate, idOrg, "mua", map[string]any{"x": "PRIVMARKER"}, "2026-03-03T00:00:00Z", "2026-03-03T00:00:00Z", nil),
@@ -576,7 +639,7 @@ func minhAnExport(t *testing.T) *Export {
 		rel("kg_relations", relTeamEnd, tenantMinh, agentMinhGC, "", "", idTeam, idPlace, "nam_trong", nil, "2026-03-05T00:00:00Z", "2026-03-05T00:00:00Z", nil),
 		rel("kg_relations", relTeamRow, tenantMinh, agentMinhGC, "", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0", idPlace, idOrg, "noi_bo", nil, "2026-03-06T00:00:00Z", "2026-03-06T00:00:00Z", nil),
 		rel("kg_relations", relPhap, tenantPhap, agentPhapGC, "", "", idPhap, idPhap2, "dan_chieu", nil, "2026-05-03T00:00:00Z", "2026-05-03T00:00:00Z", nil),
-		rel("kg_relations", relMQ, tenantMQ, agentMinhGC, "", "", idMQ, idMQ, "tu", nil, "2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z", nil),
+		rel("kg_relations", relMQ, "denied-tenant", agentMinhGC, "", "", idMQ, idMQ, "tu", nil, "2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z", nil),
 	}
 	lines[8]["embedding"] = "EMBEDMARKER"
 	lines[8]["tsv"] = "TSVMARKER"

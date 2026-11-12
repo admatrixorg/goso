@@ -11,10 +11,10 @@ const (
 	reasonExpired         = "expired"
 	reasonCustomerPrivate = "customer-private"
 	reasonTeamScope       = "team/scope"
-	reasonMQ              = "mq"
 	reasonUnmapped        = "unmapped"
 	reasonMissingEndpoint = "missing relation endpoint"
 	reasonExists          = "exists"
+	reasonNativeExists    = "native-exists"
 	reasonInvalid         = "invalid"
 )
 
@@ -24,10 +24,10 @@ var reasonKeys = []string{
 	reasonExpired,
 	reasonCustomerPrivate,
 	reasonTeamScope,
-	reasonMQ,
 	reasonUnmapped,
 	reasonMissingEndpoint,
 	reasonExists,
+	reasonNativeExists,
 	reasonInvalid,
 }
 

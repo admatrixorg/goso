@@ -11,15 +11,12 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-// mqSlug is never written, even when the tenant map names a destination.
-const mqSlug = "mq-capital"
-
 var uuidRE = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // TenantMap is the SPEC 152 pairing: one GoClaw tenant id to one Goso
-// tenant id. Slug is only the mq-capital guard. SPEC 152 takes the pair
-// as flags for one tenant; this file is that pair once per tenant because
-// a KG run counts every tenant in the export.
+// tenant id. A run names one source tenant and one dest tenant explicitly.
+// A tenant on the local denylist is refused before any write. This file
+// does not name tenants that must be refused.
 //
 //	{"tenants":[{"source_tenant":"<goclaw tenant uuid>","dest_tenant":"minh-an","slug":"minh-an"}]}
 type TenantMap struct {
@@ -30,7 +27,6 @@ type tenantDest struct {
 	Source string
 	Dest   string
 	Slug   string
-	MQ     bool
 }
 
 type tenantMapFile struct {
@@ -94,15 +90,10 @@ func ReadTenantMap(r io.Reader) (TenantMap, error) {
 		}
 		slug := strings.ToLower(strings.TrimSpace(row.Slug))
 		dest := strings.TrimSpace(row.DestTenant)
-		mq := slug == mqSlug || strings.EqualFold(src, mqSlug) || strings.EqualFold(dest, mqSlug)
-		if !mq {
-			if !store.TenantOK(dest) {
-				return TenantMap{}, errConfig("tenant map: dest tenant is invalid")
-			}
-		} else {
-			dest = ""
+		if !store.TenantOK(dest) {
+			return TenantMap{}, errConfig("tenant map: dest tenant is invalid")
 		}
-		out.bySource[src] = tenantDest{Source: src, Dest: dest, Slug: slug, MQ: mq}
+		out.bySource[src] = tenantDest{Source: src, Dest: dest, Slug: slug}
 	}
 	return out, nil
 }

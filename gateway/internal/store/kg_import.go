@@ -105,6 +105,45 @@ func (s *SQLiteStore) LookupImportedKG(table, id string) (KGIDHit, error) {
 	return KGIDHit{Found: true, Tenant: NormalizeTenant(tenant)}, nil
 }
 
+// ReadImportedKGEntity returns the row with the provenance column as stored.
+// ErrNotFound when the id is absent. The row is not updated.
+func (s *SQLiteStore) ReadImportedKGEntity(id string) (*KGEntity, error) {
+	id = strings.TrimSpace(id)
+	row := s.db.QueryRow(`SELECT `+kgEntityCols+` FROM kg_entities WHERE id=?`, id)
+	e, err := scanKGEntity(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var prov string
+	if err := s.db.QueryRow(`SELECT provenance FROM kg_entities WHERE id=?`, id).Scan(&prov); err != nil {
+		return nil, err
+	}
+	e.Source = prov
+	return e, nil
+}
+
+// ReadImportedKGRelation returns the edge with provenance as stored.
+func (s *SQLiteStore) ReadImportedKGRelation(id string) (*KGRelation, error) {
+	id = strings.TrimSpace(id)
+	row := s.db.QueryRow(`SELECT `+kgRelationCols+` FROM kg_relations WHERE id=?`, id)
+	r, err := scanKGRelation(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var prov string
+	if err := s.db.QueryRow(`SELECT provenance FROM kg_relations WHERE id=?`, id).Scan(&prov); err != nil {
+		return nil, err
+	}
+	r.Source = prov
+	return r, nil
+}
+
 // KGProvenance reads the provenance column without the posted/extracted
 // fold GetKGEntity applies.
 func (s *SQLiteStore) KGProvenance(table, id string) (string, error) {
@@ -297,6 +336,32 @@ func (s *Store) LookupImportedKG(table, id string) (KGIDHit, error) {
 		}
 	}
 	return KGIDHit{}, nil
+}
+
+// ReadImportedKGEntity returns the stored entity, including provenance.
+func (s *Store) ReadImportedKGEntity(id string) (*KGEntity, error) {
+	id = strings.TrimSpace(id)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e := s.kgEntities[id]
+	if e == nil {
+		return nil, ErrNotFound
+	}
+	cp := *e
+	return &cp, nil
+}
+
+// ReadImportedKGRelation returns the stored edge, including provenance.
+func (s *Store) ReadImportedKGRelation(id string) (*KGRelation, error) {
+	id = strings.TrimSpace(id)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r := s.kgRelations[id]
+	if r == nil {
+		return nil, ErrNotFound
+	}
+	cp := *r
+	return &cp, nil
 }
 
 // KGProvenance returns the stored provenance string. It does not fold

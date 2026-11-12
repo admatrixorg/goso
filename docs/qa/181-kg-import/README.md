@@ -9,27 +9,34 @@ The tool never opens a GoClaw database. `--export` is JSONL. `--db` is a local S
 | Flag | Meaning |
 |---|---|
 | `--export` | JSONL. Each line is `kg_entities` or `kg_relations` with the GoClaw column names. `embedding` and `tsv` are dropped |
-| `--tenant-map` | SPEC 152 pairs. `source_tenant`, `dest_tenant`, `slug`. Slug `mq-capital` is counted `mq` and is not written |
+| `--source-tenant` | GoClaw tenant for this run. Required |
+| `--tenant` | Goso tenant to write. Required |
+| `--tenant-map` | SPEC 152 pairs. `source_tenant`, `dest_tenant`, `slug`. The run writes only `--source-tenant` into `--tenant` |
+| `--customer-map` | Optional PR #46 file. `{channel, sender_id, user_id}` becomes `<channel>:<id>`, else `goclaw:<user_id>` |
+| `--deny-file` | Required local denylist. `GOSO_TENANT_DENY_FILE` is the fallback. Missing, empty, or malformed stops before any work. A listed source or dest stops before any write. The report field `denied_tenants` is a count |
 | `--agent-map` | SPEC 174 pairs. `goclaw_agent_id`, `goso_agent_id`, optional `source_tenant`. The Goso agent must already exist in the destination tenant |
 | `--db` | Local SQLite file or loopback Postgres DSN. `GOSO_DATABASE_URL` is not opened |
 | `--dry-run` | Counts only. `read = will_write + sum(skipped)` per source tenant and table |
-| `--remove` | Delete `gc-` rows in `kg_entities` and `kg_relations` for `--dest-tenant`. Other ids and other tables stay |
-| `--dest-tenant` | Required with `--remove`. `mq-capital` is refused |
+| `--remove` | With `--tenant`, delete `gc-` rows for that tenant. The denylist applies |
 
-Skipped keys: `expired` (stays 0; a past `valid_until` is kept), `customer-private`, `team/scope`, `mq`, `unmapped`, `missing relation endpoint`, `exists`, `invalid`.
+Skipped keys: `expired` (stays 0; a past `valid_until` is kept), `customer-private`, `team/scope`, `unmapped`, `missing relation endpoint`, `exists`, `native-exists`, `invalid`.
 
 ```bash
 go run ./gateway/cmd/goso-kg-import \
   --export export.jsonl \
   --tenant-map tenants.json \
   --agent-map agents.json \
+  --source-tenant <goclaw-tenant> \
+  --tenant minh-an \
+  --deny-file /path/to/local-deny.txt \
   --db /path/to/local.db \
   --dry-run
 ```
 
 ```bash
 go run ./gateway/cmd/goso-kg-import \
-  --remove --dest-tenant minh-an \
+  --remove --tenant minh-an \
+  --deny-file /path/to/local-deny.txt \
   --db /path/to/local.db
 ```
 

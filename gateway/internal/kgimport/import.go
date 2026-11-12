@@ -24,28 +24,39 @@ import (
 )
 
 // Target is the existing KG store. Inserts use ON CONFLICT (id) DO NOTHING.
+// A row that already exists with different contents is left as it is.
 type Target interface {
 	GetAgent(string) (*store.Agent, error)
 	LookupImportedKG(table, id string) (store.KGIDHit, error)
+	ReadImportedKGEntity(id string) (*store.KGEntity, error)
+	ReadImportedKGRelation(id string) (*store.KGRelation, error)
 	InsertImportedKGEntity(store.KGEntity) (bool, error)
 	InsertImportedKGRelation(store.KGRelation) (bool, error)
 	CountImportedKG(tenant string) (int64, int64, error)
 	DeleteImportedKG(tenant string) (int64, int64, error)
 }
 
-// Options is one run. TenantMap is the SPEC 152 source-to-dest pairing.
-// AgentMap is the SPEC 174 file. Neither map is read from another branch.
+// Options is one run. SourceTenant and DestTenant are required and must
+// match TenantMap. Deny, when it lists either of those ids, stops the run
+// before any write. Customers resolves a non-empty user_id. The key is
+// not printed.
 type Options struct {
-	Tenants TenantMap
-	Agents  AgentMap
-	DryRun  bool
+	SourceTenant string
+	DestTenant   string
+	Tenants      TenantMap
+	Agents       AgentMap
+	Customers    CustomerMap
+	Deny         DenyList
+	DryRun       bool
 }
 
 // Report is counts per source tenant and table. For each section,
-// read = will_write + the sum of skipped.
+// read = will_write + the sum of skipped. DeniedTenants is a count.
+// The report does not name a denied tenant or a customer identifier.
 type Report struct {
-	DryRun bool      `json:"dry_run"`
-	Tables []Section `json:"tables"`
+	DryRun        bool      `json:"dry_run"`
+	DeniedTenants int       `json:"denied_tenants"`
+	Tables        []Section `json:"tables"`
 }
 
 // Section is one source tenant and one table.
@@ -91,10 +102,14 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 	if w == nil || ex == nil {
 		return nil, errConfig("export is required")
 	}
-	if len(opt.Tenants.bySource) == 0 || len(opt.Agents.byID) == 0 {
-		return nil, errConfig("tenant map and agent map are required")
+	if n, err := opt.screen(); err != nil {
+		if n > 0 {
+			return &Report{DryRun: opt.DryRun, DeniedTenants: n, Tables: []Section{}}, err
+		}
+		return nil, err
 	}
 	rep := &Report{DryRun: opt.DryRun}
+	denied := map[string]struct{}{}
 	sections := map[string]*Section{}
 	agents := map[string]*store.Agent{}
 	seenEnt := map[string]string{}
@@ -104,6 +119,10 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 	var entities []planned
 	for i := range ex.Entities {
 		item := ex.Entities[i]
+		if opt.Deny.Has(item.TenantID) {
+			noteDenied(denied, item.TenantID)
+			continue
+		}
 		sec := sectionFor(sections, item.TenantID, "kg_entities", opt.Tenants)
 		sec.Read++
 		plan, hold, reason, err := classifyEntity(w, item, opt, agents, seenEnt)
@@ -127,6 +146,10 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 	var relations []planned
 	for i := range ex.Relations {
 		item := ex.Relations[i]
+		if opt.Deny.Has(item.TenantID) {
+			noteDenied(denied, item.TenantID)
+			continue
+		}
 		sec := sectionFor(sections, item.TenantID, "kg_relations", opt.Tenants)
 		sec.Read++
 		plan, hold, reason, err := classifyRelation(w, item, opt, agents, kept, seenRel)
@@ -145,6 +168,7 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 		relations = append(relations, planned{section: secKey(item.TenantID, "kg_relations"), rel: plan})
 	}
 
+	rep.DeniedTenants = len(denied)
 	rep.Tables = finish(sections)
 	if err := balanced(rep); err != nil {
 		return nil, err
@@ -158,7 +182,7 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 			return nil, errors.New("insert kg entity failed")
 		}
 		if !ok {
-			move(sections, p.section, reasonExists)
+			move(sections, p.section, reasonNativeExists)
 		}
 	}
 	for _, p := range relations {
@@ -167,9 +191,10 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 			return nil, errors.New("insert kg relation failed")
 		}
 		if !ok {
-			move(sections, p.section, reasonExists)
+			move(sections, p.section, reasonNativeExists)
 		}
 	}
+	rep.DeniedTenants = len(denied)
 	rep.Tables = finish(sections)
 	if err := balanced(rep); err != nil {
 		return nil, err
@@ -177,15 +202,24 @@ func Import(w Target, ex *Export, opt Options) (*Report, error) {
 	return rep, nil
 }
 
+func noteDenied(denied map[string]struct{}, id string) {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if id == "" {
+		return
+	}
+	denied[id] = struct{}{}
+}
+
 // Remove deletes kg rows in one Goso tenant whose id starts with gc-.
-// Live ids are not deleted. mq-capital is refused.
-func Remove(w Target, dest string, dry bool) (*RemoveReport, error) {
+// Live ids are not deleted. A dest on the denylist is refused before
+// any delete.
+func Remove(w Target, dest string, deny DenyList, dry bool) (*RemoveReport, error) {
 	if w == nil {
 		return nil, errConfig("database is required")
 	}
 	dest = strings.TrimSpace(dest)
-	if strings.EqualFold(dest, mqSlug) {
-		return nil, errConfig("mq-capital is not a removal target")
+	if deny.Has(dest) {
+		return nil, errConfig("tenant is denied")
 	}
 	if !store.TenantOK(dest) {
 		return nil, errConfig("dest tenant is invalid")
@@ -204,11 +238,14 @@ func Remove(w Target, dest string, dry bool) (*RemoveReport, error) {
 }
 
 func classifyEntity(w Target, item row, opt Options, agents map[string]*store.Agent, seen map[string]string) (*store.KGEntity, bool, string, error) {
-	dest, reason := tenantGate(item, opt.Tenants)
+	dest, reason := tenantGate(item, opt)
 	if reason != "" {
 		return nil, false, reason, nil
 	}
 	if reason = admit(item.userID(), item.teamID(), item.customScope()); reason != "" {
+		if err := requireCustomerKey(reason, item.userID(), opt.Customers); err != nil {
+			return nil, false, "", err
+		}
 		return nil, false, reason, nil
 	}
 	id, ok := gcKGID(item.ID)
@@ -234,10 +271,6 @@ func classifyEntity(w Target, item row, opt Options, agents map[string]*store.Ag
 	if err != nil {
 		return nil, false, reasonInvalid, nil
 	}
-	hit, err := w.LookupImportedKG("kg_entities", id)
-	if err != nil {
-		return nil, false, "", err
-	}
 	ent := &store.KGEntity{
 		ID:         id,
 		TenantID:   dest.Dest,
@@ -250,27 +283,33 @@ func classifyEntity(w Target, item row, opt Options, agents map[string]*store.Ag
 		ValidUntil: until,
 		CreatedAt:  created,
 	}
-	if hit.Found {
-		// Same id in another tenant is not overwritten and is not an
-		// endpoint this tenant may attach to.
-		seen[id] = hit.Tenant
-		if !store.SameTenant(hit.Tenant, dest.Dest) {
-			return nil, false, reasonExists, nil
+	cur, err := w.ReadImportedKGEntity(id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, false, "", err
+	}
+	if cur != nil {
+		seen[id] = cur.TenantID
+		if sameEntity(cur, ent) {
+			return ent, true, "", nil
 		}
-		return ent, true, "", nil
+		// Existing contents stay. This id is not an imported endpoint.
+		return nil, false, reasonNativeExists, nil
 	}
 	seen[id] = dest.Dest
 	return ent, false, "", nil
 }
 
 func classifyRelation(w Target, item row, opt Options, agents map[string]*store.Agent, kept map[string]map[string]entityKept, seen map[string]string) (*store.KGRelation, bool, string, error) {
-	dest, reason := tenantGate(item, opt.Tenants)
+	dest, reason := tenantGate(item, opt)
 	if reason != "" {
 		return nil, false, reason, nil
 	}
 	// The relation's own user_id is counted here. A tenant-wide relation
 	// whose endpoint was held back is missing relation endpoint, below.
 	if reason = admit(item.userID(), item.teamID(), item.customScope()); reason != "" {
+		if err := requireCustomerKey(reason, item.userID(), opt.Customers); err != nil {
+			return nil, false, "", err
+		}
 		return nil, false, reason, nil
 	}
 	id, ok := gcKGID(item.ID)
@@ -299,10 +338,6 @@ func classifyRelation(w Target, item row, opt Options, agents map[string]*store.
 	if err != nil {
 		return nil, false, reasonInvalid, nil
 	}
-	hit, err := w.LookupImportedKG("kg_relations", id)
-	if err != nil {
-		return nil, false, "", err
-	}
 	rel := &store.KGRelation{
 		ID:         id,
 		TenantID:   dest.Dest,
@@ -314,33 +349,104 @@ func classifyRelation(w Target, item row, opt Options, agents map[string]*store.
 		ValidFrom:  from,
 		ValidUntil: until,
 	}
-	if hit.Found {
-		seen[id] = hit.Tenant
-		if !store.SameTenant(hit.Tenant, dest.Dest) {
-			return nil, false, reasonExists, nil
+	cur, err := w.ReadImportedKGRelation(id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, false, "", err
+	}
+	if cur != nil {
+		seen[id] = cur.TenantID
+		if sameRelation(cur, rel) {
+			return rel, true, "", nil
 		}
-		return rel, true, "", nil
+		return nil, false, reasonNativeExists, nil
 	}
 	seen[id] = dest.Dest
 	return rel, false, "", nil
 }
 
-func tenantGate(item row, tenants TenantMap) (tenantDest, string) {
-	src := strings.TrimSpace(item.TenantID)
-	if id, ok := canonUUID(src); ok {
-		src = id
+func (opt Options) screen() (int, error) {
+	if strings.TrimSpace(opt.SourceTenant) == "" || strings.TrimSpace(opt.DestTenant) == "" {
+		return 0, errConfig("source tenant and tenant are required")
 	}
-	if strings.EqualFold(src, mqSlug) {
-		return tenantDest{}, reasonMQ
+	if len(opt.Tenants.bySource) == 0 || len(opt.Agents.byID) == 0 {
+		return 0, errConfig("tenant map and agent map are required")
 	}
-	dest, ok := tenants.lookup(src)
-	if !ok {
+	if len(opt.Deny.ids) == 0 {
+		return 0, errConfig("deny file is empty")
+	}
+	n := 0
+	if opt.Deny.Has(opt.SourceTenant) {
+		n++
+	}
+	if opt.Deny.Has(opt.DestTenant) && !strings.EqualFold(strings.TrimSpace(opt.SourceTenant), strings.TrimSpace(opt.DestTenant)) {
+		n++
+	}
+	if n > 0 {
+		return n, errConfig("tenant is denied")
+	}
+	dest, ok := opt.Tenants.lookup(opt.SourceTenant)
+	if !ok || !store.SameTenant(dest.Dest, opt.DestTenant) {
+		return 0, errConfig("source tenant is not mapped to tenant")
+	}
+	return 0, nil
+}
+
+func requireCustomerKey(reason, userID string, customers CustomerMap) error {
+	if reason != reasonCustomerPrivate {
+		return nil
+	}
+	if ResolveCustomerKey(userID, customers) == "" {
+		return errors.New("customer key is empty")
+	}
+	return nil
+}
+
+func tenantGate(item row, opt Options) (tenantDest, string) {
+	src := sourceKey(item.TenantID)
+	if src == "" || src != sourceKey(opt.SourceTenant) {
 		return tenantDest{}, reasonUnmapped
 	}
-	if dest.MQ {
-		return tenantDest{}, reasonMQ
+	dest, ok := opt.Tenants.lookup(src)
+	if !ok || !store.SameTenant(dest.Dest, opt.DestTenant) {
+		return tenantDest{}, reasonUnmapped
 	}
 	return dest, ""
+}
+
+func sameEntity(cur, want *store.KGEntity) bool {
+	if cur == nil || want == nil {
+		return false
+	}
+	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.Name != want.Name || cur.Kind != want.Kind || cur.Body != want.Body || cur.AgentID != want.AgentID || cur.Source != want.Source {
+		return false
+	}
+	if !cur.ValidFrom.Equal(want.ValidFrom) || !cur.CreatedAt.Equal(want.CreatedAt) || !sameUntil(cur.ValidUntil, want.ValidUntil) {
+		return false
+	}
+	return true
+}
+
+func sameRelation(cur, want *store.KGRelation) bool {
+	if cur == nil || want == nil {
+		return false
+	}
+	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.FromID != want.FromID || cur.ToID != want.ToID || cur.Rel != want.Rel || cur.Body != want.Body || cur.Source != want.Source {
+		return false
+	}
+	if !cur.ValidFrom.Equal(want.ValidFrom) || !sameUntil(cur.ValidUntil, want.ValidUntil) {
+		return false
+	}
+	return true
+}
+
+func sameUntil(a, b *time.Time) bool {
+	if a == nil || a.IsZero() {
+		return b == nil || b.IsZero()
+	}
+	if b == nil || b.IsZero() {
+		return false
+	}
+	return a.UTC().Equal(b.UTC())
 }
 
 func resolveAgent(w Target, item row, dest string, agents AgentMap, cache map[string]*store.Agent) (string, string, error) {
@@ -455,9 +561,7 @@ func sectionFor(sections map[string]*Section, source, table string, tenants Tena
 	}
 	if d, ok := tenants.lookup(src); ok {
 		sec.Slug = d.Slug
-		if !d.MQ {
-			sec.DestTenant = d.Dest
-		}
+		sec.DestTenant = d.Dest
 	}
 	sections[key] = sec
 	return sec
