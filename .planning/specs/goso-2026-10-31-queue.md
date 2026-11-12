@@ -2,6 +2,8 @@
 
 Read with `GOSO_SPEC_2026-10-31.md`. A v2 section marked **THAY THẾ** replaces the old one. This file follows **v2 §11**, not the 31/10 phase list. SPEC 133 (chat agent / model / @) stays the slice already on this branch. The old 134–148 sequence in this file is retired; do not implement it in parallel.
 
+Memory v3 (2026-11-12, SPEC 153) does not reuse 134 or 137. Those two rows are SPEC 160 (approval queue), SPEC 161 (facts and reconcile), and SPEC 164 (scope, ACL, and forget). SPEC 136 stays with PR #10. SPEC 140 stays with PR #24. The memory plan is SPEC 153–167, plus 168 and 169 as placeholders pending Dat. Do not implement 134 or 137 beside that plan.
+
 UI reference is `Goso_Prototype_2026-11-01.html` (version 24). Sample data is **Minh An (demo)** only: household-goods distribution, teams `kinh-doanh` / `phap-che`, agents Cố vấn pháp lý · Cố vấn chiến lược · Cố vấn tài chính · Trợ lý giám đốc. Do not put MQ fund, ARR, or “Chủ tịch” examples in new code or copy.
 
 Ideas only from OpenKnowledge. No GPL-3.0 code. No Claude CLI / Codex OAuth on a commercial path. API keys only. Do not edit the live Mac mini deploy or secrets. SPEC 132 (`admatrixmdp/spec132-memory-revive`, six commits, not merged) is a dependency of SPEC 134 only. Do not merge it into this branch unless that SPEC starts.
