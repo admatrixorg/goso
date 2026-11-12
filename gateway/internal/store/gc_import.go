@@ -85,10 +85,11 @@ func (s *SQLiteStore) InsertMemoryIfNew(m Memory) (bool, error) {
 	return n > 0, nil
 }
 
-// ListGCVaultDocs returns vault rows in tenant whose id starts with gc-.
-func (s *SQLiteStore) ListGCVaultDocs(tenant string) ([]VaultDoc, error) {
+// ListImportedMemdocVault returns this importer's vault rows (gc-vdoc:).
+// Other gc- prefixes are left in place.
+func (s *SQLiteStore) ListImportedMemdocVault(tenant string) ([]VaultDoc, error) {
 	tenant = NormalizeTenant(tenant)
-	rows, err := s.db.Query(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE tenant_id=? AND substr(id,1,3)=? ORDER BY path`, tenant, gcPrefix)
+	rows, err := s.db.Query(`SELECT `+vaultDocSelect+` FROM vault_docs WHERE `+s.memdocWhere(memdocVaultGlob)+` ORDER BY path`, tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +108,12 @@ func (s *SQLiteStore) ListGCVaultDocs(tenant string) ([]VaultDoc, error) {
 	return out, rows.Err()
 }
 
-// DeleteGCPrefix deletes gc- memories, empty gc- sessions, and gc- vault rows
-// in one tenant. A session that still has a note or a message is kept.
-// Rows in other tenants are not deleted.
-func (s *SQLiteStore) DeleteGCPrefix(tenant string) (GCCounts, error) {
+// DeleteImportedMemdocs deletes this importer's rows in one tenant:
+// memories gc-doc:, sessions gc-docsess: that no longer hold a note or a
+// message, and vault docs gc-vdoc:. A gc-ep: row is not a match.
+// SQLite uses GLOB because LIKE is case-insensitive. Postgres LIKE is
+// case-sensitive, so that dialect uses LIKE.
+func (s *SQLiteStore) DeleteImportedMemdocs(tenant string) (GCCounts, error) {
 	tenant = NormalizeTenant(tenant)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -118,32 +121,33 @@ func (s *SQLiteStore) DeleteGCPrefix(tenant string) (GCCounts, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var c GCCounts
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE tenant_id=? AND substr(id,1,3)=?`, tenant, gcPrefix).Scan(&c.Memories); err != nil {
+	memWhere := s.memdocWhere(memdocMemoryGlob)
+	sessWhere := s.memdocWhere(memdocSessionGlob)
+	vaultWhere := s.memdocWhere(memdocVaultGlob)
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE `+memWhere, tenant).Scan(&c.Memories); err != nil {
 		return GCCounts{}, err
 	}
-	if _, err := tx.Exec(`DELETE FROM memories WHERE tenant_id=? AND substr(id,1,3)=?`, tenant, gcPrefix); err != nil {
+	if _, err := tx.Exec(`DELETE FROM memories WHERE `+memWhere, tenant); err != nil {
 		return GCCounts{}, err
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM sessions WHERE tenant_id=? AND substr(id,1,3)=?
-		AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id)
-		AND NOT EXISTS (SELECT 1 FROM messages g WHERE g.session_id = sessions.id)`, tenant, gcPrefix).Scan(&c.Sessions); err != nil {
+	sessKeep := sessWhere + ` AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id)
+		AND NOT EXISTS (SELECT 1 FROM messages g WHERE g.session_id = sessions.id)`
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sessions WHERE `+sessKeep, tenant).Scan(&c.Sessions); err != nil {
 		return GCCounts{}, err
 	}
-	if _, err := tx.Exec(`DELETE FROM sessions WHERE tenant_id=? AND substr(id,1,3)=?
-		AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id)
-		AND NOT EXISTS (SELECT 1 FROM messages g WHERE g.session_id = sessions.id)`, tenant, gcPrefix); err != nil {
+	if _, err := tx.Exec(`DELETE FROM sessions WHERE `+sessKeep, tenant); err != nil {
 		return GCCounts{}, err
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM vault_docs WHERE tenant_id=? AND substr(id,1,3)=?`, tenant, gcPrefix).Scan(&c.VaultDocs); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM vault_docs WHERE `+vaultWhere, tenant).Scan(&c.VaultDocs); err != nil {
 		return GCCounts{}, err
 	}
-	if _, err := tx.Exec(`DELETE FROM vault_links WHERE from_id IN (SELECT id FROM vault_docs WHERE tenant_id=? AND substr(id,1,3)=?)`, tenant, gcPrefix); err != nil {
+	if _, err := tx.Exec(`DELETE FROM vault_links WHERE from_id IN (SELECT id FROM vault_docs WHERE `+vaultWhere+`)`, tenant); err != nil {
 		return GCCounts{}, err
 	}
-	if _, err := tx.Exec(`UPDATE vault_links SET to_id='' WHERE to_id IN (SELECT id FROM vault_docs WHERE tenant_id=? AND substr(id,1,3)=?)`, tenant, gcPrefix); err != nil {
+	if _, err := tx.Exec(`UPDATE vault_links SET to_id='' WHERE to_id IN (SELECT id FROM vault_docs WHERE `+vaultWhere+`)`, tenant); err != nil {
 		return GCCounts{}, err
 	}
-	if _, err := tx.Exec(`DELETE FROM vault_docs WHERE tenant_id=? AND substr(id,1,3)=?`, tenant, gcPrefix); err != nil {
+	if _, err := tx.Exec(`DELETE FROM vault_docs WHERE `+vaultWhere, tenant); err != nil {
 		return GCCounts{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -152,7 +156,20 @@ func (s *SQLiteStore) DeleteGCPrefix(tenant string) (GCCounts, error) {
 	return c, nil
 }
 
-const gcPrefix = "gc-"
+const (
+	memdocMemoryGlob  = "gc-doc:*"
+	memdocSessionGlob = "gc-docsess:*"
+	memdocVaultGlob   = "gc-vdoc:*"
+)
+
+// memdocWhere matches one importer prefix. glob is a constant of the form
+// "gc-doc:*". SQLite GLOB is case-sensitive. Postgres rewrites to LIKE.
+func (s *SQLiteStore) memdocWhere(glob string) string {
+	if s != nil && s.pg {
+		return `tenant_id=? AND id LIKE '` + strings.ReplaceAll(glob, "*", "%") + `'`
+	}
+	return `tenant_id=? AND id GLOB '` + glob + `'`
+}
 
 // InsertSessionIfNew inserts sess with its id when that id is absent.
 func (s *Store) InsertSessionIfNew(sess Session) (bool, error) {
@@ -223,14 +240,14 @@ func (s *Store) InsertMemoryIfNew(m Memory) (bool, error) {
 	return true, nil
 }
 
-// ListGCVaultDocs returns vault rows in tenant whose id starts with gc-.
-func (s *Store) ListGCVaultDocs(tenant string) ([]VaultDoc, error) {
+// ListImportedMemdocVault returns vault rows whose id starts with gc-vdoc:.
+func (s *Store) ListImportedMemdocVault(tenant string) ([]VaultDoc, error) {
 	tenant = NormalizeTenant(tenant)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []VaultDoc
 	for _, d := range s.vaultDocs {
-		if d != nil && SameTenant(d.TenantID, tenant) && strings.HasPrefix(d.ID, gcPrefix) {
+		if d != nil && SameTenant(d.TenantID, tenant) && strings.HasPrefix(d.ID, "gc-vdoc:") {
 			out = append(out, *copyVaultDoc(d))
 		}
 	}
@@ -241,8 +258,8 @@ func (s *Store) ListGCVaultDocs(tenant string) ([]VaultDoc, error) {
 	return out, nil
 }
 
-// DeleteGCPrefix deletes gc- memories, empty gc- sessions, and gc- vault rows.
-func (s *Store) DeleteGCPrefix(tenant string) (GCCounts, error) {
+// DeleteImportedMemdocs deletes gc-doc memories, empty gc-docsess sessions, and gc-vdoc vault rows.
+func (s *Store) DeleteImportedMemdocs(tenant string) (GCCounts, error) {
 	tenant = NormalizeTenant(tenant)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -250,7 +267,7 @@ func (s *Store) DeleteGCPrefix(tenant string) (GCCounts, error) {
 	for sid, list := range s.memories {
 		kept := make([]*Memory, 0, len(list))
 		for _, m := range list {
-			if m != nil && SameTenant(m.TenantID, tenant) && strings.HasPrefix(m.ID, gcPrefix) {
+			if m != nil && SameTenant(m.TenantID, tenant) && strings.HasPrefix(m.ID, "gc-doc:") {
 				c.Memories++
 				continue
 			}
@@ -259,7 +276,7 @@ func (s *Store) DeleteGCPrefix(tenant string) (GCCounts, error) {
 		s.memories[sid] = kept
 	}
 	for id, sess := range s.sessions {
-		if sess == nil || !SameTenant(sess.TenantID, tenant) || !strings.HasPrefix(id, gcPrefix) {
+		if sess == nil || !SameTenant(sess.TenantID, tenant) || !strings.HasPrefix(id, "gc-docsess:") {
 			continue
 		}
 		if len(s.memories[id]) > 0 || len(s.messages[id]) > 0 {
@@ -271,7 +288,7 @@ func (s *Store) DeleteGCPrefix(tenant string) (GCCounts, error) {
 		c.Sessions++
 	}
 	for id, d := range s.vaultDocs {
-		if d == nil || !SameTenant(d.TenantID, tenant) || !strings.HasPrefix(id, gcPrefix) {
+		if d == nil || !SameTenant(d.TenantID, tenant) || !strings.HasPrefix(id, "gc-vdoc:") {
 			continue
 		}
 		delete(s.vaultDocs, id)

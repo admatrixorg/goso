@@ -69,8 +69,27 @@ func classify(raw string) (clean, kind string, ok bool) {
 // VaultPath is memory/goclaw/<agent>/<source path>.
 // The source path is appended as itself: memory/notes.md stays one memory/
 // folder under the agent, and a root file does not gain a memory/ folder.
-func VaultPath(agent, source string) string {
-	return path.Join("memory/goclaw", agent, source)
+// The agent slug is one segment. ".." is rejected so Join cannot climb out.
+func VaultPath(agent, source string) (string, error) {
+	if !agentSlugOK(agent) {
+		return "", errConfig("agent id is not a safe slug")
+	}
+	return path.Join("memory/goclaw", agent, source), nil
+}
+
+func agentSlugOK(s string) bool {
+	if s == "" || s == "." || s == ".." || len(s) > 200 {
+		return false
+	}
+	if strings.Contains(s, "..") || strings.ContainsAny(s, `/\:`) {
+		return false
+	}
+	for _, r := range s {
+		if r <= ' ' || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // systemFileName is the last segment of an _system/ path. Content is not used.

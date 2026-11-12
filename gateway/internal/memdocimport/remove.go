@@ -37,7 +37,7 @@ func RemoveTenant(st Store, vaultRoot, tenant string) (RemoveResult, error) {
 	if vaultRoot == "" {
 		return RemoveResult{}, errConfig("vault dir is required")
 	}
-	docs, err := st.ListGCVaultDocs(tenant)
+	docs, err := st.ListImportedMemdocVault(tenant)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -56,7 +56,7 @@ func RemoveTenant(st Store, vaultRoot, tenant string) (RemoveResult, error) {
 			removed++
 		}
 	}
-	counts, err := st.DeleteGCPrefix(tenant)
+	counts, err := st.DeleteImportedMemdocs(tenant)
 	if err != nil {
 		return RemoveResult{}, err
 	}

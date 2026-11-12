@@ -14,17 +14,20 @@ type Report struct {
 	DryRun   bool           `json:"dry_run"`
 	Inserted int            `json:"inserted"`
 	Sessions int            `json:"sessions"`
+	Denied   int            `json:"denied"`
 	Tenants  []TenantReport `json:"tenants"`
 }
 
 // TenantReport is one GoClaw tenant id.
 type TenantReport struct {
-	Source      string                 `json:"source"`
-	Slug        string                 `json:"slug,omitempty"`
-	Dest        string                 `json:"dest,omitempty"`
-	Tables      map[string]*TableCount `json:"tables"`
-	Sessions    int                    `json:"sessions"`
-	SystemNames []string               `json:"system_names,omitempty"`
+	Source   string                 `json:"source"`
+	Slug     string                 `json:"slug,omitempty"`
+	Dest     string                 `json:"dest,omitempty"`
+	Tables   map[string]*TableCount `json:"tables"`
+	Sessions int                    `json:"sessions"`
+	// SystemNames is not part of the JSON report. The command writes it to
+	// --system-names-out. Stdout stays counts only.
+	SystemNames []string `json:"-"`
 }
 
 // TableCount is memory_documents or memory_chunks.
@@ -52,7 +55,8 @@ type Reasons struct {
 	Path            int `json:"path"`
 	Chunks          int `json:"chunks"`
 	Hash            int `json:"hash"`
-	PathTaken       int `json:"path-taken"`
+	NativeExists    int `json:"native-exists"`
+	OtherTenant     int `json:"other-tenant"`
 	Binary          int `json:"binary"`
 	TooLarge        int `json:"too-large"`
 }
@@ -63,7 +67,7 @@ func (r *Reasons) sum() int {
 	}
 	return r.Expired + r.CustomerPrivate + r.TeamScope + r.MQ + r.Unmapped +
 		r.MissingEndpoint + r.System + r.Path + r.Chunks + r.Hash +
-		r.PathTaken + r.Binary + r.TooLarge
+		r.NativeExists + r.OtherTenant + r.Binary + r.TooLarge
 }
 
 func (t *TableCount) balanced() bool {

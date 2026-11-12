@@ -24,22 +24,31 @@ func TestVaultPathShapes(t *testing.T) {
 	if !ok || kind != kindMemory || mem != "memory/notes.md" {
 		t.Fatalf("memory path %q %q %v", mem, kind, ok)
 	}
-	if got := VaultPath("ag", mem); got != "memory/goclaw/ag/memory/notes.md" || strings.Contains(got, "memory/memory") {
-		t.Fatalf("vault memory path %q", got)
+	got, err := VaultPath("ag", mem)
+	if err != nil || got != "memory/goclaw/ag/memory/notes.md" || strings.Contains(got, "memory/memory") {
+		t.Fatalf("vault memory path %q %v", got, err)
 	}
 	root, kind, ok := classify("SOUL.md")
 	if !ok || kind != kindRoot {
 		t.Fatalf("root %q %v", kind, ok)
 	}
-	if got := VaultPath("ag", root); got != "memory/goclaw/ag/SOUL.md" || strings.Contains(got, "/memory/SOUL") {
-		t.Fatalf("vault root path %q", got)
+	got, err = VaultPath("ag", root)
+	if err != nil || got != "memory/goclaw/ag/SOUL.md" || strings.Contains(got, "/memory/SOUL") {
+		t.Fatalf("vault root path %q %v", got, err)
 	}
 	sys, kind, ok := classify("_system/SOUL.md")
 	if !ok || kind != kindSystem {
 		t.Fatalf("system %q %v", kind, ok)
 	}
-	if got := VaultPath("ag", sys); got != "memory/goclaw/ag/_system/SOUL.md" || strings.Contains(got, "/memory/_system") {
-		t.Fatalf("system mapping %q", got)
+	got, err = VaultPath("ag", sys)
+	if err != nil || got != "memory/goclaw/ag/_system/SOUL.md" || strings.Contains(got, "/memory/_system") {
+		t.Fatalf("system mapping %q %v", got, err)
+	}
+	if _, err := VaultPath("..", "memory/notes.md"); err == nil {
+		t.Fatal("agent .. was accepted")
+	}
+	if _, err := VaultPath("ag/../x", "notes.md"); err == nil {
+		t.Fatal("agent with .. was accepted")
 	}
 	for _, bad := range []string{"", "../x", "memory/../../etc/passwd", "/etc/passwd", `memory\x.md`, "other/x.md", "memory", "_system", "file://x", "C:/x"} {
 		if _, _, ok := classify(bad); ok {
@@ -68,7 +77,7 @@ func runMinhAn(t *testing.T, st Store, root string) {
 		t.Fatal(err)
 	}
 	svc := vault.New(st, root)
-	taken := VaultPath(minh.ID, "memory/taken.md")
+	taken := vp(t, minh.ID, "memory/taken.md")
 	liveVault, err := svc.PutTenantAt("minh-an", "wiki/minh-an.md", []byte("# Minh An\nLIVEWIKI\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -90,29 +99,28 @@ func runMinhAn(t *testing.T, st Store, root string) {
 		Tenants: []TenantMap{
 			{SourceID: minhSrc, Slug: "minh-an", Dest: "minh-an"},
 			{SourceID: phapSrc, Slug: "phap-che", Dest: "phap-che"},
-			{SourceID: mqSrc, Slug: "mq-capital", Dest: "mq-capital"},
 		},
 		Agents: []AgentMap{
 			{SourceID: "agent-minh", SourceTenant: minhSrc, DestID: minh.ID},
 			{SourceID: "agent-phap", SourceTenant: phapSrc, DestID: phap.ID},
-			{SourceID: "agent-mq", SourceTenant: mqSrc, DestID: "mq-agent"},
 		},
-		Customers: []CustomerMap{{UserID: "khach-z", CustomerKey: "zalo-personal:minh"}},
 	}
-	export := minhExport(minhSrc, phapSrc, mqSrc)
+	customers := mustCustomers(t)
+	export := minhExport(minhSrc, phapSrc)
+	minhOpt := Options{Mapping: mapping, SourceTenant: minhSrc, Deny: allowDeny(t), Customers: customers, DryRun: true}
 
-	dry, err := Import(st, svc, strings.NewReader(export), Options{Mapping: mapping, DryRun: true})
+	dry, err := Import(st, svc, strings.NewReader(export), minhOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !dry.DryRun || dry.Inserted != 8 || dry.Sessions != 4 {
-		t.Fatalf("dry inserted=%d sessions=%d", dry.Inserted, dry.Sessions)
+	if !dry.DryRun || dry.Inserted != 6 || dry.Sessions != 3 || dry.Denied != 0 {
+		t.Fatalf("dry inserted=%d sessions=%d denied=%d", dry.Inserted, dry.Sessions, dry.Denied)
 	}
 	minhRep := tenantBy(t, dry, minhSrc)
 	if minhRep.Tables[tableDocs].Read != 17 || minhRep.Tables[tableDocs].WillWrite != 6 || minhRep.Tables[tableDocs].Vault != 2 || minhRep.Tables[tableDocs].Durable != 4 {
 		t.Fatalf("minh docs %+v", minhRep.Tables[tableDocs])
 	}
-	if minhRep.Tables[tableDocs].Skipped.TeamScope != 2 || minhRep.Tables[tableDocs].Skipped.System != 3 || minhRep.Tables[tableDocs].Skipped.Path != 2 || minhRep.Tables[tableDocs].Skipped.PathTaken != 1 || minhRep.Tables[tableDocs].Skipped.Binary != 1 || minhRep.Tables[tableDocs].Skipped.TooLarge != 1 || minhRep.Tables[tableDocs].Skipped.Unmapped != 1 {
+	if minhRep.Tables[tableDocs].Skipped.TeamScope != 2 || minhRep.Tables[tableDocs].Skipped.System != 3 || minhRep.Tables[tableDocs].Skipped.Path != 2 || minhRep.Tables[tableDocs].Skipped.NativeExists != 1 || minhRep.Tables[tableDocs].Skipped.Binary != 1 || minhRep.Tables[tableDocs].Skipped.TooLarge != 1 || minhRep.Tables[tableDocs].Skipped.Unmapped != 1 {
 		t.Fatalf("minh skips %+v", minhRep.Tables[tableDocs].Skipped)
 	}
 	if minhRep.Tables[tableDocs].Skipped.CustomerPrivate != 0 || minhRep.Tables[tableDocs].Skipped.Expired != 0 || minhRep.Tables[tableDocs].Skipped.MissingEndpoint != 0 {
@@ -124,12 +132,12 @@ func runMinhAn(t *testing.T, st Store, root string) {
 	if strings.Join(minhRep.SystemNames, ",") != "SOUL.md,TOOLS.md" {
 		t.Fatalf("system names %q", minhRep.SystemNames)
 	}
-	mqRep := tenantBy(t, dry, mqSrc)
-	if mqRep.Tables[tableDocs].Skipped.MQ != 2 || len(mqRep.SystemNames) != 0 || mqRep.Tables[tableDocs].WillWrite != 0 {
-		t.Fatalf("mq %+v names %q", mqRep.Tables[tableDocs], mqRep.SystemNames)
+	phapDry := tenantBy(t, dry, phapSrc)
+	if phapDry.Tables[tableDocs].Read != 2 || phapDry.Tables[tableDocs].Skipped.OtherTenant != 2 || phapDry.Tables[tableDocs].WillWrite != 0 {
+		t.Fatalf("other tenant %+v", phapDry.Tables[tableDocs])
 	}
 	raw, _ := json.Marshal(dry)
-	for _, secret := range []string{"SYSBODY", "USERONLY", "CHUNKSECRET", "MQSECRET", "TEAMSKIP", "SCOPESKIP", "TRAVERSAL", "hopdongx", "TAKENOVER", "UNMAPPED"} {
+	for _, secret := range []string{"SOUL.md", "TOOLS.md", "SYSBODY", "USERONLY", "CHUNKSECRET", "TEAMSKIP", "SCOPESKIP", "TRAVERSAL", "hopdongx", "TAKENOVER", "UNMAPPED", "khach-x", "khach-y", "khach-z"} {
 		if strings.Contains(string(raw), secret) {
 			t.Fatalf("dry-run report contains %s", secret)
 		}
@@ -138,15 +146,16 @@ func runMinhAn(t *testing.T, st Store, root string) {
 		t.Fatal("dry-run wrote a file")
 	}
 
-	rep, err := Import(st, svc, strings.NewReader(export), Options{Mapping: mapping})
+	minhOpt.DryRun = false
+	rep, err := Import(st, svc, strings.NewReader(export), minhOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.DryRun || rep.Inserted != 8 || rep.Sessions != 4 || len(tenantBy(t, rep, minhSrc).SystemNames) != 0 {
+	if rep.DryRun || rep.Inserted != 6 || rep.Sessions != 3 || rep.Denied != 0 {
 		t.Fatalf("import inserted=%d sessions=%d dry=%v", rep.Inserted, rep.Sessions, rep.DryRun)
 	}
-	notesPath := VaultPath(minh.ID, "memory/notes.md")
-	policyPath := VaultPath(minh.ID, "POLICY.md")
+	notesPath := vp(t, minh.ID, "memory/notes.md")
+	policyPath := vp(t, minh.ID, "POLICY.md")
 	notes, err := st.FindVaultDocByPath("minh-an", notesPath)
 	if err != nil || notes.ID != VaultID("minh-an", minh.ID, notesPath) || notes.Body != "VAULTMEM minh an notes" || !strings.HasPrefix(notes.ID, "gc-") {
 		t.Fatalf("notes %+v %v", notes, err)
@@ -155,21 +164,26 @@ func runMinhAn(t *testing.T, st Store, root string) {
 	if err != nil || policy.Body != "VAULTROOT minh an policy" || strings.Contains(policy.Path, "memory/memory") {
 		t.Fatalf("policy %+v %v", policy, err)
 	}
-	if _, err := st.FindVaultDocByPath("minh-an", VaultPath(minh.ID, "_system/SOUL.md")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.FindVaultDocByPath("minh-an", vp(t, minh.ID, "_system/SOUL.md")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("system file was imported")
 	}
 	kept, err := st.FindVaultDocByPath("minh-an", taken)
 	if err != nil || kept.ID != liveTaken.ID || kept.Body != "LIVEKEEP minh an\n" {
 		t.Fatalf("taken path changed %+v", kept)
 	}
+	phapOpt := minhOpt
+	phapOpt.SourceTenant = phapSrc
+	if _, err := Import(st, svc, strings.NewReader(export), phapOpt); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := st.FindVaultDocByPath("phap-che", notesPath); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("tenant phap-che saw minh-an's vault path")
 	}
-	phapDoc, err := st.FindVaultDocByPath("phap-che", VaultPath(phap.ID, "README.md"))
+	phapDoc, err := st.FindVaultDocByPath("phap-che", vp(t, phap.ID, "README.md"))
 	if err != nil || phapDoc.Body != "VAULTPHAP minh an" {
 		t.Fatalf("phap doc %+v %v", phapDoc, err)
 	}
-	if _, err := st.FindVaultDocByPath("minh-an", VaultPath(phap.ID, "README.md")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.FindVaultDocByPath("minh-an", vp(t, phap.ID, "README.md")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("minh-an saw phap-che's file")
 	}
 
@@ -224,7 +238,7 @@ func runMinhAn(t *testing.T, st Store, root string) {
 		t.Fatal("expected vault text missing")
 	}
 
-	again, err := Import(st, svc, strings.NewReader(export), Options{Mapping: mapping})
+	again, err := Import(st, svc, strings.NewReader(export), minhOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,10 +378,9 @@ func readVault(t *testing.T, root string) string {
 const (
 	minhSrc = "11111111-1111-4111-8111-111111111111"
 	phapSrc = "22222222-2222-4222-8222-222222222222"
-	mqSrc   = "33333333-3333-4333-8333-333333333333"
 )
 
-func minhExport(minh, phap, mq string) string {
+func minhExport(minh, phap string) string {
 	lines := []any{
 		doc(minh, "agent-minh", nil, "memory/notes.md", "VAULTMEM minh an notes", nil, nil),
 		doc(minh, "agent-minh", nil, "POLICY.md", "VAULTROOT minh an policy", nil, nil),
@@ -389,8 +402,6 @@ func minhExport(minh, phap, mq string) string {
 		doc(minh, "missing-agent", nil, "memory/no-agent.md", "UNMAPPEDAGENT", nil, nil),
 		doc(phap, "agent-phap", nil, "README.md", "VAULTPHAP minh an", nil, nil),
 		doc(phap, "agent-phap", "khach-x", "memory/hop-x.md", "PHAPONLY chietkhau", nil, nil),
-		doc(mq, "agent-mq", nil, "memory/secret.md", "MQSECRET", nil, nil),
-		doc(mq, "agent-mq", nil, "_system/SOUL.md", "MQSYS", nil, nil),
 		doc("99999999-9999-4999-8999-999999999999", "agent-minh", nil, "memory/nope.md", "UNMAPPEDTENANT", nil, nil),
 	}
 	var b strings.Builder
@@ -403,6 +414,33 @@ func minhExport(minh, phap, mq string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func vp(t *testing.T, agent, src string) string {
+	t.Helper()
+	p, err := VaultPath(agent, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func allowDeny(t *testing.T) *DenyList {
+	t.Helper()
+	d, err := ReadDenyList(strings.NewReader("held-out\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func mustCustomers(t *testing.T) *CustomerIndex {
+	t.Helper()
+	idx, err := ReadCustomerMap(strings.NewReader(`{"channel_contacts":[{"channel_type":"zalo-personal","sender_id":"minh","user_id":"khach-z","merged_id":""}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return idx
 }
 
 func doc(tenant, agent string, user any, path, content string, team, scope any) map[string]any {
@@ -486,4 +524,113 @@ func openPostgres(t *testing.T) Store {
 	}
 	t.Cleanup(func() { _ = pg.Close() })
 	return pg
+}
+
+func TestDeniedTenantWritesNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		token  string
+		source string
+		slug   string
+		line   string
+	}{
+		{name: "slug", token: "held-out", source: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", slug: "held-out", line: "held-out"},
+		{name: "uuid", token: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", source: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", slug: "held-uuid", line: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := store.New()
+			ag, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "co-van-" + tc.name, DisplayName: "Co van Minh An", Model: "echo"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc := vault.New(st, t.TempDir())
+			live, err := svc.PutTenantAt("minh-an", "wiki/minh-an.md", []byte("# Minh An\nLIVEWIKI\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			deny, err := ReadDenyList(strings.NewReader(tc.line + "\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapping := Mapping{
+				Tenants: []TenantMap{{SourceID: tc.source, Slug: tc.slug, Dest: "minh-an"}},
+				Agents:  []AgentMap{{SourceID: "agent-1", SourceTenant: tc.source, DestID: ag.ID}},
+			}
+			export := docLine(tc.source, "agent-1", "memory/notes.md", "SHOULDNOTWRITE")
+			_, err = Import(st, svc, strings.NewReader(export), Options{Mapping: mapping, SourceTenant: tc.token, Deny: deny})
+			var denied *DeniedError
+			if !errors.As(err, &denied) || denied.Count < 1 {
+				t.Fatalf("err=%v", err)
+			}
+			if got, _ := st.GetVaultDoc(live.ID); got == nil || !strings.Contains(got.Body, "LIVEWIKI") {
+				t.Fatal("live row changed")
+			}
+			docs, err := st.ListImportedMemdocVault("minh-an")
+			if err != nil || len(docs) != 0 {
+				t.Fatalf("imported vault docs %d %v", len(docs), err)
+			}
+			if files := readVault(t, svc.Root); strings.Contains(files, "SHOULDNOTWRITE") {
+				t.Fatal("denied tenant wrote a file")
+			}
+		})
+	}
+}
+
+func TestRollbackLeavesOtherKind(t *testing.T) {
+	st := store.New()
+	ag, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "co-van-roll", DisplayName: "Co van Minh An", Model: "echo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	svc := vault.New(st, root)
+	mapping := Mapping{
+		Tenants: []TenantMap{{SourceID: minhSrc, Slug: "minh-an", Dest: "minh-an"}},
+		Agents:  []AgentMap{{SourceID: "agent-minh", SourceTenant: minhSrc, DestID: ag.ID}},
+	}
+	export := docLine(minhSrc, "agent-minh", "memory/notes.md", "VAULTMEM minh an") +
+		docLineUser(minhSrc, "agent-minh", "khach-x", "memory/hop.md", "Minh An hopdongx")
+	opt := Options{Mapping: mapping, SourceTenant: minhSrc, Deny: allowDeny(t)}
+	if _, err := Import(st, svc, strings.NewReader(export), opt); err != nil {
+		t.Fatal(err)
+	}
+	live, err := st.CreateSession(store.Session{TenantID: "minh-an", AgentID: ag.ID, Label: "Minh An web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, err := st.InsertMemoryIfNew(store.Memory{
+		ID: "gc-ep:sample", TenantID: "minh-an", SessionID: live.ID,
+		Kind: store.KindEpisodic, Body: "episodic kind stays", CustomerKey: "goclaw:other",
+	})
+	if err != nil || !ok {
+		t.Fatalf("seed gc-ep %v %v", ok, err)
+	}
+	before, err := st.GetMemory("gc-ep:sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RemoveTenant(st, root, "minh-an"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.GetMemory("gc-ep:sample")
+	if err != nil || after.Body != before.Body {
+		t.Fatalf("other kind changed %+v %v", after, err)
+	}
+	docs, err := st.ListImportedMemdocVault("minh-an")
+	if err != nil || len(docs) != 0 {
+		t.Fatalf("vault rows left %d", len(docs))
+	}
+	if _, err := st.GetMemory(MemoryID(ag.ID, "khach-x", "memory/hop.md")); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("durable note survived rollback")
+	}
+}
+
+func docLine(tenant, agent, path, content string) string {
+	raw, _ := json.Marshal(doc(tenant, agent, nil, path, content, nil, nil))
+	return string(raw) + "\n"
+}
+
+func docLineUser(tenant, agent, user, path, content string) string {
+	raw, _ := json.Marshal(doc(tenant, agent, user, path, content, nil, nil))
+	return string(raw) + "\n"
 }

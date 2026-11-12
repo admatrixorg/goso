@@ -11,7 +11,9 @@
 // the mapped key or goclaw:<user_id>, never empty.
 //
 // _system/ is not imported. memory_chunks are not imported. team_id and
-// custom_scope, when set, are counted and not imported. mq-capital is skipped.
+// custom_scope, when set, are counted and not imported. A tenant on the
+// local denylist stops the run before any write. A target that already
+// exists and differs is native-exists and is not updated.
 package memdocimport
 
 import (
@@ -32,14 +34,20 @@ type Store interface {
 	store.StoreIface
 	InsertSessionIfNew(store.Session) (bool, error)
 	InsertMemoryIfNew(store.Memory) (bool, error)
-	ListGCVaultDocs(tenant string) ([]store.VaultDoc, error)
-	DeleteGCPrefix(tenant string) (store.GCCounts, error)
+	ListImportedMemdocVault(tenant string) ([]store.VaultDoc, error)
+	DeleteImportedMemdocs(tenant string) (store.GCCounts, error)
 }
 
 // Options selects the mapping and whether this run writes.
+// SourceTenant is required. It is the GoClaw tenant id or its slug.
+// Deny, when set, refuses that tenant and any source tenant in the export
+// before a write. Customers comes from a channel_contacts file.
 type Options struct {
-	Mapping Mapping
-	DryRun  bool
+	Mapping      Mapping
+	SourceTenant string
+	Deny         *DenyList
+	Customers    *CustomerIndex
+	DryRun       bool
 }
 
 type planned struct {
@@ -64,6 +72,9 @@ func Import(st Store, svc *vault.Service, r io.Reader, opt Options) (*Report, er
 	if !opt.DryRun && svc == nil {
 		return nil, errConfig("vault dir is required")
 	}
+	if opt.Deny == nil {
+		return nil, errConfig("denylist is missing")
+	}
 	maps, err := compileMap(opt.Mapping)
 	if err != nil {
 		return nil, err
@@ -72,12 +83,27 @@ func Import(st Store, svc *vault.Service, r io.Reader, opt Options) (*Report, er
 	if err != nil {
 		return nil, err
 	}
+	source, err := maps.resolve(opt.SourceTenant)
+	if err != nil {
+		if opt.Deny.Hit(opt.SourceTenant) {
+			return nil, &DeniedError{Count: 1}
+		}
+		return nil, err
+	}
+	if n := countDenied(opt.Deny, source, maps, rows); n > 0 {
+		return nil, &DeniedError{Count: n}
+	}
+	if opt.Customers == nil {
+		opt.Customers = &CustomerIndex{byUser: map[string]string{}, bySender: map[string]string{}}
+	}
 	p := &planner{
-		st:       st,
-		maps:     maps,
-		by:       map[string]*TenantReport{},
-		names:    map[string][]string{},
-		sessions: map[string]*TenantReport{},
+		st:        st,
+		maps:      maps,
+		sourceID:  source.source,
+		customers: opt.Customers,
+		by:        map[string]*TenantReport{},
+		names:     map[string][]string{},
+		sessions:  map[string]*TenantReport{},
 	}
 	var want []planned
 	for _, item := range rows {
@@ -137,13 +163,68 @@ func apply(st Store, svc *vault.Service, want []planned) error {
 	return nil
 }
 
+// CountDenied reports how many distinct tenants in this run are on the
+// denylist. The number is safe to print. Tenant ids are not.
+func CountDenied(deny *DenyList, token string, m Mapping, r io.Reader) (int, error) {
+	if deny == nil {
+		return 0, errConfig("denylist is missing")
+	}
+	maps, err := compileMap(m)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := ReadJSONL(r)
+	if err != nil {
+		return 0, err
+	}
+	source, err := maps.resolve(token)
+	if err != nil {
+		if deny.Hit(token) {
+			return 1, nil
+		}
+		return 0, err
+	}
+	return countDenied(deny, source, maps, rows), nil
+}
+
+func countDenied(deny *DenyList, source tenantBind, maps *loadedMap, rows []row) int {
+	if deny == nil {
+		return 0
+	}
+	seen := map[string]struct{}{}
+	note := func(id string) {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id != "" {
+			seen[id] = struct{}{}
+		}
+	}
+	if deny.Hit(source.source, source.slug, source.dest) {
+		note(source.source)
+	}
+	for _, item := range rows {
+		id := strings.TrimSpace(item.tenantID)
+		if tb, ok := maps.tenants[id]; ok {
+			if deny.Hit(tb.source, tb.slug, tb.dest) {
+				note(tb.source)
+			}
+			continue
+		}
+		if deny.Hit(id) {
+			note(id)
+		}
+	}
+	return len(seen)
+}
+
 type planner struct {
-	st       Store
-	maps     *loadedMap
-	by       map[string]*TenantReport
-	order    []*TenantReport
-	names    map[string][]string
-	sessions map[string]*TenantReport
+	st        Store
+	maps      *loadedMap
+	sourceID  string
+	customers *CustomerIndex
+	by        map[string]*TenantReport
+	order     []*TenantReport
+	names     map[string][]string
+	sessions  map[string]*TenantReport
 }
 
 func (p *planner) consider(item row) (*planned, error) {
@@ -156,15 +237,11 @@ func (p *planner) consider(item row) (*planned, error) {
 	tab := sec.Tables[table]
 	tab.Read++
 
-	tb, mapped := p.maps.tenants[strings.TrimSpace(item.tenantID)]
-	if isMQ(item.tenantID) || (mapped && tb.skipMQ) {
-		tab.Skipped.MQ++
-		if mapped {
-			sec.Slug = tb.slug
-			sec.Dest = tb.dest
-		}
+	if strings.TrimSpace(item.tenantID) != p.sourceID {
+		tab.Skipped.OtherTenant++
 		return nil, nil
 	}
+	tb, mapped := p.maps.tenants[strings.TrimSpace(item.tenantID)]
 	if !mapped {
 		tab.Skipped.Unmapped++
 		return nil, nil
@@ -229,7 +306,7 @@ func (p *planner) planDurable(sec *TenantReport, tab *TableCount, tb tenantBind,
 		tab.Skipped.TooLarge++
 		return nil, nil
 	}
-	key := customerKey(item.userID, p.maps.customers)
+	key := p.customers.Key(item.userID)
 	if key == "" {
 		return nil, errConfig("customer_key is empty")
 	}
@@ -239,7 +316,11 @@ func (p *planner) planDurable(sec *TenantReport, tab *TableCount, tb tenantBind,
 		return nil, err
 	}
 	if existing != nil {
-		tab.Skipped.Hash++
+		if existing.Body == body && existing.CustomerKey == key && store.NormalizeMemoryKind(existing.Kind) == store.KindDurable {
+			tab.Skipped.Hash++
+		} else {
+			tab.Skipped.NativeExists++
+		}
 		return nil, nil
 	}
 	sid := SessionID(agent, item.userID)
@@ -272,7 +353,11 @@ func (p *planner) planVault(tab *TableCount, tb tenantBind, agent, clean string,
 		tab.Skipped.TooLarge++
 		return nil, nil
 	}
-	logical := VaultPath(agent, clean)
+	logical, err := VaultPath(agent, clean)
+	if err != nil {
+		tab.Skipped.Path++
+		return nil, nil
+	}
 	sum := sha256Hex([]byte(item.content))
 	id := VaultID(tb.dest, agent, logical)
 	doc, err := p.st.GetVaultDoc(id)
@@ -280,7 +365,11 @@ func (p *planner) planVault(tab *TableCount, tb tenantBind, agent, clean string,
 		return nil, err
 	}
 	if doc != nil {
-		tab.Skipped.Hash++
+		if vaultSame(doc, item.content, sum, item.hash) {
+			tab.Skipped.Hash++
+		} else {
+			tab.Skipped.NativeExists++
+		}
 		return nil, nil
 	}
 	byPath, err := p.st.FindVaultDocByPath(tb.dest, logical)
@@ -288,11 +377,11 @@ func (p *planner) planVault(tab *TableCount, tb tenantBind, agent, clean string,
 		return nil, err
 	}
 	if byPath != nil {
-		if byPath.ID == id || strings.EqualFold(byPath.SHA256, sum) || (item.hash != "" && strings.EqualFold(byPath.SHA256, strings.TrimSpace(item.hash))) {
+		if vaultSame(byPath, item.content, sum, item.hash) {
 			tab.Skipped.Hash++
-			return nil, nil
+		} else {
+			tab.Skipped.NativeExists++
 		}
-		tab.Skipped.PathTaken++
 		return nil, nil
 	}
 	tab.WillWrite++
@@ -304,6 +393,17 @@ func (p *planner) planVault(tab *TableCount, tb tenantBind, agent, clean string,
 		id:      id,
 		body:    item.content,
 	}, nil
+}
+
+func vaultSame(doc *store.VaultDoc, body, sum, exportHash string) bool {
+	if doc == nil {
+		return false
+	}
+	if doc.Body == body || strings.EqualFold(doc.SHA256, sum) {
+		return true
+	}
+	exportHash = strings.TrimSpace(exportHash)
+	return exportHash != "" && strings.EqualFold(doc.SHA256, exportHash)
 }
 
 func (p *planner) section(source string) *TenantReport {
