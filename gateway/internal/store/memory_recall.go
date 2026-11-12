@@ -39,6 +39,9 @@ const (
 	recallDefaultLimit = 20
 	recallMaxTokens    = 8
 	recallScanCap      = 500
+	// recallCandidateCap is how many Postgres tsvector hits recall loads
+	// before scoring in Go (SPEC 154). It is not the newest-500 scan.
+	recallCandidateCap = 2000
 )
 
 // RecallTokens lowercases q and splits it into lexical tokens of at least two

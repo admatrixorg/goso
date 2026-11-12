@@ -333,6 +333,144 @@ func TestPostgresRecall50kUnder50ms(t *testing.T) {
 	}
 }
 
+// Every filler shares one query token, so the match set is the whole table.
+// The SQL cap must still return the older needle.
+func TestPostgresRecall50kAllMatchWithinCap(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "1")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	if recallCandidateCap != 2000 {
+		t.Fatalf("recallCandidateCap = %d", recallCandidateCap)
+	}
+	st := openSpec154(t, "goso_spec154_50k_all")
+	toks := RecallTokens(spec154Query)
+	fillers := []string{
+		"Công ty mẫu Minh An ghi mã riêng.",
+		"Công ty mẫu Minh An ghi ma riêng.",
+		"Công ty mẫu Minh An ghi walnut riêng.",
+		"Công ty mẫu Minh An ghi 77 riêng.",
+		"Công ty mẫu Minh An ghi làm riêng.",
+		"Công ty mẫu Minh An ghi bằng riêng.",
+		"Công ty mẫu Minh An ghi gỗ riêng.",
+		"Công ty mẫu Minh An ghi gì riêng.",
+	}
+	for _, body := range fillers {
+		n := 0
+		for _, tok := range toks {
+			if strings.Contains(strings.ToLower(body), tok) {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("filler %q matches %d query tokens, want 1", body, n)
+		}
+	}
+	ag, err := st.CreateAgent(Agent{AgentKey: "minh-an-sales", DisplayName: "Cố vấn Minh An"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	needleSess, err := st.CreateSession(Session{AgentID: ag.ID, Label: "cu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillerSess, err := st.CreateSession(Session{AgentID: ag.ID, Label: "moi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask, err := st.CreateSession(Session{AgentID: ag.ID, Label: "hoi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const needleID = "spec154-needle-all"
+	const nFill = 49999
+	if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+		needleID, needleSess.ID, KindEpisodic, spec154Needle, "2000-01-01T00:00:00Z", needleSess.TenantID, ""); err != nil {
+		t.Fatal(err)
+	}
+	bulkMemories(t, st, fillerSess.ID, fillerSess.TenantID, nFill, fillers, "2026-06-01T00:00:00Z")
+	if _, err := st.db.Exec(`ANALYZE memories`); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := st.db.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&rows); err != nil || rows != nFill+1 {
+		t.Fatalf("rows %d %v", rows, err)
+	}
+	inCap, err := st.db.Query(`SELECT id FROM memories ORDER BY created_at DESC LIMIT ?`, recallScanCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for inCap.Next() {
+		var id string
+		if err := inCap.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if id == needleID {
+			t.Fatal("needle is inside the newest 500")
+		}
+	}
+	inCap.Close()
+	q := RecallQuery{TenantID: needleSess.TenantID, AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query, Limit: 20}
+	hits, fetched, err := st.recallTSVFetch(q, q.TenantID, ag.ID, toks, q.Limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched > recallCandidateCap || fetched != recallCandidateCap {
+		t.Fatalf("fetched %d, cap %d", fetched, recallCandidateCap)
+	}
+	if !recallHas(hits, needleID) {
+		t.Fatal("needle was not in the capped candidate set")
+	}
+	samples := make([]time.Duration, 0, 5)
+	for i := 0; i < 5; i++ {
+		start := time.Now()
+		got, err := st.RecallMemories(q)
+		elapsed := time.Since(start)
+		if err != nil || !recallHas(got, needleID) {
+			t.Fatalf("sample %d %#v %v", i, got, err)
+		}
+		samples = append(samples, elapsed)
+	}
+	med := medianDuration(samples)
+	max := samples[0]
+	for _, d := range samples {
+		if d > max {
+			max = d
+		}
+	}
+	fmt.Printf("SPEC154 worst_case rows=%d fetched=%d cap=%d samples=%s median=%s max=%s\n",
+		rows, fetched, recallCandidateCap, formatDurations(samples), med, max)
+	if max >= 50*time.Millisecond {
+		t.Fatalf("worst-case recall max %s is not under 50ms (median %s)", max, med)
+	}
+}
+
+func TestPostgresSearchMinDoesNotMatchMinh(t *testing.T) {
+	t.Setenv("GOSO_DATABASE_URL", "")
+	st := openSpec154(t, "goso_spec154_prefix")
+	ag, err := st.CreateAgent(Agent{AgentKey: "minh-an-sales", DisplayName: "Cố vấn Minh An"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession(Session{AgentID: ag.ID, Label: "cu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := st.PutMemory(Memory{SessionID: sess.ID, TenantID: sess.TenantID, Kind: KindEpisodic, Body: "Minh An gửi báo giá dạng PDF."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, err := st.SearchMemory("Min")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(short) != 0 {
+		t.Fatalf("Min must not match Minh, got %#v", short)
+	}
+	full, err := st.SearchMemory("Minh")
+	if err != nil || len(full) != 1 || full[0].ID != note.ID {
+		t.Fatalf("Minh search %#v %v", full, err)
+	}
+}
+
 func recallOlderThanCap(t *testing.T, st StoreIface) {
 	t.Helper()
 	for _, body := range spec154Fillers {

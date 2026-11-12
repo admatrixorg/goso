@@ -3,6 +3,7 @@
 package store
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 )
@@ -74,30 +75,43 @@ func tsPhraseSQL(column string) string {
 	return column + " @@ phraseto_tsquery('" + postgresTextSearchConfig + "', ?)"
 }
 
-// recallTSV is the Postgres candidate set. It does not apply recallScanCap:
-// a matching note older than the newest 500 rows is still returned. Scores
-// stay token-overlap so admission matches the previous Postgres path.
+// recallTSV is the Postgres candidate set. It does not apply recallScanCap.
+// Candidates are the top recallCandidateCap rows by ts_rank_cd, then newest
+// created_at. A matching note older than 500 rows is still returned when its
+// rank keeps it inside that cap. Scores stay token-overlap so admission
+// matches the previous Postgres path.
 func (s *SQLiteStore) recallTSV(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, error) {
+	hits, _, err := s.recallTSVFetch(q, tenant, agent, toks, limit)
+	return hits, err
+}
+
+func (s *SQLiteStore) recallTSVFetch(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, int, error) {
 	match := tsOrQuery(toks)
 	if match == "" {
-		return []RecallHit{}, nil
+		return []RecallHit{}, 0, nil
 	}
-	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+	query := `WITH q AS (SELECT to_tsquery('` + postgresTextSearchConfig + `', ?) AS query)
+		SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
 		FROM memories m
 		JOIN sessions sess ON sess.id = m.session_id
-		WHERE m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		CROSS JOIN q
+		WHERE m.body_tsv @@ q.query
 		AND m.tenant_id = ? AND sess.tenant_id = ?
 		AND m.kind IN (?, ?)
 		AND m.session_id <> ?`
 	args := []any{match, tenant, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
 	query, args = recallScope(query, args, q, agent)
+	query += ` ORDER BY ts_rank_cd(m.body_tsv, q.query) DESC, m.created_at DESC LIMIT ?`
+	args = append(args, recallCandidateCap)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var hits []RecallHit
+	fetched := 0
 	for rows.Next() {
+		fetched++
 		m, err := scanMemory(rows)
 		if err != nil || m == nil {
 			continue
@@ -107,9 +121,12 @@ func (s *SQLiteStore) recallTSV(q RecallQuery, tenant, agent string, toks []stri
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fetched, err
 	}
-	return sortRecall(hits, limit), nil
+	if fetched > recallCandidateCap {
+		return nil, fetched, fmt.Errorf("recall fetched %d rows, cap is %d", fetched, recallCandidateCap)
+	}
+	return sortRecall(hits, limit), fetched, nil
 }
 
 func (s *SQLiteStore) searchMemoryTSV(q string) ([]SearchHit, error) {
