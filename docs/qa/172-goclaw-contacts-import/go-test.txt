@@ -1,56 +1,57 @@
 # go test ./...
+# SHA 0911233296e4c1ce3c581e19caaca1c5c6b3afe7
 # date 2026-11-12
 # command: go test ./... -count=1 -timeout 25m
 # env names: GOSO_TEST_POSTGRES_DSN (set, value not recorded). Postgres 16.15 local.
 # SQLite cases always run. Postgres cases run because that DSN is set.
-# exit 0
+# git status --porcelain was empty. exit 0
 
-ok  	github.com/mqglobal/goso/desktop/internal/host	0.235s
-ok  	github.com/mqglobal/goso/gateway	0.047s
-ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	0.511s
+ok  	github.com/mqglobal/goso/desktop/internal/host	0.155s
+ok  	github.com/mqglobal/goso/gateway	0.053s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	0.390s
 ?   	github.com/mqglobal/goso/gateway/cmd/goso-gateway	[no test files]
-ok  	github.com/mqglobal/goso/gateway/cmd/goso-vault-import	0.112s
-ok  	github.com/mqglobal/goso/gateway/internal/agent	0.011s
-ok  	github.com/mqglobal/goso/gateway/internal/apikey	0.005s
-ok  	github.com/mqglobal/goso/gateway/internal/approval	0.025s
-ok  	github.com/mqglobal/goso/gateway/internal/auditlog	0.003s
-ok  	github.com/mqglobal/goso/gateway/internal/auth	0.008s
-ok  	github.com/mqglobal/goso/gateway/internal/backup	0.083s
-ok  	github.com/mqglobal/goso/gateway/internal/billing	0.015s
-ok  	github.com/mqglobal/goso/gateway/internal/bridge	5.444s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-vault-import	0.107s
+ok  	github.com/mqglobal/goso/gateway/internal/agent	0.010s
+ok  	github.com/mqglobal/goso/gateway/internal/apikey	0.004s
+ok  	github.com/mqglobal/goso/gateway/internal/approval	0.023s
+ok  	github.com/mqglobal/goso/gateway/internal/auditlog	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/auth	0.005s
+ok  	github.com/mqglobal/goso/gateway/internal/backup	0.100s
+ok  	github.com/mqglobal/goso/gateway/internal/billing	0.010s
+ok  	github.com/mqglobal/goso/gateway/internal/bridge	4.904s
 ?   	github.com/mqglobal/goso/gateway/internal/bridge/gosov1	[no test files]
-ok  	github.com/mqglobal/goso/gateway/internal/builtin	0.483s
-ok  	github.com/mqglobal/goso/gateway/internal/channel	1.044s
+ok  	github.com/mqglobal/goso/gateway/internal/builtin	0.452s
+ok  	github.com/mqglobal/goso/gateway/internal/channel	1.005s
 ok  	github.com/mqglobal/goso/gateway/internal/config	0.002s
 ok  	github.com/mqglobal/goso/gateway/internal/connector	0.148s
-ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	0.269s
+ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	0.249s
 ok  	github.com/mqglobal/goso/gateway/internal/contextfile	0.002s
-ok  	github.com/mqglobal/goso/gateway/internal/cron	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/cron	0.003s
 ok  	github.com/mqglobal/goso/gateway/internal/eventstore	0.002s
 ok  	github.com/mqglobal/goso/gateway/internal/guardrail	0.001s
-ok  	github.com/mqglobal/goso/gateway/internal/health	0.012s
-ok  	github.com/mqglobal/goso/gateway/internal/heartbeat	0.003s
-ok  	github.com/mqglobal/goso/gateway/internal/httpapi	7.280s
-ok  	github.com/mqglobal/goso/gateway/internal/impexp	0.004s
-ok  	github.com/mqglobal/goso/gateway/internal/llm	0.761s
+ok  	github.com/mqglobal/goso/gateway/internal/health	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/heartbeat	0.008s
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	7.115s
+ok  	github.com/mqglobal/goso/gateway/internal/impexp	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/llm	0.596s
 ok  	github.com/mqglobal/goso/gateway/internal/logstore	0.002s
 ok  	github.com/mqglobal/goso/gateway/internal/node	0.002s
 ok  	github.com/mqglobal/goso/gateway/internal/observe	0.008s
-ok  	github.com/mqglobal/goso/gateway/internal/pipeline	3.376s
-ok  	github.com/mqglobal/goso/gateway/internal/pkgmgr	2.014s
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	2.882s
+ok  	github.com/mqglobal/goso/gateway/internal/pkgmgr	2.011s
 ok  	github.com/mqglobal/goso/gateway/internal/ratelimit	0.002s
-ok  	github.com/mqglobal/goso/gateway/internal/replycheck	0.311s
+ok  	github.com/mqglobal/goso/gateway/internal/replycheck	0.310s
 ok  	github.com/mqglobal/goso/gateway/internal/secrets	0.009s
 ok  	github.com/mqglobal/goso/gateway/internal/security	0.004s
-ok  	github.com/mqglobal/goso/gateway/internal/serve	0.040s
-ok  	github.com/mqglobal/goso/gateway/internal/skill	0.006s
-ok  	github.com/mqglobal/goso/gateway/internal/storage	0.006s
-ok  	github.com/mqglobal/goso/gateway/internal/store	24.182s
-ok  	github.com/mqglobal/goso/gateway/internal/team	0.007s
-ok  	github.com/mqglobal/goso/gateway/internal/tenant	0.418s
-ok  	github.com/mqglobal/goso/gateway/internal/tts	0.006s
-ok  	github.com/mqglobal/goso/gateway/internal/vault	2.245s
-ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.390s
-ok  	github.com/mqglobal/goso/gateway/internal/webhook	0.122s
+ok  	github.com/mqglobal/goso/gateway/internal/serve	0.049s
+ok  	github.com/mqglobal/goso/gateway/internal/skill	0.007s
+ok  	github.com/mqglobal/goso/gateway/internal/storage	0.007s
+ok  	github.com/mqglobal/goso/gateway/internal/store	22.541s
+ok  	github.com/mqglobal/goso/gateway/internal/team	0.005s
+ok  	github.com/mqglobal/goso/gateway/internal/tenant	0.392s
+ok  	github.com/mqglobal/goso/gateway/internal/tts	0.007s
+ok  	github.com/mqglobal/goso/gateway/internal/vault	1.880s
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.342s
+ok  	github.com/mqglobal/goso/gateway/internal/webhook	0.077s
 ok  	github.com/mqglobal/goso/gateway/internal/workstation	0.003s
-ok  	github.com/mqglobal/goso/gateway/memorybench	1.159s
+ok  	github.com/mqglobal/goso/gateway/memorybench	0.995s

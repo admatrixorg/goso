@@ -138,15 +138,15 @@ A dry-run of one kept row, one row for another tenant, and one row with an empty
 
 Postgres 16.15 local. `GOSO_TEST_POSTGRES_DSN` was set. The value is not recorded. SQLite always runs. Postgres ran.
 
-`git status` was dirty with these QA files when the first full run finished. The Go sources under test did not change after that run. Exit 0 both times below.
+`git status --porcelain` was empty before this run. The code under test is `0911233296e4c1ce3c581e19caaca1c5c6b3afe7`. Exit 0. The commit that adds these transcripts does not change the importer.
 
 ```bash
 go test -race ./gateway/internal/contactsimport ./gateway/cmd/goso-contacts-import -count=1 -timeout 180s
 ```
 
 ```text
-ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	2.517s
-ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.566s
+ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	2.456s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.529s
 ```
 
 ```bash
