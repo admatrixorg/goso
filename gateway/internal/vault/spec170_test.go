@@ -154,6 +154,77 @@ func TestPutTenantAt_RenameFailureRollsBack(t *testing.T) {
 	}
 }
 
+// renameFail and rollbackFail are the two errors a failed publish can return
+// together. errors.Join keeps both reachable.
+type renameFail struct{}
+
+func (renameFail) Error() string { return "rename failed" }
+
+type rollbackFail struct{}
+
+func (rollbackFail) Error() string { return "rollback failed" }
+
+// TestPutTenantAt_RollbackKeepsRenameError is the SPEC 170 follow-up:
+// when rollbackPut fails after publishRename failed, both errors are returned.
+func TestPutTenantAt_RollbackKeepsRenameError(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	t.Run("replace", func(t *testing.T) {
+		inner := store.New()
+		root := t.TempDir()
+		svc := New(inner, root)
+		if _, err := svc.PutTenantAt("minh-an", "sources/inbox/hop-dong.md", []byte("# Hop dong Minh An\ncu\n")); err != nil {
+			t.Fatal(err)
+		}
+		failing := &failNthPut{StoreIface: inner, failAt: 2}
+		svc.Store = failing
+		SetPublishHooks(func(string, string) error { return renameFail{} }, nil, nil)
+		t.Cleanup(func() { SetPublishHooks(nil, nil, nil) })
+		_, err := svc.PutTenantAt("minh-an", "sources/inbox/hop-dong.md", []byte("# Hop dong Minh An\nmoi\n"))
+		var renamed renameFail
+		var rolled rollbackFail
+		if !errors.Is(err, renameFail{}) || !errors.As(err, &renamed) {
+			t.Fatalf("rename error missing: %v", err)
+		}
+		if !errors.Is(err, rollbackFail{}) || !errors.As(err, &rolled) {
+			t.Fatalf("rollback error missing: %v", err)
+		}
+	})
+	t.Run("create", func(t *testing.T) {
+		inner := store.New()
+		root := t.TempDir()
+		svc := New(&failDelete{StoreIface: inner}, root)
+		SetPublishHooks(func(string, string) error { return renameFail{} }, nil, nil)
+		t.Cleanup(func() { SetPublishHooks(nil, nil, nil) })
+		_, err := svc.PutTenantAt("minh-an", "wiki/topics/moi.md", []byte("# Minh An moi\n"))
+		var renamed renameFail
+		var rolled rollbackFail
+		if !errors.Is(err, renameFail{}) || !errors.As(err, &renamed) {
+			t.Fatalf("rename error missing: %v", err)
+		}
+		if !errors.Is(err, rollbackFail{}) || !errors.As(err, &rolled) {
+			t.Fatalf("rollback error missing: %v", err)
+		}
+	})
+}
+
+type failNthPut struct {
+	store.StoreIface
+	puts   int
+	failAt int
+}
+
+func (f *failNthPut) PutVaultDoc(doc store.VaultDoc) (*store.VaultDoc, error) {
+	f.puts++
+	if f.failAt > 0 && f.puts >= f.failAt {
+		return nil, rollbackFail{}
+	}
+	return f.StoreIface.PutVaultDoc(doc)
+}
+
+type failDelete struct{ store.StoreIface }
+
+func (f failDelete) DeleteVaultDoc(string) error { return rollbackFail{} }
+
 func TestPutTenantAt_LinkRefreshDoesNotFailWrite(t *testing.T) {
 	t.Setenv("GOSO_WORKSPACE", "")
 	var buf bytes.Buffer

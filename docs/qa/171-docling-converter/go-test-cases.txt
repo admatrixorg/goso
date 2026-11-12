@@ -1,0 +1,73 @@
+=== RUN   TestPutTenantAt_RollbackKeepsRenameError
+=== RUN   TestPutTenantAt_RollbackKeepsRenameError/replace
+=== RUN   TestPutTenantAt_RollbackKeepsRenameError/create
+--- PASS: TestPutTenantAt_RollbackKeepsRenameError (0.00s)
+    --- PASS: TestPutTenantAt_RollbackKeepsRenameError/replace (0.00s)
+    --- PASS: TestPutTenantAt_RollbackKeepsRenameError/create (0.00s)
+=== RUN   TestConvert_MinhAnFixturesAndText
+=== RUN   TestConvert_MinhAnFixturesAndText/memory
+=== RUN   TestConvert_MinhAnFixturesAndText/sqlite
+=== RUN   TestConvert_MinhAnFixturesAndText/postgres
+2026/11/12 02:48:44 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestConvert_MinhAnFixturesAndText (0.17s)
+    --- PASS: TestConvert_MinhAnFixturesAndText/memory (0.01s)
+    --- PASS: TestConvert_MinhAnFixturesAndText/sqlite (0.05s)
+    --- PASS: TestConvert_MinhAnFixturesAndText/postgres (0.11s)
+=== RUN   TestConvert_EmptyKeepsRawAndShortFileSurvives
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=empty_conversion
+2026/11/12 02:48:44 vault convert: job=20261112-6 class=empty_conversion
+--- PASS: TestConvert_EmptyKeepsRawAndShortFileSurvives (0.00s)
+=== RUN   TestConvert_FlagOffDoesNotCallSidecar
+--- PASS: TestConvert_FlagOffDoesNotCallSidecar (0.00s)
+=== RUN   TestConvert_SidecarMissingFailsClosed
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=not_configured
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=not_configured
+--- PASS: TestConvert_SidecarMissingFailsClosed (0.01s)
+=== RUN   TestConvert_HungPageTimesOut
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=timeout
+--- PASS: TestConvert_HungPageTimesOut (0.06s)
+=== RUN   TestConvert_LargeMarkdownSplitsOnHeadings
+--- PASS: TestConvert_LargeMarkdownSplitsOnHeadings (0.02s)
+=== RUN   TestConvert_WrongEngineAndClasses
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=internal
+2026/11/12 02:48:44 vault convert: job=20261112-5 class=ocr_failed
+2026/11/12 02:48:44 vault convert: job=20261112-6 class=unsupported
+2026/11/12 02:48:44 vault convert: job=20261112-7 class=too_large
+--- PASS: TestConvert_WrongEngineAndClasses (0.00s)
+=== RUN   TestConvert_QuotaBlocksSources
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=too_large
+--- PASS: TestConvert_QuotaBlocksSources (0.00s)
+=== RUN   TestConvert_RetryAfterFailureDoesNotRewriteRaw
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=empty_conversion
+--- PASS: TestConvert_RetryAfterFailureDoesNotRewriteRaw (0.00s)
+=== RUN   TestConvert_ReapDoesNotLeaveConverting
+--- PASS: TestConvert_ReapDoesNotLeaveConverting (0.00s)
+=== RUN   TestConvert_HTTPClientOmitsFileBytes
+--- PASS: TestConvert_HTTPClientOmitsFileBytes (0.00s)
+=== RUN   TestConvert_HTTPBodyCapIsTooLarge
+--- PASS: TestConvert_HTTPBodyCapIsTooLarge (0.00s)
+=== RUN   TestDoclingSidecarPolicy
+--- PASS: TestDoclingSidecarPolicy (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.274s
+=== RUN   TestIngestJobTableAdditive
+=== RUN   TestIngestJobTableAdditive/memory
+=== RUN   TestIngestJobTableAdditive/sqlite
+=== RUN   TestIngestJobTableAdditive/postgres
+2026/11/12 02:48:44 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:48:44 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestIngestJobTableAdditive (0.17s)
+    --- PASS: TestIngestJobTableAdditive/memory (0.00s)
+    --- PASS: TestIngestJobTableAdditive/sqlite (0.04s)
+    --- PASS: TestIngestJobTableAdditive/postgres (0.13s)
+=== RUN   TestIngestJobConvertColumnsAddedToOldTable
+--- PASS: TestIngestJobConvertColumnsAddedToOldTable (0.03s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	0.202s
+=== RUN   TestVaultIngest_ConvertedFieldsStayInTenant
+--- PASS: TestVaultIngest_ConvertedFieldsStayInTenant (0.00s)
+=== RUN   TestVaultIngest_SidecarDownDoesNotFailHealth
+2026/11/12 02:48:44 vault convert: job=20261112-4 class=not_configured
+--- PASS: TestVaultIngest_SidecarDownDoesNotFailHealth (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	0.015s

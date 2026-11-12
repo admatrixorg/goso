@@ -98,6 +98,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateBodyTSV(); err != nil {
 		return fmt.Errorf("postgres migrate tsvector: %w", err)
 	}
+	if err := s.migrateIngestConvert(); err != nil {
+		return fmt.Errorf("postgres migrate ingest convert: %w", err)
+	}
 	return nil
 }
 

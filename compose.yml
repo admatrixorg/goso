@@ -59,6 +59,16 @@ services:
       GOSO_DEV_MODE: ${GOSO_DEV_MODE:-}
       GOSO_DATABASE_URL: ${GOSO_DATABASE_URL:-}
       GOSO_OTEL_ENDPOINT: ${GOSO_OTEL_ENDPOINT:-}
+      GOSO_VAULT_DIR: /data/vault
+      GOSO_VAULT_UPLOAD: ${GOSO_VAULT_UPLOAD:-}
+      GOSO_VAULT_INGEST_QUOTA_BYTES: ${GOSO_VAULT_INGEST_QUOTA_BYTES:-}
+      GOSO_VAULT_DOCLING: ${GOSO_VAULT_DOCLING:-}
+      GOSO_VAULT_DOCLING_URL: ${GOSO_VAULT_DOCLING_URL:-http://docling:8071}
+      GOSO_VAULT_DOCLING_PAGE_TIMEOUT: ${GOSO_VAULT_DOCLING_PAGE_TIMEOUT:-}
+      GOSO_VAULT_DOCLING_PAGE_ATTEMPTS: ${GOSO_VAULT_DOCLING_PAGE_ATTEMPTS:-}
+    networks:
+      - default
+      - docling_internal
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -109,6 +119,49 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
 
+  # SPEC 171 docling sidecar. Profile only. Default `up` does not start it.
+  # Dev ceilings, not VPS2 measurements: 1 CPU, 2 GiB RAM, no extra swap.
+  # No host port. The only network is internal, so the process has no egress.
+  # The vault mount is read-only and limited to the vault subpath.
+  docling:
+    profiles:
+      - docling
+    build:
+      context: ./sidecar/docling
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "1.0"
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 128
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "1"
+      DOCLING_ARTIFACTS_PATH: /opt/docling/models
+      GOSO_DOCLING_VAULT_ROOT: /vault
+      GOSO_DOCLING_PAGE_TIMEOUT: ${GOSO_DOCLING_PAGE_TIMEOUT:-60}
+      GOSO_DOCLING_PAGE_ATTEMPTS: ${GOSO_DOCLING_PAGE_ATTEMPTS:-2}
+    volumes:
+      - type: volume
+        source: data
+        target: /vault
+        read_only: true
+        volume:
+          subpath: vault
+    networks:
+      - docling_internal
+
 volumes:
   data:
   pgdata:
+
+networks:
+  docling_internal:
+    internal: true
