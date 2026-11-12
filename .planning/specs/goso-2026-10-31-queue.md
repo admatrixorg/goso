@@ -73,4 +73,4 @@ A PR can be merged only when all three hold. Missing one means no merge. The che
 
 ## What to start next
 
-Merge **SPEC 132 (PR #1)** and **PR #3** once each is green under the three rules above. Then **SPEC 134**, one PR, stacked on 132. Dirty memory makes Connector citations, Project precedence, meetings, and entity profiles lie. Do not start 135’s fact updates before 134.
+Merge **SPEC 132 (PR #1)** and **PR #3** once each is green under the three rules above. Then **SPEC 153**, one PR, stacked on 132. Dirty memory makes Connector citations, Project precedence, meetings, and entity profiles lie. Do not start 135’s fact updates before 134.

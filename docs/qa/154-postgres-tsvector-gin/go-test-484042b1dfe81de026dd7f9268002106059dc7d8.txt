@@ -1,0 +1,130 @@
+ok  	github.com/mqglobal/goso/desktop/internal/host	0.153s
+ok  	github.com/mqglobal/goso/gateway	0.061s
+?   	github.com/mqglobal/goso/gateway/cmd/goso-gateway	[no test files]
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-vault-import	0.170s
+ok  	github.com/mqglobal/goso/gateway/internal/agent	0.022s
+ok  	github.com/mqglobal/goso/gateway/internal/apikey	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/approval	0.022s
+ok  	github.com/mqglobal/goso/gateway/internal/auditlog	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/auth	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/backup	0.129s
+ok  	github.com/mqglobal/goso/gateway/internal/billing	0.014s
+ok  	github.com/mqglobal/goso/gateway/internal/bridge	5.626s
+?   	github.com/mqglobal/goso/gateway/internal/bridge/gosov1	[no test files]
+ok  	github.com/mqglobal/goso/gateway/internal/builtin	0.476s
+ok  	github.com/mqglobal/goso/gateway/internal/channel	1.160s
+ok  	github.com/mqglobal/goso/gateway/internal/config	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/connector	0.147s
+ok  	github.com/mqglobal/goso/gateway/internal/contextfile	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/cron	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/eventstore	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/guardrail	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/health	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/heartbeat	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	7.247s
+ok  	github.com/mqglobal/goso/gateway/internal/impexp	0.004s
+ok  	github.com/mqglobal/goso/gateway/internal/llm	0.630s
+ok  	github.com/mqglobal/goso/gateway/internal/logstore	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/node	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/observe	0.008s
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	4.246s
+ok  	github.com/mqglobal/goso/gateway/internal/pkgmgr	2.011s
+ok  	github.com/mqglobal/goso/gateway/internal/ratelimit	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/replycheck	0.310s
+ok  	github.com/mqglobal/goso/gateway/internal/secrets	0.009s
+ok  	github.com/mqglobal/goso/gateway/internal/security	0.004s
+ok  	github.com/mqglobal/goso/gateway/internal/serve	0.055s
+ok  	github.com/mqglobal/goso/gateway/internal/skill	0.006s
+ok  	github.com/mqglobal/goso/gateway/internal/storage	0.006s
+2026/11/12 02:51:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:25 goso store: backfilled customer_key on 2 channel memory notes
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:26 goso store: backfilled customer_key on 2 channel memory notes
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 recall_50k rows=50000 index=idx_memories_body_tsv samples=2.252163ms,1.844762ms,2.003533ms,1.695652ms,1.773755ms median=1.844762ms
+SPEC154 plan:
+Nested Loop  (cost=479.79..2266.07 rows=7 width=15)
+  ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32)
+        Index Cond: (tenant_id = 'default'::text)
+  ->  Bitmap Heap Scan on memories m  (cost=479.64..2248.07 rows=983 width=41)
+        Recheck Cond: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (session_id = sess.id))
+        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-3ee55ab07b83c382'::text) AND (tenant_id = 'default'::text))
+        ->  BitmapAnd  (cost=479.64..479.64 rows=983 width=0)
+              ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
+                    Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+              ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..271.79 rows=25000 width=0)
+                    Index Cond: (session_id = sess.id)
+
+2026/11/12 02:51:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 worst_case rows=50000 fetched=2000 cap=2000 samples=436.450566ms,455.045362ms,459.285839ms,463.110639ms,446.988949ms median=455.045362ms max=463.110639ms
+--- FAIL: TestPostgresRecall50kAllMatchWithinCap (3.80s)
+    postgres_tsvector_test.go:442: worst-case recall max 463.110639ms is not under 50ms (median 455.045362ms)
+2026/11/12 02:51:33 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:34 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:34 goso contacts: bulk upsert count=1
+2026/11/12 02:51:34 goso contacts: bulk upsert count=1
+2026/11/12 02:51:34 goso contacts: bulk upsert count=205
+2026/11/12 02:51:34 goso contacts: bulk upsert count=2
+2026/11/12 02:51:34 goso contacts: bulk upsert count=205
+2026/11/12 02:51:34 goso contacts: bulk upsert count=2
+2026/11/12 02:51:34 goso contacts: bulk upsert count=1
+2026/11/12 02:51:34 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:34 goso contacts: bulk upsert count=3
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso contacts: bulk upsert count=1
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso contacts: bulk upsert count=205
+2026/11/12 02:51:35 goso contacts: bulk upsert count=2
+2026/11/12 02:51:35 goso contacts: bulk upsert count=205
+2026/11/12 02:51:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:35 goso contacts: bulk upsert count=2
+2026/11/12 02:51:35 goso contacts: bulk upsert count=1
+2026/11/12 02:51:36 goso contacts: bulk upsert count=1
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso contacts: bulk upsert count=1
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:37 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:51:37 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+FAIL
+FAIL	github.com/mqglobal/goso/gateway/internal/store	12.311s
+ok  	github.com/mqglobal/goso/gateway/internal/team	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/tenant	0.413s
+ok  	github.com/mqglobal/goso/gateway/internal/tts	0.007s
+ok  	github.com/mqglobal/goso/gateway/internal/vault	2.197s
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.471s
+ok  	github.com/mqglobal/goso/gateway/internal/webhook	0.166s
+ok  	github.com/mqglobal/goso/gateway/internal/workstation	0.003s
+ok  	github.com/mqglobal/goso/gateway/memorybench	0.991s
+FAIL

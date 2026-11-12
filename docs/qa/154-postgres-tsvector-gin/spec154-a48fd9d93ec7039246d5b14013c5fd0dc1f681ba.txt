@@ -1,0 +1,58 @@
+=== RUN   TestSQLiteHasNoBodyTSV
+--- PASS: TestSQLiteHasNoBodyTSV (0.03s)
+=== RUN   TestPostgresBodyTSVAdditive
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresBodyTSVAdditive (0.13s)
+=== RUN   TestPostgresBodyTSVBackfillAndSearch
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresBodyTSVBackfillAndSearch (0.14s)
+=== RUN   TestPostgresTSVectorRollbackDropsIndexOnly
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresTSVectorRollbackDropsIndexOnly (0.11s)
+=== RUN   TestRecallOlderThanScanCap
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestRecallOlderThanScanCap/memory
+=== RUN   TestRecallOlderThanScanCap/sqlite
+=== RUN   TestRecallOlderThanScanCap/postgres
+--- PASS: TestRecallOlderThanScanCap (0.46s)
+    --- PASS: TestRecallOlderThanScanCap/memory (0.00s)
+    --- PASS: TestRecallOlderThanScanCap/sqlite (0.22s)
+    --- PASS: TestRecallOlderThanScanCap/postgres (0.09s)
+=== RUN   TestPostgresRecall50kUnder50ms
+2026/11/12 02:37:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 recall_50k rows=50000 index=idx_memories_body_tsv samples=845.791µs,986.683µs,820.991µs,968.715µs,409.402µs median=845.791µs
+SPEC154 plan:
+Nested Loop  (cost=207.50..2488.97 rows=7 width=15)
+  Join Filter: (m.session_id = sess.id)
+  ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32)
+        Index Cond: (tenant_id = 'default'::text)
+  ->  Bitmap Heap Scan on memories m  (cost=207.35..2456.24 rows=1965 width=41)
+        Recheck Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-574f46f77871369a'::text) AND (tenant_id = 'default'::text))
+        ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
+              Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+
+--- PASS: TestPostgresRecall50kUnder50ms (1.30s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	2.183s
+=== RUN   TestRecallForOlderThanScanCap
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestRecallForOlderThanScanCap/memory
+2026/11/12 02:37:46 goso memory: recall session=20261112-4 agent=20261112-1 customer_scoped=false candidates=1 injected=1 runes=230
+=== RUN   TestRecallForOlderThanScanCap/sqlite
+2026/11/12 02:37:46 goso memory: recall session=20261112-ef4ebbef2b0006e9 agent=20261112-abfa4cf538821dde customer_scoped=false candidates=1 injected=1 runes=230
+=== RUN   TestRecallForOlderThanScanCap/postgres
+2026/11/12 02:37:46 goso memory: recall session=20261112-1ed0fc66204d8e05 agent=20261112-5c206c59f3d2cc9c customer_scoped=false candidates=1 injected=1 runes=230
+--- PASS: TestRecallForOlderThanScanCap (0.36s)
+    --- PASS: TestRecallForOlderThanScanCap/memory (0.00s)
+    --- PASS: TestRecallForOlderThanScanCap/sqlite (0.14s)
+    --- PASS: TestRecallForOlderThanScanCap/postgres (0.10s)
+=== RUN   TestRecallFor50kUnder50ms
+2026/11/12 02:37:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 02:37:47 goso memory: recall session=20261112-75e606977f8d315e agent=20261112-13f3c5c4018eaaec customer_scoped=false candidates=1 injected=1 runes=230
+SPEC154 recall_for_50k rows=50000 elapsed=3.473678ms
+--- PASS: TestRecallFor50kUnder50ms (1.21s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	1.573s
