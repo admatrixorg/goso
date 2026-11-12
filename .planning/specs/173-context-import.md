@@ -22,7 +22,7 @@ GoClaw natural keys, and where each column goes in `context_files`. The GoClaw u
 |---|---|---|
 | `tenant_id` | Kept only when it is `--source-tenant`. Written as `--tenant`. | Same. |
 | `agent_id` | Selects an agent that already exists in `--tenant`. The stored owner is that agent's id. Scope is `agent`. | The row is imported only when this agent is in `--tenant`. It is not part of the stored user key. |
-| `user_id` | Not a column of this table. | Stored as the per-customer `user_key`. Scope is `user`. |
+| `user_id` | Not a column of this table. | Looks up the customer-key map. Stored owner is `<channel>:<sender_id>`, or `goclaw:<user_id>` when the id is not in the map. Scope is `user`. |
 | `file_name` | `name` | `name` |
 | `content` | `body` | `body` |
 | `created_at` | `created_at` | `created_at` |
@@ -38,7 +38,7 @@ JSON is one object with `agent_context_files` and `user_context_files`, or one a
 
 ## Behavior
 
-1. `goso-context-import` takes `--export`, `--source-tenant`, `--tenant`, and `--db`. `--tenant` is the goso tenant id and is required. It is not defaulted to `default`. `--source-tenant` is the export `tenant_id` to keep. A row whose `tenant_id` does not match is `tenant-mismatch` and is not written. `--agent-map` is optional.
+1. `goso-context-import` takes `--export`, `--source-tenant`, `--tenant`, `--db`, and `--deny-file`. `--tenant` is the goso tenant id and is required. It is not defaulted to `default`. `--source-tenant` is the export `tenant_id` to keep. A row whose `tenant_id` does not match is `tenant-mismatch` and is not written. `--agent-map` is optional. `--deny-file` (or `GOSO_TENANT_DENYLIST`) is required. A missing, empty, or malformed file stops before any work, including a dry-run. If the source or destination tenant is listed, the run stops before any write. The report field `denied_tenants` is a count. The file's names are not printed. `--customer-map` is an optional JSON array of `channel`, `sender_id`, and `user_id`. A listed user is stored as `<channel>:<sender_id>`. Any other user id is stored as `goclaw:<user_id>`. Reports and stderr show a hash of the source user id, not the id itself.
 2. The default is a dry-run. It reports the same counts and does not call `PutContextFile`. `--apply` writes. `--apply` together with `--dry-run` is an error. `--dry-run=false` without `--apply` still does not write.
 3. `--db` is the only database. A Postgres host other than `localhost`, `127.0.0.1`, or `::1` is refused. `GOSO_DATABASE_URL` is not opened. An export larger than 32MiB is refused before decode. The export is a file, not a connection to GoClaw.
 4. An agent file is stored only when `agent_id` resolves inside `--tenant`. The same id on an agent in another tenant is `agent-other-tenant` and is not written onto that agent. A missing id is `agent-missing`. A user file uses the same agent check, then stores `user_id` in `--tenant` only. The same user id in another tenant is a different row and is left as it was.
@@ -50,7 +50,8 @@ JSON is one object with `agent_context_files` and `user_context_files`, or one a
 
 | Code | When |
 |---|---|
-| `unchanged` | the stored body and clocks already match this row |
+| `unchanged` | the stored body already matches this imported row |
+| `native-exists` | a file is already at that name and this import did not create it |
 | `duplicate` | an earlier row lost to a later row with the same natural key, or the same destination body |
 | `tenant-mismatch` | `tenant_id` is not `--source-tenant` |
 | `agent-missing` | `agent_id` is not an agent in `--tenant` |

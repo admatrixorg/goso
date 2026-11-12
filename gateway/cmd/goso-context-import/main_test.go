@@ -31,6 +31,10 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 	if err := os.WriteFile(mapPath, []byte(`{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"tu-van-sales"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	denyPath := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(denyPath, []byte("not-this-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := filepath.Join(dir, "goso.db")
 	st, err := store.OpenSQLite(dbPath)
 	if err != nil {
@@ -49,12 +53,13 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 		"--tenant", "minh-an",
 		"--db", dbPath,
 		"--agent-map", mapPath,
+		"--deny-file", denyPath,
 	}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"dry_run": true`) || !strings.Contains(stdout.String(), `"inserted": 2`) || !strings.Contains(stdout.String(), `"rejected": 1`) {
+	if !strings.Contains(stdout.String(), `"dry_run": true`) || !strings.Contains(stdout.String(), `"inserted": 2`) || !strings.Contains(stdout.String(), `"rejected": 1`) || !strings.Contains(stdout.String(), `"denied_tenants": 0`) {
 		t.Fatalf("stdout %s", stdout.String())
 	}
 	assertNoBodies(t, stdout.String()+stderr.String())
@@ -100,9 +105,57 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 	if err != nil || got.Body != "Chiết khấu tối đa của Minh An là 9 phần trăm." {
 		t.Fatalf("stored %+v %v", got, err)
 	}
-	lan, err := st.GetContextFile("minh-an", store.ContextScopeUser, "lan", "USER.md")
+	lan, err := st.GetContextFile("minh-an", store.ContextScopeUser, "goclaw:lan", "USER.md")
 	if err != nil || lan.Body != "Lan chỉ nhận báo giá một dòng." {
 		t.Fatalf("user %+v %v", lan, err)
+	}
+}
+
+func TestCLIDenylistFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	if err := os.WriteFile(exportPath, []byte(`{"agent_context_files":[],"user_context_files":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "goso.db")
+	args := []string{"--export", exportPath, "--source-tenant", "minh-an", "--tenant", "minh-an", "--db", dbPath, "--apply"}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := run(args, stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "missing") {
+		t.Fatalf("missing exit %d %s", code, stderr.String())
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("missing denylist opened the database")
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--deny-file", empty), stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "empty") {
+		t.Fatalf("empty exit %d %s", code, stderr.String())
+	}
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--deny-file", bad), stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "malformed") {
+		t.Fatalf("malformed exit %d %s", code, stderr.String())
+	}
+	list := filepath.Join(dir, "list.txt")
+	if err := os.WriteFile(list, []byte("blocked-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code := run([]string{"--export", exportPath, "--source-tenant", "minh-an", "--tenant", "blocked-tenant", "--db", dbPath, "--deny-file", list}, stdout, stderr)
+	if code == 0 || strings.Contains(stdout.String(), "blocked-tenant") || strings.Contains(stderr.String(), "blocked-tenant") || !strings.Contains(stdout.String(), `"denied_tenants": 1`) {
+		t.Fatalf("denied exit %d stdout %s stderr %s", code, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("denied tenant opened the database")
 	}
 }
 
@@ -120,6 +173,10 @@ func TestCLIRequiresTenantAndRefusesRemoteDB(t *testing.T) {
 	if err := os.WriteFile(exportPath, []byte(`{"agent_context_files":[],"user_context_files":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	deny := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(deny, []byte("not-this-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	stdout.Reset()
 	stderr.Reset()
 	code := run([]string{
@@ -127,6 +184,7 @@ func TestCLIRequiresTenantAndRefusesRemoteDB(t *testing.T) {
 		"--source-tenant", "minh-an",
 		"--tenant", "minh-an",
 		"--db", filepath.Join(dir, "goso.db"),
+		"--deny-file", deny,
 		"--apply",
 	}, stdout, stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "GOSO_DATABASE_URL") {

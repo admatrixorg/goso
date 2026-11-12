@@ -47,6 +47,7 @@ const (
 	reasonInvalid          = "invalid"
 	reasonTooLarge         = "too-large"
 	reasonScopeConflict    = "scope-conflict"
+	reasonNativeExists     = "native-exists"
 )
 
 // Options selects the single destination tenant for this run.
@@ -64,8 +65,13 @@ type Options struct {
 	// When an id is absent, an agent whose id or agent_key equals that
 	// agent_id is used. The map does not create agents.
 	AgentMap map[string]string
+	// Customers indexes user_id to a customer key. Missing ids use goclaw:<user_id>.
+	Customers map[string]string
+	// DenyFile is a local denylist. It is required. A missing, empty, or
+	// malformed file stops the run. Listed tenants are not named in the report.
+	DenyFile string
 	// Log receives rejection lines. Nil discards them. Arguments are names,
-	// owner keys, and reason codes, never file bodies.
+	// owner keys, and reason codes, never file bodies or user ids.
 	Log Logger
 }
 
@@ -292,6 +298,13 @@ type item struct {
 // before any context-file write. A row rejection does not stop the run.
 // A store failure while writing stops the run; rows already written stay.
 func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
+	ids, err := loadDenylist(opt.DenyFile)
+	if err != nil {
+		return nil, err
+	}
+	if n := deniedCount(ids, opt.SourceTenant, opt.DestTenant); n > 0 {
+		return &Report{DeniedTenants: n, DryRun: !opt.Apply, Agents: []TenantSection{}, Users: []TenantSection{}}, &DenyError{Count: n}
+	}
 	if st == nil {
 		return nil, errConfig("store is required")
 	}
@@ -312,10 +325,14 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		items = append(items, classifyAgent(st, dest, source, opt.AgentMap, row))
 	}
 	for _, row := range ex.Users {
-		items = append(items, classifyUser(st, dest, source, opt.AgentMap, row))
+		items = append(items, classifyUser(st, dest, source, opt.AgentMap, opt.Customers, row))
 	}
 	markNatural(items)
 	markDest(items)
+	maps, err := openMapper(st, opt.Apply)
+	if err != nil {
+		return tally.abort(!opt.Apply, errors.New("store"))
+	}
 	owners := map[string]*ownerFiles{}
 	for i := range items {
 		it := &items[i]
@@ -337,7 +354,17 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			}
 			owners[key] = state
 		}
-		if prev, ok := state.files[it.name]; ok && prev.body == it.body && clockMatches(prev.created, it.created) && clockMatches(prev.updated, it.updated) {
+		prev, exists := state.files[it.name]
+		mapped, hasMap, err := maps.get(dest, sourceTable(it.kind), it.natural)
+		if err != nil {
+			return tally.abort(!opt.Apply, errors.New("store"))
+		}
+		owned := hasMap && mapped.Scope == it.scope && mapped.Owner == it.ownerID && mapped.Name == it.name
+		if exists && !owned {
+			tally.skip(it.kind, it.tenant, it.name, it.ownerKey, reasonNativeExists)
+			continue
+		}
+		if exists && owned && prev.body == it.body {
 			tally.skip(it.kind, it.tenant, it.name, it.ownerKey, reasonUnchanged)
 			continue
 		}
@@ -346,7 +373,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			continue
 		}
 		if opt.Apply {
-			if _, err := st.PutContextFile(store.ContextFile{
+			saved, err := st.PutContextFile(store.ContextFile{
 				TenantID:  dest,
 				Scope:     it.scope,
 				OwnerID:   it.ownerID,
@@ -354,11 +381,27 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 				Body:      it.body,
 				CreatedAt: it.created,
 				UpdatedAt: it.updated,
-			}); err != nil {
+			})
+			if err != nil {
 				if reason, ok := putReason(err); ok {
 					tally.reject(it.kind, it.tenant, it.name, it.ownerKey, reason)
 					continue
 				}
+				return tally.abort(false, errors.New("store"))
+			}
+			body := it.body
+			if saved != nil && saved.Body != "" {
+				body = saved.Body
+			}
+			if err := maps.put(mapRow{
+				DestTenant:  dest,
+				SourceTable: sourceTable(it.kind),
+				SourceKey:   it.natural,
+				Scope:       it.scope,
+				Owner:       it.ownerID,
+				Name:        it.name,
+				Sum:         bodySum(body),
+			}); err != nil {
 				return tally.abort(false, errors.New("store"))
 			}
 		}
@@ -370,7 +413,14 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 		tally.add(it.kind, it.tenant, "inserted", "", it.name, it.ownerKey)
 	}
-	return tally.finish(!opt.Apply, len(ex.Agents), len(ex.Users))
+	rep, err := tally.finish(!opt.Apply, len(ex.Agents), len(ex.Users))
+	if err != nil {
+		return rep, err
+	}
+	if rep != nil {
+		rep.DeniedTenants = 0
+	}
+	return rep, nil
 }
 
 func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string]string, row AgentFile) item {
@@ -404,12 +454,12 @@ func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string
 		return it
 	}
 	it.ownerID = id
-	it.natural = "agent\x00" + strings.TrimSpace(row.AgentID) + "\x00" + it.name
+	it.natural = "agent|" + strings.TrimSpace(row.AgentID) + "|" + it.name
 	it.keep = true
 	return it
 }
 
-func classifyUser(st store.StoreIface, dest, source string, agentMap map[string]string, row UserFile) item {
+func classifyUser(st store.StoreIface, dest, source string, agentMap, customers map[string]string, row UserFile) item {
 	it := item{
 		kind:     "user",
 		scope:    store.ContextScopeUser,
@@ -425,7 +475,8 @@ func classifyUser(st store.StoreIface, dest, source string, agentMap map[string]
 	it.tenant = strings.TrimSpace(row.TenantID)
 	userID := strings.TrimSpace(row.UserID)
 	created, updated, ok := rowClocks(row.CreatedAt, row.UpdatedAt)
-	if !ok || !nameOK(it.name) || it.body == "" || !store.UserKeyOK(userID) {
+	key := customerKey(customers, userID)
+	if !ok || !nameOK(it.name) || it.body == "" || !store.TenantOK(userID) || !store.UserKeyOK(key) {
 		it.reason = reasonInvalid
 		return it
 	}
@@ -439,9 +490,9 @@ func classifyUser(st store.StoreIface, dest, source string, agentMap map[string]
 		it.reason = reason
 		return it
 	}
-	it.ownerID = userID
+	it.ownerID = key
 	it.ownerKey = userID
-	it.natural = "user\x00" + strings.TrimSpace(row.AgentID) + "\x00" + userID + "\x00" + it.name
+	it.natural = "user|" + strings.TrimSpace(row.AgentID) + "|" + userID + "|" + it.name
 	it.keep = true
 	return it
 }

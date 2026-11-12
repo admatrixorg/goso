@@ -55,9 +55,21 @@ type ContextFile struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// UserKeyOK reports an opaque user id: letters, digits, dot, underscore, hyphen; 1–64.
-// It is not an email address and not a display name.
-func UserKeyOK(id string) bool { return TenantOK(id) }
+// UserKeyOK reports an opaque user id or a customer key from the import map.
+// Letters, digits, dot, underscore, hyphen, and colon; 1–128. It is not an
+// email address and not a display name. Tenant ids stay on TenantOK.
+func UserKeyOK(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 func normalizeContextFile(in ContextFile) (ContextFile, error) {
 	f := in

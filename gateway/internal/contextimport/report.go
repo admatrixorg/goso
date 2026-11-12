@@ -3,6 +3,8 @@
 package contextimport
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,14 +15,15 @@ import (
 // row. For each section, input = inserted + updated + skipped + rejected,
 // and the reason counts sum to skipped + rejected.
 type Report struct {
-	Inserted   int             `json:"inserted"`
-	Updated    int             `json:"updated"`
-	Skipped    int             `json:"skipped"`
-	Rejected   int             `json:"rejected"`
-	DryRun     bool            `json:"dry_run"`
-	Rejections []Rejection     `json:"rejections,omitempty"`
-	Agents     []TenantSection `json:"agents"`
-	Users      []TenantSection `json:"users"`
+	Inserted      int             `json:"inserted"`
+	Updated       int             `json:"updated"`
+	Skipped       int             `json:"skipped"`
+	Rejected      int             `json:"rejected"`
+	DryRun        bool            `json:"dry_run"`
+	DeniedTenants int             `json:"denied_tenants"`
+	Rejections    []Rejection     `json:"rejections,omitempty"`
+	Agents        []TenantSection `json:"agents"`
+	Users         []TenantSection `json:"users"`
 }
 
 // Rejection is one dropped row. Name and Owner are the file name and the
@@ -110,6 +113,9 @@ type tally struct {
 }
 
 func (t *tally) add(kind, tenant, action, reason, name, owner string) {
+	if kind == "user" {
+		owner = maskUser(owner)
+	}
 	t.rows = append(t.rows, rowOutcome{
 		kind:   kind,
 		tenant: strings.TrimSpace(tenant),
@@ -125,6 +131,9 @@ func (t *tally) skip(kind, tenant, name, owner, reason string) {
 }
 
 func (t *tally) reject(kind, tenant, name, owner, reason string) {
+	if kind == "user" {
+		owner = maskUser(owner)
+	}
 	t.add(kind, tenant, "rejected", reason, name, owner)
 	if t.log == nil {
 		return
@@ -222,6 +231,15 @@ func foldOutcomes(rows []rowOutcome, kind string) []TenantSection {
 		out = append(out, *by[key])
 	}
 	return out
+}
+
+func maskUser(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || strings.HasPrefix(id, "u:") {
+		return id
+	}
+	sum := sha256.Sum256([]byte(id))
+	return "u:" + hex.EncodeToString(sum[:6])
 }
 
 func addReason(s *TenantSection, reason string) {
