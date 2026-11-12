@@ -13,6 +13,29 @@ goso-memdoc-import --remove-tenant <goso tenant> --deny-file tenants.txt --db pa
 
 `--map` is JSON. `tenants` is the SPEC 152 source id → dest tenant pair, plus `slug`. `agents` is the GoClaw agent id → existing Goso agent id. `customers` is optional; a missing user becomes `goclaw:<user_id>`.
 
+## qa:tabs
+
+Code under test: `e735dca5e7a2a5c4b5fd3560885ee9375f800209`.
+
+Log: [qa-tabs-e735dca5e7a2a5c4b5fd3560885ee9375f800209.log](../180/qa-tabs-e735dca5e7a2a5c4b5fd3560885ee9375f800209.log).
+
+Chrome: **Google Chrome 156.0.8078.47**. Binary: `/usr/local/bin/google-chrome`.
+
+`QA_SKIP_TABS` was not set. `QA_SHOTS` was not set.
+
+From `control-plane/`:
+
+```bash
+GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
+  CHROME_PATH=/usr/local/bin/google-chrome npm run qa:tabs
+```
+
+Gateway was `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080` from this tree, at that commit. Fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` `development`.
+
+Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Honest empty states, not failures: `#/decision`, `#/decision-flow`, `#/hooks`, `#/meetings`, and the matching aliases.
+
 ## go test
 
 `GOSO_TEST_POSTGRES_DSN` was unset here, so the Postgres case skipped. The memory store and SQLite ran. CI sets that DSN.
