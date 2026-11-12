@@ -403,4 +403,11 @@ var postgresSchema = []string{
 	`CREATE INDEX IF NOT EXISTS idx_context_files_owner ON context_files(tenant_id, scope, owner_id)`,
 	ingestJobCreateTable,
 	ingestJobCreateIndex,
+	`CREATE TABLE IF NOT EXISTS import_source_ids (
+		tenant_id TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		source_id TEXT NOT NULL,
+		goso_id TEXT NOT NULL,
+		PRIMARY KEY (tenant_id, kind, source_id)
+	)`,
 }

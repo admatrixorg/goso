@@ -453,6 +453,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateIngestConvert(); err != nil {
 		return err
 	}
+	if err := s.migrateImportSource(); err != nil {
+		return err
+	}
 	return nil
 }
 

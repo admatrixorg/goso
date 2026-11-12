@@ -562,6 +562,15 @@ type StoreIface interface {
 	GetContextFile(tenant, scope, ownerID, name string) (*ContextFile, error)
 	ListContextFiles(tenant, scope, ownerID string) ([]*ContextFile, error)
 	DeleteContextFile(tenant, scope, ownerID, name string) error
+	// Import source ids remember which GoClaw id was already copied into this
+	// destination tenant. Put is add-only: an existing triple is unchanged and
+	// returns ErrExists.
+	GetImportSource(tenant, kind, sourceID string) (gosoID string, ok bool, err error)
+	PutImportSource(tenant, kind, sourceID, gosoID string) error
+	// DeleteChannelConfig removes one channel_config row by name. The cron and
+	// channel importer uses it only to roll back a row that same call inserted
+	// when the source-id map cannot be saved.
+	DeleteChannelConfig(name string) error
 }
 
 // GatewaySettings is the persisted overlay for GET/PUT /api/config.
@@ -634,6 +643,7 @@ type Store struct {
 	kgRelations     map[string]*KGRelation
 	channelConfig   map[string]*ChannelConfig
 	channelPairing  map[string]*ChannelPairing
+	importSources   map[string]string
 	gatewaySettings *GatewaySettings
 	contextFiles    map[string]*ContextFile
 	ingestJobs      map[string]*IngestJob
@@ -698,6 +708,7 @@ func New() *Store {
 		kgRelations:    make(map[string]*KGRelation),
 		channelConfig:  make(map[string]*ChannelConfig),
 		channelPairing: make(map[string]*ChannelPairing),
+		importSources:  make(map[string]string),
 		contextFiles:   make(map[string]*ContextFile),
 		ingestJobs:     make(map[string]*IngestJob),
 	}
