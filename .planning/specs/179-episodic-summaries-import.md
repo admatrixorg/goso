@@ -27,10 +27,13 @@ A source agent with no line, or a destination agent that is missing or in anothe
 {"source_tenant":"<goclaw tenant uuid>","slug":"<goclaw slug>","dest_tenant":"<goso tenant>"}
 ```
 
-`mq-capital` is never written. A source id, slug, or destination equal to `mq-capital` (any case) is `mq`, including a row that is also expired. A source tenant that is not in the file is `unmapped`.
+`--source-tenant` and `--tenant` are required. Rows for any other source id are `unmapped` and are not written.
 
-10. `--dry-run` writes nothing. For each source tenant and for `episodic_summaries` it prints read, write, already, archived sessions to create, and the skip counters. `read = write + already + skipped`. A second run writes 0 rows and creates 0 sessions.
-11. `--remove --tenant <goso tenant>` deletes that tenant's `memories` and `sessions` whose ids start with `gc-`. A `gc-` session that still has a memory whose id does not start with `gc-` is kept, and that memory is kept. Other tenants are not deleted.
+10. A local denylist file is required (`--denylist` or `GOSO_TENANT_DENYLIST`), one tenant id per line. If the file is missing, empty, or malformed, the command stops before it opens the database, including on `--dry-run`. If the source tenant (id or slug) or `--tenant` is listed, the command writes nothing and the report is only `denied_tenants` (a count). The file's names are not printed.
+11. `--customers` is the shared map: `{"customers":[{"user_id","customer_key"}]}` or the same objects as JSONL. A non-empty mapped key is stored. Otherwise a non-empty `user_id` becomes `goclaw:<user_id>`. An empty `user_id` is the only empty key. A line with `channel`, `sender_id`, and `user_id` and no `customer_key` uses `channel:sender_id`.
+12. If a memory id already exists and the stored row differs, the row is `native-exists` and is not updated. An identical row is `already`.
+13. `--dry-run` writes nothing. The report prints read, write, already, archived sessions to create, skip counters, and `denied_tenants`. It does not print user ids. `read = write + already + skipped`. A second identical run writes 0 rows.
+14. `--remove --tenant` deletes that tenant's `gc-ep:` memories and `gc-sess:` sessions (`GLOB` on SQLite, `LIKE` on Postgres). A `gc-doc:` row is left in place. `PruneEpisodic` also leaves `gc-ep:` ids in place.
 
 ## Columns read
 
@@ -40,7 +43,7 @@ A source agent with no line, or a destination agent that is missing or in anothe
 
 ## Tests
 
-`TestMinhAnEpisodic` on SQLite and Postgres (when `GOSO_TEST_POSTGRES_DSN` is set): dry-run writes nothing and reports sessions to create; expired, team/scope, mq, unmapped, invalid, and `goclaw:<user_id>` are all exercised; an empty `user_id` is the only empty `customer_key`; a second run inserts nothing; tenant A recall does not return tenant B; customer X recall does not return customer Y or any `goclaw:*` note; a `SaveSummary` on a live session does not change imported notes; `SaveSummary` on an archive session changes only the latest note there; removal deletes `gc-` rows and leaves a live note, including one that sits in an archive session. `#44` plan and ceiling tests are unchanged.
+`TestMinhAnEpisodic` on SQLite and Postgres (when `GOSO_TEST_POSTGRES_DSN` is set) covers the Minh An fixture, a mapped customer key and a `goclaw:` fallback, `native-exists` after a hand edit, and recall isolation. `TestDeniedTenantWritesNothing` covers a fake denied slug and a fake denied uuid, with zero rows and no names in the report. `TestPruneKeepsImportedEpisodic` runs on the memory store, SQLite, and Postgres: a Minh An note dated 2026-01-03 with id `gc-ep:` survives a prune that still deletes an older native episodic row. `TestDeleteEpisodicGCLeavesOtherPrefix` removes `gc-ep:` / `gc-sess:` and leaves a `gc-doc:` row's count unchanged.
 
 ## Non-goals
 

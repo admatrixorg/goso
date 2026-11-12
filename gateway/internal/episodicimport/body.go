@@ -13,14 +13,28 @@ import (
 // This importer does not guess a channel contact. A later command remaps.
 const CustomerPrefix = "goclaw:"
 
-// CustomerKey maps a GoClaw user_id. Empty (after trim) is the only input
-// that returns an empty key. Any other input returns goclaw:<user_id>.
-func CustomerKey(userID string) string {
+// CustomerKey maps a GoClaw user_id the same way as the documents importer.
+// A non-empty customer_key from the shared map is used. Otherwise a non-empty
+// user_id becomes goclaw:<user_id>. Only an empty user_id returns an empty key.
+func CustomerKey(userID string, customers map[string]string) string {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
 		return ""
 	}
+	if key, ok := customers[userID]; ok && strings.TrimSpace(key) != "" {
+		return strings.TrimSpace(key)
+	}
 	return CustomerPrefix + userID
+}
+
+// MaskID is a short hash for logs. Reports do not print the raw id.
+func MaskID(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(s))
+	return "id:" + hex.EncodeToString(sum[:4])
 }
 
 // SessionID is gc-sess:<sha256> of the Goso agent id, a newline, and the

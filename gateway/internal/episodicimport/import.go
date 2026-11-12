@@ -32,11 +32,15 @@ const (
 	ReasonExpired   = "expired"
 	ReasonCustomer  = "customer-private"
 	ReasonTeamScope = "team/scope"
-	ReasonMQ        = "mq"
 	ReasonUnmapped  = "unmapped"
 	ReasonRelation  = "missing-relation-endpoint"
 	ReasonInvalid   = "invalid"
+	ReasonNative    = "native-exists"
 )
+
+// ErrDenied is returned before any write when the source tenant or the
+// destination tenant is on the denylist. The error text has no tenant name.
+var ErrDenied = errors.New("tenant is denied")
 
 var uuidRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -50,12 +54,18 @@ type DB interface {
 	InsertGCMemory(store.Memory) (bool, error)
 }
 
-// Options is one run. Now is the expiry clock. Zero means time.Now.
+// Options is one run. SourceTenant and DestTenant are required. Deny is the
+// local denylist and must be non-empty. Now is the expiry clock. Zero means
+// time.Now. Customers is the shared user_id to customer_key map.
 type Options struct {
-	Tenants TenantMap
-	Agents  AgentMap
-	Now     time.Time
-	DryRun  bool
+	Tenants      TenantMap
+	Agents       AgentMap
+	Customers    map[string]string
+	Deny         Denylist
+	SourceTenant string
+	DestTenant   string
+	Now          time.Time
+	DryRun       bool
 }
 
 // SkipCounts is one tenant's skip tally. Every key is always present.
@@ -63,14 +73,14 @@ type SkipCounts struct {
 	Expired                 int `json:"expired"`
 	CustomerPrivate         int `json:"customer-private"`
 	TeamScope               int `json:"team/scope"`
-	MQ                      int `json:"mq"`
 	Unmapped                int `json:"unmapped"`
 	MissingRelationEndpoint int `json:"missing-relation-endpoint"`
 	Invalid                 int `json:"invalid"`
+	NativeExists            int `json:"native-exists"`
 }
 
 func (s SkipCounts) total() int {
-	return s.Expired + s.CustomerPrivate + s.TeamScope + s.MQ + s.Unmapped + s.MissingRelationEndpoint + s.Invalid
+	return s.Expired + s.CustomerPrivate + s.TeamScope + s.Unmapped + s.MissingRelationEndpoint + s.Invalid + s.NativeExists
 }
 
 func (s *SkipCounts) add(reason string) {
@@ -81,12 +91,12 @@ func (s *SkipCounts) add(reason string) {
 		s.CustomerPrivate++
 	case ReasonTeamScope:
 		s.TeamScope++
-	case ReasonMQ:
-		s.MQ++
 	case ReasonUnmapped:
 		s.Unmapped++
 	case ReasonRelation:
 		s.MissingRelationEndpoint++
+	case ReasonNative:
+		s.NativeExists++
 	default:
 		s.Invalid++
 	}
@@ -107,10 +117,12 @@ type TenantReport struct {
 }
 
 // Report is the whole run. Tenants is sorted by source tenant.
+// DeniedTenants is a count. Denylist names are not fields of this struct.
 type Report struct {
-	DryRun  bool           `json:"dry_run"`
-	Table   string         `json:"table"`
-	Tenants []TenantReport `json:"tenants"`
+	DryRun        bool           `json:"dry_run"`
+	Table         string         `json:"table,omitempty"`
+	DeniedTenants int            `json:"denied_tenants"`
+	Tenants       []TenantReport `json:"tenants,omitempty"`
 }
 
 // ConfigError is a bad export or mapping file. The text does not include a body.
@@ -144,6 +156,24 @@ type decision struct {
 func Import(db DB, rows []Parsed, opt Options) (*Report, error) {
 	if db == nil {
 		return nil, errors.New("store is required")
+	}
+	if strings.TrimSpace(opt.SourceTenant) == "" || strings.TrimSpace(opt.DestTenant) == "" {
+		return nil, config("source tenant and tenant are required")
+	}
+	if len(opt.Deny.ids) == 0 {
+		return nil, errDenylistEmpty
+	}
+	entry, ok := opt.Tenants.Lookup(opt.SourceTenant)
+	if !ok {
+		return nil, config("source tenant is not in the tenant map")
+	}
+	if !strings.EqualFold(strings.TrimSpace(entry.DestTenant), strings.TrimSpace(opt.DestTenant)) {
+		return nil, config("tenant does not match the tenant map")
+	}
+	aliases := []string{opt.SourceTenant, entry.SourceTenant, entry.Slug}
+	denied := opt.Deny.DeniedCount(aliases, opt.DestTenant)
+	if denied > 0 {
+		return &Report{DryRun: opt.DryRun, DeniedTenants: denied}, ErrDenied
 	}
 	now := opt.Now.UTC()
 	if now.IsZero() {
@@ -278,7 +308,7 @@ func Import(db DB, rows []Parsed, opt Options) (*Report, error) {
 		}
 	}
 
-	rep := &Report{DryRun: opt.DryRun, Table: tableName}
+	rep := &Report{DryRun: opt.DryRun, Table: tableName, DeniedTenants: 0}
 	sort.Strings(order)
 	for _, source := range order {
 		sec := sections[source]
@@ -303,29 +333,18 @@ func classify(db DB, row parsed, opt Options, now time.Time, seen map[string]boo
 		d.reason = ReasonInvalid
 		return d, nil
 	}
-	if isMQ(source) {
-		d.reason = ReasonMQ
-		d.slug = mqSlug
-		return d, nil
-	}
-	entry, mapped := opt.Tenants.Lookup(source)
-	if mapped && entry.SkipMQ {
-		d.reason = ReasonMQ
-		d.slug = firstNonEmpty(entry.Slug, mqSlug)
-		return d, nil
-	}
-	if !mapped {
+	selected, ok := opt.Tenants.Lookup(opt.SourceTenant)
+	if !ok {
 		d.reason = ReasonUnmapped
 		return d, nil
 	}
-	d.slug = entry.Slug
-	d.dest = entry.DestTenant
-	if isMQ(d.dest) {
-		d.reason = ReasonMQ
-		d.slug = firstNonEmpty(entry.Slug, mqSlug)
-		d.dest = ""
+	n := normID(source)
+	if n != normID(selected.SourceTenant) && n != normID(selected.Slug) && n != normID(opt.SourceTenant) {
+		d.reason = ReasonUnmapped
 		return d, nil
 	}
+	d.slug = selected.Slug
+	d.dest = strings.TrimSpace(opt.DestTenant)
 	if !store.TenantOK(d.dest) {
 		d.reason = ReasonInvalid
 		d.dest = ""
@@ -369,8 +388,8 @@ func classify(db DB, row parsed, opt Options, now time.Time, seen map[string]boo
 		d.reason = ReasonUnmapped
 		return d, nil
 	}
-	key := CustomerKey(row.userID)
-	if row.userID != "" && (key == "" || !strings.HasPrefix(key, CustomerPrefix)) {
+	key := CustomerKey(row.userID, opt.Customers)
+	if row.userID != "" && key == "" {
 		return d, errors.New("refusing empty customer_key")
 	}
 	d.customer = key
@@ -393,7 +412,11 @@ func classify(db DB, row parsed, opt Options, now time.Time, seen map[string]boo
 	}
 	existing, err := db.GetMemory(d.memory)
 	if err == nil && existing != nil {
-		d.already = true
+		if sameMemory(existing, d) {
+			d.already = true
+		} else {
+			d.reason = ReasonNative
+		}
 		return d, nil
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -403,9 +426,14 @@ func classify(db DB, row parsed, opt Options, now time.Time, seen map[string]boo
 	return d, nil
 }
 
-func firstNonEmpty(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return a
+func sameMemory(existing *store.Memory, d decision) bool {
+	if existing == nil {
+		return false
 	}
-	return b
+	return existing.Body == d.body &&
+		existing.CustomerKey == d.customer &&
+		existing.SessionID == d.session &&
+		existing.Kind == store.KindEpisodic &&
+		store.SameTenant(existing.TenantID, d.dest) &&
+		existing.CreatedAt.Equal(d.created)
 }

@@ -4,6 +4,7 @@ package episodicimport
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
@@ -21,7 +22,6 @@ import (
 const (
 	srcMinh    = "11111111-1111-4111-8111-111111111111"
 	srcB       = "22222222-2222-4222-8222-222222222222"
-	srcMQ      = "33333333-3333-4333-8333-333333333333"
 	srcUnknown = "44444444-4444-4444-8444-444444444444"
 	srcAgent1  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
 	srcAgent2  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"
@@ -39,7 +39,7 @@ const (
 	otherGCID    = "gc-other:minh-an"
 	customerX    = "zalo-personal:thread-minh-an-x"
 	customerY    = "zalo-personal:thread-minh-an-y"
-	goclawX      = "goclaw:user-minh-an-01"
+	mappedX      = "zalo-personal:sender-minh-an-01"
 	goclawY      = "goclaw:user-minh-an-02"
 	goclawSender = "goclaw:ext-minh-an-0000"
 )
@@ -47,14 +47,18 @@ const (
 var clock = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
 func TestCustomerKeyAndBody(t *testing.T) {
-	if CustomerKey("") != "" || CustomerKey("   ") != "" {
+	if CustomerKey("", nil) != "" || CustomerKey("   ", nil) != "" {
 		t.Fatal("only an empty user_id may map to an empty customer_key")
 	}
-	for _, id := range []string{"user-minh-an-01", "ext-minh-an-0000", "user-minh-an-02"} {
-		key := CustomerKey(" " + id + " ")
-		if key != CustomerPrefix+id || key == "" || strings.HasPrefix(key, "zalo-") {
-			t.Fatalf("key %q", key)
-		}
+	customers := map[string]string{"user-minh-an-01": mappedX}
+	if got := CustomerKey("user-minh-an-01", customers); got != mappedX || got == "" {
+		t.Fatalf("mapped key %q", got)
+	}
+	if got := CustomerKey(" user-minh-an-02 ", customers); got != "goclaw:user-minh-an-02" || got == "" {
+		t.Fatalf("fallback key %q", got)
+	}
+	if got := CustomerKey("ext-minh-an-0000", nil); got != "goclaw:ext-minh-an-0000" || got == "" {
+		t.Fatalf("unmapped key %q", got)
 	}
 	got := Body("Bien ban Minh An.\n", []string{" hop dong ", "", "chiet khau"})
 	if got != "Bien ban Minh An.\nTopics: hop dong, chiet khau" || strings.Count(got, "\n") != 1 {
@@ -80,13 +84,13 @@ func TestCustomerKeyAndBody(t *testing.T) {
 
 func TestMappingFiles(t *testing.T) {
 	tenants := readTenants(t)
-	mq, ok := tenants.Lookup(srcMQ)
-	if !ok || !mq.SkipMQ || mq.Slug != "mq-capital" {
-		t.Fatalf("mq entry %+v %v", mq, ok)
-	}
 	minh, ok := tenants.Lookup(srcMinh)
-	if !ok || minh.SkipMQ || minh.DestTenant != "minh-an" {
+	if !ok || minh.DestTenant != "minh-an" {
 		t.Fatalf("minh %+v", minh)
+	}
+	bySlug, ok := tenants.Lookup("minh-an")
+	if !ok || bySlug.SourceTenant != srcMinh {
+		t.Fatalf("slug %+v", bySlug)
 	}
 	agents := readAgents(t)
 	missing, ok := agents.Lookup(srcAgent3)
@@ -99,8 +103,15 @@ func TestMappingFiles(t *testing.T) {
 	if _, err := LoadTenants(strings.NewReader(dup)); err == nil {
 		t.Fatal("duplicate source must fail")
 	}
-	if _, err := LoadAgents(strings.NewReader(`{"source_agent":"a","dest_agent":"b","dest_tenant":"mq-capital"}` + "\n")); err == nil {
-		t.Fatal("mq agent map must fail")
+	deny, err := LoadDenylist(strings.NewReader("denied-shop\n# comment\n"))
+	if err != nil || !deny.Hits("denied-shop") || deny.Hits("minh-an") {
+		t.Fatal(err)
+	}
+	if _, err := LoadDenylist(strings.NewReader("")); err == nil {
+		t.Fatal("empty denylist")
+	}
+	if _, err := LoadDenylist(strings.NewReader("not a tenant\n")); err == nil {
+		t.Fatal("malformed denylist")
 	}
 }
 
@@ -114,7 +125,7 @@ func TestMinhAnEpisodic(t *testing.T) {
 			agent2 := mustAgent(t, st, "minh-an", "minh-an-sales")
 			agentB := mustAgent(t, st, "tenant-b", "tenant-b-cskh")
 			agents := mustAgents(t, agent1, agent2, agentB)
-			opt := Options{Tenants: readTenants(t), Agents: agents, Now: clock, DryRun: true}
+			opt := baseOpt(t, agents, true)
 			dry, err := Import(db, rows, opt)
 			if err != nil {
 				t.Fatal(err)
@@ -130,6 +141,12 @@ func TestMinhAnEpisodic(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertReport(t, rep, false)
+			optB := opt
+			optB.SourceTenant = srcB
+			optB.DestTenant = "tenant-b"
+			if _, err := Import(db, rows, optB); err != nil {
+				t.Fatal(err)
+			}
 			assertWritten(t, db, agent1, agent2, agentB)
 
 			assertRecall(t, st, agent1)
@@ -144,12 +161,16 @@ func TestMinhAnEpisodic(t *testing.T) {
 			if minh.Write != 0 || minh.Sessions != 0 || minh.Already != 9 {
 				t.Fatalf("rerun %+v", minh)
 			}
-			b := section(t, again, srcB)
+			againB, err := Import(db, rows, optB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := section(t, againB, srcB)
 			if b.Write != 0 || b.Sessions != 0 || b.Already != 1 {
 				t.Fatalf("rerun tenant b %+v", b)
 			}
 			first := mustMemory(t, db, "10000000-0000-4000-8000-000000000001")
-			if !strings.Contains(first.Body, "khach X") || first.CustomerKey != goclawX {
+			if !strings.Contains(first.Body, "khach X") || first.CustomerKey != mappedX {
 				t.Fatalf("rerun changed first note %+v", first)
 			}
 
@@ -186,7 +207,7 @@ func TestMinhAnEpisodic(t *testing.T) {
 			if mustMemory(t, db, latest.ID).Body != "summary overwritten in archive" {
 				t.Fatal("rerun restored an overwritten note")
 			}
-			if mustMemory(t, db, earlierID).CustomerKey != goclawX {
+			if mustMemory(t, db, earlierID).CustomerKey != mappedX {
 				t.Fatal("earlier note changed")
 			}
 			if got, err := st.GetMemory(live.ID); err != nil || got.Body != liveBody {
@@ -194,23 +215,23 @@ func TestMinhAnEpisodic(t *testing.T) {
 			}
 
 			insertPlain(t, st, liveInsideID, sess.ID, liveInside, "minh-an", customerX, "2026-02-01T00:00:00Z")
-			insertPlain(t, st, otherGCID, sess.ID, "gc other minh an", "minh-an", goclawX, "2026-02-01T00:00:00Z")
+			insertPlain(t, st, otherGCID, sess.ID, "gc other minh an", "minh-an", mappedX, "2026-02-01T00:00:00Z")
 			otherSess := mustMemory(t, db, "10000000-0000-4000-8000-000000000007").SessionID
 			if otherSess == sess.ID {
 				t.Fatal("fixture session")
 			}
-			memN, sessN, err := db.DeleteGCPrefix("minh-an")
+			memN, sessN, err := db.DeleteEpisodicGC("minh-an")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if memN != 10 || sessN != 7 {
+			if memN != 9 || sessN != 7 {
 				t.Fatalf("removed memories=%d sessions=%d", memN, sessN)
 			}
 			if _, err := db.GetMemory(earlierID); !errors.Is(err, store.ErrNotFound) {
 				t.Fatal("imported note survived removal")
 			}
-			if _, err := db.GetMemory(otherGCID); !errors.Is(err, store.ErrNotFound) {
-				t.Fatal("gc- prefix note survived removal")
+			if _, err := db.GetMemory(otherGCID); err != nil {
+				t.Fatal("other prefix was removed with episodic rows")
 			}
 			kept, err := db.GetMemory(liveInsideID)
 			if err != nil || kept.Body != liveInside || kept.CustomerKey != customerX {
@@ -228,7 +249,7 @@ func TestMinhAnEpisodic(t *testing.T) {
 			if _, err := db.GetSession(otherSess); !errors.Is(err, store.ErrNotFound) {
 				t.Fatal("empty gc session survived removal")
 			}
-			if _, _, err := db.DeleteGCPrefix("tenant-b"); err != nil {
+			if _, _, err := db.DeleteEpisodicGC("tenant-b"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := db.GetMemory(MemoryID("10000000-0000-4000-8000-00000000000c")); !errors.Is(err, store.ErrNotFound) {
@@ -243,8 +264,17 @@ func TestMinhAnEpisodic(t *testing.T) {
 
 func assertReport(t *testing.T, rep *Report, dry bool) {
 	t.Helper()
-	if rep.DryRun != dry || rep.Table != "episodic_summaries" {
+	if rep.DryRun != dry || rep.Table != "episodic_summaries" || rep.DeniedTenants != 0 {
 		t.Fatalf("report header %+v", rep)
+	}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hidden := range []string{"user-minh-an-01", "ext-minh-an-0000", "user-minh-an-02", "denied-shop"} {
+		if strings.Contains(string(raw), hidden) {
+			t.Fatalf("report leaked %s", hidden)
+		}
 	}
 	minh := section(t, rep, srcMinh)
 	if minh.DestTenant != "minh-an" || minh.Slug != "minh-an" || minh.Read != 14 || minh.Write != 9 || minh.Already != 0 || minh.Sessions != 8 {
@@ -254,16 +284,8 @@ func assertReport(t *testing.T, rep *Report, dry bool) {
 		t.Fatalf("minh skips %+v", minh.Skipped)
 	}
 	b := section(t, rep, srcB)
-	if b.DestTenant != "tenant-b" || b.Read != 1 || b.Write != 1 || b.Sessions != 1 || b.Skipped != (SkipCounts{}) {
+	if b.Read != 1 || b.Write != 0 || b.Sessions != 0 || b.Skipped.Unmapped != 1 || b.DestTenant != "" {
 		t.Fatalf("tenant b %+v", b)
-	}
-	mq := section(t, rep, srcMQ)
-	if mq.Read != 2 || mq.Write != 0 || mq.Sessions != 0 || mq.Skipped.MQ != 2 || mq.Skipped.Expired != 0 || mq.DestTenant != "" {
-		t.Fatalf("mq %+v", mq)
-	}
-	slug := section(t, rep, "mq-capital")
-	if slug.Read != 1 || slug.Write != 0 || slug.Skipped.MQ != 1 || slug.Sessions != 0 {
-		t.Fatalf("mq slug %+v", slug)
 	}
 	unknown := section(t, rep, srcUnknown)
 	if unknown.Read != 1 || unknown.Write != 0 || unknown.Skipped.Unmapped != 1 || unknown.DestTenant != "" {
@@ -292,7 +314,7 @@ func assertWritten(t *testing.T, db DB, agent1, agent2, agentB string) {
 	if !first.CreatedAt.Equal(wantAt) || first.CreatedAt.Location() != time.UTC {
 		t.Fatalf("created_at %s", first.CreatedAt.Format(time.RFC3339Nano))
 	}
-	if first.Kind != store.KindEpisodic || first.CustomerKey != goclawX || first.TenantID != "minh-an" {
+	if first.Kind != store.KindEpisodic || first.CustomerKey != mappedX || first.TenantID != "minh-an" {
 		t.Fatalf("first %+v", first)
 	}
 	sess := mustSession(t, db, first.SessionID)
@@ -300,7 +322,7 @@ func assertWritten(t *testing.T, db DB, agent1, agent2, agentB string) {
 		t.Fatalf("session %+v", sess)
 	}
 	second := mustMemory(t, db, "10000000-0000-4000-8000-000000000002")
-	if second.SessionID != first.SessionID || second.CustomerKey != goclawX {
+	if second.SessionID != first.SessionID || second.CustomerKey != mappedX {
 		t.Fatalf("same session %+v", second)
 	}
 	checks := map[string]string{
@@ -381,12 +403,12 @@ func assertRecall(t *testing.T, st store.StoreIface, agent1 string) {
 	}
 	hits = mustRecall(t, st, store.RecallQuery{
 		TenantID: "minh-an", AgentID: agent1, ExcludeSession: "ask-minh-an",
-		Query: "Bien ban", Limit: 30, CustomerScoped: true, CustomerKey: goclawX,
+		Query: "Bien ban", Limit: 30, CustomerScoped: true, CustomerKey: mappedX,
 	})
 	seen := map[string]bool{}
 	for _, h := range hits {
 		seen[h.Memory.ID] = true
-		if h.Memory.CustomerKey != goclawX || h.Memory.TenantID != "minh-an" {
+		if h.Memory.CustomerKey != mappedX || h.Memory.TenantID != "minh-an" {
 			t.Fatalf("goclaw X saw %+v", h.Memory)
 		}
 	}
@@ -532,6 +554,74 @@ func mustSession(t *testing.T, db DB, id string) *store.Session {
 	return s
 }
 
+func baseOpt(t *testing.T, agents AgentMap, dry bool) Options {
+	t.Helper()
+	customers, err := LoadCustomers(strings.NewReader(`{"customers":[{"user_id":"user-minh-an-01","customer_key":"zalo-personal:sender-minh-an-01"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deny, err := LoadDenylist(strings.NewReader("denied-shop\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Options{
+		Tenants: readTenants(t), Agents: agents, Customers: customers, Deny: deny,
+		SourceTenant: srcMinh, DestTenant: "minh-an", Now: clock, DryRun: dry,
+	}
+}
+
+func TestDeniedTenantWritesNothing(t *testing.T) {
+	st, err := store.OpenSQLite(filepath.Join(t.TempDir(), "deny.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	ag := mustAgent(t, st, "denied-shop", "denied-shop-agent")
+	agents := mustAgents(t, ag, ag, ag)
+	// Rebuild the agent map so the denied source points at this agent.
+	raw := `{"source_agent":"` + srcAgent1 + `","dest_agent":"` + ag + `","dest_tenant":"denied-shop"}` + "\n"
+	agents, err = LoadAgents(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenants, err := LoadTenants(strings.NewReader("{\"source_tenant\":\"55555555-5555-4555-8555-555555555555\",\"slug\":\"denied-shop\",\"dest_tenant\":\"denied-shop\"}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := ReadExport(strings.NewReader("{\"id\":\"10000000-0000-4000-8000-0000000000aa\",\"tenant_id\":\"55555555-5555-4555-8555-555555555555\",\"agent_id\":\"" + srcAgent1 + "\",\"user_id\":\"user-denied-01\",\"session_key\":\"sess-denied\",\"summary\":\"Khong ghi.\",\"created_at\":\"2026-01-03T00:00:00Z\"}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bySlug, err := LoadDenylist(strings.NewReader("denied-shop\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID, err := LoadDenylist(strings.NewReader("55555555-5555-4555-8555-555555555555\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, deny := range []Denylist{bySlug, byID} {
+		opt := Options{
+			Tenants: tenants, Agents: agents, Deny: deny, Now: clock,
+			SourceTenant: "55555555-5555-4555-8555-555555555555", DestTenant: "denied-shop",
+		}
+		rep, err := Import(st, rows, opt)
+		if !errors.Is(err, ErrDenied) {
+			t.Fatal(err)
+		}
+		if rep == nil || rep.DeniedTenants != 1 || len(rep.Tenants) != 0 {
+			t.Fatalf("report %+v", rep)
+		}
+		encoded, _ := json.Marshal(rep)
+		if strings.Contains(string(encoded), "denied-shop") || strings.Contains(string(encoded), "55555555-5555-4555-8555-555555555555") || strings.Contains(string(encoded), "user-denied-01") {
+			t.Fatalf("denied report named a tenant %s", encoded)
+		}
+		if _, err := st.GetMemory(MemoryID("10000000-0000-4000-8000-0000000000aa")); !errors.Is(err, store.ErrNotFound) {
+			t.Fatal("denied tenant wrote a row")
+		}
+	}
+}
+
 func readFixture(t *testing.T) []Parsed {
 	t.Helper()
 	f, err := os.Open(filepath.Join("testdata", "minh-an-episodic.jsonl"))
@@ -543,7 +633,7 @@ func readFixture(t *testing.T) []Parsed {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 19 {
+	if len(rows) != 16 {
 		t.Fatalf("fixture lines %d", len(rows))
 	}
 	return rows
@@ -579,7 +669,7 @@ func readAgents(t *testing.T) AgentMap {
 
 type gcDeleter interface {
 	DB
-	DeleteGCPrefix(string) (int, int, error)
+	DeleteEpisodicGC(string) (int, int, error)
 }
 
 func asDB(t *testing.T, st store.StoreIface) gcDeleter {

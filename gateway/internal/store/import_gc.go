@@ -78,25 +78,26 @@ func (s *SQLiteStore) InsertGCMemory(m Memory) (bool, error) {
 	return n > 0, nil
 }
 
-// CountGCPrefix counts memories and sessions this tenant would lose to
-// DeleteGCPrefix. A gc- session that still has a non-gc memory is not counted.
-func (s *SQLiteStore) CountGCPrefix(tenant string) (memories, sessions int, err error) {
+// CountEpisodicGC counts gc-ep memories and gc-sess sessions this tenant would
+// lose to DeleteEpisodicGC. A gc-sess session that still holds another memory
+// is not counted. Other prefixes, including gc-doc, are not counted.
+func (s *SQLiteStore) CountEpisodicGC(tenant string) (memories, sessions int, err error) {
 	if err := gcTenant(tenant); err != nil {
 		return 0, 0, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE tenant_id=? AND id LIKE 'gc-%'`, tenant).Scan(&memories); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE `+s.episodicMemoryFilter(), tenant).Scan(&memories); err != nil {
 		return 0, 0, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE tenant_id=? AND id LIKE 'gc-%' AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id AND m.id NOT LIKE 'gc-%')`, tenant).Scan(&sessions); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE `+s.episodicSessionFilter()+` AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id AND NOT (`+s.memoryIDIsEpisodic()+`))`, tenant).Scan(&sessions); err != nil {
 		return 0, 0, err
 	}
 	return memories, sessions, nil
 }
 
-// DeleteGCPrefix deletes this tenant's imported memories and sessions whose
-// ids start with gc-. A gc- session that still holds a non-gc memory is kept,
-// and that memory is kept. Other tenants are not touched.
-func (s *SQLiteStore) DeleteGCPrefix(tenant string) (memories, sessions int, err error) {
+// DeleteEpisodicGC deletes this tenant's gc-ep memories and gc-sess sessions.
+// A gc-sess session that still holds a memory with another id prefix is kept.
+// gc-doc rows and other tenants are not touched.
+func (s *SQLiteStore) DeleteEpisodicGC(tenant string) (memories, sessions int, err error) {
 	if err := gcTenant(tenant); err != nil {
 		return 0, 0, err
 	}
@@ -105,7 +106,7 @@ func (s *SQLiteStore) DeleteGCPrefix(tenant string) (memories, sessions int, err
 		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.Exec(`DELETE FROM memories WHERE tenant_id=? AND id LIKE 'gc-%'`, tenant)
+	res, err := tx.Exec(`DELETE FROM memories WHERE `+s.episodicMemoryFilter(), tenant)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -113,7 +114,7 @@ func (s *SQLiteStore) DeleteGCPrefix(tenant string) (memories, sessions int, err
 	if err != nil {
 		return 0, 0, err
 	}
-	res, err = tx.Exec(`DELETE FROM sessions WHERE tenant_id=? AND id LIKE 'gc-%' AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id AND m.id NOT LIKE 'gc-%')`, tenant)
+	res, err = tx.Exec(`DELETE FROM sessions WHERE `+s.episodicSessionFilter()+` AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.session_id = sessions.id)`, tenant)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -125,6 +126,40 @@ func (s *SQLiteStore) DeleteGCPrefix(tenant string) (memories, sessions int, err
 		return 0, 0, err
 	}
 	return int(memN), int(sessN), nil
+}
+
+// SQLite LIKE is case-insensitive. GLOB matches the prefix exactly, the same
+// split as the knowledge-graph importer. Postgres LIKE is case-sensitive.
+func (s *SQLiteStore) episodicMemoryFilter() string {
+	if s != nil && s.pg {
+		return `tenant_id=? AND id LIKE 'gc-ep:%'`
+	}
+	return `tenant_id=? AND id GLOB 'gc-ep:*'`
+}
+
+func (s *SQLiteStore) episodicSessionFilter() string {
+	if s != nil && s.pg {
+		return `tenant_id=? AND id LIKE 'gc-sess:%'`
+	}
+	return `tenant_id=? AND id GLOB 'gc-sess:*'`
+}
+
+func (s *SQLiteStore) memoryIDIsEpisodic() string {
+	if s != nil && s.pg {
+		return `m.id LIKE 'gc-ep:%'`
+	}
+	return `m.id GLOB 'gc-ep:*'`
+}
+
+func (s *SQLiteStore) notImportedEpisodicSQL() string {
+	if s != nil && s.pg {
+		return `id NOT LIKE 'gc-ep:%'`
+	}
+	return `id NOT GLOB 'gc-ep:*'`
+}
+
+func importedEpisodicID(id string) bool {
+	return strings.HasPrefix(id, "gc-ep:")
 }
 
 func gcTenant(tenant string) error {

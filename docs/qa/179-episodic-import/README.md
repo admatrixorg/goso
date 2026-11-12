@@ -1,6 +1,6 @@
 # SPEC 179 — episodic summaries import
 
-Offline JSONL import of `episodic_summaries` into `memories` (`kind=episodic`). No GoClaw connection, no schema change, no pgvector. The fixture is synthetic Minh An. `mq-capital` rows are skip fixtures, not customer records.
+Offline JSONL import of `episodic_summaries` into `memories` (`kind=episodic`). No GoClaw connection, no schema change, no pgvector. The fixture is synthetic Minh An. A denylist is a local file and is not stored in this tree.
 
 `--dry-run` prints, per source tenant: read, write, already, archived sessions to create, and skip counters (`expired`, `customer-private`, `team/scope`, `mq`, `unmapped`, `missing-relation-endpoint`, `invalid`). A non-empty `user_id` is written as `goclaw:<user_id>`. An empty `user_id` is the only empty `customer_key`.
 

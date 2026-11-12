@@ -31,10 +31,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	exportPath := fs.String("export", "", "JSONL export of episodic_summaries (one object per line)")
 	tenantPath := fs.String("tenants", "", "JSONL SPEC 152 tenant map")
 	agentPath := fs.String("agents", "", "JSONL GoClaw agent id to goso agent id map")
+	customerPath := fs.String("customers", "", "customer map JSON (user_id, customer_key) or JSONL")
+	source := fs.String("source-tenant", "", "GoClaw tenant id or slug for this run")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	dry := fs.Bool("dry-run", false, "print counts and create nothing")
-	remove := fs.Bool("remove", false, "delete this tenant's gc- memories and sessions")
-	tenant := fs.String("tenant", "", "goso tenant_id for --remove")
+	remove := fs.Bool("remove", false, "delete this tenant's gc-ep memories and gc-sess sessions")
+	tenant := fs.String("tenant", "", "goso tenant_id to write, or to remove")
+	denyPath := fs.String("denylist", "", "local denylist file, one tenant id per line (or GOSO_TENANT_DENYLIST)")
 	nowFlag := fs.String("now", "", "expiry clock, RFC3339 (default: current time)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -46,9 +49,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runRemove(stdout, stderr, strings.TrimSpace(*tenant), strings.TrimSpace(*dbPath), *dry)
 	}
-	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenantPath) == "" || strings.TrimSpace(*agentPath) == "" || strings.TrimSpace(*dbPath) == "" {
-		fmt.Fprintln(stderr, "usage: goso-episodic-import --export file.jsonl --tenants tenants.jsonl --agents agents.jsonl --db path [--now RFC3339] [--dry-run]")
+	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenantPath) == "" || strings.TrimSpace(*agentPath) == "" || strings.TrimSpace(*dbPath) == "" || strings.TrimSpace(*source) == "" || strings.TrimSpace(*tenant) == "" {
+		fmt.Fprintln(stderr, "usage: goso-episodic-import --export file.jsonl --source-tenant id --tenant id --tenants tenants.jsonl --agents agents.jsonl --denylist file --db path [--customers file] [--now RFC3339] [--dry-run]")
 		return 2
+	}
+	denyFile := strings.TrimSpace(*denyPath)
+	if denyFile == "" {
+		denyFile = strings.TrimSpace(os.Getenv("GOSO_TENANT_DENYLIST"))
+	}
+	if denyFile == "" {
+		fmt.Fprintln(stderr, "denylist is missing")
+		return 2
+	}
+	deny, err := readDenylist(denyFile)
+	if err != nil {
+		return fail(stderr, err)
 	}
 	rows, err := readExport(*exportPath)
 	if err != nil {
@@ -62,6 +77,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
+	var customers map[string]string
+	if strings.TrimSpace(*customerPath) != "" {
+		customers, err = readCustomers(*customerPath)
+		if err != nil {
+			return fail(stderr, err)
+		}
+	}
 	now, err := parseNow(*nowFlag)
 	if err != nil {
 		fmt.Fprintln(stderr, "now must be RFC3339")
@@ -74,11 +96,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closeDB()
 	rep, err := episodicimport.Import(db, rows, episodicimport.Options{
-		Tenants: tenants,
-		Agents:  agents,
-		Now:     now,
-		DryRun:  *dry,
+		Tenants:      tenants,
+		Agents:       agents,
+		Customers:    customers,
+		Deny:         deny,
+		SourceTenant: strings.TrimSpace(*source),
+		DestTenant:   strings.TrimSpace(*tenant),
+		Now:          now,
+		DryRun:       *dry,
 	})
+	if errors.Is(err, episodicimport.ErrDenied) {
+		_ = writeJSON(stdout, stderr, map[string]int{"denied_tenants": rep.DeniedTenants})
+		return 1
+	}
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -92,13 +122,13 @@ func runRemove(stdout, stderr io.Writer, tenant, dbPath string, dry bool) int {
 		return 1
 	}
 	defer closeDB()
-	mem, sess, err := db.CountGCPrefix(tenant)
+	mem, sess, err := db.CountEpisodicGC(tenant)
 	if err != nil {
 		fmt.Fprintln(stderr, "remove failed")
 		return 1
 	}
 	if !dry {
-		mem, sess, err = db.DeleteGCPrefix(tenant)
+		mem, sess, err = db.DeleteEpisodicGC(tenant)
 		if err != nil {
 			fmt.Fprintln(stderr, "remove failed")
 			return 1
@@ -131,6 +161,24 @@ func readTenants(path string) (episodicimport.TenantMap, error) {
 	return episodicimport.LoadTenants(f)
 }
 
+func readDenylist(path string) (episodicimport.Denylist, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return episodicimport.Denylist{}, errDenylistMissing
+	}
+	defer f.Close()
+	return episodicimport.LoadDenylist(f)
+}
+
+func readCustomers(path string) (map[string]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errOpen
+	}
+	defer f.Close()
+	return episodicimport.LoadCustomers(f)
+}
+
 func readAgents(path string) (episodicimport.AgentMap, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -140,12 +188,15 @@ func readAgents(path string) (episodicimport.AgentMap, error) {
 	return episodicimport.LoadAgents(f)
 }
 
-var errOpen = errors.New("open failed")
+var (
+	errOpen            = errors.New("open failed")
+	errDenylistMissing = errors.New("denylist is missing")
+)
 
 type gcStore interface {
 	episodicimport.DB
-	CountGCPrefix(string) (int, int, error)
-	DeleteGCPrefix(string) (int, int, error)
+	CountEpisodicGC(string) (int, int, error)
+	DeleteEpisodicGC(string) (int, int, error)
 }
 
 func openDB(path string) (gcStore, func() error, error) {
@@ -217,6 +268,10 @@ func fail(stderr io.Writer, err error) int {
 	var cfg *episodicimport.ConfigError
 	if errors.As(err, &cfg) {
 		fmt.Fprintln(stderr, cfg.Error())
+		return 2
+	}
+	if errors.Is(err, errDenylistMissing) {
+		fmt.Fprintln(stderr, "denylist is missing")
 		return 2
 	}
 	if errors.Is(err, errOpen) {

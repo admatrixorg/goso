@@ -4,21 +4,19 @@ package episodicimport
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"strings"
-)
 
-// mqSlug is never written. Compared case-insensitively on the source id,
-// the source slug, and the destination tenant.
-const mqSlug = "mq-capital"
+	"github.com/mqglobal/goso/gateway/internal/store"
+)
 
 // TenantEntry is one SPEC 152 source-tenant to goso-tenant line.
 type TenantEntry struct {
 	SourceTenant string
 	Slug         string
 	DestTenant   string
-	SkipMQ       bool
 }
 
 // AgentEntry is one agents-importer line. DestAgent must already exist.
@@ -28,7 +26,7 @@ type AgentEntry struct {
 	DestTenant  string
 }
 
-// TenantMap indexes GoClaw tenant ids.
+// TenantMap indexes GoClaw tenant ids and slugs.
 type TenantMap struct {
 	bySource map[string]TenantEntry
 }
@@ -38,21 +36,37 @@ type AgentMap struct {
 	bySource map[string]AgentEntry
 }
 
+// Denylist is a local file of tenant ids. Names are not copied into reports.
+type Denylist struct {
+	ids []string
+}
+
+var (
+	errDenylistEmpty     = config("denylist is empty")
+	errDenylistMalformed = config("denylist is malformed")
+	errDenylistMissing   = config("denylist is missing")
+)
+
 // Lookup returns the entry for a source tenant id or slug.
 func (m TenantMap) Lookup(source string) (TenantEntry, bool) {
+	if m.bySource == nil {
+		return TenantEntry{}, false
+	}
 	e, ok := m.bySource[normID(source)]
 	return e, ok
 }
 
 // Lookup returns the entry for a source agent id.
 func (m AgentMap) Lookup(source string) (AgentEntry, bool) {
+	if m.bySource == nil {
+		return AgentEntry{}, false
+	}
 	e, ok := m.bySource[normID(source)]
 	return e, ok
 }
 
 // LoadTenants reads a JSONL tenant map. Each line is
 // {"source_tenant":"<goclaw uuid or slug>","slug":"<goclaw slug>","dest_tenant":"<goso tenant>"}.
-// A line whose source, slug, or dest is mq-capital is a skip marker.
 func LoadTenants(r io.Reader) (TenantMap, error) {
 	rows, err := readLines(r)
 	if err != nil {
@@ -69,23 +83,24 @@ func LoadTenants(r io.Reader) (TenantMap, error) {
 			return TenantMap{}, configf("tenant map line %d is not JSON", i+1)
 		}
 		src := strings.TrimSpace(row.SourceTenant)
-		if src == "" {
-			return TenantMap{}, configf("tenant map line %d is missing source_tenant", i+1)
-		}
-		key := normID(src)
-		if _, ok := out.bySource[key]; ok {
-			return TenantMap{}, configf("tenant map duplicate source %s", src)
+		if src == "" || strings.TrimSpace(row.DestTenant) == "" {
+			return TenantMap{}, configf("tenant map line %d is incomplete", i+1)
 		}
 		entry := TenantEntry{
 			SourceTenant: src,
 			Slug:         strings.TrimSpace(row.Slug),
 			DestTenant:   strings.TrimSpace(row.DestTenant),
 		}
-		entry.SkipMQ = isMQ(entry.SourceTenant) || isMQ(entry.Slug) || isMQ(entry.DestTenant)
-		if !entry.SkipMQ && entry.DestTenant == "" {
-			return TenantMap{}, configf("tenant map line %d is missing dest_tenant", i+1)
+		if _, ok := out.bySource[normID(src)]; ok {
+			return TenantMap{}, config("tenant map source is repeated")
 		}
-		out.bySource[key] = entry
+		out.bySource[normID(src)] = entry
+		if entry.Slug != "" {
+			if prev, ok := out.bySource[normID(entry.Slug)]; ok && normID(prev.SourceTenant) != normID(src) {
+				return TenantMap{}, config("tenant map slug is repeated")
+			}
+			out.bySource[normID(entry.Slug)] = entry
+		}
 	}
 	return out, nil
 }
@@ -113,25 +128,167 @@ func LoadAgents(r io.Reader) (AgentMap, error) {
 		if src == "" || dst == "" || ten == "" {
 			return AgentMap{}, configf("agent map line %d is incomplete", i+1)
 		}
-		if isMQ(ten) {
-			return AgentMap{}, config("agent map must not name mq-capital")
-		}
 		key := normID(src)
 		if _, ok := out.bySource[key]; ok {
-			return AgentMap{}, configf("agent map duplicate source %s", src)
+			return AgentMap{}, config("agent map source is repeated")
 		}
 		out.bySource[key] = AgentEntry{SourceAgent: src, DestAgent: dst, DestTenant: ten}
 	}
 	return out, nil
 }
 
+// LoadCustomers reads the shared customer map. A JSON object
+// {"customers":[{"user_id","customer_key"}]} matches the documents importer.
+// JSONL objects with those fields are the same rows. A line that has
+// channel, sender_id, and user_id and no customer_key uses channel:sender_id.
+// An empty customer_key is not stored; lookup then falls back to goclaw:<user_id>.
+func LoadCustomers(r io.Reader) (map[string]string, error) {
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, config("customer map read failed")
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return map[string]string{}, nil
+	}
+	out := map[string]string{}
+	if raw[0] == '{' {
+		var doc struct {
+			Customers []customerRow `json:"customers"`
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		if err := dec.Decode(&doc); err != nil {
+			return nil, config("customer map is not JSON")
+		}
+		if err := addCustomers(out, doc.Customers); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	sc := bufio.NewScanner(bytes.NewReader(raw))
+	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	line := 0
+	for sc.Scan() {
+		line++
+		text := strings.TrimSpace(sc.Text())
+		if text == "" {
+			continue
+		}
+		var row customerRow
+		if err := json.Unmarshal([]byte(text), &row); err != nil {
+			return nil, configf("customer map line %d is not JSON", line)
+		}
+		if err := addCustomers(out, []customerRow{row}); err != nil {
+			return nil, err
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, config("customer map read failed")
+	}
+	return out, nil
+}
+
+type customerRow struct {
+	UserID      string `json:"user_id"`
+	CustomerKey string `json:"customer_key"`
+	Channel     string `json:"channel"`
+	SenderID    string `json:"sender_id"`
+}
+
+func addCustomers(dst map[string]string, rows []customerRow) error {
+	for _, row := range rows {
+		user := strings.TrimSpace(row.UserID)
+		key := strings.TrimSpace(row.CustomerKey)
+		if key == "" {
+			ch := strings.TrimSpace(row.Channel)
+			sid := strings.TrimSpace(row.SenderID)
+			if ch != "" && sid != "" {
+				key = ch + ":" + sid
+			}
+		}
+		if user == "" || key == "" || strings.ContainsRune(key, 0) || strings.ContainsAny(key, "\r\n") {
+			return config("customer mapping needs a user_id and a customer_key")
+		}
+		if _, ok := dst[user]; ok {
+			return config("customer user_id is repeated")
+		}
+		dst[user] = key
+	}
+	return nil
+}
+
+// LoadDenylist reads one tenant id per line. Blank lines and # comments are
+// ignored. A file with no ids is empty. A line that is not one tenant id is
+// malformed. The ids are kept only for matching; reports never print them.
+func LoadDenylist(r io.Reader) (Denylist, error) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	var ids []string
+	seen := map[string]bool{}
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.ContainsAny(line, " \t") || !store.TenantOK(line) {
+			return Denylist{}, errDenylistMalformed
+		}
+		key := normID(line)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		ids = append(ids, key)
+	}
+	if err := sc.Err(); err != nil {
+		return Denylist{}, errDenylistMalformed
+	}
+	if len(ids) == 0 {
+		return Denylist{}, errDenylistEmpty
+	}
+	return Denylist{ids: ids}, nil
+}
+
+// Hits reports whether any candidate is on the list.
+func (d Denylist) Hits(cands ...string) bool {
+	if len(d.ids) == 0 {
+		return false
+	}
+	set := map[string]bool{}
+	for _, id := range d.ids {
+		set[id] = true
+	}
+	for _, c := range cands {
+		if set[normID(c)] && strings.TrimSpace(c) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// DeniedCount is how many distinct tenants among source and dest are blocked.
+// Source aliases (id and slug) are one tenant.
+func (d Denylist) DeniedCount(sourceAliases []string, dest string) int {
+	n := 0
+	if d.Hits(sourceAliases...) {
+		n++
+	}
+	if strings.TrimSpace(dest) == "" || !d.Hits(dest) {
+		return n
+	}
+	for _, a := range sourceAliases {
+		if normID(a) == normID(dest) {
+			return n
+		}
+	}
+	return n + 1
+}
+
 func readLines(r io.Reader) ([][]byte, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
 	var out [][]byte
-	n := 0
 	for sc.Scan() {
-		n++
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
@@ -146,8 +303,4 @@ func readLines(r io.Reader) ([][]byte, error) {
 
 func normID(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
-}
-
-func isMQ(s string) bool {
-	return strings.EqualFold(strings.TrimSpace(s), mqSlug)
 }
