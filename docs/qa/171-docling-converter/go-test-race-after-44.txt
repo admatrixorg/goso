@@ -1,0 +1,4 @@
+ok  	github.com/mqglobal/goso/gateway/internal/store	62.412s
+ok  	github.com/mqglobal/goso/gateway/internal/vault	8.337s
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	11.761s
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	14.078s

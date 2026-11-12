@@ -1,0 +1,147 @@
+=== RUN   TestSQLiteHasNoBodyTSV
+--- PASS: TestSQLiteHasNoBodyTSV (0.05s)
+=== RUN   TestPostgresBodyTSVAdditive
+2026/11/12 07:12:14 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 07:12:14 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresBodyTSVAdditive (0.25s)
+=== RUN   TestPostgresBodyTSVBackfillAndSearch
+2026/11/12 07:12:15 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 07:12:15 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresBodyTSVBackfillAndSearch (0.22s)
+=== RUN   TestPostgresRecall50kUnder50ms
+2026/11/12 07:12:15 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 plan:
+Nested Loop  (cost=479.79..2266.07 rows=7 width=15)
+  ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32)
+        Index Cond: (tenant_id = 'default'::text)
+  ->  Bitmap Heap Scan on memories m  (cost=479.64..2248.07 rows=983 width=41)
+        Recheck Cond: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (session_id = sess.id))
+        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-91bed5c64c159632'::text) AND (tenant_id = 'default'::text))
+        ->  BitmapAnd  (cost=479.64..479.64 rows=983 width=0)
+              ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
+                    Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+              ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..271.79 rows=25000 width=0)
+                    Index Cond: (session_id = sess.id)
+
+SPEC154 plan_budget shape=selective path=bitmap-and rows=0 blocks=140 indexes=[idx_memories_body_tsv idx_memories_session idx_sessions_tenant]
+    postgres_tsvector_test.go:385: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kUnder50ms (1.50s)
+=== RUN   TestPostgresRecall50kAllMatchWithinCap
+2026/11/12 07:12:16 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 explain_and:
+Limit  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.829..8.830 rows=1 loops=1)
+  Buffers: shared hit=488
+  ->  Sort  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.828..8.829 rows=1 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=488
+        ->  Nested Loop  (cost=2058.60..2070.66 rows=1 width=119) (actual time=8.823..8.824 rows=1 loops=1)
+              Join Filter: (m.session_id = sess.id)
+              Buffers: shared hit=488
+              ->  Bitmap Heap Scan on memories m  (cost=2058.46..2062.48 rows=1 width=119) (actual time=8.816..8.816 rows=1 loops=1)
+                    Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-e088e37f80d06b16'::text) AND (tenant_id = 'default'::text))
+                    Heap Blocks: exact=1
+                    Buffers: shared hit=486
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..2058.46 rows=1 width=0) (actual time=8.809..8.810 rows=1 loops=1)
+                          Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                          Buffers: shared hit=485
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+                    Index Cond: (tenant_id = 'default'::text)
+                    Filter: (agent_id = '20261112-f348aeadb460d512'::text)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.145 ms
+Execution Time: 8.847 ms
+
+SPEC154 plan_budget shape=all-match path=tenant-window rows=3998 blocks=132 indexes=[idx_memories_tenant_created idx_sessions_tenant sessions_pkey]
+    postgres_tsvector_test.go:481: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kAllMatchWithinCap (1.25s)
+=== RUN   TestPostgresRecall50kFivePercentWithinCap
+2026/11/12 07:12:17 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 explain_and:
+Limit  (cost=1968.67..1968.67 rows=1 width=137) (actual time=5.396..5.398 rows=1 loops=1)
+  Buffers: shared hit=456
+  ->  Sort  (cost=1968.67..1968.67 rows=1 width=137) (actual time=5.395..5.396 rows=1 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=456
+        ->  Nested Loop  (cost=1956.60..1968.66 rows=1 width=137) (actual time=5.391..5.392 rows=1 loops=1)
+              Join Filter: (m.session_id = sess.id)
+              Buffers: shared hit=456
+              ->  Bitmap Heap Scan on memories m  (cost=1956.46..1960.48 rows=1 width=137) (actual time=5.383..5.384 rows=1 loops=1)
+                    Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-8597317a38012bfc'::text) AND (tenant_id = 'default'::text))
+                    Heap Blocks: exact=1
+                    Buffers: shared hit=454
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1956.45 rows=1 width=0) (actual time=5.377..5.378 rows=1 loops=1)
+                          Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                          Buffers: shared hit=453
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+                    Index Cond: (tenant_id = 'default'::text)
+                    Filter: (agent_id = '20261112-cdf2291f1db25c20'::text)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.140 ms
+Execution Time: 5.414 ms
+
+SPEC154 five_percent rows=50000 or_hits=2501 fetched=2000 cap=2000
+SPEC154 plan_budget shape=five-percent path=bitmap-and rows=2501 blocks=2457 indexes=[idx_memories_body_tsv idx_sessions_tenant]
+    postgres_tsvector_test.go:570: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kFivePercentWithinCap (1.35s)
+=== RUN   TestPostgresRecall50kOtherTenantsSelective
+2026/11/12 07:12:19 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_tenants rows=250000 global_or=200001 fetched=1
+SPEC154 plan_budget shape=other-tenants path=bitmap-and rows=50000 blocks=2159 indexes=[idx_memories_customer idx_memories_session idx_sessions_tenant]
+    postgres_tsvector_test.go:621: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kOtherTenantsSelective (5.57s)
+=== RUN   TestPostgresRecall50kCustomerScopeFew
+2026/11/12 07:12:24 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 customer_few fetched=5
+SPEC154 plan_budget shape=customer-index path=customer-index rows=5 blocks=5 indexes=[idx_memories_customer_created idx_sessions_tenant]
+    postgres_tsvector_test.go:660: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kCustomerScopeFew (1.95s)
+=== RUN   TestPostgresRecall50kOtherAgentFew
+2026/11/12 07:12:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_agent fetched=16
+SPEC154 plan_budget shape=agent-nested-loop path=agent-nested-loop rows=16 blocks=7 indexes=[idx_memories_session idx_sessions_tenant]
+    postgres_tsvector_test.go:701: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kOtherAgentFew (1.21s)
+=== RUN   TestPostgresRecallORScopeIsolation
+2026/11/12 07:12:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestPostgresRecallORScopeIsolation/tenant-window
+=== RUN   TestPostgresRecallORScopeIsolation/customer-index
+=== RUN   TestPostgresRecallORScopeIsolation/customer-window
+=== RUN   TestPostgresRecallORScopeIsolation/agent-nested-loop
+=== RUN   TestPostgresRecallORScopeIsolation/bitmap-and
+=== RUN   TestPostgresRecallORScopeIsolation/bitmap-and-customer
+--- PASS: TestPostgresRecallORScopeIsolation (0.13s)
+    --- PASS: TestPostgresRecallORScopeIsolation/tenant-window (0.00s)
+    --- PASS: TestPostgresRecallORScopeIsolation/customer-index (0.00s)
+    --- PASS: TestPostgresRecallORScopeIsolation/customer-window (0.00s)
+    --- PASS: TestPostgresRecallORScopeIsolation/agent-nested-loop (0.00s)
+    --- PASS: TestPostgresRecallORScopeIsolation/bitmap-and (0.01s)
+    --- PASS: TestPostgresRecallORScopeIsolation/bitmap-and-customer (0.00s)
+=== RUN   TestPostgresRecallBitmapAndCustomerPlan
+2026/11/12 07:12:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 plan_budget shape=bitmap-and-customer path=bitmap-and-customer rows=14 blocks=18 indexes=[idx_memories_session idx_sessions_tenant]
+--- PASS: TestPostgresRecallBitmapAndCustomerPlan (0.12s)
+=== RUN   TestPostgresRecall50kAgentBitmapSwamp
+2026/11/12 07:12:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 agent_swamp fetched=2000
+SPEC154 plan_budget shape=agent-window path=agent-window rows=5000 blocks=167 indexes=[idx_memories_session idx_sessions_tenant]
+    postgres_tsvector_test.go:1017: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kAgentBitmapSwamp (1.30s)
+=== RUN   TestPostgresRecall50kCustomerBitmapSwamp
+2026/11/12 07:12:29 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 customer_swamp fetched=2000
+SPEC154 plan_budget shape=customer-window path=customer-window rows=2000 blocks=76 indexes=[idx_memories_customer_created idx_sessions_tenant]
+    postgres_tsvector_test.go:1056: wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43
+--- SKIP: TestPostgresRecall50kCustomerBitmapSwamp (2.00s)
+=== RUN   TestPostgresRecallOldestFullMatch
+2026/11/12 07:12:31 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPostgresRecallOldestFullMatch (1.31s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	18.227s

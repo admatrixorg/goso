@@ -484,6 +484,15 @@ type StoreIface interface {
 	PutIngestJob(IngestJob) (*IngestJob, error)
 	GetIngestJob(id string) (*IngestJob, error)
 	FindUploadedIngestJob(tenant, sha256 string) (*IngestJob, error)
+	// FindIngestOriginal is the earliest job for this tenant and original
+	// SHA-256 that is not a duplicate record and not a failed conversion.
+	// SaveUpload uses it so a converted file is still a duplicate, while a
+	// failed conversion can be retried without writing raw/ a second time.
+	FindIngestOriginal(tenant, sha256 string) (*IngestJob, error)
+	ListIngestJobsByStatus(status string) ([]*IngestJob, error)
+	// ClaimIngestJob moves uploaded to converting. A job that is no longer
+	// uploaded returns ErrConflict and is left unchanged.
+	ClaimIngestJob(id string) (*IngestJob, error)
 	UpdateAgent(Agent) (*Agent, error)
 	CreateTeam(Team) (*Team, error)
 	ListTeams() []*Team

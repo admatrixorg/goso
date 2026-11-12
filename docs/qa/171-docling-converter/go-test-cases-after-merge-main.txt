@@ -1,0 +1,15 @@
+# TestIngestJob after merging origin/main a04b531. Postgres accepts body_tsv the same way SPEC 154 does.
+=== RUN   TestIngestJobTableAdditive
+=== RUN   TestIngestJobTableAdditive/memory
+=== RUN   TestIngestJobTableAdditive/sqlite
+=== RUN   TestIngestJobTableAdditive/postgres
+2026/11/12 03:27:14 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 03:27:14 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestIngestJobTableAdditive (0.16s)
+    --- PASS: TestIngestJobTableAdditive/memory (0.00s)
+    --- PASS: TestIngestJobTableAdditive/sqlite (0.03s)
+    --- PASS: TestIngestJobTableAdditive/postgres (0.14s)
+=== RUN   TestIngestJobConvertColumnsAddedToOldTable
+--- PASS: TestIngestJobConvertColumnsAddedToOldTable (0.03s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	0.193s
