@@ -73,6 +73,50 @@ func (s *SQLiteStore) PutImportSource(tenant, kind, sourceID, gosoID string) err
 	return tx.Commit()
 }
 
+func (s *SQLiteStore) ListImportSources(tenant string) ([]ImportSource, error) {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		return nil, ErrNotFound
+	}
+	rows, err := s.db.Query(
+		`SELECT kind, source_id, goso_id FROM import_source_ids WHERE tenant_id=? ORDER BY kind, source_id`,
+		tenant,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ImportSource
+	for rows.Next() {
+		var row ImportSource
+		row.TenantID = tenant
+		if err := rows.Scan(&row.Kind, &row.SourceID, &row.GosoID); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []ImportSource{}
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) DeleteImportSources(tenant string) (int, error) {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		return 0, ErrNotFound
+	}
+	res, err := s.db.Exec(`DELETE FROM import_source_ids WHERE tenant_id=?`, tenant)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 func (s *SQLiteStore) DeleteChannelConfig(name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

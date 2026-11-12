@@ -1,20 +1,17 @@
 // Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
 
-// Package scheduleimport loads cron_jobs and channel_instances from an offline
-// GoClaw JSON or JSONL export into goso's existing cron jobs and channel
-// config. It does not open a live database by itself and it does not copy
-// credentials.
+// Package scheduleimport loads channel_instances from an offline GoClaw JSON
+// or JSONL export into goso's existing channel config. It does not open a
+// live database by itself and it does not copy credentials.
 //
-// Every imported cron job is stored with enabled false. Every imported channel
-// is stored with enabled false. channel_instances.credentials is never written
-// and never logged. Each channel is reported as needs credential.
+// Cron rows are counted and not written: goso cron jobs have no tenant column.
+// Every imported channel is stored with enabled false. channel_instances.credentials
+// is never written and never logged. Each kept channel is reported as needs credential.
 //
-// Goso cron_jobs has no tenant column. The job is attached to one session that
-// already exists in the destination tenant. Goso channel_config is one global
-// row per name, and the live adapters look up the seven catalog names
-// (telegram, zalo-personal, …). An imported instance is stored as
-// "<tenant>/<catalog>/<instance>" so it does not overwrite that catalog row
-// and the live manager does not start it.
+// Goso channel_config is one global row per name, and the live adapters look
+// up the seven catalog names (telegram, zalo-personal, …). An imported
+// instance is stored as "<tenant>/<catalog>/<instance>" so it does not
+// overwrite that catalog row and the live manager does not start it.
 //
 // A second run sees import_source_ids and does not insert again. Rows that
 // were already in goso are not updated or deleted.
@@ -40,6 +37,12 @@ const (
 	// ReasonNeedsDecision is the report text for a column or row that has no
 	// home in the existing goso cron or channel models.
 	ReasonNeedsDecision = "not imported, needs decision"
+	// ReasonNativeExists means the target row is already in goso and is not
+	// the same as this export row. The importer does not update it.
+	ReasonNativeExists = "native-exists"
+	// ReasonCronNoTenant means the cron row is not imported. Goso cron jobs
+	// have no tenant column, so this tool does not write them.
+	ReasonCronNoTenant = "cron-no-tenant"
 )
 
 // Unmapped columns have no field on the goso cron job or channel config.
@@ -85,8 +88,11 @@ type Options struct {
 	DestTenant string
 	// DryRun reports per-tenant counts and writes nothing.
 	DryRun bool
-	// Log receives reason codes, tenant ids, and source ids. It must not be
-	// given a credential, payload, or message.
+	// Deny is a set of tenant ids, lowercased. A match on SourceTenant or
+	// DestTenant stops the run before any write. Nil denies nothing.
+	Deny map[string]struct{}
+	// Log receives reason codes and masked ids. It must not be given a
+	// credential, a payload, a message, or a raw customer identifier.
 	Log Logger
 }
 
@@ -105,6 +111,7 @@ func errConfig(msg string) error { return &ConfigError{msg: msg} }
 // Report is the run summary. NeedsCredential never carries secret bytes.
 type Report struct {
 	DryRun          bool                `json:"dry_run"`
+	DeniedTenants   int                 `json:"denied_tenants"`
 	Tenants         []TenantCount       `json:"tenants"`
 	NeedsCredential []CredentialNote    `json:"needs_credential"`
 	NotImported     []Dropped           `json:"not_imported"`
@@ -119,15 +126,16 @@ type TenantCount struct {
 	ChannelInstances RowCounts `json:"channel_instances"`
 }
 
-// RowCounts balances as input = new + skipped + not_imported + held.
+// RowCounts balances as input = new + skipped + not_imported + held + native_exists.
 // Written is 0 on a dry-run and for a tenant that was not selected.
 type RowCounts struct {
-	Input       int `json:"input"`
-	New         int `json:"new"`
-	Skipped     int `json:"skipped"`
-	NotImported int `json:"not_imported"`
-	Held        int `json:"held"`
-	Written     int `json:"written"`
+	Input        int `json:"input"`
+	New          int `json:"new"`
+	Skipped      int `json:"skipped"`
+	NotImported  int `json:"not_imported"`
+	Held         int `json:"held"`
+	NativeExists int `json:"native_exists"`
+	Written      int `json:"written"`
 }
 
 // CredentialNote lists one channel instance whose credentials were not copied.
@@ -159,16 +167,20 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	}
 	dest := strings.TrimSpace(opt.DestTenant)
 	source := strings.TrimSpace(opt.SourceTenant)
-	if !store.TenantOK(dest) || !store.TenantOK(source) {
+	if source == "" || dest == "" || !store.TenantOK(dest) || !store.TenantOK(source) {
 		return nil, errConfig("tenant id is required")
+	}
+	if len(opt.Deny) == 0 {
+		return nil, errConfig("deny file is empty")
+	}
+	if n := DenialCount(opt.Deny, source, dest); n > 0 {
+		return nil, &DenyError{Count: n}
 	}
 	opt.DestTenant = dest
 	opt.SourceTenant = source
-	a := &acc{opt: opt, st: st, buckets: map[string]*bucket{}}
-	a.existingCron = len(st.ListCronJobs())
-	sessions := sessionsIn(st, dest)
+	a := &acc{opt: opt, st: st, buckets: map[string]*bucket{}, denied: map[string]struct{}{}}
 	for _, row := range ex.CronJobs {
-		if err := a.cron(row, sessions); err != nil {
+		if err := a.cron(row); err != nil {
 			return nil, err
 		}
 	}
@@ -189,14 +201,13 @@ type bucket struct {
 }
 
 type acc struct {
-	opt          Options
-	st           store.StoreIface
-	buckets      map[string]*bucket
-	drops        []Dropped
-	creds        []CredentialNote
-	seen         map[string]struct{}
-	existingCron int
-	plannedCron  int
+	opt     Options
+	st      store.StoreIface
+	buckets map[string]*bucket
+	drops   []Dropped
+	creds   []CredentialNote
+	seen    map[string]struct{}
+	denied  map[string]struct{}
 }
 
 func (a *acc) bucket(tenant string) *bucket {
@@ -217,9 +228,40 @@ func (a *acc) selected(tenant string) bool {
 }
 
 func (a *acc) logf(format string, args ...any) {
-	if a.opt.Log != nil {
-		a.opt.Log.Printf(format, args...)
+	if a.opt.Log == nil {
+		return
 	}
+	for i, arg := range args {
+		if s, ok := arg.(string); ok {
+			args[i] = maskIdent(s)
+		}
+	}
+	a.opt.Log.Printf(format, args...)
+}
+
+func (a *acc) noteDenied(tenant string) bool {
+	if !tenantDenied(a.opt.Deny, tenant) {
+		return false
+	}
+	if a.denied == nil {
+		a.denied = map[string]struct{}{}
+	}
+	a.denied[strings.ToLower(strings.TrimSpace(tenant))] = struct{}{}
+	return true
+}
+
+func (a *acc) native(c *RowCounts, kind, tenant, source string) {
+	c.NativeExists++
+	if len(a.drops) < 500 {
+		a.drops = append(a.drops, Dropped{
+			Kind:     kind,
+			TenantID: maskIdent(strings.TrimSpace(tenant)),
+			SourceID: maskIdent(strings.TrimSpace(source)),
+			Reason:   ReasonNativeExists,
+			Detail:   ReasonNativeExists,
+		})
+	}
+	a.logf("scheduleimport: %s tenant=%s source=%s detail=%s", kind, strings.TrimSpace(tenant), strings.TrimSpace(source), ReasonNativeExists)
 }
 
 func (a *acc) drop(kind, tenant, source, column, detail string) {
@@ -227,121 +269,41 @@ func (a *acc) drop(kind, tenant, source, column, detail string) {
 		return
 	}
 	a.drops = append(a.drops, Dropped{
-		Kind: kind, TenantID: strings.TrimSpace(tenant), SourceID: strings.TrimSpace(source),
-		Column: column, Reason: ReasonNeedsDecision, Detail: detail,
+		Kind: kind, TenantID: maskIdent(strings.TrimSpace(tenant)), SourceID: maskIdent(strings.TrimSpace(source)),
+		Column: maskIdent(column), Reason: ReasonNeedsDecision, Detail: maskIdent(detail),
 	})
 	a.logf("scheduleimport: %s tenant=%s source=%s column=%s detail=%s", kind, strings.TrimSpace(tenant), strings.TrimSpace(source), column, detail)
 }
 
-func (a *acc) cron(row CronRow, sessions []*store.Session) error {
+// cron reports every job as not imported. Goso cron_jobs has no tenant
+// column, so this tool does not write a job and does not attach one to a session.
+func (a *acc) cron(row CronRow) error {
 	tenant := strings.TrimSpace(row.TenantID)
+	if a.noteDenied(tenant) {
+		return nil
+	}
 	b := a.bucket(tenant)
 	b.cron.Input++
-	if !a.selected(tenant) {
-		b.cron.Held++
-		return nil
+	b.cron.NotImported++
+	if len(a.drops) < 500 {
+		a.drops = append(a.drops, Dropped{
+			Kind:     kindCron,
+			TenantID: maskIdent(tenant),
+			SourceID: maskIdent(strings.TrimSpace(row.ID)),
+			Column:   "cron_jobs",
+			Reason:   ReasonCronNoTenant,
+			Detail:   ReasonCronNoTenant,
+		})
 	}
-	sourceID := strings.TrimSpace(row.ID)
-	if !idOK(sourceID) {
-		b.cron.NotImported++
-		a.drop(kindCron, tenant, sourceID, "id", "bad-id")
-		return nil
-	}
-	key := tenant + "\x00" + kindCron + "\x00" + sourceID
-	if a.seen == nil {
-		a.seen = map[string]struct{}{}
-	}
-	if _, ok := a.seen[key]; ok {
-		b.cron.Skipped++
-		return nil
-	}
-	if gosoID, ok, err := a.st.GetImportSource(a.opt.DestTenant, kindCron, sourceID); err != nil {
-		return err
-	} else if ok && gosoID != "" {
-		a.seen[key] = struct{}{}
-		b.cron.Skipped++
-		return nil
-	}
-	blobs := secretBlobs(nil, row.Payload)
-	spec, specDetail := cronSpec(row)
-	message, extra := messageFrom(row.Payload)
-	if spec == "" {
-		b.cron.NotImported++
-		a.seen[key] = struct{}{}
-		a.drop(kindCron, tenant, sourceID, "schedule_kind", specDetail)
-		return nil
-	}
-	if message == "" || containsSecret(message, blobs) || containsSecret(spec, blobs) {
-		b.cron.NotImported++
-		a.seen[key] = struct{}{}
-		detail := "no-message"
-		if message != "" {
-			detail = "secret-in-message"
-		}
-		a.drop(kindCron, tenant, sourceID, "payload", detail)
-		return nil
-	}
-	agentID, where := resolveAgent(a.st, a.opt.DestTenant, row.AgentID)
-	sessionID, sessDetail := pickSession(sessions, agentID, where)
-	if sessionID == "" {
-		b.cron.NotImported++
-		a.seen[key] = struct{}{}
-		a.drop(kindCron, tenant, sourceID, "session_id", sessDetail)
-		return nil
-	}
-	for _, k := range extra {
-		if containsSecret(k, blobs) {
-			continue
-		}
-		a.drop(kindCron, tenant, sourceID, "payload."+k, "no-column")
-	}
-	if a.opt.DryRun {
-		if a.existingCron+a.plannedCron >= store.CronJobCap {
-			b.cron.NotImported++
-			a.seen[key] = struct{}{}
-			a.drop(kindCron, tenant, sourceID, "cron_jobs", "cron-cap")
-			return nil
-		}
-		a.plannedCron++
-		a.seen[key] = struct{}{}
-		b.cron.New++
-		return nil
-	}
-	job, err := a.st.CreateCronJob(store.CronJob{
-		Spec: spec, SessionID: sessionID, Message: message, Enabled: false,
-	})
-	if errors.Is(err, store.ErrCronCap) {
-		b.cron.NotImported++
-		a.seen[key] = struct{}{}
-		a.drop(kindCron, tenant, sourceID, "cron_jobs", "cron-cap")
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if job == nil || job.Enabled {
-		if job != nil {
-			_ = a.st.DeleteCronJob(job.ID)
-		}
-		return errConfig("refusing to leave an enabled cron job")
-	}
-	if err := a.st.PutImportSource(a.opt.DestTenant, kindCron, sourceID, job.ID); err != nil {
-		_ = a.st.DeleteCronJob(job.ID)
-		if errors.Is(err, store.ErrExists) {
-			a.seen[key] = struct{}{}
-			b.cron.Skipped++
-			return nil
-		}
-		return err
-	}
-	a.seen[key] = struct{}{}
-	b.cron.New++
-	b.cron.Written++
+	a.logf("scheduleimport: %s tenant=%s source=%s detail=%s", kindCron, tenant, strings.TrimSpace(row.ID), ReasonCronNoTenant)
 	return nil
 }
 
 func (a *acc) channel(row ChannelRow) error {
 	tenant := strings.TrimSpace(row.TenantID)
+	if a.noteDenied(tenant) {
+		return nil
+	}
 	b := a.bucket(tenant)
 	b.ch.Input++
 	blobs := secretBlobs(row.Credentials, row.Config)
@@ -361,13 +323,6 @@ func (a *acc) channel(row ChannelRow) error {
 		a.seen = map[string]struct{}{}
 	}
 	if _, ok := a.seen[key]; ok {
-		b.ch.Skipped++
-		return nil
-	}
-	if gosoID, ok, err := a.st.GetImportSource(a.opt.DestTenant, kindChannel, sourceID); err != nil {
-		return err
-	} else if ok && gosoID != "" {
-		a.seen[key] = struct{}{}
 		b.ch.Skipped++
 		return nil
 	}
@@ -410,10 +365,27 @@ func (a *acc) channel(row ChannelRow) error {
 		a.drop(kindChannel, tenant, sourceID, "config."+k, "no-column")
 	}
 	name := a.opt.DestTenant + "/" + catalog + "/" + instance
-	if _, err := a.st.GetChannelConfig(name); err == nil {
-		b.ch.NotImported++
+	cfg.Name = name
+	cfg.Enabled = false
+	if gosoID, ok, err := a.st.GetImportSource(a.opt.DestTenant, kindChannel, sourceID); err != nil {
+		return err
+	} else if ok && gosoID != "" {
 		a.seen[key] = struct{}{}
-		a.drop(kindChannel, tenant, sourceID, "name", "name-taken")
+		got, gerr := a.st.GetChannelConfig(gosoID)
+		if gerr == nil && got != nil && !channelSame(got, cfg) {
+			a.native(&b.ch, kindChannel, tenant, sourceID)
+			return nil
+		}
+		b.ch.Skipped++
+		return nil
+	}
+	if got, err := a.st.GetChannelConfig(name); err == nil {
+		a.seen[key] = struct{}{}
+		if !channelSame(got, cfg) {
+			a.native(&b.ch, kindChannel, tenant, sourceID)
+			return nil
+		}
+		b.ch.Skipped++
 		return nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
@@ -423,8 +395,6 @@ func (a *acc) channel(row ChannelRow) error {
 		b.ch.New++
 		return nil
 	}
-	cfg.Name = name
-	cfg.Enabled = false
 	if err := a.st.PutChannelConfig(cfg); err != nil {
 		return err
 	}
@@ -463,6 +433,7 @@ func (a *acc) noteOther(o otherTable) {
 func (a *acc) finish() *Report {
 	rep := &Report{
 		DryRun:          a.opt.DryRun,
+		DeniedTenants:   len(a.denied),
 		Tenants:         []TenantCount{},
 		NeedsCredential: append([]CredentialNote(nil), a.creds...),
 		NotImported:     append([]Dropped(nil), a.drops...),
@@ -483,6 +454,7 @@ func (a *acc) finish() *Report {
 			CronJobs: b.cron, ChannelInstances: b.ch,
 		})
 	}
+	maskReport(rep)
 	sort.Slice(rep.NeedsCredential, func(i, j int) bool {
 		if rep.NeedsCredential[i].TenantID != rep.NeedsCredential[j].TenantID {
 			return rep.NeedsCredential[i].TenantID < rep.NeedsCredential[j].TenantID
@@ -518,16 +490,6 @@ func credentialNote(tenant string, row ChannelRow, blobs []string) CredentialNot
 	return note
 }
 
-func sessionsIn(st store.StoreIface, dest string) []*store.Session {
-	var out []*store.Session
-	for _, s := range st.ListSessions() {
-		if s != nil && store.SameTenant(s.TenantID, dest) {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 func resolveAgent(st store.StoreIface, dest, ref string) (string, string) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -547,35 +509,6 @@ func resolveAgent(st store.StoreIface, dest, ref string) (string, string) {
 		return "", "other"
 	}
 	return "", "missing"
-}
-
-func pickSession(sessions []*store.Session, agentID, where string) (string, string) {
-	if where == "other" {
-		return "", "agent-other-tenant"
-	}
-	if where == "dest" {
-		var ids []string
-		for _, s := range sessions {
-			if s != nil && s.AgentID == agentID {
-				ids = append(ids, s.ID)
-			}
-		}
-		switch len(ids) {
-		case 1:
-			return ids[0], ""
-		case 0:
-			return "", "no-session"
-		default:
-			return "", "ambiguous-session"
-		}
-	}
-	if len(sessions) == 1 && sessions[0] != nil {
-		return sessions[0].ID, ""
-	}
-	if len(sessions) == 0 {
-		return "", "no-session"
-	}
-	return "", "ambiguous-session"
 }
 
 func catalogOf(channelType string) (string, bool) {

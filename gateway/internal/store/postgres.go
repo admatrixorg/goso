@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -53,6 +54,51 @@ func OpenPostgres(dsn string) (*PostgresStore, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// OpenPostgresReadOnly connects without running migrations. The session is
+// read only, so a dry-run cannot create tables.
+func OpenPostgresReadOnly(dsn string) (*PostgresStore, error) {
+	dsn = strings.TrimSpace(dsn)
+	if !IsPostgresDSN(dsn) {
+		return nil, fmt.Errorf("not a postgres DSN")
+	}
+	ro, err := postgresReadOnlyDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("pgx", ro)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(4)
+	db.SetConnMaxLifetime(time.Hour)
+	ctx, cancel := context.WithTimeout(context.Background(), postgresPingTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	inner := &SQLiteStore{db: &sqlHandle{db: db, pg: true}, pg: true}
+	return &PostgresStore{SQLiteStore: inner}, nil
+}
+
+func postgresReadOnlyDSN(dsn string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	opt := q.Get("options")
+	if !strings.Contains(opt, "default_transaction_read_only") {
+		if strings.TrimSpace(opt) != "" {
+			opt += " "
+		}
+		opt += "-c default_transaction_read_only=on"
+	}
+	q.Set("options", opt)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func (s *PostgresStore) migratePostgres() error {

@@ -1,6 +1,6 @@
 # SPEC 177 — cron and channel import
 
-Offline import of GoClaw `cron_jobs` and `channel_instances` into the existing goso cron jobs and `channel_config`. Sample data is the Minh An fixture only. No live GoClaw database, no credentials, no pgvector, no MQ Capital rows.
+Offline import of channel instances into the existing `channel_config` table. Cron rows are reported `cron-no-tenant` and are not written. Sample data is the Minh An fixture only. No live source database and no credentials.
 
 ## Command
 
@@ -9,12 +9,11 @@ go run ./gateway/cmd/goso-cron-channel-import \
   --export gateway/internal/scheduleimport/testdata/minh-an.json \
   --source-tenant minh-an \
   --tenant minh-an \
+  --deny-file /tmp/deny.txt \
   --db /tmp/minh-an-schedule.db
 ```
 
-That prints per-tenant counts and writes nothing. Add `--apply` to insert. `--apply` with `--dry-run` exits 2. A non-local Postgres host is refused. `GOSO_DATABASE_URL` is not opened.
-
-The destination tenant needs a session before cron rows can be stored. This command does not create sessions or agents.
+`--deny-file` is required (or `GOSO_IMPORT_DENY_FILE`). A missing, empty, or malformed file exits non-zero before the database is opened. The dry-run opens the database read-only and does not migrate. Add `--apply` to insert channel rows. `--rollback` without `--apply` only counts `import_source_ids` for `--tenant`. `--rollback --apply` deletes those mapping rows and leaves channel rows and other tenants in place.
 
 ## Checks
 

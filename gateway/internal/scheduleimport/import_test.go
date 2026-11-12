@@ -4,17 +4,18 @@ package scheduleimport
 
 import (
 	"bytes"
-	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/mqglobal/goso/gateway/internal/cron"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -41,7 +42,7 @@ func TestMinhAnImportDisabledIsolatedAndIdempotent(t *testing.T) {
 			st := open(t)
 			w := seed(t, st)
 			logBuf := &bytes.Buffer{}
-			opt := Options{SourceTenant: "minh-an", DestTenant: "minh-an", DryRun: true, Log: bufLog{logBuf}}
+			opt := Options{SourceTenant: "minh-an", DestTenant: "minh-an", DryRun: true, Deny: testDeny(), Log: bufLog{logBuf}}
 			before := snapshot(t, st)
 			rep, err := Import(st, ex, opt)
 			if err != nil {
@@ -54,22 +55,24 @@ func TestMinhAnImportDisabledIsolatedAndIdempotent(t *testing.T) {
 				t.Fatal("dry-run wrote")
 			}
 			minh, other := tenantCounts(t, rep)
-			if minh.CronJobs.Input != 4 || minh.CronJobs.New != 2 || minh.CronJobs.NotImported != 2 || minh.CronJobs.Written != 0 {
+			if minh.CronJobs.Input != 4 || minh.CronJobs.New != 0 || minh.CronJobs.NotImported != 4 || minh.CronJobs.Written != 0 {
 				t.Fatalf("dry cron %+v", minh.CronJobs)
 			}
 			if minh.ChannelInstances.Input != 2 || minh.ChannelInstances.New != 1 || minh.ChannelInstances.NotImported != 1 || minh.ChannelInstances.Written != 0 {
 				t.Fatalf("dry channel %+v", minh.ChannelInstances)
 			}
-			if other.CronJobs.Held != 1 || other.CronJobs.Written != 0 || other.ChannelInstances.Held != 1 || other.ChannelInstances.Written != 0 {
+			if other.CronJobs.NotImported != 1 || other.CronJobs.Written != 0 || other.ChannelInstances.Held != 1 || other.ChannelInstances.Written != 0 {
 				t.Fatalf("other cron %+v channel %+v", other.CronJobs, other.ChannelInstances)
 			}
 			assertNeedsCredential(t, rep)
 			assertNoSecret(t, logBuf.String()+mustJSON(t, rep))
-			if !hasDetail(rep, "schedule-unsupported") || !hasDetail(rep, "agent-other-tenant") || !hasDetail(rep, "unknown-channel") {
+			if !hasDetail(rep, ReasonCronNoTenant) || !hasDetail(rep, "unknown-channel") {
 				t.Fatalf("drops %+v", rep.NotImported)
 			}
 			for _, d := range rep.NotImported {
-				if d.Reason != ReasonNeedsDecision {
+				switch d.Reason {
+				case ReasonNeedsDecision, ReasonNativeExists, ReasonCronNoTenant:
+				default:
 					t.Fatalf("reason %q", d.Reason)
 				}
 			}
@@ -81,7 +84,7 @@ func TestMinhAnImportDisabledIsolatedAndIdempotent(t *testing.T) {
 				t.Fatal(err)
 			}
 			minh, other = tenantCounts(t, rep)
-			if minh.CronJobs.New != 2 || minh.CronJobs.Written != 2 || minh.ChannelInstances.New != 1 || minh.ChannelInstances.Written != 1 {
+			if minh.CronJobs.New != 0 || minh.CronJobs.Written != 0 || minh.CronJobs.NotImported != 4 || minh.ChannelInstances.New != 1 || minh.ChannelInstances.Written != 1 {
 				t.Fatalf("apply cron %+v channel %+v", minh.CronJobs, minh.ChannelInstances)
 			}
 			if other.CronJobs.Written != 0 || other.ChannelInstances.Written != 0 {
@@ -96,14 +99,14 @@ func TestMinhAnImportDisabledIsolatedAndIdempotent(t *testing.T) {
 				t.Fatal(err)
 			}
 			minh, _ = tenantCounts(t, rep)
-			if minh.CronJobs.New != 0 || minh.CronJobs.Skipped != 2 || minh.CronJobs.Written != 0 {
+			if minh.CronJobs.New != 0 || minh.CronJobs.NotImported != 4 || minh.CronJobs.Written != 0 {
 				t.Fatalf("rerun cron %+v", minh.CronJobs)
 			}
 			if minh.ChannelInstances.New != 0 || minh.ChannelInstances.Skipped != 1 || minh.ChannelInstances.Written != 0 {
 				t.Fatalf("rerun channel %+v", minh.ChannelInstances)
 			}
 			assertImportedDisabled(t, st, w)
-			if len(st.ListCronJobs()) != 3 {
+			if len(st.ListCronJobs()) != 1 {
 				t.Fatalf("cron count %d", len(st.ListCronJobs()))
 			}
 		})
@@ -114,23 +117,11 @@ func TestImportedChannelsAndCronsStayDisabled(t *testing.T) {
 	st := store.New()
 	_ = seed(t, st)
 	ex := readFixture(t, "testdata/minh-an.json")
-	if _, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an"}); err != nil {
+	if _, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()}); err != nil {
 		t.Fatal(err)
 	}
-	fired := 0
-	cron.Tick(context.Background(), st, time.Now().UTC().Add(48*time.Hour), func(_ context.Context, sessionID, message string) error {
-		fired++
-		for _, j := range st.ListCronJobs() {
-			if j.SessionID == sessionID && strings.Contains(message, "Minh An") {
-				t.Errorf("imported job fired: %s", j.ID)
-			}
-		}
-		return nil
-	})
-	for _, j := range st.ListCronJobs() {
-		if strings.Contains(j.Message, "Minh An") && j.Enabled {
-			t.Fatalf("imported cron enabled: %+v", j)
-		}
+	if len(st.ListCronJobs()) != 1 {
+		t.Fatalf("cron was imported: %d", len(st.ListCronJobs()))
 	}
 	cfg, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram")
 	if err != nil {
@@ -142,7 +133,6 @@ func TestImportedChannelsAndCronsStayDisabled(t *testing.T) {
 	if _, err := st.GetChannelConfig("other-co/zalo-personal/other-telegram"); err == nil {
 		t.Fatal("other tenant channel was created")
 	}
-	_ = fired
 }
 
 func TestAddOnlyDoesNotOverwrite(t *testing.T) {
@@ -154,7 +144,7 @@ func TestAddOnlyDoesNotOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	ex := readFixture(t, "testdata/minh-an.json")
-	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an"})
+	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +155,7 @@ func TestAddOnlyDoesNotOverwrite(t *testing.T) {
 	if !cfg.Enabled || cfg.DMPolicy != "open" || cfg.AgentID != w.other.ID {
 		t.Fatalf("existing channel changed: %+v", cfg)
 	}
-	if !hasDetail(rep, "name-taken") {
+	if !hasDetail(rep, ReasonNativeExists) {
 		t.Fatalf("drops %+v", rep.NotImported)
 	}
 	kept, err := st.GetCronJob(w.kept.ID)
@@ -180,36 +170,19 @@ func TestAddOnlyDoesNotOverwrite(t *testing.T) {
 func TestDuplicateSourceIDSkips(t *testing.T) {
 	st := store.New()
 	_ = seed(t, st)
-	ex := &Export{CronJobs: []CronRow{
-		{ID: "cron-hour", TenantID: "minh-an", Enabled: boolPtr(true), ScheduleKind: "interval", IntervalMS: int64Ptr(3600000), Payload: json.RawMessage(`{"text":"Nhắc Minh An uống nước."}`)},
-		{ID: "cron-hour", TenantID: "minh-an", Enabled: boolPtr(true), ScheduleKind: "every", IntervalMS: int64Ptr(7200000), Payload: json.RawMessage(`{"text":"Nhắc Minh An lần hai."}`)},
-	}}
-	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an"})
+	row := ChannelRow{ID: "ch-tg", TenantID: "minh-an", Name: "minh-an-telegram", ChannelType: "telegram", Enabled: boolPtr(true)}
+	ex := &Export{ChannelInstances: []ChannelRow{row, row}}
+	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rep.Tenants) != 1 {
-		t.Fatalf("tenants %+v", rep.Tenants)
-	}
 	minh := rep.Tenants[0]
-	balance(t, minh.CronJobs)
-	if minh.CronJobs.New != 1 || minh.CronJobs.Skipped != 1 || minh.CronJobs.Written != 1 {
-		t.Fatalf("%+v", minh.CronJobs)
+	balance(t, minh.ChannelInstances)
+	if minh.ChannelInstances.New != 1 || minh.ChannelInstances.Skipped != 1 || minh.ChannelInstances.Written != 1 {
+		t.Fatalf("%+v", minh.ChannelInstances)
 	}
-	n := 0
-	for _, j := range st.ListCronJobs() {
-		if strings.Contains(j.Message, "uống nước") {
-			n++
-			if j.Spec != "every:1h" || j.Enabled {
-				t.Fatalf("%+v", j)
-			}
-		}
-		if strings.Contains(j.Message, "lần hai") {
-			t.Fatal("duplicate inserted")
-		}
-	}
-	if n != 1 {
-		t.Fatalf("jobs %d", n)
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -217,11 +190,11 @@ func TestOtherTenantImportDoesNotTouchMinhAn(t *testing.T) {
 	st := store.New()
 	w := seed(t, st)
 	ex := readFixture(t, "testdata/minh-an.json")
-	if _, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an"}); err != nil {
+	if _, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()}); err != nil {
 		t.Fatal(err)
 	}
 	minhJobs := len(st.ListCronJobs())
-	if _, err := Import(st, ex, Options{SourceTenant: "other-co", DestTenant: "other-co"}); err != nil {
+	if _, err := Import(st, ex, Options{SourceTenant: "other-co", DestTenant: "other-co", Deny: testDeny()}); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := st.GetChannelConfig("other-co/zalo-personal/other-telegram")
@@ -231,22 +204,6 @@ func TestOtherTenantImportDoesNotTouchMinhAn(t *testing.T) {
 	if cfg.Enabled || cfg.DMPolicy != "allowlist" {
 		t.Fatalf("%+v", cfg)
 	}
-	found := false
-	for _, j := range st.ListCronJobs() {
-		if j.Message == "Việc của tenant khác." {
-			found = true
-			if j.Enabled {
-				t.Fatal("other cron enabled")
-			}
-			sess, err := st.GetSession(j.SessionID)
-			if err != nil || sess.TenantID != "other-co" {
-				t.Fatalf("session %+v %v", sess, err)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("other cron missing")
-	}
 	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
 		t.Fatal(err)
 	}
@@ -254,8 +211,8 @@ func TestOtherTenantImportDoesNotTouchMinhAn(t *testing.T) {
 	if kept.Message != "giữ nguyên" || !kept.Enabled {
 		t.Fatalf("kept changed %+v", kept)
 	}
-	if len(st.ListCronJobs()) != minhJobs+1 {
-		t.Fatalf("count %d want %d", len(st.ListCronJobs()), minhJobs+1)
+	if len(st.ListCronJobs()) != minhJobs {
+		t.Fatalf("cron count %d want %d", len(st.ListCronJobs()), minhJobs)
 	}
 }
 
@@ -268,7 +225,7 @@ func TestSQLiteFileOmitsSecret(t *testing.T) {
 	}
 	_ = seed(t, st)
 	ex := readFixture(t, "testdata/minh-an.jsonl")
-	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an"})
+	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,35 +279,10 @@ func seed(t *testing.T, st store.StoreIface) seeded {
 
 func assertImportedDisabled(t *testing.T, st store.StoreIface, w seeded) {
 	t.Helper()
-	var week, hour bool
 	for _, j := range st.ListCronJobs() {
-		if j.ID == w.kept.ID {
-			continue
+		if j.ID != w.kept.ID {
+			t.Fatalf("imported cron %+v", j)
 		}
-		if j.Enabled {
-			t.Fatalf("enabled job %+v", j)
-		}
-		sess, err := st.GetSession(j.SessionID)
-		if err != nil || sess.TenantID != "minh-an" {
-			t.Fatalf("job tenant %+v %v", sess, err)
-		}
-		switch j.Message {
-		case "Nhắc Minh An xem lịch tuần.":
-			week = true
-			if j.Spec != "0 9 * * 1" || j.SessionID != w.sess.ID {
-				t.Fatalf("%+v", j)
-			}
-		case "Nhắc Minh An uống nước.":
-			hour = true
-			if j.Spec != "every:1h" {
-				t.Fatalf("%+v", j)
-			}
-		default:
-			t.Fatalf("unexpected job %+v", j)
-		}
-	}
-	if !week || !hour {
-		t.Fatal("missing imported cron")
 	}
 	cfg, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram")
 	if err != nil {
@@ -454,7 +386,7 @@ func tenantCounts(t *testing.T, rep *Report) (TenantCount, TenantCount) {
 
 func balance(t *testing.T, c RowCounts) {
 	t.Helper()
-	if c.Input != c.New+c.Skipped+c.NotImported+c.Held {
+	if c.Input != c.New+c.Skipped+c.NotImported+c.Held+c.NativeExists {
 		t.Fatalf("unbalanced %+v", c)
 	}
 }
@@ -522,9 +454,189 @@ func mustJSON(t *testing.T, v any) string {
 	return string(b)
 }
 
+func testDeny() map[string]struct{} {
+	return map[string]struct{}{"blocked-tenant": {}}
+}
+
+func TestDeniedTenantWritesNothing(t *testing.T) {
+	st := store.New()
+	w := seed(t, st)
+	before := snapshot(t, st)
+	ex := readFixture(t, "testdata/minh-an.json")
+	deny := map[string]struct{}{"blocked-tenant": {}}
+	_, err := Import(st, ex, Options{SourceTenant: "blocked-tenant", DestTenant: "minh-an", Deny: deny})
+	var denied *DenyError
+	if !errors.As(err, &denied) || denied.Count != 1 {
+		t.Fatalf("err %v", err)
+	}
+	if strings.Contains(err.Error(), "blocked-tenant") {
+		t.Fatal("error includes the tenant id")
+	}
+	_, err = Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "blocked-tenant", Deny: deny})
+	if !errors.As(err, &denied) {
+		t.Fatalf("dest err %v", err)
+	}
+	if snapshot(t, st) != before {
+		t.Fatal("denied tenant wrote rows")
+	}
+	kept, _ := st.GetCronJob(w.kept.ID)
+	if kept.Message != "giữ nguyên" {
+		t.Fatal("native cron changed")
+	}
+}
+
+func TestDeniedNameStaysOutOfReport(t *testing.T) {
+	st := store.New()
+	_ = seed(t, st)
+	phone := "0901111222"
+	zalo := "998877665544"
+	ex := &Export{
+		CronJobs: []CronRow{{ID: phone, TenantID: "blocked-tenant", UserID: phone}},
+		ChannelInstances: []ChannelRow{{
+			ID: zalo, TenantID: "blocked-tenant", Name: phone, ChannelType: "telegram",
+			Credentials: json.RawMessage(`"` + phone + `"`),
+		}},
+	}
+	logBuf := &bytes.Buffer{}
+	rep, err := Import(st, ex, Options{
+		SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny(), Log: bufLog{logBuf},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
+	}
+	text := mustJSON(t, rep) + logBuf.String()
+	if strings.Contains(text, "blocked-tenant") || strings.Contains(text, phone) || strings.Contains(text, zalo) {
+		t.Fatal("report or log printed a denied name or customer id")
+	}
+	if _, err := st.GetChannelConfig("minh-an/telegram/" + phone); err == nil {
+		t.Fatal("denied channel was written")
+	}
+}
+
+func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
+	st := store.New()
+	w := seed(t, st)
+	ex := readFixture(t, "testdata/minh-an.json")
+	if _, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(st, ex, Options{SourceTenant: "other-co", DestTenant: "other-co", Deny: testDeny()}); err != nil {
+		t.Fatal(err)
+	}
+	native, err := st.GetChannelConfig("telegram")
+	if err != nil || !native.Enabled {
+		t.Fatalf("native %+v %v", native, err)
+	}
+	dry, err := Rollback(st, "minh-an", testDeny(), true)
+	if err != nil || !dry.DryRun || dry.Mappings != 1 {
+		t.Fatalf("dry %+v %v", dry, err)
+	}
+	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 1 {
+		t.Fatalf("dry deleted mappings %v %v", rows, err)
+	}
+	applied, err := Rollback(st, "minh-an", testDeny(), false)
+	if err != nil || applied.DryRun || applied.Mappings != 1 {
+		t.Fatalf("apply %+v %v", applied, err)
+	}
+	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 0 {
+		t.Fatalf("minh-an mappings %v %v", rows, err)
+	}
+	if rows, err := st.ListImportSources("other-co"); err != nil || len(rows) != 1 {
+		t.Fatalf("other mappings %v %v", rows, err)
+	}
+	got, err := st.GetChannelConfig("telegram")
+	if err != nil || !got.Enabled || got.AgentID != w.other.ID || got.DMPolicy != "open" {
+		t.Fatalf("native changed %+v %v", got, err)
+	}
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
+		t.Fatal("rollback deleted a channel row")
+	}
+	if _, err := st.GetChannelConfig("other-co/zalo-personal/other-telegram"); err != nil {
+		t.Fatal("rollback deleted the other tenant channel")
+	}
+	kept, _ := st.GetCronJob(w.kept.ID)
+	if !kept.Enabled || kept.Message != "giữ nguyên" {
+		t.Fatalf("native cron %+v", kept)
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }
 
-func int64Ptr(v int64) *int64 { return &v }
+func TestPostgresChannelImport(t *testing.T) {
+	st := openPostgres(t)
+	if st == nil {
+		return
+	}
+	_ = seed(t, st)
+	ex := readFixture(t, "testdata/minh-an.json")
+	rep, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	minh, _ := tenantCounts(t, rep)
+	if minh.CronJobs.Written != 0 || minh.CronJobs.NotImported != 4 || minh.ChannelInstances.Written != 1 {
+		t.Fatalf("cron %+v channel %+v", minh.CronJobs, minh.ChannelInstances)
+	}
+	cfg, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram")
+	if err != nil || cfg.Enabled {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	again, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	minh, _ = tenantCounts(t, again)
+	if minh.ChannelInstances.Skipped != 1 || minh.ChannelInstances.Written != 0 {
+		t.Fatalf("rerun %+v", minh.ChannelInstances)
+	}
+}
+
+func openPostgres(t *testing.T) store.StoreIface {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("GOSO_TEST_POSTGRES_DSN"))
+	if dsn == "" {
+		dsn = strings.TrimSpace(os.Getenv("GOSO_TEST_DATABASE_URL"))
+	}
+	if dsn == "" {
+		if os.Getenv("CI") == "true" || os.Getenv("CI") == "1" {
+			t.Fatal("GOSO_TEST_POSTGRES_DSN is required in CI")
+		}
+		t.Skip("postgres DSN is not set")
+		return nil
+	}
+	schema := "sched177"
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP SCHEMA IF EXISTS ` + schema + ` CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE SCHEMA ` + schema); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = db.Exec(`DROP SCHEMA IF EXISTS ` + schema + ` CASCADE`) })
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("options", "-csearch_path="+schema)
+	u.RawQuery = q.Encode()
+	pg, err := store.OpenPostgres(u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pg.Close() })
+	return pg
+}
 
 type bufLog struct{ b *bytes.Buffer }
 

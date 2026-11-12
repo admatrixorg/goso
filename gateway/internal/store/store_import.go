@@ -4,6 +4,14 @@ package store
 
 import "strings"
 
+// ImportSource is one source-id mapping. Rollback deletes these rows only.
+type ImportSource struct {
+	TenantID string
+	Kind     string
+	SourceID string
+	GosoID   string
+}
+
 func importSourceKey(tenant, kind, sourceID string) string {
 	return strings.TrimSpace(tenant) + "\x00" + strings.TrimSpace(kind) + "\x00" + strings.TrimSpace(sourceID)
 }
@@ -49,6 +57,49 @@ func (s *Store) PutImportSource(tenant, kind, sourceID, gosoID string) error {
 	}
 	s.importSources[key] = gosoID
 	return nil
+}
+
+// ListImportSources returns mappings for this exact tenant id.
+func (s *Store) ListImportSources(tenant string) ([]ImportSource, error) {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		return nil, ErrNotFound
+	}
+	prefix := tenant + "\x00"
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []ImportSource
+	for key, gosoID := range s.importSources {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(key, prefix)
+		kind, sourceID, ok := strings.Cut(rest, "\x00")
+		if !ok {
+			continue
+		}
+		out = append(out, ImportSource{TenantID: tenant, Kind: kind, SourceID: sourceID, GosoID: gosoID})
+	}
+	return out, nil
+}
+
+// DeleteImportSources removes mappings for this exact tenant id.
+func (s *Store) DeleteImportSources(tenant string) (int, error) {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		return 0, ErrNotFound
+	}
+	prefix := tenant + "\x00"
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for key := range s.importSources {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.importSources, key)
+			n++
+		}
+	}
+	return n, nil
 }
 
 // DeleteChannelConfig removes one channel_config row. Missing name is ErrNotFound.
