@@ -87,7 +87,13 @@ PYTHONPATH=sidecar/docling python3 -m unittest discover -s sidecar/docling/tests
 
 [qa-tabs.log](qa-tabs.log)
 
+`qa:tabs` ran on the tree of `1a47f84538075bcf10075573018c33fd70a5f574` and exited 0. The log records that SHA as `tested-head`. The commit that adds this sentence does not change the gateway. Chrome: the binary at `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set.
+
 No vault tab markup changed, so there are no prototype screenshots.
+
+Gateway was `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080`. Fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_VAULT_UPLOAD`, `GOSO_VAULT_DOCLING`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` `development`.
+
+Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
 
 ## Rollback
 
