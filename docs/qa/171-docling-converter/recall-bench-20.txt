@@ -1,0 +1,143 @@
+=== RUN   TestPostgresRecall50kUnder50ms
+2026/11/12 07:12:44 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 plan:
+Nested Loop  (cost=207.50..2488.97 rows=7 width=15)
+  Join Filter: (m.session_id = sess.id)
+  ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32)
+        Index Cond: (tenant_id = 'default'::text)
+  ->  Bitmap Heap Scan on memories m  (cost=207.35..2456.24 rows=1965 width=41)
+        Recheck Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-221642508df9bd7c'::text) AND (tenant_id = 'default'::text))
+        ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
+              Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+
+SPEC154 plan_budget shape=selective path=bitmap-and rows=1 blocks=35 indexes=[idx_memories_body_tsv idx_sessions_tenant]
+SPEC154 bench shape=selective n=20 median=1.43202ms p95=1.617796ms max=1.73455ms samples=1.59288ms,1.617796ms,1.536506ms,1.73455ms,1.496746ms,1.384732ms,1.345561ms,1.177208ms,1.476223ms,1.434615ms,1.508747ms,1.414686ms,1.341257ms,1.231468ms,1.220931ms,1.284232ms,1.374412ms,1.43202ms,1.503078ms,1.293112ms
+--- PASS: TestPostgresRecall50kUnder50ms (1.70s)
+=== RUN   TestPostgresRecall50kAllMatchWithinCap
+2026/11/12 07:12:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 explain_and:
+Limit  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.792..8.794 rows=1 loops=1)
+  Buffers: shared hit=488
+  ->  Sort  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.792..8.793 rows=1 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=488
+        ->  Nested Loop  (cost=2058.60..2070.66 rows=1 width=119) (actual time=8.788..8.789 rows=1 loops=1)
+              Join Filter: (m.session_id = sess.id)
+              Buffers: shared hit=488
+              ->  Bitmap Heap Scan on memories m  (cost=2058.46..2062.48 rows=1 width=119) (actual time=8.780..8.781 rows=1 loops=1)
+                    Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-ad3992269c70cb46'::text) AND (tenant_id = 'default'::text))
+                    Heap Blocks: exact=1
+                    Buffers: shared hit=486
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..2058.46 rows=1 width=0) (actual time=8.774..8.774 rows=1 loops=1)
+                          Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                          Buffers: shared hit=485
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+                    Index Cond: (tenant_id = 'default'::text)
+                    Filter: (agent_id = '20261112-0caf16e11e2d8a85'::text)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.140 ms
+Execution Time: 8.809 ms
+
+SPEC154 plan_budget shape=all-match path=tenant-window rows=3998 blocks=132 indexes=[idx_memories_tenant_created idx_sessions_tenant sessions_pkey]
+SPEC154 bench shape=all-match n=20 median=15.513244ms p95=16.261785ms max=16.37295ms samples=15.658367ms,16.37295ms,14.913262ms,15.251593ms,15.206339ms,14.945777ms,16.020045ms,15.299535ms,15.254269ms,15.513244ms,16.041335ms,15.921406ms,15.545925ms,14.964754ms,15.486594ms,16.261785ms,14.975325ms,15.92556ms,16.161947ms,15.133125ms
+--- PASS: TestPostgresRecall50kAllMatchWithinCap (1.59s)
+=== RUN   TestPostgresRecall50kFivePercentWithinCap
+2026/11/12 07:12:48 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 explain_and:
+Limit  (cost=1968.67..1968.67 rows=1 width=137) (actual time=5.462..5.464 rows=1 loops=1)
+  Buffers: shared hit=456
+  ->  Sort  (cost=1968.67..1968.67 rows=1 width=137) (actual time=5.462..5.462 rows=1 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=456
+        ->  Nested Loop  (cost=1956.60..1968.66 rows=1 width=137) (actual time=5.458..5.459 rows=1 loops=1)
+              Join Filter: (m.session_id = sess.id)
+              Buffers: shared hit=456
+              ->  Bitmap Heap Scan on memories m  (cost=1956.46..1960.48 rows=1 width=137) (actual time=5.451..5.452 rows=1 loops=1)
+                    Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-bbe5e35517a296ed'::text) AND (tenant_id = 'default'::text))
+                    Heap Blocks: exact=1
+                    Buffers: shared hit=454
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1956.45 rows=1 width=0) (actual time=5.445..5.445 rows=1 loops=1)
+                          Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                          Buffers: shared hit=453
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+                    Index Cond: (tenant_id = 'default'::text)
+                    Filter: (agent_id = '20261112-3045384b49bb8e2f'::text)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.149 ms
+Execution Time: 5.480 ms
+
+SPEC154 five_percent rows=50000 or_hits=2501 fetched=2000 cap=2000
+SPEC154 plan_budget shape=five-percent path=bitmap-and rows=2501 blocks=2457 indexes=[idx_memories_body_tsv idx_sessions_tenant]
+SPEC154 bench shape=five-percent n=20 median=26.301098ms p95=37.598791ms max=40.916873ms samples=18.663668ms,19.479961ms,17.731998ms,26.310087ms,36.904817ms,27.102588ms,27.397841ms,25.925537ms,25.898322ms,26.572898ms,37.598791ms,25.903718ms,26.313998ms,26.196082ms,26.301098ms,26.576597ms,40.916873ms,25.357673ms,25.344258ms,25.833961ms
+--- PASS: TestPostgresRecall50kFivePercentWithinCap (1.91s)
+=== RUN   TestPostgresRecall50kOtherTenantsSelective
+2026/11/12 07:12:50 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_tenants rows=250000 global_or=200001 fetched=1
+SPEC154 plan_budget shape=other-tenants path=bitmap-and rows=50000 blocks=2159 indexes=[idx_memories_customer idx_memories_session idx_sessions_tenant]
+SPEC154 bench shape=other-tenants n=20 median=23.093747ms p95=24.086591ms max=24.922796ms samples=21.159341ms,20.126303ms,20.027285ms,23.491487ms,22.889304ms,23.4264ms,22.890186ms,22.953064ms,22.895234ms,23.580862ms,23.093747ms,23.211266ms,23.75935ms,23.609785ms,22.889069ms,22.907017ms,24.922796ms,24.086591ms,23.363572ms,23.087962ms
+--- PASS: TestPostgresRecall50kOtherTenantsSelective (5.80s)
+=== RUN   TestPostgresRecall50kCustomerScopeFew
+2026/11/12 07:12:55 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 customer_few fetched=5
+SPEC154 plan_budget shape=customer-index path=customer-index rows=5 blocks=5 indexes=[idx_memories_customer_created idx_sessions_tenant]
+SPEC154 bench shape=customer-index n=20 median=409.124µs p95=810.887µs max=839.355µs samples=639.203µs,455.116µs,418.891µs,810.887µs,839.355µs,667.58µs,530.993µs,392.595µs,377.135µs,434.538µs,399.09µs,386.639µs,424.38µs,380.364µs,358.584µs,409.124µs,378.45µs,360.52µs,376.597µs,364.061µs
+--- PASS: TestPostgresRecall50kCustomerScopeFew (1.77s)
+=== RUN   TestPostgresRecall50kOtherAgentFew
+2026/11/12 07:12:57 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_agent fetched=16
+SPEC154 plan_budget shape=agent-nested-loop path=agent-nested-loop rows=16 blocks=7 indexes=[idx_memories_session idx_sessions_tenant]
+SPEC154 bench shape=agent-nested-loop n=20 median=9.414153ms p95=10.580758ms max=11.386984ms samples=10.580758ms,10.085842ms,9.353802ms,11.386984ms,9.190121ms,9.559644ms,9.691611ms,9.064812ms,9.196385ms,9.343871ms,9.183283ms,9.128976ms,9.229897ms,9.142703ms,9.414153ms,10.37925ms,9.530092ms,9.595893ms,9.401937ms,9.657855ms
+--- PASS: TestPostgresRecall50kOtherAgentFew (1.41s)
+=== RUN   TestPostgresRecallBitmapAndCustomerPlan
+2026/11/12 07:12:59 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 plan_budget shape=bitmap-and-customer path=bitmap-and-customer rows=14 blocks=18 indexes=[idx_memories_session idx_sessions_tenant]
+--- PASS: TestPostgresRecallBitmapAndCustomerPlan (0.12s)
+=== RUN   TestPostgresRecall50kAgentBitmapSwamp
+2026/11/12 07:12:59 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 agent_swamp fetched=2000
+SPEC154 plan_budget shape=agent-window path=agent-window rows=5000 blocks=167 indexes=[idx_memories_session idx_sessions_tenant]
+SPEC154 bench shape=agent-window n=20 median=20.404386ms p95=22.88556ms max=23.542846ms samples=15.034158ms,15.191928ms,14.817496ms,20.525589ms,20.404386ms,19.224174ms,19.197806ms,20.061567ms,19.374519ms,19.527518ms,22.668991ms,22.415417ms,22.88556ms,21.252142ms,20.046784ms,22.411818ms,23.542846ms,20.973877ms,22.698448ms,20.150003ms
+--- PASS: TestPostgresRecall50kAgentBitmapSwamp (1.65s)
+=== RUN   TestPostgresRecall50kCustomerBitmapSwamp
+2026/11/12 07:13:00 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 customer_swamp fetched=2000
+SPEC154 plan_budget shape=customer-window path=customer-window rows=2000 blocks=76 indexes=[idx_memories_customer_created idx_sessions_tenant]
+SPEC154 bench shape=customer-window n=20 median=17.187432ms p95=20.201448ms max=20.424427ms samples=11.840075ms,11.648317ms,10.916367ms,20.201448ms,18.748979ms,19.343542ms,17.121138ms,17.325653ms,16.950576ms,17.089838ms,20.424427ms,17.93054ms,17.723918ms,17.187432ms,16.815926ms,17.340022ms,16.922454ms,16.505395ms,16.973391ms,17.289156ms
+--- PASS: TestPostgresRecall50kCustomerBitmapSwamp (2.25s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	18.212s
+=== RUN   TestRecallFor50kUnder50ms
+2026/11/12 07:12:44 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+2026/11/12 07:12:46 goso memory: recall session=20261112-35a8455f3a35306d agent=20261112-45750c167a836289 customer_scoped=false candidates=1 injected=1 runes=230
+SPEC154 bench shape=recall-for n=20 median=2.732007ms p95=3.832077ms max=6.822545ms samples=[2.429679ms 2.437953ms 2.484168ms 2.519041ms 2.586627ms 2.602831ms 2.658986ms 2.665824ms 2.676049ms 2.691706ms 2.732007ms 2.752457ms 2.806664ms 2.819361ms 2.852197ms 3.085688ms 3.121411ms 3.221787ms 3.832077ms 6.822545ms]
+--- PASS: TestRecallFor50kUnder50ms (1.73s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	1.736s
