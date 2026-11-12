@@ -2,6 +2,86 @@
 
 Evidence for the additive `body_tsv` columns and GIN indexes. No control-plane change, so prototype screenshots do not apply. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
+## AND then OR retest
+
+Tested commit: `8837e5ddb9f981927516c91314c3bc77380ee4eb`
+
+`git status --porcelain` was empty before `go test ./...` and `npm run qa:tabs`. The `EXPLAIN (ANALYZE, BUFFERS)` text below was captured from the same code, in `TestPostgresRecall50kAllMatchWithinCap`, immediately before that commit. The commit adds these files and does not change the query.
+
+[go-test-8837e5ddb9f981927516c91314c3bc77380ee4eb.txt](go-test-8837e5ddb9f981927516c91314c3bc77380ee4eb.txt)
+
+[qa-tabs-8837e5ddb9f981927516c91314c3bc77380ee4eb.log](qa-tabs-8837e5ddb9f981927516c91314c3bc77380ee4eb.log)
+
+[explain-analyze-8837e5ddb9f981927516c91314c3bc77380ee4eb.txt](explain-analyze-8837e5ddb9f981927516c91314c3bc77380ee4eb.txt)
+
+`go test ./...` exited 0 on SQLite and Postgres 16.15, including `gateway/memorybench`. `npm run qa:tabs` exited 0 (`flow chat`, then `qa:tabs ok`). Chrome **156.0.8078.47**. No tab changed. Gateway was restarted from this tree on a fresh SQLite file. `GOSO_VAULT_UPLOAD` was unset.
+
+Selective 50,000-row recall (`TestPostgresRecall50kUnder50ms`), five samples: 2.477017ms, 2.217858ms, 2.49087ms, 2.384925ms, 2.376734ms. Median **2.384925ms**.
+
+Worst case, every filler matches one query token (`TestPostgresRecall50kAllMatchWithinCap`): fetched **2000** (the cap). Five samples: 38.407346ms, 41.798638ms, 39.174838ms, 38.70924ms, 37.832653ms. Median **38.70924ms**. Max **41.798638ms**. Under 50 ms.
+
+`TestPostgresRecallOldestFullMatch`: 49,999 newer rows share one query token, and the oldest row contains every query token. A newest-2000 slice does not include that row. Recall still returns it.
+
+### Step 1, AND, `LIMIT 2000`
+
+```
+Limit  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.799..8.800 rows=1 loops=1)
+  Buffers: shared hit=488
+  ->  Sort  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.798..8.799 rows=1 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=488
+        ->  Nested Loop  (cost=2058.60..2070.66 rows=1 width=119) (actual time=8.795..8.796 rows=1 loops=1)
+              Join Filter: (m.session_id = sess.id)
+              Buffers: shared hit=488
+              ->  Bitmap Heap Scan on memories m  (cost=2058.46..2062.48 rows=1 width=119) (actual time=8.788..8.789 rows=1 loops=1)
+                    Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-a5cfe4f5d2b70c23'::text) AND (tenant_id = 'default'::text))
+                    Heap Blocks: exact=1
+                    Buffers: shared hit=486
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..2058.46 rows=1 width=0) (actual time=8.783..8.783 rows=1 loops=1)
+                          Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
+                          Buffers: shared hit=485
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.004..0.004 rows=1 loops=1)
+                    Index Cond: (tenant_id = 'default'::text)
+                    Filter: (agent_id = '20261112-9fb31361fb141aef'::text)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.117 ms
+Execution Time: 8.814 ms
+```
+
+### Step 2, OR, `LIMIT 1999`
+
+The planner seq-scans `memories` here (50,000 rows) and top-N sorts. It does not pick `idx_memories_tenant_created`. Execution time is 32.223 ms.
+
+```
+Limit  (cost=2662.65..2662.95 rows=117 width=119) (actual time=31.943..32.142 rows=1999 loops=1)
+  Buffers: shared hit=1565
+  ->  Sort  (cost=2662.65..2662.95 rows=117 width=119) (actual time=31.943..32.018 rows=1999 loops=1)
+        Sort Key: m.created_at DESC
+        Sort Method: top-N heapsort  Memory: 612kB
+        Buffers: shared hit=1565
+        ->  Hash Join  (cost=8.18..2658.63 rows=117 width=119) (actual time=0.014..22.148 rows=50000 loops=1)
+              Hash Cond: (m.session_id = sess.id)
+              Buffers: shared hit=1565
+              ->  Seq Scan on memories m  (cost=0.00..2563.00 rows=32820 width=119) (actual time=0.005..15.700 rows=50000 loops=1)
+                    Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-a5cfe4f5d2b70c23'::text) AND (tenant_id = 'default'::text))
+                    Buffers: shared hit=1563
+              ->  Hash  (cost=8.17..8.17 rows=1 width=32) (actual time=0.007..0.008 rows=3 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                    Buffers: shared hit=2
+                    ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.004..0.006 rows=3 loops=1)
+                          Index Cond: (tenant_id = 'default'::text)
+                          Filter: (agent_id = '20261112-9fb31361fb141aef'::text)
+                          Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.122 ms
+Execution Time: 32.223 ms
+```
+
 ## Candidate cap retest
 
 Tested commit: `484042b1dfe81de026dd7f9268002106059dc7d8`
