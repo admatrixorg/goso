@@ -116,15 +116,15 @@ go test -race ./gateway/internal/contactsimport ./gateway/cmd/goso-contacts-impo
 ```
 
 ```text
-ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	12.197s
-ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.549s
+ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	11.993s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.612s
 ```
 
 ```bash
 go test ./... -count=1 -timeout 25m
 ```
 
-Exit 0. `gateway/internal/contactsimport` 1.445s. `gateway/cmd/goso-contacts-import` 0.386s. Logs: [go-test.txt](go-test.txt), [go-test-race.txt](go-test-race.txt).
+Exit 0 on clean tree `ef51fba81b219123a887df5380b489cf88f16030`. `gateway/internal/contactsimport` 1.277s. `gateway/cmd/goso-contacts-import` 0.378s. The commit that adds these transcripts does not change the importer. Logs: [go-test.txt](go-test.txt), [go-test-race.txt](go-test-race.txt).
 
 `TestImportMinhAnSQLite` and `TestImportMinhAnPostgres` write 210 of the 211 fixture rows, leave the merged row out, keep the shared sender and its thread as two contacts, and keep a pre-seeded second tenant unchanged. `TestBatch3300SQLite` and `TestBatch3300Postgres` import 3300 rows with one `ListContacts` and one `BulkUpsertContacts`. A rerun does not call the upsert again.
 
