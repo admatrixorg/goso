@@ -1,6 +1,6 @@
 # SPEC 171 — Bộ chuyển Docling (OCR tiếng Việt), sidecar và hàng đợi
 
-Trạng thái: nháp đã sửa theo CTO, chưa giao code. Một PR vào `main`. Không merge từ file này.
+Trạng thái: đã code ở PR #42; bằng chứng image chuyển sang cổng trước khi bật cờ (docs/qa/171-docling-converter/README.md). Một PR vào `main`. Không merge từ file này.
 
 Mẫu: Minh An (kể cả ảnh/PDF scan tự tạo). Không dùng bản án hay tài liệu khách. Không chép GoClaw/Dewee.
 
@@ -59,8 +59,8 @@ Bật prod: anh Dat duyệt, đã có hạn mức đĩa (170), và đã có bằ
 
 ## Nghiệm thu
 
-- [ ] Chỉ Tesseract `vie`+`eng`; EasyOCR không có trong image.
-- [ ] Non-root, có trần CPU/RAM, không egress, model nhúng sẵn, có bằng chứng không tải lúc chạy.
+- [ ] Chỉ Tesseract `vie`+`eng`; EasyOCR không có trong image. — phần bằng chứng image là cổng trước khi bật cờ, không phải cổng PR
+- [ ] Non-root, có trần CPU/RAM, không egress, model nhúng sẵn, có bằng chứng không tải lúc chạy. — phần bằng chứng image là cổng trước khi bật cờ, không phải cổng PR
 - [ ] Timeout từng trang. Raw không bị sửa/xoá. Ghi qua `PutTenantAt`.
 - [ ] QA ghi nợ forget 164 (raw, job, sources, wiki dẫn xuất).
 - [ ] qa:tabs xanh.
