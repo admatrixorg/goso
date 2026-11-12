@@ -69,4 +69,4 @@ The sample file has 211 rows: 200 direct, 10 threads (one reuses `ext-minh-an-00
 
 ## Out of scope
 
-Real directories. Turning `GOSO_CONTACTS_DURABLE` on. MQ Capital. `--include-personal`. pgvector. Copying merge history. Memory, vault, skills, MCP, cron, channels, sessions, and messages.
+Real directories. Turning `GOSO_CONTACTS_DURABLE` on. Tenants on the local denylist. `--include-personal`. pgvector. Copying merge history. Memory, vault, skills, MCP, cron, channels, sessions, and messages.
