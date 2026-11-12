@@ -331,10 +331,8 @@ func (s *SQLiteStore) recallORCountGUCs(gucs []string, query string, args ...any
 		return 0, err
 	}
 	defer tx.Rollback()
-	for _, g := range gucs {
-		if _, err := tx.Exec(g); err != nil {
-			return 0, err
-		}
+	if err := applyLocalGUCs(tx, gucs); err != nil {
+		return 0, err
 	}
 	var n int
 	if err := tx.QueryRow(query, args...).Scan(&n); err != nil {
@@ -344,6 +342,36 @@ func (s *SQLiteStore) recallORCountGUCs(gucs []string, query string, args ...any
 		return 0, err
 	}
 	return n, nil
+}
+
+// applyLocalGUCs sets every LOCAL guc in one round trip. Each separate
+// SET LOCAL was its own statement, and that overhead showed up in the
+// recall samples.
+func applyLocalGUCs(tx interface {
+	Exec(string, ...any) (sql.Result, error)
+}, gucs []string) error {
+	if len(gucs) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("SELECT ")
+	for i, g := range gucs {
+		rest := strings.TrimPrefix(g, "SET LOCAL ")
+		name, value, ok := strings.Cut(rest, " = ")
+		if !ok {
+			return fmt.Errorf("guc %q", g)
+		}
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString("set_config('")
+		b.WriteString(name)
+		b.WriteString("','")
+		b.WriteString(value)
+		b.WriteString("',true)")
+	}
+	_, err := tx.Exec(b.String())
+	return err
 }
 
 func (s *SQLiteStore) execRecallTSV(toks []string, query string, args []any, gucs []string) ([]RecallHit, int, error) {
@@ -360,10 +388,8 @@ func (s *SQLiteStore) execRecallTSV(toks []string, query string, args []any, guc
 		return nil, 0, err
 	}
 	defer tx.Rollback()
-	for _, g := range gucs {
-		if _, err := tx.Exec(g); err != nil {
-			return nil, 0, err
-		}
+	if err := applyLocalGUCs(tx, gucs); err != nil {
+		return nil, 0, err
 	}
 	rows, err := tx.Query(query, args...)
 	if err != nil {
