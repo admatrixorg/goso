@@ -1,6 +1,6 @@
 # SPEC 172 — offline contacts import
 
-Offline importer for one tenant into the durable `contacts` and `contact_identifiers` tables from #33. No UI change, so prototype screenshots do not apply and `qa:tabs` was not run. No customer data and no secret values. Env vars are named, not filled in.
+Offline importer for one tenant into the durable `contacts` and `contact_identifiers` tables from #33. No tab changed, so there are no prototype screenshots. `qa:tabs` was run on the code commit and the log is under `docs/qa/172/`. No customer data and no secret values. Env vars are named, not filled in.
 
 The source is `public.channel_contacts`. There is no `contacts` table. goso's tables and key are unchanged.
 
@@ -143,4 +143,15 @@ Exit 0 on clean tree `ef51fba81b219123a887df5380b489cf88f16030`. `gateway/intern
 
 ## qa:tabs
 
-No control-plane tab, route, or client state changed. `npm run qa:tabs` was not run.
+No control-plane tab, route, or client state changed. The all-tabs check still ran against a gateway built from `2729e4babaa875352b251cc0689073a6249d900f`.
+
+Chrome binary: `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` and `QA_SHOTS` were unset.
+
+```bash
+GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
+  CHROME_PATH=/usr/local/bin/google-chrome npm run qa:tabs
+```
+
+Gateway: `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080` from that commit. Fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` `development`. Seed: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Log: [../172/qa-tabs-2729e4babaa875352b251cc0689073a6249d900f.log](../172/qa-tabs-2729e4babaa875352b251cc0689073a6249d900f.log).
