@@ -13,10 +13,13 @@ import (
 
 // Options selects the one export tenant to read and the one goso tenant to write.
 // Apply false is a dry-run: counts are filled and nothing is written.
+// Deny is a set of lowercase tenant ids from a local file. A match on the
+// source tenant or the destination tenant stops before any write.
 type Options struct {
 	SourceTenant string
 	DestTenant   string
 	Apply        bool
+	Deny         map[string]struct{}
 }
 
 // Import reads exp and, when Apply is set, inserts new goso rows for --tenant.
@@ -32,6 +35,12 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 	}
 	if !store.TenantOK(opt.DestTenant) {
 		return nil, &ConfigError{Msg: "dest tenant is invalid"}
+	}
+	if err := denyReady(opt.Deny); err != nil {
+		return nil, err
+	}
+	if denied(opt.Deny, opt.SourceTenant) || denied(opt.Deny, opt.DestTenant) {
+		return nil, &ConfigError{Msg: "tenant is denied"}
 	}
 	var rep *Report
 	err := withStoreLock(st, func() error {
@@ -77,9 +86,10 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 		im.countHeld()
 		var buildErr error
 		rep, buildErr = im.tally.report(Report{
-			DryRun:       !opt.Apply,
-			SourceTenant: opt.SourceTenant,
-			DestTenant:   opt.DestTenant,
+			DryRun:        !opt.Apply,
+			SourceTenant:  opt.SourceTenant,
+			DestTenant:    opt.DestTenant,
+			DeniedTenants: len(opt.Deny),
 		})
 		return buildErr
 	})
@@ -114,8 +124,10 @@ func (im *importer) reject(table, tenant, reason string) {
 	im.tally.add(table, tenant, actionRejected, reason)
 }
 
-func (im *importer) inserted(table, tenant string) {
-	im.tally.add(table, tenant, actionInserted, "")
+func (im *importer) inserted(table, tenant, status string) {
+	im.tally.rows = append(im.tally.rows, outcome{
+		table: table, tenant: tenant, action: actionInserted, status: status,
+	})
 }
 
 func (im *importer) seenID(table, id string) bool {
@@ -169,6 +181,10 @@ func (im *importer) applyAgent(row rawRow) error {
 		im.reject(tableAgents, tenant, reasonAgentKeyInvalid)
 		return nil
 	}
+	if reservedAgentKey(key) {
+		im.reject(tableAgents, tenant, reasonReservedKey)
+		return nil
+	}
 	if _, taken := im.keysNow[key]; taken {
 		im.skip(tableAgents, tenant, reasonAgentKeyTaken)
 		return nil
@@ -186,7 +202,7 @@ func (im *importer) applyAgent(row rawRow) error {
 		im.skip(tableAgents, tenant, reasonDeleted)
 		return nil
 	}
-	enabled, statusOK, statusReason := agentEnabled(row)
+	_, statusOK, statusReason := agentEnabled(row)
 	if !statusOK {
 		if statusReason == reasonDeleted {
 			im.skip(tableAgents, tenant, statusReason)
@@ -237,18 +253,20 @@ func (im *importer) applyAgent(row rawRow) error {
 	}
 	im.agentKey[key] = id
 	im.keysNow[key] = struct{}{}
+	status := sourceStatus(row)
 	if !im.opt.Apply {
 		im.agentID[id] = "planned:" + id
-		im.inserted(tableAgents, tenant)
+		im.inserted(tableAgents, tenant, status)
 		return nil
 	}
 	created, err := im.st.CreateAgent(store.Agent{
-		TenantID:     im.opt.DestTenant,
-		AgentKey:     key,
-		DisplayName:  strings.TrimSpace(display),
-		Model:        strings.TrimSpace(model),
-		LLMProvider:  strings.TrimSpace(provider),
-		Instructions: front,
+		TenantID:      im.opt.DestTenant,
+		AgentKey:      key,
+		DisplayName:   strings.TrimSpace(display),
+		Model:         strings.TrimSpace(model),
+		LLMProvider:   strings.TrimSpace(provider),
+		Instructions:  front,
+		StartDisabled: true,
 	})
 	if errors.Is(err, store.ErrLiteCap) {
 		return &ConfigError{Msg: "lite cap exceeded"}
@@ -260,14 +278,9 @@ func (im *importer) applyAgent(row rawRow) error {
 	if err != nil {
 		return err
 	}
-	if !enabled {
-		created.Enabled = false
-		updated, uerr := im.st.UpdateAgent(*created)
-		if uerr != nil {
-			_ = im.st.DeleteAgent(created.ID)
-			return uerr
-		}
-		created = updated
+	if created.Enabled {
+		_ = im.st.DeleteAgent(created.ID)
+		return &ConfigError{Msg: "import failed"}
 	}
 	if err := im.maps.put(mapRow{
 		DestTenant:  im.opt.DestTenant,
@@ -280,7 +293,7 @@ func (im *importer) applyAgent(row rawRow) error {
 		return err
 	}
 	im.agentID[id] = created.ID
-	im.inserted(tableAgents, tenant)
+	im.inserted(tableAgents, tenant, status)
 	return nil
 }
 
@@ -350,7 +363,7 @@ func (im *importer) applyTeam(row rawRow) error {
 		im.teamID[id] = planned
 		im.teamLead[id] = leadGoso
 		im.noteMember(planned, leadGoso, "lead")
-		im.inserted(tableTeams, tenant)
+		im.inserted(tableTeams, tenant, "")
 		return nil
 	}
 	created, err := im.st.CreateTeam(store.Team{
@@ -377,7 +390,7 @@ func (im *importer) applyTeam(row rawRow) error {
 	im.teamID[id] = created.ID
 	im.teamLead[id] = created.LeadAgentID
 	im.noteMember(created.ID, created.LeadAgentID, "lead")
-	im.inserted(tableTeams, tenant)
+	im.inserted(tableTeams, tenant, "")
 	return nil
 }
 
@@ -485,7 +498,7 @@ func (im *importer) applyMember(row rawRow) error {
 				return err
 			}
 		}
-		im.inserted(tableMembers, tenant)
+		im.inserted(tableMembers, tenant, "")
 		return nil
 	}
 	if role == "lead" && im.teamLead[teamSrc] != "" && im.teamLead[teamSrc] != gosoAgent {
@@ -495,7 +508,7 @@ func (im *importer) applyMember(row rawRow) error {
 	if !im.opt.Apply {
 		im.noteMember(gosoTeam, gosoAgent, role)
 		im.claimMem[memKey] = id
-		im.inserted(tableMembers, tenant)
+		im.inserted(tableMembers, tenant, "")
 		return nil
 	}
 	if _, err := im.st.AddTeamMember(store.TeamMember{TeamID: gosoTeam, AgentID: gosoAgent, Role: role}); err != nil {
@@ -516,7 +529,7 @@ func (im *importer) applyMember(row rawRow) error {
 	if role == "lead" {
 		im.teamLead[teamSrc] = gosoAgent
 	}
-	im.inserted(tableMembers, tenant)
+	im.inserted(tableMembers, tenant, "")
 	return nil
 }
 
@@ -619,7 +632,7 @@ func (im *importer) applyLink(row rawRow) error {
 		for _, p := range missing {
 			im.links[memberRef(p[0], p[1])] = struct{}{}
 		}
-		im.inserted(tableLinks, tenant)
+		im.inserted(tableLinks, tenant, "")
 		return nil
 	}
 	var created [][2]string
@@ -645,7 +658,7 @@ func (im *importer) applyLink(row rawRow) error {
 		}
 		return err
 	}
-	im.inserted(tableLinks, tenant)
+	im.inserted(tableLinks, tenant, "")
 	return nil
 }
 
@@ -836,6 +849,27 @@ func agentEnabled(row rawRow) (bool, bool, string) {
 		return false, false, reasonDeleted
 	default:
 		return false, false, reasonStatusUnknown
+	}
+}
+
+func sourceStatus(row rawRow) string {
+	s, present := jsonString(row.fields, "status")
+	if !present {
+		return "active"
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return "active"
+	}
+	return s
+}
+
+func reservedAgentKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "zalo-personal", "zalo-oa", "telegram":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -38,6 +38,7 @@ const (
 	reasonSelfLink         = "self-link"
 	reasonEndpointMissing  = "endpoint-not-imported"
 	reasonLinkExists       = "link-exists"
+	reasonReservedKey      = "reserved-key"
 
 	tableAgents      = "agents"
 	tableTeams       = "agent_teams"
@@ -70,6 +71,9 @@ type Section struct {
 	Skipped      int            `json:"skipped"`
 	Rejected     int            `json:"rejected"`
 	Reasons      map[string]int `json:"reasons,omitempty"`
+	// Statuses counts the GoClaw status of inserted agent rows.
+	// The stored goso row is disabled either way.
+	Statuses map[string]int `json:"statuses,omitempty"`
 }
 
 // Held is a table this importer does not write, counted per source tenant.
@@ -91,16 +95,27 @@ type Removed struct {
 
 // Report is the only stdout of the command. It has counts and reason codes.
 type Report struct {
-	DryRun       bool      `json:"dry_run"`
-	Rollback     bool      `json:"rollback"`
-	SourceTenant string    `json:"source_tenant,omitempty"`
-	DestTenant   string    `json:"dest_tenant"`
-	Agents       []Section `json:"agents,omitempty"`
-	Teams        []Section `json:"teams,omitempty"`
-	TeamMembers  []Section `json:"team_members,omitempty"`
-	AgentLinks   []Section `json:"agent_links,omitempty"`
-	NotImported  []Held    `json:"not_imported,omitempty"`
-	Removed      *Removed  `json:"removed,omitempty"`
+	DryRun        bool        `json:"dry_run"`
+	Rollback      bool        `json:"rollback"`
+	SourceTenant  string      `json:"source_tenant,omitempty"`
+	DestTenant    string      `json:"dest_tenant"`
+	Agents        []Section   `json:"agents,omitempty"`
+	Teams         []Section   `json:"teams,omitempty"`
+	TeamMembers   []Section   `json:"team_members,omitempty"`
+	AgentLinks    []Section   `json:"agent_links,omitempty"`
+	NotImported   []Held      `json:"not_imported,omitempty"`
+	Removed       *Removed    `json:"removed,omitempty"`
+	PostImport    *PostImport `json:"post_import,omitempty"`
+	DeniedTenants int         `json:"denied_tenants"`
+}
+
+// PostImport counts sessions, team tasks, and team or chat messages that
+// were added on imported rows after the import. Rollback counts them and
+// does not delete when any are present unless Confirm is set.
+type PostImport struct {
+	Sessions int `json:"sessions"`
+	Tasks    int `json:"tasks"`
+	Messages int `json:"messages"`
 }
 
 type outcome struct {
@@ -108,6 +123,7 @@ type outcome struct {
 	tenant string
 	action string
 	reason string
+	status string
 }
 
 type tally struct {
@@ -173,6 +189,12 @@ func (t *tally) sections(table string) []Section {
 		switch row.action {
 		case actionInserted:
 			s.Inserted++
+			if row.status != "" {
+				if s.Statuses == nil {
+					s.Statuses = map[string]int{}
+				}
+				s.Statuses[row.status]++
+			}
 		case actionSkipped:
 			s.Skipped++
 			if row.reason != "" {
@@ -191,6 +213,9 @@ func (t *tally) sections(table string) []Section {
 		s := *by[tenant]
 		if len(s.Reasons) == 0 {
 			s.Reasons = nil
+		}
+		if len(s.Statuses) == 0 {
+			s.Statuses = nil
 		}
 		out = append(out, s)
 	}

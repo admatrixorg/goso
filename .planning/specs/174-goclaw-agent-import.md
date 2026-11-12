@@ -28,13 +28,17 @@ go run ./gateway/cmd/goso-agent-import \
 
 The default is a dry-run. It prints counts and writes nothing. `--apply` writes. `--apply` together with `--dry-run` is an error. `--dry-run=false` without `--apply` still writes nothing.
 
+`--denylist` (or `GOSO_IMPORT_DENYLIST`) is required. The file is one tenant id per line and is not stored in this repo. A missing, empty, or malformed file stops before the database is opened, including on a dry-run. If `--tenant` or `--source-tenant` is on the list, the command writes nothing. The report field `denied_tenants` is the count of ids in the file. Names from the file are not printed.
+
 `--db` is the only database. A non-local Postgres host is refused. `GOSO_DATABASE_URL` is not opened. Opening `--db` still runs the existing store migrations. The dry-run does not create `goclaw_agent_import_map`.
 
 ```bash
 go run ./gateway/cmd/goso-agent-import --rollback --tenant <goso-tenant> --db /path/to/local.db
 ```
 
-`--rollback` without `--apply` counts mapped rows. `--rollback --apply` deletes them. It does not take `--export`.
+`--rollback` without `--apply` counts mapped rows and any sessions, team tasks, or messages added on those rows later. `--rollback --apply` deletes the mapped rows. If that later data exists, the rollback stops and leaves it in place unless `--confirm-rollback` is also set. It does not take `--export`.
+
+`goclaw_agent_import_map` is created by the SQLite and Postgres store migration on open. The importer does not create it.
 
 The file is a JSON object of arrays, or JSONL with `_table` or `table` on each line. Arrays use the GoClaw table names. Unknown keys on a row are ignored. A file over 32 MiB is rejected.
 
@@ -58,11 +62,11 @@ A team, member, or link is created only when both ends are agents this import ow
 |---|---|---|
 | `id` | `goclaw_agent_import_map.source_key` | Goso assigns a new `agents.id`. The map stores it. |
 | `tenant_id` | not copied | Selects the export tenant. The stored tenant is `--tenant`. |
-| `agent_key` | `agents.agent_key` | Trimmed, 1–100 runes, no slash or control character. |
+| `agent_key` | `agents.agent_key` | Trimmed, 1–100 runes, no slash or control character. `zalo-personal`, `zalo-oa`, and `telegram` are `reserved-key` and are not written. |
 | `display_name` | `agents.display_name` | Trimmed, at most 255 runes. |
 | `provider` | `agents.llm_provider` | At most 50 runes. |
 | `model` | `agents.model` | At most 200 runes. |
-| `status` | `agents.enabled` | Empty or `active` is enabled. `inactive`, `disabled`, `paused`, and `archived` are stored disabled. `deleted` is skipped. Any other value is rejected. |
+| `status` | report `statuses` only | Every inserted agent is written `enabled=0` in the INSERT. The original status (`active`, `inactive`, `disabled`, `paused`, `archived`) is counted in the report. `deleted` is skipped. Any other value is rejected. |
 | `deleted_at` | not stored | A non-empty value skips the row (`deleted`). |
 | `frontmatter` | `agents.instructions` | Stored as the prompt text, at most 32 KiB. It is not prefixed, wrapped, or merged with other columns. |
 | `created_at`, `updated_at` | not copied | `CreateAgent` stamps the time. |

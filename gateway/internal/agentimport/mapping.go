@@ -193,18 +193,15 @@ func openMapper(st store.StoreIface, write bool) (mapper, error) {
 	if pool, ok := st.(sqlPool); ok {
 		db, pg := pool.SQL()
 		if db != nil {
-			if !write {
-				ok, err := mapTablePresent(db, pg)
-				if err != nil {
-					return nil, err
-				}
-				if !ok {
-					return nopMapper{}, nil
-				}
-				return &sqlMapper{db: db, pg: pg}, nil
-			}
-			if err := ensureMapTable(db, pg); err != nil {
+			present, err := mapTablePresent(db, pg)
+			if err != nil {
 				return nil, err
+			}
+			if !present {
+				if write {
+					return nil, &ConfigError{Msg: "import map is missing"}
+				}
+				return nopMapper{}, nil
 			}
 			return &sqlMapper{db: db, pg: pg}, nil
 		}
@@ -226,22 +223,6 @@ func mapTablePresent(db *sql.DB, pg bool) (bool, error) {
 		return false, err
 	}
 	return n > 0, nil
-}
-
-func ensureMapTable(db *sql.DB, pg bool) error {
-	q := `CREATE TABLE IF NOT EXISTS ` + mapTable + ` (
-		dest_tenant TEXT NOT NULL,
-		source_table TEXT NOT NULL,
-		source_key TEXT NOT NULL,
-		goso_kind TEXT NOT NULL,
-		goso_ref TEXT NOT NULL,
-		PRIMARY KEY (dest_tenant, source_table, source_key)
-	)`
-	if _, err := db.Exec(q); err != nil {
-		return err
-	}
-	_ = pg
-	return nil
 }
 
 func linkRef(edges [][2]string) string {

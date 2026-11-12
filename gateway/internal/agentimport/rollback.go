@@ -9,18 +9,33 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
+// RollbackOptions controls a rollback. Confirm is required when sessions,
+// team tasks, or messages were created on the imported rows after the import.
+type RollbackOptions struct {
+	Apply   bool
+	Confirm bool
+	Deny    map[string]struct{}
+}
+
 // Rollback removes rows this importer mapped for dest.
 // Apply false counts those rows and writes nothing.
 // Rows that were never mapped are not deleted. A mapped agent that is still
 // the lead of some other team stops the rollback and is left in place.
-// DeleteAgent also drops sessions and links that point at a removed agent.
-func Rollback(st store.StoreIface, dest string, apply bool) (*Report, error) {
+// If post-import sessions, tasks, or messages exist, Apply without Confirm
+// returns an error and deletes nothing.
+func Rollback(st store.StoreIface, dest string, opt RollbackOptions) (*Report, error) {
 	if st == nil {
 		return nil, &ConfigError{Msg: "dest tenant is invalid"}
 	}
 	dest = strings.TrimSpace(dest)
 	if !store.TenantOK(dest) {
 		return nil, &ConfigError{Msg: "dest tenant is invalid"}
+	}
+	if err := denyReady(opt.Deny); err != nil {
+		return nil, err
+	}
+	if denied(opt.Deny, dest) {
+		return nil, &ConfigError{Msg: "tenant is denied"}
 	}
 	var rep *Report
 	err := withStoreLock(st, func() error {
@@ -33,22 +48,88 @@ func Rollback(st store.StoreIface, dest string, apply bool) (*Report, error) {
 		if err != nil {
 			return err
 		}
+		post, err := countPostImport(st, dest, rows)
+		if err != nil {
+			return err
+		}
+		if opt.Apply && !opt.Confirm && post.total() > 0 {
+			return &ConfigError{Msg: "rollback stopped: post-import data exists"}
+		}
 		removed := &Removed{}
-		if !apply {
-			removed = countLive(st, dest, rows)
-			rep = &Report{DryRun: true, Rollback: true, DestTenant: dest, Removed: removed}
+		base := Report{
+			DryRun: !opt.Apply, Rollback: true, DestTenant: dest,
+			PostImport: &post, DeniedTenants: len(opt.Deny),
+		}
+		if !opt.Apply {
+			base.Removed = countLive(st, dest, rows)
+			rep = &base
 			return nil
 		}
 		if err := removeMapped(st, maps, dest, rows, removed); err != nil {
 			return err
 		}
-		rep = &Report{DryRun: false, Rollback: true, DestTenant: dest, Removed: removed}
+		base.Removed = removed
+		base.DryRun = false
+		rep = &base
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return rep, nil
+}
+
+func (p PostImport) total() int {
+	return p.Sessions + p.Tasks + p.Messages
+}
+
+func countPostImport(st store.StoreIface, dest string, rows []mapRow) (PostImport, error) {
+	agents := map[string]struct{}{}
+	teams := map[string]struct{}{}
+	for _, row := range rows {
+		switch row.Kind {
+		case kindAgent:
+			a, err := st.GetAgent(row.Ref)
+			if err != nil || a == nil || !store.SameTenant(a.TenantID, dest) {
+				continue
+			}
+			agents[a.ID] = struct{}{}
+		case kindTeam:
+			tm, err := st.GetTeam(row.Ref)
+			if err != nil || tm == nil || !store.SameTenant(tm.TenantID, dest) {
+				continue
+			}
+			teams[tm.ID] = struct{}{}
+		}
+	}
+	var out PostImport
+	for _, sess := range st.ListSessions() {
+		if sess == nil {
+			continue
+		}
+		if _, ok := agents[sess.AgentID]; !ok {
+			continue
+		}
+		out.Sessions++
+		msgs, err := st.ListMessages(sess.ID)
+		if err != nil {
+			return PostImport{}, err
+		}
+		out.Messages += len(msgs)
+	}
+	for id := range teams {
+		tasks, err := st.ListTeamTasks(id, "")
+		if err != nil {
+			return PostImport{}, err
+		}
+		out.Tasks += len(tasks)
+		tmsgs, err := st.ListTeamMessages(id)
+		if err != nil {
+			return PostImport{}, err
+		}
+		out.Messages += len(tmsgs)
+	}
+	return out, nil
 }
 
 func countLive(st store.StoreIface, dest string, rows []mapRow) *Removed {

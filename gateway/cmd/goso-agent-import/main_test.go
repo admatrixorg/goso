@@ -22,7 +22,12 @@ func TestCLIDryRunApplyRollback(t *testing.T) {
 	dir := t.TempDir()
 	exportPath := filepath.Join("..", "..", "internal", "agentimport", "testdata", "minh-an.json")
 	dbPath := filepath.Join(dir, "goso.db")
+	denyPath := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(denyPath, []byte("blocked-sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	args := []string{
+		"--denylist", denyPath,
 		"--export", exportPath,
 		"--source-tenant", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
 		"--tenant", "minh-an",
@@ -35,8 +40,11 @@ func TestCLIDryRunApplyRollback(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"dry_run": true`) || !strings.Contains(stdout.String(), `"inserted": 4`) {
 		t.Fatalf("stdout %s", stdout.String())
 	}
-	if strings.Contains(stdout.String(), "SECRETMARKER") || strings.Contains(stderr.String(), "SECRETMARKER") || strings.Contains(stdout.String(), "EMBEDMARKER") {
+	if strings.Contains(stdout.String(), "SECRETMARKER") || strings.Contains(stderr.String(), "SECRETMARKER") || strings.Contains(stdout.String(), "EMBEDMARKER") || strings.Contains(stdout.String(), "blocked-sample") {
 		t.Fatal("cli leaked a dropped column")
+	}
+	if !strings.Contains(stdout.String(), `"denied_tenants": 1`) {
+		t.Fatalf("missing denied count %s", stdout.String())
 	}
 	st, err := store.OpenSQLite(dbPath)
 	if err != nil {
@@ -49,12 +57,12 @@ func TestCLIDryRunApplyRollback(t *testing.T) {
 	if db == nil || pg {
 		t.Fatal("sql")
 	}
-	var tables int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goclaw_agent_import_map'`).Scan(&tables); err != nil {
+	var mapped int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM goclaw_agent_import_map`).Scan(&mapped); err != nil {
 		t.Fatal(err)
 	}
-	if tables != 0 {
-		t.Fatal("dry-run created the map")
+	if mapped != 0 {
+		t.Fatal("dry-run wrote map rows")
 	}
 	_ = st.Close()
 
@@ -91,7 +99,7 @@ func TestCLIDryRunApplyRollback(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	rbArgs := []string{"--rollback", "--tenant", "minh-an", "--db", dbPath}
+	rbArgs := []string{"--denylist", denyPath, "--rollback", "--tenant", "minh-an", "--db", dbPath}
 	if code := run(rbArgs, stdout, stderr); code != 0 {
 		t.Fatalf("rollback dry-run %d %s", code, stderr.String())
 	}
@@ -127,9 +135,15 @@ func TestCLIRefusesRemoteAndBadFlags(t *testing.T) {
 	if code := run(nil, stdout, stderr); code != 2 {
 		t.Fatalf("usage %d", code)
 	}
+	dir := t.TempDir()
+	denyPath := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(denyPath, []byte("blocked-sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	stdout.Reset()
 	stderr.Reset()
 	if code := run([]string{
+		"--denylist", denyPath,
 		"--export", "x",
 		"--source-tenant", "t",
 		"--tenant", "minh-an",
@@ -144,6 +158,75 @@ func TestCLIRefusesRemoteAndBadFlags(t *testing.T) {
 		t.Fatalf("rollback export %d %s", code, stderr.String())
 	}
 }
+
+func TestCLIDenylistStopsBeforeWork(t *testing.T) {
+	dir := t.TempDir()
+	exportPath := filepath.Join("..", "..", "internal", "agentimport", "testdata", "minh-an.json")
+	dbPath := filepath.Join(dir, "goso.db")
+	base := []string{
+		"--export", exportPath,
+		"--source-tenant", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+		"--tenant", "minh-an",
+		"--db", dbPath,
+		"--apply",
+	}
+	cases := []struct {
+		name string
+		body *string
+	}{
+		{name: "missing", body: nil},
+		{name: "empty", body: strPtr("# comment only\n")},
+		{name: "malformed", body: strPtr("not valid\n")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, tc.name+".txt")
+			if tc.body == nil {
+				path = filepath.Join(dir, "no-such-file.txt")
+			} else if err := os.WriteFile(path, []byte(*tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := run(append([]string{"--denylist", path}, base...), stdout, stderr)
+			if code == 0 {
+				t.Fatalf("exit 0 stderr %s", stderr.String())
+			}
+			if _, err := os.Stat(dbPath); err == nil {
+				t.Fatal("database was created")
+			}
+			if strings.Contains(stdout.String()+stderr.String(), "blocked-sample") {
+				t.Fatal("leaked a denylist name")
+			}
+		})
+	}
+	denyPath := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(denyPath, []byte("blocked-sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{
+		"--denylist", denyPath,
+		"--export", exportPath,
+		"--source-tenant", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+		"--tenant", "blocked-sample",
+		"--db", dbPath,
+		"--apply",
+	}, stdout, stderr)
+	if code == 0 || !strings.Contains(stderr.String(), "tenant is denied") {
+		t.Fatalf("denied exit %d %s", code, stderr.String())
+	}
+	if _, err := os.Stat(dbPath); err == nil {
+		t.Fatal("denied run created a database")
+	}
+	if strings.Contains(stdout.String(), "blocked-sample") || strings.Contains(stderr.String(), "blocked-sample") {
+		t.Fatal("report named a denied tenant")
+	}
+	if !strings.Contains(stdout.String(), `"denied_tenants": 1`) {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+}
+
+func strPtr(s string) *string { return &s }
 
 func countKey(st *store.SQLiteStore, key string) int {
 	n := 0

@@ -4,6 +4,7 @@ package agentimport
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -35,6 +37,14 @@ const (
 	memoryMarker = "MEMORYMARKERuntouched"
 	keepText     = "KEEPINSTRUCTIONS"
 )
+
+func testDeny() map[string]struct{} {
+	return map[string]struct{}{"blocked-sample": {}}
+}
+
+func rbOpt(apply bool) RollbackOptions {
+	return RollbackOptions{Apply: apply, Deny: testDeny()}
+}
 
 func TestMain(m *testing.M) {
 	_ = os.Setenv("GOSO_LITE", "")
@@ -181,7 +191,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 		t.Fatal(err)
 	}
 
-	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant}
+	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant, Deny: testDeny()}
 	dry, err := Import(st, ex, opt)
 	if err != nil {
 		t.Fatal(err)
@@ -190,8 +200,11 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 		t.Fatal("dry-run flag")
 	}
 	expectFirst(t, dry)
-	if mapTableExists(t, st) {
-		t.Fatal("dry-run created the map table")
+	if dry.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", dry.DeniedTenants)
+	}
+	if mapRowCount(t, st, destTenant) != 0 {
+		t.Fatal("dry-run wrote map rows")
 	}
 	if got := agentByKey(t, st, "minh-an-tu-van"); got != nil {
 		t.Fatal("dry-run wrote an agent")
@@ -217,13 +230,13 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 	if tu == nil || phap == nil || ke == nil || nghi == nil {
 		t.Fatal("missing imported agent")
 	}
-	if tu.TenantID != destTenant || tu.DisplayName != "Tu van Minh An" || tu.Instructions != "Mau tu van Minh An." || tu.Model != "sample-model" || tu.LLMProvider != "openrouter" || !tu.Enabled {
+	if tu.TenantID != destTenant || tu.DisplayName != "Tu van Minh An" || tu.Instructions != "Mau tu van Minh An." || tu.Model != "sample-model" || tu.LLMProvider != "openrouter" || tu.Enabled {
 		t.Fatalf("tu van %+v", tu)
 	}
 	if strings.Contains(tu.Instructions, "200000") || strings.Contains(tu.Instructions, descMarker) {
 		t.Fatalf("instructions absorbed a dropped column: %q", tu.Instructions)
 	}
-	if !phap.Enabled || phap.Instructions != "Mau phap che Minh An." || ke.Instructions != "Mau ke toan Minh An." {
+	if phap.Enabled || phap.Instructions != "Mau phap che Minh An." || ke.Enabled || ke.Instructions != "Mau ke toan Minh An." {
 		t.Fatal("prompt text")
 	}
 	if nghi.Enabled || nghi.Instructions != "Mau agent tam dung." {
@@ -296,7 +309,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 	}
 	expectRerun(t, second)
 	tu2 := agentByKey(t, st, "minh-an-tu-van")
-	if tu2.ID != ids[tu.AgentKey] || tu2.Instructions != tu.Instructions || tu2.DisplayName != tu.DisplayName || !tu2.UpdatedAt.Equal(stamp) || !tu2.Enabled {
+	if tu2.ID != ids[tu.AgentKey] || tu2.Instructions != tu.Instructions || tu2.DisplayName != tu.DisplayName || !tu2.UpdatedAt.Equal(stamp) || tu2.Enabled {
 		t.Fatalf("rerun rewrote tu van %+v", tu2)
 	}
 	if agentByKey(t, st, "minh-an-phap-che").ID != ids[phap.AgentKey] || agentByKey(t, st, "minh-an-nghi").ID != ids[nghi.AgentKey] || agentByKey(t, st, "minh-an-nghi").Enabled {
@@ -305,7 +318,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 	if len(agentsIn(st, destTenant)) != 6 || len(teamsIn(st, destTenant)) != 1 {
 		t.Fatal("rerun duplicated rows")
 	}
-	again, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant})
+	again, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +327,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 		t.Fatal("dry-run after apply wrote")
 	}
 
-	rbDry, err := Rollback(st, destTenant, false)
+	rbDry, err := Rollback(st, destTenant, rbOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +337,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 	if agentByKey(t, st, "minh-an-tu-van") == nil || !st.HasAgentLink(kept.ID, kept2.ID) {
 		t.Fatal("rollback dry-run deleted rows")
 	}
-	rb, err := Rollback(st, destTenant, true)
+	rb, err := Rollback(st, destTenant, rbOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +360,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 	if memGot, err = st.GetMemory(mem.ID); err != nil || memGot.Body != memoryMarker {
 		t.Fatal("rollback touched memory")
 	}
-	rb2, err := Rollback(st, destTenant, true)
+	rb2, err := Rollback(st, destTenant, rbOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,10 +371,14 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 
 func expectFirst(t *testing.T, rep *Report) {
 	t.Helper()
-	requireSection(t, findSection(t, rep.Agents, srcTenant), 10, 4, 3, 3, map[string]int{
+	agents := findSection(t, rep.Agents, srcTenant)
+	requireSection(t, agents, 10, 4, 3, 3, map[string]int{
 		reasonDeleted: 1, reasonAgentKeyTaken: 1, reasonDuplicate: 1,
 		reasonAgentKeyInvalid: 1, reasonIDMissing: 1, reasonStatusUnknown: 1,
 	})
+	if agents.Statuses["active"] != 3 || agents.Statuses["inactive"] != 1 || len(agents.Statuses) != 2 {
+		t.Fatalf("statuses %+v", agents.Statuses)
+	}
 	requireSection(t, findSection(t, rep.Agents, otherSrc), 1, 0, 1, 0, map[string]int{reasonTenantMismatch: 1})
 	requireSection(t, findSection(t, rep.Teams, srcTenant), 5, 1, 3, 1, map[string]int{
 		reasonInactive: 1, reasonLeadMissing: 1, reasonDuplicate: 1, reasonNameMissing: 1,
@@ -385,7 +402,11 @@ func expectFirst(t *testing.T, rep *Report) {
 
 func expectRerun(t *testing.T, rep *Report) {
 	t.Helper()
-	requireSection(t, findSection(t, rep.Agents, srcTenant), 10, 0, 7, 3, map[string]int{
+	agents := findSection(t, rep.Agents, srcTenant)
+	if len(agents.Statuses) != 0 {
+		t.Fatalf("rerun statuses %+v", agents.Statuses)
+	}
+	requireSection(t, agents, 10, 0, 7, 3, map[string]int{
 		reasonUnchanged: 4, reasonDeleted: 1, reasonAgentKeyTaken: 1, reasonDuplicate: 1,
 		reasonAgentKeyInvalid: 1, reasonIDMissing: 1, reasonStatusUnknown: 1,
 	})
@@ -422,14 +443,14 @@ func TestAddOnlyDoesNotOverwrite(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Import(b.st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}); err != nil {
+			if _, err := Import(b.st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}); err != nil {
 				t.Fatal(err)
 			}
 			next, err := ReadExport(strings.NewReader(changed))
 			if err != nil {
 				t.Fatal(err)
 			}
-			rep, err := Import(b.st, next, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true})
+			rep, err := Import(b.st, next, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -468,7 +489,7 @@ func TestAgentKeyTakenDoesNotTouchOtherTenant(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rep, err := Import(b.st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true})
+			rep, err := Import(b.st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -486,7 +507,7 @@ func TestAgentKeyTakenDoesNotTouchOtherTenant(t *testing.T) {
 			if len(agentsIn(b.st, destTenant)) != 0 {
 				t.Fatal("dest gained an agent")
 			}
-			rb, err := Rollback(b.st, destTenant, true)
+			rb, err := Rollback(b.st, destTenant, rbOpt(true))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -516,7 +537,7 @@ func TestRollbackStopsWhenAgentIsStillLead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}); err != nil {
+	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}); err != nil {
 		t.Fatal(err)
 	}
 	ag := agentByKey(t, st, "minh-an-lead-block")
@@ -526,7 +547,7 @@ func TestRollbackStopsWhenAgentIsStillLead(t *testing.T) {
 	if _, err := st.CreateTeam(store.Team{TenantID: destTenant, Name: "Nhom ngoai", LeadAgentID: ag.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Rollback(st, destTenant, true); err == nil || !strings.Contains(err.Error(), "team lead") {
+	if _, err := Rollback(st, destTenant, rbOpt(true)); err == nil || !strings.Contains(err.Error(), "team lead") {
 		t.Fatalf("err %v", err)
 	}
 	if agentByKey(t, st, "minh-an-lead-block") == nil {
@@ -537,7 +558,7 @@ func TestRollbackStopsWhenAgentIsStillLead(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rep, err := Rollback(st, destTenant, true)
+	rep, err := Rollback(st, destTenant, rbOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +582,7 @@ func TestEmptyDirectionIsOutbound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}); err != nil {
+	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}); err != nil {
 		t.Fatal(err)
 	}
 	a := agentByKey(t, st, "minh-an-dir-a")
@@ -574,7 +595,7 @@ func TestEmptyDirectionIsOutbound(t *testing.T) {
 func TestJSONL(t *testing.T) {
 	ex := loadFixture(t, "minh-an.jsonl")
 	st := store.New()
-	rep, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true})
+	rep, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,13 +629,13 @@ func TestRejectsBadExportAndBadTenant(t *testing.T) {
 	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: "not a tenant"}); err == nil {
 		t.Fatal("bad dest")
 	}
-	if _, err := Import(st, ex, Options{DestTenant: destTenant}); err == nil {
+	if _, err := Import(st, ex, Options{DestTenant: destTenant, Deny: testDeny()}); err == nil {
 		t.Fatal("missing source")
 	}
 	if len(agentsIn(st, "default")) != 1 || len(st.ListAgents()) != 1 {
 		t.Fatal("rejected import wrote")
 	}
-	if _, err := Rollback(st, "not a tenant", true); err == nil {
+	if _, err := Rollback(st, "not a tenant", rbOpt(true)); err == nil {
 		t.Fatal("bad rollback dest")
 	}
 }
@@ -626,7 +647,7 @@ func TestConcurrentApplyNoDuplicates(t *testing.T) {
 	var mu sync.Mutex
 	var inserted int
 	var firstErr error
-	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}
+	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
@@ -681,7 +702,7 @@ func TestLinkAlreadyThereIsNotClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}
+	opt := Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}
 	if _, err := Import(st, ex, opt); err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +733,7 @@ func TestLinkAlreadyThereIsNotClaimed(t *testing.T) {
 	if a == nil || b == nil || !st.HasAgentLink(a.ID, b.ID) {
 		t.Fatal("existing edge was removed")
 	}
-	rb, err := Rollback(st, destTenant, true)
+	rb, err := Rollback(st, destTenant, rbOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +848,7 @@ func assertNoLeak(t *testing.T, st store.StoreIface, rep *Report) {
 		}
 	}
 	for _, b := range blobs {
-		for _, marker := range []string{secretMarker, embedMarker, modelMarker, descMarker, emojiMarker, "0.01"} {
+		for _, marker := range []string{secretMarker, embedMarker, modelMarker, descMarker, emojiMarker, "0.01", "blocked-sample"} {
 			if strings.Contains(b, marker) {
 				t.Fatalf("dropped column leaked (%s) in %q", marker, b)
 			}
@@ -835,21 +856,25 @@ func assertNoLeak(t *testing.T, st store.StoreIface, rep *Report) {
 	}
 }
 
-func mapTableExists(t *testing.T, st store.StoreIface) bool {
+func mapRowCount(t *testing.T, st store.StoreIface, dest string) int {
 	t.Helper()
 	pool, ok := st.(sqlPool)
 	if !ok {
-		return false
+		return 0
 	}
 	db, pg := pool.SQL()
 	if db == nil {
-		return false
+		return 0
 	}
-	present, err := mapTablePresent(db, pg)
-	if err != nil {
+	q := `SELECT COUNT(*) FROM goclaw_agent_import_map WHERE dest_tenant=?`
+	if pg {
+		q = `SELECT COUNT(*) FROM goclaw_agent_import_map WHERE dest_tenant=$1`
+	}
+	var n int
+	if err := db.QueryRow(q, dest).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	return present
+	return n
 }
 
 func TestConfigErrorIsError(t *testing.T) {
@@ -857,5 +882,160 @@ func TestConfigErrorIsError(t *testing.T) {
 	var cfg *ConfigError
 	if !errors.As(err, &cfg) {
 		t.Fatal("as")
+	}
+}
+
+func oneAgentExport(key, status string) string {
+	return `{
+	  "agents": [{
+	    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00f1",
+	    "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+	    "agent_key": "` + key + `",
+	    "display_name": "Mau Minh An",
+	    "status": "` + status + `",
+	    "frontmatter": "Mau."
+	  }]
+	}`
+}
+
+func TestDenylistBlocksTenantAndBadFiles(t *testing.T) {
+	body := oneAgentExport("minh-an-deny", "active")
+	ex, err := ReadExport(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{TenantID: destTenant, AgentKey: "minh-an-kept", DisplayName: "Giu"}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(st.ListAgents())
+	_, err = Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: map[string]struct{}{strings.ToLower(srcTenant): {}}})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("source %v", err)
+	}
+	_, err = Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: "blocked-sample", Apply: true, Deny: testDeny()})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("dest %v", err)
+	}
+	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true}); err == nil {
+		t.Fatal("empty denylist ran")
+	}
+	if len(st.ListAgents()) != before || agentByKey(t, st, "minh-an-deny") != nil {
+		t.Fatal("denied import wrote a row")
+	}
+	dir := t.TempDir()
+	if _, err := LoadDenylist(filepath.Join(dir, "missing.txt")); err == nil {
+		t.Fatal("missing file")
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("# only a comment\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDenylist(empty); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty %v", err)
+	}
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("not valid\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDenylist(bad); err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("malformed %v", err)
+	}
+	raw, _ := json.Marshal(Report{DeniedTenants: 2})
+	if strings.Contains(string(raw), "blocked-sample") || !strings.Contains(string(raw), `"denied_tenants":2`) && !strings.Contains(string(raw), `"denied_tenants": 2`) {
+		t.Fatalf("report %s", raw)
+	}
+}
+
+func TestReservedChannelKeysWriteNothing(t *testing.T) {
+	for _, key := range []string{"zalo-personal", "zalo-oa", "telegram"} {
+		t.Run(key, func(t *testing.T) {
+			ex, err := ReadExport(strings.NewReader(oneAgentExport(key, "active")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := store.New()
+			rep, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sec := findSection(t, rep.Agents, srcTenant)
+			if sec.Inserted != 0 || sec.Reasons[reasonReservedKey] != 1 || agentByKey(t, st, key) != nil {
+				t.Fatalf("key %s report %+v", key, sec)
+			}
+		})
+	}
+}
+
+func TestImportedAgentMentionIsInactive(t *testing.T) {
+	ex, err := ReadExport(strings.NewReader(oneAgentExport("minh-an-mention", "active")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.New()
+	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}); err != nil {
+		t.Fatal(err)
+	}
+	imported := agentByKey(t, st, "minh-an-mention")
+	if imported == nil || imported.Enabled {
+		t.Fatalf("imported %+v", imported)
+	}
+	host, err := st.CreateAgent(store.Agent{TenantID: destTenant, AgentKey: "minh-an-host", DisplayName: "Host"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession(store.Session{AgentID: host.ID, TenantID: destTenant, Label: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := &agent.Runtime{Store: st}
+	_, err = rt.ChatWithTurn(context.Background(), sess.ID, "chao", "", false, agent.ChatTurn{MentionAgentID: imported.ID}, nil)
+	if !errors.Is(err, agent.ErrAgentInactive) {
+		t.Fatalf("mention %v", err)
+	}
+}
+
+func TestRollbackStopsForLaterSession(t *testing.T) {
+	ex, err := ReadExport(strings.NewReader(oneAgentExport("minh-an-later", "active")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.New()
+	if _, err := Import(st, ex, Options{SourceTenant: srcTenant, DestTenant: destTenant, Apply: true, Deny: testDeny()}); err != nil {
+		t.Fatal(err)
+	}
+	ag := agentByKey(t, st, "minh-an-later")
+	sess, err := st.CreateSession(store.Session{AgentID: ag.ID, TenantID: destTenant, Label: "sau khi nhap"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: "Mau Minh An"}); err != nil {
+		t.Fatal(err)
+	}
+	dry, err := Rollback(st, destTenant, rbOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dry.PostImport == nil || dry.PostImport.Sessions != 1 || dry.PostImport.Messages != 1 {
+		t.Fatalf("count %+v", dry.PostImport)
+	}
+	if _, err := Rollback(st, destTenant, rbOpt(true)); err == nil || !strings.Contains(err.Error(), "post-import") {
+		t.Fatalf("rollback %v", err)
+	}
+	if _, err := st.GetSession(sess.ID); err != nil {
+		t.Fatal("session was deleted")
+	}
+	if agentByKey(t, st, "minh-an-later") == nil {
+		t.Fatal("agent was deleted")
+	}
+	gone, err := Rollback(st, destTenant, RollbackOptions{Apply: true, Confirm: true, Deny: testDeny()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gone.Removed.Agents != 1 {
+		t.Fatalf("confirm %+v", gone.Removed)
+	}
+	if _, err := st.GetSession(sess.ID); err == nil {
+		t.Fatal("confirmed rollback left the session")
 	}
 }

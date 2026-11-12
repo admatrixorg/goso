@@ -30,18 +30,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goso-agent-import", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: goso-agent-import --export file.json --source-tenant id --tenant id --db path [--apply] [--dry-run]")
-		fmt.Fprintln(stderr, "       goso-agent-import --rollback --tenant id --db path [--apply]")
+		fmt.Fprintln(stderr, "usage: goso-agent-import --denylist file --export file.json --source-tenant id --tenant id --db path [--apply] [--dry-run]")
+		fmt.Fprintln(stderr, "       goso-agent-import --denylist file --rollback --tenant id --db path [--apply] [--confirm-rollback]")
 		fmt.Fprintln(stderr, "default: dry-run, writes nothing. --apply writes. --apply together with --dry-run is an error.")
+		fmt.Fprintln(stderr, "--denylist is required (or GOSO_IMPORT_DENYLIST). A missing, empty, or malformed file stops before any work.")
 		fmt.Fprintln(stderr, "--rollback removes rows this tool mapped for --tenant. It does not read an export.")
 	}
 	exportPath := fs.String("export", "", "JSON or JSONL export with GoClaw agent column names")
 	source := fs.String("source-tenant", "", "export tenant_id to keep; other tenants are counted and not written")
 	dest := fs.String("tenant", "", "goso tenant_id to write")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
+	denyPath := fs.String("denylist", "", "local file of tenant ids to refuse; required")
 	apply := fs.Bool("apply", false, "write rows, or delete mapped rows when used with --rollback")
 	dry := fs.Bool("dry-run", false, "report only; this is the default when --apply is absent")
 	rollback := fs.Bool("rollback", false, "remove rows previously imported into --tenant")
+	confirm := fs.Bool("confirm-rollback", false, "allow rollback when sessions, tasks, or messages were added later")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -57,9 +60,36 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--rollback does not take --export or --source-tenant")
 		return 2
 	}
+	if *confirm && !*rollback {
+		fmt.Fprintln(stderr, "--confirm-rollback requires --rollback")
+		return 2
+	}
 	if strings.TrimSpace(*dest) == "" || strings.TrimSpace(*dbPath) == "" {
 		fs.Usage()
 		return 2
+	}
+	path := strings.TrimSpace(*denyPath)
+	if path == "" {
+		path = strings.TrimSpace(os.Getenv("GOSO_IMPORT_DENYLIST"))
+	}
+	deny, derr := agentimport.LoadDenylist(path)
+	if derr != nil {
+		var cfg *agentimport.ConfigError
+		if errors.As(derr, &cfg) {
+			fmt.Fprintln(stderr, cfg.Error())
+		} else {
+			fmt.Fprintln(stderr, "denylist is unreadable")
+		}
+		return 1
+	}
+	if agentimport.TenantDenied(deny, *dest) || (!*rollback && agentimport.TenantDenied(deny, *source)) {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(struct {
+			DeniedTenants int `json:"denied_tenants"`
+		}{DeniedTenants: len(deny)})
+		fmt.Fprintln(stderr, "tenant is denied")
+		return 1
 	}
 	st, closeDB, err := openDB(*dbPath)
 	if err != nil {
@@ -69,7 +99,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer closeDB()
 	var rep *agentimport.Report
 	if *rollback {
-		rep, err = agentimport.Rollback(st, *dest, *apply)
+		rep, err = agentimport.Rollback(st, *dest, agentimport.RollbackOptions{
+			Apply: *apply, Confirm: *confirm, Deny: deny,
+		})
 	} else {
 		if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*source) == "" {
 			fs.Usage()
@@ -104,6 +136,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			SourceTenant: *source,
 			DestTenant:   *dest,
 			Apply:        *apply,
+			Deny:         deny,
 		})
 	}
 	if err != nil {
