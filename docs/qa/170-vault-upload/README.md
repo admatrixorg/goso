@@ -39,10 +39,12 @@ Verbose cases for the acceptance criteria, with memory, SQLite, and Postgres whe
 | 1. Only `POST /api/vault/upload`, no `/v1` alias | `TestCriterion1_UploadRouteHasNoV1Alias` |
 | 2. `LimitAPI` exempts that POST only while the flag is on; flag off still cuts a 2 MiB body at 1 MiB and writes no `raw/`; flag on accepts 20 MiB; other `/api` routes stay at 1 MiB | `TestLimitAPI_VaultUploadExemption`, `TestVaultUpload_FlagOffTwoMiBDoesNotWrite`, `TestVaultUpload_TwentyMiBAndOtherRoutesStayCapped` |
 | 3. Admin/write and tenant before the body, including dev-mode with no token. A 20 MiB unauthenticated request is not read | `TestVaultUpload_AuthTenantBeforeBody`, `TestVaultUpload_UnauthenticatedBodyNotRead`, `TestVaultUpload_WriteKeyCannotSwitchTenant` |
-| 4. `PutTenantAt` writes the file and the `vault_docs` row together and refuses `raw/`, escape, and symlinks | `TestPutTenantAt_WritesTogetherAndRefusesRaw` |
+| 4. `PutTenantAt` writes the file and the `vault_docs` row together and refuses `raw/`, escape, and symlinks. A failed publish rolls the row back | `TestPutTenantAt_WritesTogetherAndRefusesRaw`, `TestPutTenantAt_RenameFailureRollsBack`, `TestPutTenantAt_LinkRefreshDoesNotFailWrite` |
 | 5. `raw/` is out of sync, inventory, and the SPEC 152 importer. Sync deletes no `sources/` or `wiki/` row and creates none from `raw/x.md` | `TestSyncInventory_RawDoesNotTouchSourcesOrWiki`, `TestImportSkipsRaw` |
 | 6. Per-tenant disk quota fails closed when missing or exceeded | `TestVaultUpload_QuotaRequiredFailClosed`, quota case inside `TestVaultUpload_MinhAnFilesDuplicateAndQuota` |
 | 7. New `vault_ingest_jobs` table only, SQLite and Postgres, existing `vault_docs` columns unchanged | `TestIngestJobTableAdditive` |
+
+Rename rollback and link refresh: [go-test-put-rollback.txt](go-test-put-rollback.txt). `TestPutTenantAt_RenameFailureRollsBack` passed on memory, SQLite, and Postgres.
 
 `TestVaultUpload_MinhAnFilesDuplicateAndQuota` also covers magic bytes (pdf, docx, xlsx, pptx, png, jpeg, gif, webp, txt, md), a fake extension, `.doc` and `.exe`, same-tenant duplicate, cross-tenant isolation, streaming in chunks no larger than 32 KiB, and the audit row (size, extension, status, no file body). `TestVaultUpload_FileCap413` covers a file over the per-file cap. `TestVaultUpload_FlagOffLeavesPutDocs` covers `PUT /api/vault/docs` with the flag off.
 
@@ -68,3 +70,9 @@ Gateway was `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8
 Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
 
 Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Nothing was skipped. Honest empty states, not failures: `#/decision`, `#/decision-flow`, `#/hooks`, `#/meetings`, and the matching aliases.
+
+## Non-blocking notes
+
+Upload temp files are created inside `raw/`, and the per-tenant disk quota is checked only after that stream finishes. A tenant that can call the upload route can therefore sit above `GOSO_VAULT_INGEST_QUOTA_BYTES` by up to 20 MiB times the number of uploads in flight. That window is acceptable while `GOSO_VAULT_UPLOAD` stays off in production.
+
+`PutTenantAt` writes or replaces one path. It does not move a file. SPEC 172 has to add that as write-the-new-path then remove-the-old-path in one step, with no orphan left behind.

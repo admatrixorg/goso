@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,126 @@ type failPut struct{ store.StoreIface }
 
 func (f failPut) PutVaultDoc(store.VaultDoc) (*store.VaultDoc, error) {
 	return nil, errors.New("db down")
+}
+
+// TestPutTenantAt_RenameFailureRollsBack is the criterion 4 publish step:
+// a failed rename restores the previous row, or deletes a new one, and
+// leaves no temp file.
+func TestPutTenantAt_RenameFailureRollsBack(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	for _, name := range []string{"memory", "sqlite", "postgres"} {
+		t.Run(name, func(t *testing.T) {
+			st := openNamedVaultStore(t, name)
+			if st == nil {
+				t.Skip("postgres DSN unset")
+			}
+			root := t.TempDir()
+			svc := New(st, root)
+			prevBody := []byte("# Hop dong Minh An\ncu\n")
+			prev, err := svc.PutTenantAt("minh-an", "sources/inbox/hop-dong.md", prevBody)
+			if err != nil {
+				t.Fatal(err)
+			}
+			SetPublishHooks(func(string, string) error { return errors.New("rename failed") }, nil, nil)
+			t.Cleanup(func() { SetPublishHooks(nil, nil, nil) })
+			if _, err := svc.PutTenantAt("minh-an", "sources/inbox/hop-dong.md", []byte("# Hop dong Minh An\nmoi\n")); err == nil {
+				t.Fatal("rename failure reported success")
+			}
+			got, err := st.GetVaultDoc(prev.ID)
+			if err != nil || !sameVaultRow(got, prev) {
+				t.Fatalf("row not restored %#v want %#v %v", got, prev, err)
+			}
+			abs, err := svc.namespaced("minh-an", prev.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			disk, err := os.ReadFile(abs)
+			if err != nil || !bytes.Equal(disk, prevBody) {
+				t.Fatalf("file %q %v", disk, err)
+			}
+			assertNoPartial(t, root)
+
+			if _, err := svc.PutTenantAt("minh-an", "wiki/topics/moi.md", []byte("# Minh An moi\n")); err == nil {
+				t.Fatal("new path rename failure reported success")
+			}
+			if _, err := st.FindVaultDocByPath("minh-an", "wiki/topics/moi.md"); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("new path row remained: %v", err)
+			}
+			missing, err := svc.namespaced("minh-an", "wiki/topics/moi.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Lstat(missing); !os.IsNotExist(err) {
+				t.Fatalf("new path file: %v", err)
+			}
+			assertNoPartial(t, root)
+		})
+	}
+}
+
+func TestPutTenantAt_LinkRefreshDoesNotFailWrite(t *testing.T) {
+	t.Setenv("GOSO_WORKSPACE", "")
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	root := t.TempDir()
+	svc := New(linkFail{StoreIface: store.New()}, root)
+	body := []byte("# Minh An\n\nsee [[Khac]] LINKFAILMARKER\n")
+	doc, err := svc.PutTenantAt("minh-an", "wiki/topics/minh-an.md", body)
+	if err != nil || doc == nil || doc.Body != string(body) {
+		t.Fatalf("write %#v %v", doc, err)
+	}
+	abs, err := svc.namespaced("minh-an", "wiki/topics/minh-an.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk, err := os.ReadFile(abs)
+	if err != nil || !bytes.Equal(disk, body) {
+		t.Fatalf("file %q %v", disk, err)
+	}
+	row, err := svc.Store.GetVaultDoc(doc.ID)
+	if err != nil || row.Body != string(body) || row.SHA256 != doc.SHA256 {
+		t.Fatalf("row %#v %v", row, err)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "links not refreshed") || strings.Contains(logged, "LINKFAILMARKER") {
+		t.Fatalf("log %s", logged)
+	}
+}
+
+type linkFail struct{ store.StoreIface }
+
+func (linkFail) ReplaceVaultLinks(string, []string) error {
+	return errors.New("links down")
+}
+
+func sameVaultRow(got, prev *store.VaultDoc) bool {
+	if got == nil || prev == nil {
+		return false
+	}
+	return got.ID == prev.ID &&
+		got.Title == prev.Title &&
+		got.Path == prev.Path &&
+		got.SHA256 == prev.SHA256 &&
+		got.Body == prev.Body &&
+		got.TenantID == prev.TenantID &&
+		got.OwnerExplicit == prev.OwnerExplicit
+}
+
+func assertNoPartial(t *testing.T, root string) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".partial") {
+			t.Fatalf("temp file remained: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSyncInventory_RawDoesNotTouchSourcesOrWiki is criterion 5 for sync and inventory.

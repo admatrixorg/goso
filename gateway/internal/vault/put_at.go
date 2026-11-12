@@ -4,6 +4,7 @@ package vault
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,6 +17,9 @@ import (
 // path is inside the tenant directory. It must already be a logical path:
 // escape and symlinks are refused, and raw/ is refused. The registry row is
 // committed before the file is published. A database error leaves no file.
+// If publishing the file fails, the previous row is restored, or the new row
+// is deleted, and the temp file is removed. A link refresh error after the
+// file and row are both published is logged and is not a write failure.
 func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc, error) {
 	if body == nil {
 		body = []byte{}
@@ -86,11 +90,34 @@ func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc
 	}
 	if err := publishRename(tmp, abs); err != nil {
 		removeRegular(tmp)
+		if rbErr := s.rollbackPut(existing, saved.ID); rbErr != nil {
+			return nil, rbErr
+		}
 		return nil, err
 	}
 	if err := s.refreshLinks(saved.ID, text); err != nil {
-		return nil, err
+		// The file and the row are already the published pair. A stale
+		// wikilink index is not a failed write.
+		log.Printf("vault: links not refreshed id=%s", saved.ID)
+		return saved, nil
 	}
 	_ = s.Store.ReResolveVaultLinks()
 	return saved, nil
+}
+
+// rollbackPut undoes a registry commit that never reached disk.
+// previous is the row that occupied the path, or nil when the path was new.
+func (s *Service) rollbackPut(previous *store.VaultDoc, newID string) error {
+	if previous != nil {
+		_, err := s.Store.PutVaultDoc(*previous)
+		return err
+	}
+	if newID == "" {
+		return nil
+	}
+	err := s.Store.DeleteVaultDoc(newID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	return err
 }
