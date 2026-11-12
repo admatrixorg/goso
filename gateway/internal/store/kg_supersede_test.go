@@ -29,7 +29,7 @@ func TestKGExclusiveRelationAndSupersede(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rels, err := s.ListKGRelations(an.ID)
+			rels, err := s.ListKGRelations(an.ID, KGScope{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -45,7 +45,7 @@ func TestKGExclusiveRelationAndSupersede(t *testing.T) {
 					}
 				}
 			}
-			cur, _ := s.ListKGRelations(an.ID)
+			cur, _ := s.ListKGRelations(an.ID, KGScope{})
 			foundNew := false
 			for _, r := range cur {
 				if r.ID == r2.ID {
@@ -72,7 +72,7 @@ func TestKGExclusiveRelationAndSupersede(t *testing.T) {
 			}
 			// History stays inspectable by id, but the window is closed and no
 			// current relation is attached (relations to Acme were superseded).
-			exp, err := s.ExpandKG(acme.ID)
+			exp, err := s.ExpandKG(acme.ID, KGScope{})
 			if err != nil || exp == nil || exp.Entity == nil || exp.Entity.ValidUntil == nil {
 				t.Fatalf("superseded entity must carry valid_until: %v %+v", err, exp)
 			}
