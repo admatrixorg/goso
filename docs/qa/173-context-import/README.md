@@ -1,18 +1,26 @@
 # SPEC 173 — context file import
 
-Offline importer for agent and user context files into the SPEC 150 `context_files` table. No control-plane change, so prototype screenshots do not apply and `qa:tabs` was not run. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
+Offline importer for GoClaw `agent_context_files` and `user_context_files` into the SPEC 150 `context_files` table. The input is a JSON or JSONL export. This tool does not connect to GoClaw. No control-plane change, so prototype screenshots do not apply and `qa:tabs` was not run. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
-The input JSON is an assumption. Issues #26, #28, and #29 name `agent_context_files` and `user_context_files` and do not list columns. The sample fixture is `gateway/internal/contextimport/testdata/minh-an.json`.
+## Column mapping
+
+| GoClaw | `context_files` |
+|---|---|
+| `tenant_id` | Kept for `--source-tenant` only. Written as `--tenant`. |
+| `agent_id` + `file_name` | Agent file. `agent_id` selects an existing agent (`--agent-map`, or an agent whose id or `agent_key` equals it). Stored owner is that agent's id. Natural key `agent_id` + `file_name`. |
+| `agent_id` + `user_id` + `file_name` | User file. `user_id` is the per-customer `user_key`. The agent must be in `--tenant`. Goso has no per-agent user file, so two agents that disagree on the same user and name are `scope-conflict`. Natural key `agent_id` + `user_id` + `file_name`. |
+| `content` | `body` |
+| `created_at`, `updated_at` | Stored on the row. A rerun with the same body and clocks does not write. |
+
+The GoClaw uuid primary key is not stored. The sample is `gateway/internal/contextimport/testdata/minh-an.json` (fake Minh An agents and users, including per-user files).
 
 ## Tested SHA
 
-`a846ab1c3244b4440ce3cfb6501788bb9c23bd0c`
+`5cefc1bd00a28a88909129be9bee8c09cc5d0397`
 
 The transcripts below were captured from that tree. This evidence commit adds the logs and this note. It does not change the importer.
 
-`git status --porcelain` showed only `docs/qa/173-context-import/` when these logs were copied. The Postgres open logs `CREATE EXTENSION vector skipped` because this server has no pgvector extension. That line is the existing store, not a new dependency.
-
-Postgres for the local run was **16.15** (Ubuntu package `16.15-0ubuntu0.24.04.1`). SQLite cases run in the same command. Postgres cases run because the DSN is set.
+Postgres for the local run was **16.15** (Ubuntu package `16.15-0ubuntu0.24.04.1`). SQLite cases run in the same command. Postgres cases run because the DSN is set. The Postgres open logs `CREATE EXTENSION vector skipped` because this server has no pgvector extension. That line is the existing store, not a new dependency.
 
 ## go test
 
@@ -24,7 +32,7 @@ go test ./... -count=1 -timeout 25m
 
 [go-test.txt](go-test.txt)
 
-Exit 0. Every package reported `ok` or `[no test files]`, including `gateway/internal/contextimport` and `gateway/cmd/goso-context-import`. `gateway/internal/store` and `gateway/memorybench` passed on this Postgres as well.
+Exit 0. Every package reported `ok` or `[no test files]`, including `gateway/internal/contextimport` and `gateway/cmd/goso-context-import`.
 
 Verbose case log, same DSN:
 
@@ -34,19 +42,19 @@ go test ./gateway/internal/contextimport ./gateway/cmd/goso-context-import -coun
 
 [go-test-cases.txt](go-test-cases.txt)
 
-Exit 0. `TestMinhAnFixture` passed on `sqlite`, `postgres`, and `memory`, including flag-off (the imported text is not in the prompt) and flag-on (the imported `contextfile.Prompt` block is what the runner loads). Dry-run, rerun, tenant isolation, the owner cap, and invalid rows passed on all three stores.
+Exit 0. `TestMinhAnFixture` passed on `sqlite`, `postgres`, and `memory`, including flag-off (the imported text is not in the prompt) and flag-on (the imported `contextfile.Prompt` block is what the runner loads). Dry-run, rerun, per-user files, tenant isolation, the owner cap, JSONL, and a user-file conflict passed on the stores those tests open.
 
 ## go test -race
 
-Touched packages only:
+Touched packages:
 
 ```bash
-go test -race -count=1 -timeout 15m ./gateway/internal/contextimport ./gateway/cmd/goso-context-import
+go test -race -count=1 -timeout 15m ./gateway/internal/contextimport ./gateway/cmd/goso-context-import ./gateway/internal/store
 ```
 
 [go-test-race.txt](go-test-race.txt)
 
-Exit 0. The same DSN was set, so the race run includes the Postgres cases.
+Exit 0. The same DSN was set, so the race run includes the Postgres cases. `gateway/internal/store` is included because the importer now asks `PutContextFile` to keep a source clock.
 
 ## qa:tabs
 
