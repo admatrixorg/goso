@@ -479,6 +479,11 @@ type StoreIface interface {
 	ListVaultDocLinks(id string) ([]VaultLink, []VaultLink, error)
 	SearchVault(tenant, q string) ([]VaultSearchHit, error)
 	ReResolveVaultLinks() error
+	// Ingest jobs are the source of truth for immutable raw uploads (SPEC 170).
+	// They are not vault_docs rows.
+	PutIngestJob(IngestJob) (*IngestJob, error)
+	GetIngestJob(id string) (*IngestJob, error)
+	FindUploadedIngestJob(tenant, sha256 string) (*IngestJob, error)
 	UpdateAgent(Agent) (*Agent, error)
 	CreateTeam(Team) (*Team, error)
 	ListTeams() []*Team
@@ -622,6 +627,7 @@ type Store struct {
 	channelPairing  map[string]*ChannelPairing
 	gatewaySettings *GatewaySettings
 	contextFiles    map[string]*ContextFile
+	ingestJobs      map[string]*IngestJob
 	seq             int64
 }
 
@@ -684,6 +690,7 @@ func New() *Store {
 		channelConfig:  make(map[string]*ChannelConfig),
 		channelPairing: make(map[string]*ChannelPairing),
 		contextFiles:   make(map[string]*ContextFile),
+		ingestJobs:     make(map[string]*IngestJob),
 	}
 }
 

@@ -63,11 +63,13 @@ type ToolsView struct {
 }
 
 type IntegrationView struct {
-	OTELSet        Field `json:"otel_set"`
-	DatabaseURLSet Field `json:"database_url_set"`
-	MultiTenant    Field `json:"multi_tenant"`
-	SkillsDir      Field `json:"skills_dir"`
-	VaultDir       Field `json:"vault_dir"`
+	OTELSet          Field `json:"otel_set"`
+	DatabaseURLSet   Field `json:"database_url_set"`
+	MultiTenant      Field `json:"multi_tenant"`
+	SkillsDir        Field `json:"skills_dir"`
+	VaultDir         Field `json:"vault_dir"`
+	VaultUpload      Field `json:"vault_upload"`
+	VaultIngestQuota Field `json:"vault_ingest_quota"`
 }
 
 func boolField(key, envKey string, truthy bool) Field {
@@ -206,13 +208,36 @@ func BuildSnapshot(updatedAt time.Time) Snapshot {
 			SSRF:      stringField("ssrf", "GOSO_SSRF", ssrfEffective(), true),
 		},
 		Integrations: IntegrationView{
-			OTELSet:        boolField("otel_set", "GOSO_OTEL_ENDPOINT", strings.TrimSpace(os.Getenv("GOSO_OTEL_ENDPOINT")) != ""),
-			DatabaseURLSet: boolField("database_url_set", "GOSO_DATABASE_URL", strings.TrimSpace(os.Getenv("GOSO_DATABASE_URL")) != ""),
-			MultiTenant:    boolField("multi_tenant", "GOSO_MULTI_TENANT", envTruthy(os.Getenv("GOSO_MULTI_TENANT"))),
-			SkillsDir:      stringField("skills_dir", "GOSO_SKILLS_DIR", os.Getenv("GOSO_SKILLS_DIR"), false),
-			VaultDir:       stringField("vault_dir", "GOSO_VAULT_DIR", os.Getenv("GOSO_VAULT_DIR"), false),
+			OTELSet:          boolField("otel_set", "GOSO_OTEL_ENDPOINT", strings.TrimSpace(os.Getenv("GOSO_OTEL_ENDPOINT")) != ""),
+			DatabaseURLSet:   boolField("database_url_set", "GOSO_DATABASE_URL", strings.TrimSpace(os.Getenv("GOSO_DATABASE_URL")) != ""),
+			MultiTenant:      boolField("multi_tenant", "GOSO_MULTI_TENANT", envTruthy(os.Getenv("GOSO_MULTI_TENANT"))),
+			SkillsDir:        stringField("skills_dir", "GOSO_SKILLS_DIR", os.Getenv("GOSO_SKILLS_DIR"), false),
+			VaultDir:         stringField("vault_dir", "GOSO_VAULT_DIR", os.Getenv("GOSO_VAULT_DIR"), false),
+			VaultUpload:      boolField("vault_upload", "GOSO_VAULT_UPLOAD", envTruthy(os.Getenv("GOSO_VAULT_UPLOAD"))),
+			VaultIngestQuota: vaultIngestQuotaField(),
 		},
 	}
+}
+
+func vaultIngestQuotaField() Field {
+	status := "off"
+	if envTruthy(os.Getenv("GOSO_VAULT_UPLOAD")) {
+		if ingestQuotaPositive() {
+			status = "set"
+		} else {
+			status = "quota_required"
+		}
+	}
+	return stringField("vault_ingest_quota", "GOSO_VAULT_INGEST_QUOTA_BYTES", status, false)
+}
+
+func ingestQuotaPositive() bool {
+	v := strings.TrimSpace(os.Getenv("GOSO_VAULT_INGEST_QUOTA_BYTES"))
+	if v == "" {
+		return false
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	return err == nil && n > 0
 }
 
 func onOff(on bool) string {

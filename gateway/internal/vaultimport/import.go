@@ -79,6 +79,7 @@ type Options struct {
 	// A kept document with no version and an empty SrcDir fails the run
 	// before any write. Files over maxFileBodyBytes (1 MiB) are too-large.
 	// Non-UTF-8 files and files with a NUL byte are binary-skipped.
+	// A source or destination path under raw/ is raw-skipped and is not read or written.
 	SrcDir string
 	// IncludePersonal imports scope=personal documents. Default is off.
 	// Turn it on only after the tenant owner accepts that those notes are

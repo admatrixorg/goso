@@ -119,6 +119,9 @@ Environment:
   GOSO_BACKUP_DIR          Snapshot dir for VACUUM INTO (default ./var/backups)
   GOSO_VAULT_DIR           Knowledge vault root (default data/vault)
   GOSO_VAULT_SCOPED_SYNC   1 = vault_scoped_sync on. Off blocks sync and does not restore a global scan. Default off
+  GOSO_VAULT_UPLOAD        1 = POST /api/vault/upload (admin or write key). Default off (404, body still capped at 1 MiB)
+  GOSO_VAULT_INGEST_MAX_BYTES  Per-file cap when upload is on (default 20971520). Other /api routes stay at 1 MiB
+  GOSO_VAULT_INGEST_QUOTA_BYTES  Per-tenant disk quota in bytes. Required before upload can write. Missing or invalid fails closed
   GOSO_CONTACTS_DURABLE    1 = persist the contact directory in SQLite or Postgres (no 200 cap). Default off keeps the in-memory directory
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
