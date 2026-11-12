@@ -91,7 +91,8 @@ func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc
 	if err := publishRename(tmp, abs); err != nil {
 		removeRegular(tmp)
 		if rbErr := s.rollbackPut(existing, saved.ID); rbErr != nil {
-			return nil, rbErr
+			// Keep the rename error. A rollback failure must not replace it.
+			return nil, errors.Join(err, rbErr)
 		}
 		return nil, err
 	}
