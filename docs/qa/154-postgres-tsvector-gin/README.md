@@ -2,6 +2,20 @@
 
 Evidence for the additive `body_tsv` columns and GIN indexes. No control-plane change, so prototype screenshots do not apply. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
+## Merge retest
+
+`origin/main` at `d409b99` (SPEC 170) was merged in. `CHANGELOG.md` keeps the SPEC 154 entry and both SPEC 170 entries. `TestIngestJobTableAdditive` on Postgres now expects the extra generated `body_tsv` column; the SPEC 170 columns are still required, and SQLite's `vault_docs` column set is unchanged.
+
+Tested commit: `5464e95ea50aef189b92c82f3c4c58ae22cb3a3c`
+
+`git status --porcelain` was empty before `go test ./...` and `npm run qa:tabs`.
+
+[go-test-5464e95ea50aef189b92c82f3c4c58ae22cb3a3c.txt](go-test-5464e95ea50aef189b92c82f3c4c58ae22cb3a3c.txt)
+
+[qa-tabs-5464e95ea50aef189b92c82f3c4c58ae22cb3a3c.log](qa-tabs-5464e95ea50aef189b92c82f3c4c58ae22cb3a3c.log)
+
+`go test ./...` exited 0 on SQLite and Postgres 16.15, including `gateway/internal/store` and `gateway/memorybench`. `npm run qa:tabs` exited 0 (`flow chat`, then `qa:tabs ok`). Chrome **156.0.8078.47**. No tab changed, so there are no prototype screenshots. Gateway was restarted from this tree on a fresh SQLite file before the browser run. `GOSO_VAULT_UPLOAD` was unset.
+
 ## Tested SHA
 
 `a48fd9d93ec7039246d5b14013c5fd0dc1f681ba`
