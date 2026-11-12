@@ -295,7 +295,7 @@ func TestKGCustomerKey_PostgresColumnWithoutIndex(t *testing.T) {
 	}
 	for _, idx := range []string{"idx_kg_entities_customer", "idx_kg_relations_customer"} {
 		var found int
-		if err := st.db.db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname=?`, idx).Scan(&found); err != nil {
+		if err := st.db.db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname=$1`, idx).Scan(&found); err != nil {
 			t.Fatal(err)
 		}
 		if found != 0 {
