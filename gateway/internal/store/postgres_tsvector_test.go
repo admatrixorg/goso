@@ -1049,8 +1049,8 @@ func TestPostgresRecall50kAgentBitmapSwamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	match := tsOrQuery(toks)
-	bq, bargs := recallTSVORBitmapQuery(q, q.TenantID, ag.ID, match, recallORLimit(n1))
-	plan := explainAnalyzeGUCs(t, st, recallORBitmapGUCs, bq, bargs...)
+	bq, bargs := recallTSVORAgentWindowQuery(q, q.TenantID, ag.ID, match, recallORLimit(n1))
+	plan := explainAnalyzeGUCs(t, st, recallORAgentGUCs, bq, bargs...)
 	fmt.Printf("SPEC154 explain_agent_swamp:\n%s\n", plan)
 	requirePlan(t, plan, []string{"idx_memories_session"}, []string{"Seq Scan on memories"})
 	samples := timeRecall(t, st, q, needleID, 5)
@@ -1058,7 +1058,7 @@ func TestPostgresRecall50kAgentBitmapSwamp(t *testing.T) {
 	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 agent_swamp fetched=%d samples=%s median=%s max=%s path=%s\n",
 		fetched, formatDurations(samples), med, max, path)
-	if path != recallPathBitmapAnd {
+	if path != recallPathAgentWindow {
 		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {

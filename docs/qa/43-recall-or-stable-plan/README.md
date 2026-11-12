@@ -20,16 +20,16 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 | Target tenant selective, 4 other tenants × 50,000 all match the OR | Target agent's sessions, tsquery as a filter | `BitmapAnd` of `idx_memories_customer` (`tenant_id`) and `idx_memories_session` | 23.666341 ms | 26.061083 ms |
 | Customer scope, 5 rows for the customer, 49,995 other customers all match | Customer index | `Index Scan using idx_memories_customer` | 1.692492 ms | 2.121189 ms |
 | Agent scope, 16 rows for the agent, 49,980 rows for another agent all match | Agent sessions | `Nested Loop` + `Index Scan using idx_memories_session` | 10.604821 ms | 11.270847 ms |
-| Agent A ~5,000 older matches, agent B ~45,000 newer matches (bitmap fallback) | Agent's sessions inside the CTE | `Bitmap Index Scan on idx_memories_session` (5,000 rows) | 18.275472 ms | 30.996716 ms |
+| Agent A ~5,000 older matches, agent B ~45,000 newer matches | Agent's own newest rows (`agent-window`) | `Index Scan using idx_memories_session`, top-N heapsort stops at 2,000 | 14.825429 ms | 20.117451 ms |
 | Customer ~5,000 older matches, other customers ~45,000 newer matches | Newest customer rows (`customer-window`) | `Index Scan using idx_memories_customer_created` (stops at 2,000) | 11.029229 ms | 17.247745 ms |
 
 The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all six plans (tenant-window, customer-index, customer-window, agent-nested-loop, bitmap-and, bitmap-and-customer) and checks every returned row (tenant, customer when scoped, agent, kind, excluded session). The two customer-scoped large-customer cases include a different customer with newer rows, a different agent with the same customer, another tenant, the excluded session, and a wrong kind.
 
-The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149` failed between 50.3 ms and 57.6 ms. Head `7b86300` failed the same way (5% max 55.118961 ms, agent swamp max 55.85815 ms) while the SQL plans stayed under 16 ms. The tenant probe, the agent count, and the bitmap now share one transaction so those statements do not each pay for begin and commit. `SET LOCAL` still ends with that transaction. If main fails one of these tests again, open an issue. Do not raise the threshold.
+The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149` failed between 50.3 ms and 57.6 ms. Head `7b86300` failed the same way (5% max 55.118961 ms, agent swamp max 55.85815 ms) while the SQL plans stayed under 16 ms. Head `2ae988b` brought 5% under the cap (max 49.712791 ms) by sharing one transaction for the probe, the agent count, and the bitmap; agent swamp still spiked to 53.900878 ms. That shape now uses `agent-window` instead of reading 5,000 bitmap rows. `SET LOCAL` still ends with the transaction. If main fails one of these tests again, open an issue. Do not raise the threshold.
 
 `CREATE INDEX idx_memories_customer_created` is not `CONCURRENTLY`. It runs when the gateway opens Postgres, and the build locks writes on `memories` until it finishes. Deploy conditions are the same as #41: count rows per tenant, take a backup, pick an off-hours window, and deploy only with Dat's approval.
 
-`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (53.614s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
+`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (55.337s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
 
 ## Selective (near 0)
 
@@ -86,13 +86,13 @@ The target agent has 16 rows, including the older needle. Another agent in the s
 
 Samples: 10.604821 ms, 11.270847 ms, 10.26266 ms, 10.213572 ms, 10.611252 ms. Median **10.604821 ms**. Max **11.270847 ms**.
 
-## Agent swamp (bitmap fallback)
+## Agent swamp (`agent-window`)
 
-Agent A has 5,000 older rows that match the OR. Agent B has 45,000 newer rows that match the OR. The probe window is agent B, so it returns nothing. Agent A is larger than the budget, so the small-agent path does not run. The CTE reads agent A's sessions only:
+Agent A has 5,000 older rows that match the OR. Agent B has 45,000 newer rows that match the OR. The probe window is agent B, so it returns nothing, and the flag row names agent B. Agent A is larger than the budget, so the small-agent path does not run. Step 2 then reads agent A's own newest rows and stops at the limit. Path label: `agent-window`.
 
-`Bitmap Index Scan on idx_memories_session`, 5,000 rows, execution 7.548 ms. The other agent's 45,000 rows are not in that scan.
+`Index Scan using idx_memories_session` (2,500 rows × 2 sessions, 5,000 rows, not agent B's 45,000), then a top-N heapsort. Execution 2.852 ms.
 
-Samples: 18.275472 ms, 26.432583 ms, 17.911093 ms, 17.92427 ms, 30.996716 ms. Median **18.275472 ms**. Max **30.996716 ms**.
+Samples: 15.126344 ms, 14.825429 ms, 14.003135 ms, 14.443189 ms, 20.117451 ms. Median **14.825429 ms**. Max **20.117451 ms**.
 
 ## Customer swamp (`customer-window`)
 

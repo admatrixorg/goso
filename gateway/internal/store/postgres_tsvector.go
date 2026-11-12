@@ -163,6 +163,7 @@ const (
 	recallPathCustomerIndex     = "customer-index"
 	recallPathCustomerWindow    = "customer-window"
 	recallPathAgentNested       = "agent-nested-loop"
+	recallPathAgentWindow       = "agent-window"
 	recallPathBitmapAnd         = "bitmap-and"
 	recallPathBitmapAndCustomer = "bitmap-and-customer"
 )
@@ -263,11 +264,12 @@ func (s *SQLiteStore) recallTSVOR(q RecallQuery, tenant, agent string, toks []st
 }
 
 // recallTSVORPath is recallTSVOR plus the plan name (tenant-window,
-// customer-index, customer-window, agent-nested-loop, bitmap-and,
-// bitmap-and-customer). The name is a return value so callers do not share
-// mutable state. customer-window is the large-customer newest window.
-// bitmap-and-customer is that window falling through to the bitmap with
-// customer_key still applied.
+// customer-index, customer-window, agent-nested-loop, agent-window,
+// bitmap-and, bitmap-and-customer). The name is a return value so callers
+// do not share mutable state. customer-window and agent-window are the
+// newest rows of one customer or one agent. bitmap-and-customer is the
+// customer window falling through to the bitmap with customer_key still
+// applied.
 func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, string, error) {
 	if match == "" || lim <= 0 {
 		return nil, 0, "", nil
@@ -315,8 +317,8 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 		return nil, 0, "", err
 	}
 	defer tx.Rollback()
-	probeQ, probeArgs := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
-	hits, n, err := execRecallTSVOn(tx, toks, probeQ, probeArgs, recallORStableGUCs)
+	probeQ, probeArgs := recallTSVORProbeSignalQuery(q, tenant, agent, match, budget, lim)
+	hits, n, newestAgent, err := execProbeSignal(tx, toks, probeQ, probeArgs, recallORStableGUCs)
 	if err != nil {
 		return nil, n, "", err
 	}
@@ -344,6 +346,22 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 				return nil, n, "", err
 			}
 			return hits, n, recallPathAgentNested, nil
+		}
+		// The tenant's newest row belongs to someone else, so this agent's
+		// own newest rows were not in the probe. Read those directly and
+		// stop at lim. A short window falls through to the bitmap.
+		if newestAgent != "" && newestAgent != agent {
+			query, args := recallTSVORAgentWindowQuery(q, tenant, agent, match, lim)
+			hits, n, err = execRecallTSVOn(tx, toks, query, args, nil)
+			if err != nil {
+				return nil, n, "", err
+			}
+			if n >= lim {
+				if err := tx.Commit(); err != nil {
+					return nil, n, "", err
+				}
+				return hits, n, recallPathAgentWindow, nil
+			}
 		}
 	}
 	bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
@@ -525,6 +543,92 @@ func recallTSVORProbeQuery(q RecallQuery, tenant, agent, match string, budget, l
 		AND m.session_id <> ?`
 	args := []any{tenant, budget, match, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
 	query, args = recallScope(query, args, q, agent)
+	query += ` ORDER BY m.created_at DESC LIMIT ?`
+	args = append(args, lim)
+	return query, args
+}
+
+// recallTSVORProbeSignalQuery is the probe plus one flag row when the probe
+// is empty. The flag's customer_key is the agent that owns the tenant's
+// newest memory, so a miss can tell "another agent owns the window" from
+// "this agent's newest rows do not match" without a second round trip.
+func recallTSVORProbeSignalQuery(q RecallQuery, tenant, agent, match string, budget, lim int) (string, []any) {
+	inner, args := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
+	query := `WITH probe AS MATERIALIZED (` + inner + `),
+		newest AS (
+			SELECT sess.agent_id
+			FROM memories m
+			JOIN sessions sess ON sess.id = m.session_id
+			WHERE m.tenant_id = ?
+			ORDER BY m.created_at DESC
+			LIMIT 1
+		)
+		SELECT id, session_id, kind, body, created_at, tenant_id, customer_key FROM probe
+		UNION ALL
+		SELECT '', '', '', '', '1970-01-01T00:00:00Z', '', (SELECT agent_id FROM newest)
+		WHERE NOT EXISTS (SELECT 1 FROM probe)`
+	args = append(args, tenant)
+	return query, args
+}
+
+// execProbeSignal reads the probe. An empty id is the flag row, not a hit.
+func execProbeSignal(tx txHandle, toks []string, query string, args []any, gucs []string) ([]RecallHit, int, string, error) {
+	if err := applyLocalGUCs(tx, gucs); err != nil {
+		return nil, 0, "", err
+	}
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	defer rows.Close()
+	var hits []RecallHit
+	newest := ""
+	fetched := 0
+	for rows.Next() {
+		var id, sid, kind, body, ts, tenant string
+		var customer sql.NullString
+		if err := rows.Scan(&id, &sid, &kind, &body, &ts, &tenant, &customer); err != nil {
+			return nil, fetched, "", err
+		}
+		if id == "" {
+			newest = customer.String
+			continue
+		}
+		fetched++
+		m := &Memory{
+			ID: id, SessionID: sid, Kind: kind, Body: body,
+			TenantID: NormalizeTenant(tenant), CustomerKey: customer.String,
+			CreatedAt: parseTime(ts),
+		}
+		if sc := lexicalScore(m.Body, toks); sc > 0 {
+			hits = append(hits, RecallHit{Memory: *m, Score: sc})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fetched, "", err
+	}
+	return hits, fetched, newest, nil
+}
+
+// recallTSVORAgentWindowQuery reads the newest lim rows of one agent through
+// idx_memories_session. It runs only when the tenant's newest memory belongs
+// to another agent, so the tenant probe did not see this agent.
+func recallTSVORAgentWindowQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+		FROM (
+			SELECT id, session_id, kind, body, created_at, tenant_id, customer_key, body_tsv
+			FROM memories
+			WHERE session_id IN (
+				SELECT id FROM sessions WHERE agent_id = ? AND tenant_id = ?
+			)
+			ORDER BY created_at DESC
+			LIMIT ?
+		) m
+		WHERE m.tenant_id = ?
+		AND m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		AND m.kind IN (?, ?)
+		AND m.session_id <> ?`
+	args := []any{agent, tenant, lim, tenant, match, KindEpisodic, KindDurable, q.ExcludeSession}
 	query += ` ORDER BY m.created_at DESC LIMIT ?`
 	args = append(args, lim)
 	return query, args
