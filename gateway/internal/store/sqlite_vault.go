@@ -302,6 +302,9 @@ func (s *SQLiteStore) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 			return hits, nil
 		}
 	}
+	if s.bodyTSV {
+		return s.searchVaultTSV(tenant, q)
+	}
 	return s.searchVaultInstr(tenant, q)
 }
 

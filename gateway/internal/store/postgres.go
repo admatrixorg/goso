@@ -15,9 +15,11 @@ import (
 
 const postgresPingTimeout = 3 * time.Second
 
-// PostgresStore is StoreIface on Postgres 16. Embeds the SQL method set;
-// lexical search uses strpos/LIKE (FTS5 is SQLite-only). Vector search is
-// not wired — optional pgvector only adds a nullable kg_entities.embedding.
+// PostgresStore is StoreIface on Postgres 16. Embeds the SQL method set.
+// Lexical recall and body search use a generated tsvector (config simple)
+// and a GIN index on memories, vault_docs, and kg_entities (SPEC 154).
+// Message text stays strpos. FTS5 is SQLite-only. Vector search is not
+// wired — optional pgvector only adds a nullable kg_entities.embedding.
 type PostgresStore struct {
 	*SQLiteStore
 }
@@ -93,6 +95,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateTenantRegistry(); err != nil {
 		return fmt.Errorf("postgres migrate tenant registry: %w", err)
 	}
+	if err := s.migrateBodyTSV(); err != nil {
+		return fmt.Errorf("postgres migrate tsvector: %w", err)
+	}
 	return nil
 }
 
@@ -114,6 +119,7 @@ func (s *PostgresStore) HasVector() bool { return s.vector }
 
 // postgresSchema covers current SQLite StoreIface tables, including tenant_id
 // where SQLite already has it. BYTEA replaces SQLite BLOB. No FTS5.
+// SPEC 154 does not edit these statements: body_tsv is added afterwards.
 var postgresSchema = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
 		id TEXT PRIMARY KEY,

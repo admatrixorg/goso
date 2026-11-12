@@ -28,6 +28,9 @@ type SQLiteStore struct {
 	kgFTS    bool
 	pg       bool
 	vector   bool
+	// bodyTSV is set on Postgres after SPEC 154 adds the generated body_tsv
+	// columns. SQLite stays false and keeps FTS5.
+	bodyTSV bool
 }
 
 var _ StoreIface = (*SQLiteStore)(nil)
@@ -1534,6 +1537,9 @@ func (s *SQLiteStore) SearchMemory(q string) ([]SearchHit, error) {
 		if hits, err := s.searchFTS(q); err == nil {
 			return hits, nil
 		}
+	}
+	if s.bodyTSV {
+		return s.searchMemoryTSV(q)
 	}
 	return s.searchInstr(q)
 }
