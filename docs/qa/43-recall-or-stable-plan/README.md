@@ -29,11 +29,29 @@ The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149
 
 `CREATE INDEX idx_memories_customer_created` is not `CONCURRENTLY`. It runs when the gateway opens Postgres, and the build locks writes on `memories` until it finishes. Deploy conditions are the same as #41: count rows per tenant, take a backup, pick an off-hours window, and deploy only with Dat's approval.
 
-`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (55.337s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
+`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (53.966s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
+
+## RecallFor 50k (pipeline, one cold call)
+
+`TestRecallFor50kUnder50ms` inserts one old needle and 49,999 fillers that share no query token, all on the same agent, then times a single `RecallFor`. The caller limit is 20. Step 1 (AND) returns 0 because the needle has no `gì`. Step 2 path is `bitmap-and`. `BuildRecallNote` and the recall log are under 0.2 ms; the time is the SQL.
+
+Before, on a cold call, local PostgreSQL 16.15:
+
+| Step | Time | Rows |
+|---|---:|---:|
+| Step 1 AND | 1.810 ms | 0 |
+| Newest-window probe (`budget=4000`) | 2.991 ms | 0 |
+| Agent count | 1.508 ms | 4000 (capped) |
+| OR bitmap | 2.862 ms | 1 |
+| `RecallFor` total | 10.083 ms | 1 injected |
+
+The second call on the same data was 5.985 ms, so this was not only a one-time plan. CI run 43160180930 attempt 2 measured that same first call at 52.399 ms.
+
+The newest 128 rows are now the density sample. Zero scoped matches, and the newest row belongs to the requested agent, so step 2 does not read the other 3,872 window rows and does not count the agent. It goes to the 1-row bitmap. Three cold calls after that change: 3.672 ms, 5.125 ms, 5.791 ms.
 
 ## Selective (near 0)
 
-Probe: `Index Scan using idx_memories_tenant_created`, 4,000 rows, the OR filter removes all of them. Candidates: `Bitmap Index Scan on idx_memories_body_tsv`, 1 row, execution 0.288 ms. `tenant_id` is a filter on that one row.
+The production path samples 128 newest rows, finds no scoped OR match, and uses the GIN bitmap. `EXPLAIN` of the full 4,000-row probe (still the all-match window) is an `Index Scan using idx_memories_tenant_created` whose OR filter removes every row. Candidates: `Bitmap Index Scan on idx_memories_body_tsv`, 1 row, execution 0.288 ms. `tenant_id` is a filter on that one row.
 
 Samples: 10.045848 ms, 10.280274 ms, 10.301485 ms, 10.330556 ms, 11.347417 ms. Median **10.301485 ms**. Max **11.347417 ms**.
 

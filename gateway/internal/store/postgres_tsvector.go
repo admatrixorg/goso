@@ -240,6 +240,12 @@ func (s *SQLiteStore) recallTSVStep(q RecallQuery, tenant, agent string, toks []
 // idx_memories_tenant_created. It is not the candidate cap. Twice lim covers
 // rows dropped by kind, session, or agent filters when nearly every body
 // matches the OR. A larger budget would scan a sparse tenant end to end.
+// orDensitySample is how many newest tenant rows step 2 looks at before
+// deciding the window cannot be dense. Zero scoped matches there means a
+// 4000-row probe cannot be the cheap all-match path, so step 2 does not
+// read the rest of that window. A hit in the sample still runs the full probe.
+const orDensitySample = 128
+
 func orRecallProbeBudget(lim int) int {
 	if lim <= 0 {
 		return 0
@@ -317,8 +323,20 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 		return nil, 0, "", err
 	}
 	defer tx.Rollback()
-	probeQ, probeArgs := recallTSVORProbeSignalQuery(q, tenant, agent, match, budget, lim)
-	hits, n, newestAgent, err := execProbeSignal(tx, toks, probeQ, probeArgs, recallORStableGUCs)
+	// A short sample first. RecallFor on a selective history was spending the
+	// 50 ms budget reading 4000 non-matching bodies and counting the agent
+	// before a bitmap that returns one row. The full window still runs when
+	// the sample already contains a scoped match (the all-match shape).
+	sample := orDensitySample
+	if sample > budget {
+		sample = budget
+	}
+	sampleOut := lim
+	if sampleOut > sample {
+		sampleOut = sample
+	}
+	sampleQ, sampleArgs := recallTSVORProbeSignalQuery(q, tenant, agent, match, sample, sampleOut)
+	hits, n, newestAgent, err := execProbeSignal(tx, toks, sampleQ, sampleArgs, recallORStableGUCs)
 	if err != nil {
 		return nil, n, "", err
 	}
@@ -328,7 +346,24 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 		}
 		return hits, n, recallPathTenantWindow, nil
 	}
-	if agent != "" {
+	if n > 0 && sample < budget {
+		probeQ, probeArgs := recallTSVORProbeSignalQuery(q, tenant, agent, match, budget, lim)
+		hits, n, newestAgent, err = execProbeSignal(tx, toks, probeQ, probeArgs, nil)
+		if err != nil {
+			return nil, n, "", err
+		}
+		if n >= lim {
+			if err := tx.Commit(); err != nil {
+				return nil, n, "", err
+			}
+			return hits, n, recallPathTenantWindow, nil
+		}
+	}
+	// Zero scoped matches in the sample: the tenant window will not fill.
+	// Count this agent only when the newest row belongs to someone else
+	// (a small agent, or a large one whose own rows are older).
+	needAgent := agent != "" && (n > 0 || newestAgent != agent)
+	if needAgent {
 		if err := applyLocalGUCs(tx, recallORAgentGUCs); err != nil {
 			return nil, n, "", err
 		}
