@@ -33,6 +33,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
 	"github.com/mqglobal/goso/gateway/internal/tts"
+	"github.com/mqglobal/goso/gateway/internal/vault"
 	"github.com/mqglobal/goso/gateway/internal/webhook"
 	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
@@ -200,7 +201,11 @@ func routerBase(opt Options) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": version, "ws_up": WSMounted()})
+		body := map[string]any{"ok": true, "version": version, "ws_up": WSMounted()}
+		if vault.QuotaStatus() == "quota_required" {
+			body["quota_required"] = true
+		}
+		writeJSON(w, http.StatusOK, body)
 	})
 
 	// Agents
@@ -244,6 +249,8 @@ func routerBase(opt Options) *http.ServeMux {
 	mux.HandleFunc("GET /api/vault/docs/{id}", handleGetVaultDoc(st))
 	mux.HandleFunc("GET /api/vault/docs", handleListVaultDocs(st))
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
+	mux.HandleFunc("POST /api/vault/upload", handleVaultUpload(st, al))
+	mux.HandleFunc("GET /api/vault/ingest/{id}", handleGetVaultIngest(st))
 
 	aliasAPI(mux, "GET /api/skills", handleListSkills())
 	aliasAPI(mux, "POST /api/skills", handleCreateSkill())

@@ -1,0 +1,87 @@
+=== RUN   TestLimitAPI_VaultUploadExemption
+=== RUN   TestLimitAPI_VaultUploadExemption/flag_off_cuts_upload_at_1_MiB
+=== RUN   TestLimitAPI_VaultUploadExemption/flag_on_lets_2_MiB_through_this_route_only
+=== RUN   TestLimitAPI_VaultUploadExemption/flag_on_still_caps_other_api_routes
+--- PASS: TestLimitAPI_VaultUploadExemption (0.01s)
+    --- PASS: TestLimitAPI_VaultUploadExemption/flag_off_cuts_upload_at_1_MiB (0.00s)
+    --- PASS: TestLimitAPI_VaultUploadExemption/flag_on_lets_2_MiB_through_this_route_only (0.00s)
+    --- PASS: TestLimitAPI_VaultUploadExemption/flag_on_still_caps_other_api_routes (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/security	0.024s
+=== RUN   TestCriterion1_UploadRouteHasNoV1Alias
+--- PASS: TestCriterion1_UploadRouteHasNoV1Alias (0.00s)
+=== RUN   TestVaultUpload_FlagOffTwoMiBDoesNotWrite
+--- PASS: TestVaultUpload_FlagOffTwoMiBDoesNotWrite (0.00s)
+=== RUN   TestVaultUpload_TwentyMiBAndOtherRoutesStayCapped
+--- PASS: TestVaultUpload_TwentyMiBAndOtherRoutesStayCapped (0.14s)
+=== RUN   TestVaultUpload_AuthTenantBeforeBody
+=== RUN   TestVaultUpload_AuthTenantBeforeBody/missing
+=== RUN   TestVaultUpload_AuthTenantBeforeBody/wrong
+=== RUN   TestVaultUpload_AuthTenantBeforeBody/view
+--- PASS: TestVaultUpload_AuthTenantBeforeBody (0.00s)
+    --- PASS: TestVaultUpload_AuthTenantBeforeBody/missing (0.00s)
+    --- PASS: TestVaultUpload_AuthTenantBeforeBody/wrong (0.00s)
+    --- PASS: TestVaultUpload_AuthTenantBeforeBody/view (0.00s)
+=== RUN   TestVaultUpload_MinhAnFilesDuplicateAndQuota
+--- PASS: TestVaultUpload_MinhAnFilesDuplicateAndQuota (0.01s)
+=== RUN   TestVaultUpload_QuotaRequiredFailClosed
+=== RUN   TestVaultUpload_QuotaRequiredFailClosed/#00
+=== RUN   TestVaultUpload_QuotaRequiredFailClosed/0
+=== RUN   TestVaultUpload_QuotaRequiredFailClosed/-5
+=== RUN   TestVaultUpload_QuotaRequiredFailClosed/nope
+--- PASS: TestVaultUpload_QuotaRequiredFailClosed (0.00s)
+    --- PASS: TestVaultUpload_QuotaRequiredFailClosed/#00 (0.00s)
+    --- PASS: TestVaultUpload_QuotaRequiredFailClosed/0 (0.00s)
+    --- PASS: TestVaultUpload_QuotaRequiredFailClosed/-5 (0.00s)
+    --- PASS: TestVaultUpload_QuotaRequiredFailClosed/nope (0.00s)
+=== RUN   TestVaultUpload_FileCap413
+--- PASS: TestVaultUpload_FileCap413 (0.00s)
+=== RUN   TestVaultUpload_FlagOffLeavesPutDocs
+--- PASS: TestVaultUpload_FlagOffLeavesPutDocs (0.00s)
+=== RUN   TestVaultUpload_WriteKeyCannotSwitchTenant
+--- PASS: TestVaultUpload_WriteKeyCannotSwitchTenant (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	0.194s
+=== RUN   TestPutTenantAt_WritesTogetherAndRefusesRaw
+--- PASS: TestPutTenantAt_WritesTogetherAndRefusesRaw (0.00s)
+=== RUN   TestSyncInventory_RawDoesNotTouchSourcesOrWiki
+=== RUN   TestSyncInventory_RawDoesNotTouchSourcesOrWiki/memory
+=== RUN   TestSyncInventory_RawDoesNotTouchSourcesOrWiki/sqlite
+=== RUN   TestSyncInventory_RawDoesNotTouchSourcesOrWiki/postgres
+2026/11/12 01:42:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestSyncInventory_RawDoesNotTouchSourcesOrWiki (0.21s)
+    --- PASS: TestSyncInventory_RawDoesNotTouchSourcesOrWiki/memory (0.00s)
+    --- PASS: TestSyncInventory_RawDoesNotTouchSourcesOrWiki/sqlite (0.03s)
+    --- PASS: TestSyncInventory_RawDoesNotTouchSourcesOrWiki/postgres (0.18s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.223s
+=== RUN   TestImportSkipsRaw
+--- PASS: TestImportSkipsRaw (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.005s
+=== RUN   TestIngestJobTableAdditive
+=== RUN   TestIngestJobTableAdditive/memory
+=== RUN   TestIngestJobTableAdditive/sqlite
+=== RUN   TestIngestJobTableAdditive/postgres
+2026/11/12 01:42:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 01:42:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestIngestJobTableAdditive (0.14s)
+    --- PASS: TestIngestJobTableAdditive/memory (0.00s)
+    --- PASS: TestIngestJobTableAdditive/sqlite (0.03s)
+    --- PASS: TestIngestJobTableAdditive/postgres (0.11s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/store	0.145s
+=== RUN   TestVaultUpload_UnauthenticatedBodyNotRead
+=== RUN   TestVaultUpload_UnauthenticatedBodyNotRead/dev_mode_no_token
+{"level":"info","request_id":"4669388568e5374f2408129d05830732","method":"POST","path":"/api/vault/upload","status":401,"latency_ms":0}
+=== RUN   TestVaultUpload_UnauthenticatedBodyNotRead/wrong_token
+{"level":"info","request_id":"29b55c3620c96e6ce7830a89d1b6dd13","method":"POST","path":"/api/vault/upload","status":401,"latency_ms":0}
+=== RUN   TestVaultUpload_UnauthenticatedBodyNotRead/view_token
+{"level":"info","request_id":"5160b2a1781cf87e9af1f7e1d8c96b3f","method":"POST","path":"/api/vault/upload","status":403,"latency_ms":0}
+--- PASS: TestVaultUpload_UnauthenticatedBodyNotRead (0.00s)
+    --- PASS: TestVaultUpload_UnauthenticatedBodyNotRead/dev_mode_no_token (0.00s)
+    --- PASS: TestVaultUpload_UnauthenticatedBodyNotRead/wrong_token (0.00s)
+    --- PASS: TestVaultUpload_UnauthenticatedBodyNotRead/view_token (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/serve	0.009s
+EXIT:0

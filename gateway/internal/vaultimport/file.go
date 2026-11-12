@@ -137,6 +137,9 @@ func loadFileBody(abs string, size int64) ([]byte, string, error) {
 // (GOSO_VAULT_DIR/t/<tenant>/<logical>). A matching file is left untouched.
 // A symlink at the destination or on the way there is not followed and not replaced.
 func publishFile(root, tenant, logical string, body []byte) (bool, error) {
+	if vault.UnderRaw(logical) {
+		return false, errConfig("refusing to write under raw")
+	}
 	abs, err := resolveVaultFile(root, tenant, logical)
 	if err != nil {
 		return false, err
