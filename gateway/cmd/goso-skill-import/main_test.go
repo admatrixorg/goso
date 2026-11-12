@@ -12,28 +12,35 @@ import (
 	"testing"
 )
 
-func TestCLIDryRunThenApply(t *testing.T) {
+func TestCLIDryRunThenApplyRefused(t *testing.T) {
 	export, src := fixturePaths(t)
 	dir := t.TempDir()
 	skillsDir := filepath.Join(dir, "skills")
 	if err := os.Mkdir(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	deny := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(deny, []byte("not-this-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	mapPath := filepath.Join(dir, "rename-map.json")
 	args := []string{
 		"--export", export,
+		"--source-tenant", "minh-an",
 		"--tenant", "minh-an",
 		"--skills-dir", skillsDir,
 		"--src-dir", src,
 		"--rename-map", mapPath,
+		"--deny-tenants", deny,
 	}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(append(args, "--dry-run"), stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
 	}
 	var rep struct {
-		DryRun  bool `json:"dry_run"`
-		Tenants []struct {
+		DryRun        bool `json:"dry_run"`
+		DeniedTenants int  `json:"denied_tenants"`
+		Tenants       []struct {
 			TenantID string         `json:"tenant_id"`
 			Inserted int            `json:"inserted"`
 			Rejected int            `json:"rejected"`
@@ -48,8 +55,8 @@ func TestCLIDryRunThenApply(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &rep); err != nil {
 		t.Fatal(err, stdout.String())
 	}
-	if !rep.DryRun {
-		t.Fatal("dry_run")
+	if !rep.DryRun || rep.DeniedTenants != 0 {
+		t.Fatalf("dry %+v", rep)
 	}
 	var sawMinh, sawKhac bool
 	for _, c := range rep.Tenants {
@@ -72,15 +79,11 @@ func TestCLIDryRunThenApply(t *testing.T) {
 	if !sawRename {
 		t.Fatal("stdout missing rename")
 	}
-	raw, err := os.ReadFile(mapPath)
-	if err != nil || !bytes.Contains(raw, []byte(`"new": "bao-gia-minh-an"`)) {
-		t.Fatalf("rename file %v %s", err, raw)
-	}
 	ents, err := os.ReadDir(skillsDir)
 	if err != nil || len(ents) != 0 {
 		t.Fatalf("dry-run wrote %#v %v", ents, err)
 	}
-	joined := stdout.String() + stderr.String() + string(raw)
+	joined := stdout.String() + stderr.String()
 	for _, leak := range []string{"LATEST-BAO-GIA", "EMBEDMARKERvector", "token-should-not-leak", "OLD-VERSION-BODY", "KHAC-ONLY"} {
 		if strings.Contains(joined, leak) {
 			t.Fatal("leaked", leak)
@@ -89,27 +92,81 @@ func TestCLIDryRunThenApply(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run(append(args, "--apply", "--dry-run"), stdout, stderr); code != 2 {
-		t.Fatalf("combined exit %d", code)
+	if code := run(append(args, "--apply"), stdout, stderr); code == 0 {
+		t.Fatal("apply should fail")
+	}
+	if !strings.Contains(stderr.String(), "apply refused") {
+		t.Fatal(stderr.String())
+	}
+	ents, err = os.ReadDir(skillsDir)
+	if err != nil || len(ents) != 0 {
+		t.Fatalf("apply wrote %#v", ents)
+	}
+}
+
+func TestCLIDenyFile(t *testing.T) {
+	export, src := fixturePaths(t)
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, "skills")
+	base := []string{
+		"--export", export,
+		"--source-tenant", "minh-an",
+		"--tenant", "minh-an",
+		"--skills-dir", skillsDir,
+		"--src-dir", src,
+		"--rename-map", filepath.Join(dir, "map.json"),
+	}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := run(append(base, "--deny-tenants", filepath.Join(dir, "nope.txt")), stdout, stderr); code == 0 {
+		t.Fatal("missing deny file exited 0")
+	}
+	if _, err := os.Stat(skillsDir); !os.IsNotExist(err) {
+		t.Fatal("missing deny file wrote skills")
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatal(err)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := run(append(args, "--apply"), stdout, stderr); code != 0 {
-		t.Fatalf("apply exit %d %s", code, stderr.String())
+	if code := run(append(base, "--deny-tenants", empty), stdout, stderr); code == 0 {
+		t.Fatal("empty deny file exited 0")
 	}
-	body, err := os.ReadFile(filepath.Join(skillsDir, "bao-gia-minh-an", "SKILL.md"))
-	if err != nil || !bytes.Contains(body, []byte("LATEST-BAO-GIA")) {
-		t.Fatalf("skill %v %s", err, body)
-	}
-	if _, err := os.Stat(filepath.Join(skillsDir, "khac-don")); !os.IsNotExist(err) {
-		t.Fatal("apply wrote the other tenant")
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("bad id!!!\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	stdout.Reset()
-	if code := run(append(args, "--apply"), stdout, stderr); code != 0 {
-		t.Fatalf("second exit %d %s", code, stderr.String())
+	stderr.Reset()
+	if code := run(append(base, "--deny-tenants", bad), stdout, stderr); code == 0 {
+		t.Fatal("malformed deny file exited 0")
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"inserted": 0`)) || !bytes.Contains(stdout.Bytes(), []byte(`"skipped": 6`)) {
-		t.Fatalf("second stdout %s", stdout.String())
+	listed := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(listed, []byte("fake-co\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	denied := []string{
+		"--export", export,
+		"--source-tenant", "fake-co",
+		"--tenant", "minh-an",
+		"--skills-dir", skillsDir,
+		"--src-dir", src,
+		"--rename-map", filepath.Join(dir, "map.json"),
+		"--deny-tenants", listed,
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(denied, stdout, stderr); code == 0 {
+		t.Fatal("denied tenant exited 0")
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "fake-co") {
+		t.Fatal("denied name was printed")
+	}
+	if !strings.Contains(stdout.String(), `"denied_tenants": 1`) {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	if _, err := os.Stat(skillsDir); !os.IsNotExist(err) {
+		t.Fatal("denied tenant wrote skills")
 	}
 }
 

@@ -1,36 +1,28 @@
 # SPEC 175 — GoClaw skill import
 
-Offline importer for one tenant into the existing `SKILL.md` folders. No control-plane change, so prototype screenshots do not apply and `npm run qa:tabs` was not run. No customer data and no secret values.
+Offline importer for one tenant into the existing skill folders. Sample data is Minh An. No customer data and no secret values.
 
 | Flag | Meaning |
 |---|---|
 | `--export` | JSON object or JSONL. Columns match `skills`, `skill_versions`, `skill_agent_grants`, `skill_user_grants`, `skill_tenant_configs` |
-| `--tenant` | Export `tenant_id` to write. Other tenants are counted and not written |
+| `--source-tenant` | Export `tenant_id` to plan. Required |
+| `--tenant` | Tenant id checked against the denylist. Rollback uses this id |
+| `--deny-tenants` | Local denylist file. `GOSO_IMPORT_DENY_TENANTS` is the same path when the flag is empty |
 | `--skills-dir` | Goso skills directory. One folder per skill |
 | `--src-dir` | Files named by `file_path` |
-| `--rename-map` | Old-to-new names plus rewritten grant names. Outside `--skills-dir` |
-| `--apply` | Create new folders. Absent means dry-run |
+| `--rename-map` | Old-to-new names. Outside `--skills-dir`. Written by a dry-run |
+| `--apply` | Refused for import. With `--rollback`, removes that tenant's mapped folders |
+| `--rollback` | Count mapped folders for `--tenant`. Add `--apply` to remove them |
 
-Dry-run writes the rename map and no skill file. The skills directory is unchanged. `--apply` refuses a rename map that does not match this export. A second apply does not duplicate or overwrite.
+Dry-run writes the rename map and no skill file. `--apply` returns an error and writes no files, because the skills directory is shared. A local denylist file is required. A missing, empty, or malformed file exits non-zero before a dry-run. A listed tenant writes nothing. The report field `denied_tenants` is a count and does not name the tenant.
 
-The sample is `gateway/internal/skillimport/testdata/minh-an.json`.
-
-```bash
-go run ./gateway/cmd/goso-skill-import \
-  --export gateway/internal/skillimport/testdata/minh-an.json \
-  --tenant minh-an \
-  --skills-dir /tmp/minh-an-skills \
-  --src-dir gateway/internal/skillimport/testdata/src \
-  --rename-map /tmp/minh-an-skill-rename.json
-```
-
-## Tests
+`--rollback` counts mapped folders for `--tenant`. `--rollback --apply` removes only those folders. A native folder and another tenant's folder stay.
 
 ```bash
 go test -race -count=1 -timeout 180s ./gateway/internal/skillimport ./gateway/cmd/goso-skill-import
 go test ./... -count=1 -timeout 25m
 ```
 
-Logs: [go-test-race.txt](go-test-race.txt), [go-test.txt](go-test.txt). Both commands exited 0. `go build -o /tmp/goso-skill-import ./gateway/cmd/goso-skill-import` exited 0.
+Both exited 0 on this branch. `GOSO_TEST_POSTGRES_DSN` was unset, so existing Postgres cases skipped.
 
-`GOSO_TEST_POSTGRES_DSN` was unset for the full run, so existing Postgres cases skipped. The new package does not open Postgres and does not create a vector column.
+The all-tabs log is `docs/qa/175/qa-tabs-<sha>.log`, where `<sha>` is the code commit the browser ran against.

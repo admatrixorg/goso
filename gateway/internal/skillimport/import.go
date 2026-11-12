@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -50,6 +51,8 @@ func NotImported() []string {
 // is not created or changed. The rename-map file is still written.
 type Options struct {
 	Tenant        string
+	SourceTenant  string
+	DenyFile      string
 	SkillsDir     string
 	SrcDir        string
 	RenameMapPath string
@@ -117,12 +120,14 @@ type TenantCount struct {
 
 // Report is the dry-run and apply stdout.
 type Report struct {
-	DryRun      bool          `json:"dry_run"`
-	Tenant      string        `json:"tenant"`
-	Tenants     []TenantCount `json:"tenants"`
-	Renames     []Rename      `json:"renames"`
-	Grants      []GrantRename `json:"grants"`
-	NotImported []string      `json:"not_imported"`
+	DryRun        bool          `json:"dry_run"`
+	Tenant        string        `json:"tenant,omitempty"`
+	SourceTenant  string        `json:"source_tenant,omitempty"`
+	DeniedTenants int           `json:"denied_tenants"`
+	Tenants       []TenantCount `json:"tenants"`
+	Renames       []Rename      `json:"renames"`
+	Grants        []GrantRename `json:"grants"`
+	NotImported   []string      `json:"not_imported"`
 }
 
 type planned struct {
@@ -136,14 +141,25 @@ type planned struct {
 	mapped bool
 }
 
-// Import plans every row, writes the rename map, and on apply adds skill
-// folders. It does not open a database and does not execute skill files.
+// Import plans every row and writes the rename map on a dry-run.
+// --apply is refused until skills are stored per tenant, so this function
+// does not create skill folders. The folder writer remains for that later spec.
 func Import(ex *Export, opt Options) (Report, error) {
 	if ex == nil {
 		ex = &Export{}
 	}
 	if err := validate(opt); err != nil {
 		return Report{}, err
+	}
+	ids, err := loadDenyFile(opt.DenyFile)
+	if err != nil {
+		return Report{}, err
+	}
+	if n := deniedCount(ids, opt.Tenant, opt.SourceTenant); n > 0 {
+		return Report{DryRun: !opt.Apply, DeniedTenants: n}, errConfig("tenant is denied")
+	}
+	if opt.Apply {
+		return Report{}, errConfig("apply refused until skills are stored per tenant")
 	}
 	sm, err := loadSourceMap(opt.SkillsDir)
 	if err != nil {
@@ -164,7 +180,7 @@ func Import(ex *Export, opt Options) (Report, error) {
 			if p.reason == "" {
 				continue
 			}
-			opt.Log.Printf("skill-import source=%s reason=%s", p.row.ID, p.reason)
+			opt.Log.Printf("%s", MaskIdentifiers(fmt.Sprintf("skill-import source=%s reason=%s", p.row.ID, p.reason)))
 		}
 	}
 	file := RenameFile{Renames: renames, Grants: grants}
@@ -177,12 +193,13 @@ func Import(ex *Export, opt Options) (Report, error) {
 		return Report{}, err
 	}
 	rep := Report{
-		DryRun:      !opt.Apply,
-		Tenant:      strings.TrimSpace(opt.Tenant),
-		Tenants:     counts,
-		Renames:     renames,
-		Grants:      grants,
-		NotImported: NotImported(),
+		DryRun:       !opt.Apply,
+		Tenant:       strings.TrimSpace(opt.Tenant),
+		SourceTenant: strings.TrimSpace(opt.SourceTenant),
+		Tenants:      counts,
+		Renames:      renames,
+		Grants:       grants,
+		NotImported:  NotImported(),
 	}
 	if !opt.Apply {
 		return rep, nil
@@ -196,6 +213,12 @@ func Import(ex *Export, opt Options) (Report, error) {
 func validate(opt Options) error {
 	if strings.TrimSpace(opt.Tenant) == "" {
 		return errConfig("--tenant is required")
+	}
+	if strings.TrimSpace(opt.SourceTenant) == "" {
+		return errConfig("--source-tenant is required")
+	}
+	if strings.TrimSpace(opt.DenyFile) == "" {
+		return errConfig("deny file is missing")
 	}
 	if strings.TrimSpace(opt.SkillsDir) == "" {
 		return errConfig("--skills-dir is required")
@@ -245,12 +268,12 @@ func planSkills(ex *Export, opt Options, sm sourceMap, taken map[string]struct{}
 		}
 	}
 	seen := map[string]bool{}
-	tenant := strings.TrimSpace(opt.Tenant)
+	tenant := strings.TrimSpace(opt.SourceTenant)
 	var ready []planned
 	var done []planned
 	for _, row := range ex.Skills {
 		p := planned{row: row, action: "reject"}
-		p.old = oldName(row)
+		p.old = MaskIdentifiers(oldName(row))
 		idKey := row.TenantID + "\x00" + row.ID
 		switch {
 		case strings.TrimSpace(row.TenantID) == "":
@@ -262,20 +285,24 @@ func planSkills(ex *Export, opt Options, sm sourceMap, taken map[string]struct{}
 		case row.TenantID != tenant:
 			p.reason = "foreign-tenant"
 			if slug, ok := slugify(p.old); ok {
-				p.new = slug
+				p.new = MaskIdentifiers(slug)
 			}
 		case row.IsSystem:
 			p.reason = "system-skill"
 			p.new, _ = slugify(p.old)
+			p.new = MaskIdentifiers(p.new)
 		case row.Status != "" && row.Status != "active":
 			p.reason = "inactive"
 			p.new, _ = slugify(p.old)
+			p.new = MaskIdentifiers(p.new)
 		case row.Enabled != nil && !*row.Enabled:
 			p.reason = "disabled"
 			p.new, _ = slugify(p.old)
+			p.new = MaskIdentifiers(p.new)
 		case disabled[idKey]:
 			p.reason = "disabled"
 			p.new, _ = slugify(p.old)
+			p.new = MaskIdentifiers(p.new)
 		default:
 			seen[idKey] = true
 			slug, ok := slugify(p.old)
@@ -283,7 +310,7 @@ func planSkills(ex *Export, opt Options, sm sourceMap, taken map[string]struct{}
 				p.reason = "invalid-name"
 				break
 			}
-			p.new = slug
+			p.new = MaskIdentifiers(slug)
 			if e, ok := bySource[idKey]; ok {
 				p.mapped = true
 				p.new = e.Name
@@ -313,11 +340,19 @@ func planSkills(ex *Export, opt Options, sm sourceMap, taken map[string]struct{}
 			done = append(done, p)
 		}
 	}
-	ready = assign(ready, taken)
+	prior := map[string]struct{}{}
+	for name := range taken {
+		prior[name] = struct{}{}
+	}
+	ready = assign(ready, taken, prior)
 	for i := range ready {
 		p := &ready[i]
 		if p.reason != "" && p.new == "" {
 			p.action = "reject"
+			continue
+		}
+		if p.reason == "native-exists" && !p.mapped {
+			p.action = "skip"
 			continue
 		}
 		entry, owned := bySource[p.row.TenantID+"\x00"+p.row.ID]
@@ -330,7 +365,7 @@ func planSkills(ex *Export, opt Options, sm sourceMap, taken map[string]struct{}
 				p.new = entry.Name
 			case err == nil:
 				p.action = "skip"
-				p.reason = "add-only"
+				p.reason = "native-exists"
 				p.new = entry.Name
 			case errors.Is(err, os.ErrNotExist):
 				p.action = "insert"
@@ -357,7 +392,7 @@ func oldName(row SkillRow) string {
 	return strings.TrimSpace(row.Name)
 }
 
-func assign(ready []planned, taken map[string]struct{}) []planned {
+func assign(ready []planned, taken, prior map[string]struct{}) []planned {
 	sort.SliceStable(ready, func(i, j int) bool {
 		if ready[i].row.TenantID != ready[j].row.TenantID {
 			return ready[i].row.TenantID < ready[j].row.TenantID
@@ -370,6 +405,11 @@ func assign(ready []planned, taken map[string]struct{}) []planned {
 			continue
 		}
 		base := ready[i].new
+		if _, exists := prior[base]; exists {
+			ready[i].reason = "native-exists"
+			ready[i].new = base
+			continue
+		}
 		placed := false
 		for n := 1; n <= 1000; n++ {
 			name, ok := withSuffix(base, n)
@@ -402,7 +442,7 @@ func buildMaps(ex *Export, plans []planned) ([]Rename, []GrantRename) {
 			SourceID: p.row.ID,
 			Old:      p.old,
 			New:      p.new,
-			Apply:    p.action == "insert" || p.action == "skip",
+			Apply:    p.action == "insert" || p.reason == "unchanged",
 			Reason:   reasonFor(p),
 		})
 	}
@@ -446,7 +486,7 @@ func grantRename(tenant, kind, grantID, skillID string, byID map[string]planned)
 		return g
 	}
 	g.Old = p.old
-	if p.action == "insert" || p.action == "skip" {
+	if p.action == "insert" || p.reason == "unchanged" {
 		g.New = p.new
 		return g
 	}
@@ -668,7 +708,7 @@ func applyPlans(opt Options, sm *sourceMap, plans []planned) error {
 			return err
 		}
 		if opt.Log != nil {
-			opt.Log.Printf("skill-import source=%s reason=inserted", p.row.ID)
+			opt.Log.Printf("%s", MaskIdentifiers(fmt.Sprintf("skill-import source=%s reason=inserted", p.row.ID)))
 		}
 	}
 	return nil
@@ -689,5 +729,5 @@ func FormatReport(rep Report) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(raw, '\n'), nil
+	return []byte(MaskIdentifiers(string(append(raw, '\n')))), nil
 }

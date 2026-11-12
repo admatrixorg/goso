@@ -57,7 +57,7 @@ func TestMinhAnFixture(t *testing.T) {
 	before := dirSnapshot(t, skillsDir)
 	mapPath := filepath.Join(dir, "rename-map.json")
 	var logBuf bytes.Buffer
-	rep, err := Import(ex, Options{
+	rep, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
 		RenameMapPath: mapPath, Apply: false, Log: bufLog{&logBuf},
 	})
@@ -118,102 +118,14 @@ func TestMinhAnFixture(t *testing.T) {
 	}
 	assertNoCanary(t, string(mapRaw)+"\n"+logBuf.String()+mustReport(t, rep))
 
-	logBuf.Reset()
-	rep, err = Import(ex, Options{
-		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: mapPath, Apply: true, Log: bufLog{&logBuf},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.DryRun || tenantCount(t, rep, "minh-an").Inserted != 6 {
-		t.Fatalf("apply %+v", tenantCount(t, rep, "minh-an"))
-	}
-	body := readSkill(t, skillsDir, "bao-gia-minh-an")
-	if !strings.Contains(body, "LATEST-BAO-GIA") || strings.Contains(body, "OLD-VERSION-BODY") || strings.Contains(body, "MOTA-KHONG-GHI") {
-		t.Fatalf("body %q", body)
-	}
-	for _, name := range []string{"tu-van-hoa-don", "don-hang", "don-hang-2", "lich-goi", "san-co"} {
-		if readSkill(t, skillsDir, name) == "" {
-			t.Fatal("missing", name)
-		}
-	}
-	for _, banned := range []string{"minh-an-he-thong", "tam-tat", "luu-tru", "cfg-tat", "thoat", "rong", "khac-don", "bao-gia-minh-an-2"} {
-		if _, err := os.Stat(filepath.Join(skillsDir, banned)); !os.IsNotExist(err) {
-			t.Fatal("wrote rejected skill", banned)
-		}
-	}
 	if _, err := os.Stat(filepath.Join(fixtureSrc(t), "skills", "bao-gia", "EXECUTED-SKILL")); !os.IsNotExist(err) {
 		t.Fatal("skill script executed")
 	}
-	if _, err := os.Stat("EXECUTED-SKILL"); !os.IsNotExist(err) {
-		t.Fatal("skill script executed in cwd")
+	ents, err := os.ReadDir(skillsDir)
+	if err != nil || len(ents) != 0 {
+		t.Fatalf("dry-run wrote %#v", ents)
 	}
-	t.Setenv("GOSO_SKILLS_DIR", skillsDir)
-	doc, err := skill.Load("bao-gia-minh-an")
-	if err != nil || !strings.Contains(doc.Body, "LATEST-BAO-GIA") {
-		t.Fatalf("load %+v %v", doc, err)
-	}
-	listed, err := skill.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, info := range listed {
-		names[info.Name] = true
-	}
-	if !names["bao-gia-minh-an"] || names["Bao_Gia_Minh_An"] || names[sourceMapFile] {
-		t.Fatalf("list %#v", listed)
-	}
-	sm, err := loadSourceMap(skillsDir)
-	if err != nil || len(sm.Entries) != 6 {
-		t.Fatalf("source map %+v %v", sm, err)
-	}
-
-	beforeFiles := dirSnapshot(t, skillsDir)
-	rep, err = Import(ex, Options{
-		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: mapPath, Apply: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	again := tenantCount(t, rep, "minh-an")
-	if again.Inserted != 0 || again.Skipped != 6 || again.Rejected != 6 || again.Reasons["unchanged"] != 6 {
-		t.Fatalf("rerun %+v", again)
-	}
-	if dirSnapshot(t, skillsDir) != beforeFiles {
-		t.Fatal("rerun changed skill files")
-	}
-	sm2, err := loadSourceMap(skillsDir)
-	if err != nil || len(sm2.Entries) != 6 {
-		t.Fatal("source map grew", len(sm2.Entries))
-	}
-
-	srcCopy := filepath.Join(dir, "src")
-	if err := copyDir(fixtureSrc(t), srcCopy); err != nil {
-		t.Fatal(err)
-	}
-	bao := filepath.Join(srcCopy, "skills", "bao-gia", "SKILL.md")
-	if err := os.WriteFile(bao, []byte("CHANGED-BODY\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	kept := readSkill(t, skillsDir, "bao-gia-minh-an")
-	rep, err = Import(ex, Options{
-		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: srcCopy,
-		RenameMapPath: mapPath, Apply: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	held := tenantCount(t, rep, "minh-an")
-	if held.Reasons["add-only"] != 1 || held.Reasons["unchanged"] != 5 || held.Inserted != 0 {
-		t.Fatalf("add-only %+v", held)
-	}
-	if readSkill(t, skillsDir, "bao-gia-minh-an") != kept {
-		t.Fatal("add-only overwrote a skill")
-	}
-	assertNoCanary(t, logBuf.String()+mustReport(t, rep)+readTree(t, skillsDir))
+	assertNoCanary(t, logBuf.String()+mustReport(t, rep))
 }
 
 func TestTenantIsolation(t *testing.T) {
@@ -230,73 +142,224 @@ func TestTenantIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	mapPath := filepath.Join(dir, "rename.json")
-	if _, err := Import(ex, Options{
+	rep, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: mapPath, Apply: true,
-	}); err != nil {
+		RenameMapPath: mapPath,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if readSkill(t, skillsDir, "san-co") != "KEEP\n" {
 		t.Fatal("pre-existing skill was overwritten")
 	}
-	if strings.TrimSpace(readSkill(t, skillsDir, "san-co-2")) != "SAN-CO-IMPORT" {
-		t.Fatal("colliding skill was not added beside the existing folder")
+	if _, err := os.Stat(filepath.Join(skillsDir, "san-co-2")); !os.IsNotExist(err) {
+		t.Fatal("existing folder was given a second skill")
 	}
 	if _, err := os.Stat(filepath.Join(skillsDir, "khac-don")); !os.IsNotExist(err) {
-		t.Fatal("minh-an import wrote the other tenant")
+		t.Fatal("dry-run wrote the other tenant")
 	}
-	bao := readSkill(t, skillsDir, "bao-gia-minh-an")
-	if _, err := Import(ex, Options{
-		Tenant: "khac", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: mapPath, Apply: true,
-	}); err == nil {
-		t.Fatal("khac apply reused the minh-an rename map")
-	}
-	if readSkill(t, skillsDir, "bao-gia-minh-an") != bao {
-		t.Fatal("rejected khac apply changed minh-an")
-	}
-	if _, err := os.Stat(filepath.Join(skillsDir, "khac-don")); !os.IsNotExist(err) {
-		t.Fatal("rejected khac apply wrote a skill")
-	}
-	if _, err := Import(ex, Options{
-		Tenant: "khac", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: filepath.Join(dir, "rename-khac.json"), Apply: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if readSkill(t, skillsDir, "bao-gia-minh-an") != bao {
-		t.Fatal("khac import changed minh-an bytes")
-	}
-	if readSkill(t, skillsDir, "san-co") != "KEEP\n" {
-		t.Fatal("khac import changed a pre-existing skill")
-	}
-	if strings.TrimSpace(readSkill(t, skillsDir, "khac-don")) != "KHAC-ONLY" {
-		t.Fatal("khac skill missing")
-	}
-	if strings.TrimSpace(readSkill(t, skillsDir, "bao-gia-minh-an-2")) != "KHAC-COLLIDE" {
-		t.Fatal("colliding khac skill overwrote minh-an or was dropped")
+	minh := tenantCount(t, rep, "minh-an")
+	if minh.Reasons["native-exists"] != 1 || minh.Inserted != 5 {
+		t.Fatalf("native-exists %+v", minh)
 	}
 	note, err := os.ReadFile(filepath.Join(skillsDir, "notes.txt"))
 	if err != nil || string(note) != "keep-note" {
 		t.Fatal("notes.txt changed")
 	}
-	sm, err := loadSourceMap(skillsDir)
+}
+
+func TestNativeExistsDoesNotUpdate(t *testing.T) {
+	ex := loadFixture(t)
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, "skills")
+	if err := os.MkdirAll(filepath.Join(skillsDir, "bao-gia-minh-an"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "bao-gia-minh-an", "SKILL.md"), []byte("KEEP-NATIVE\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sumBytes([]byte("KEEP-NATIVE\n"))
+	if err := saveSourceMap(skillsDir, sourceMap{Version: mapVersion, Entries: []sourceEntry{{
+		TenantID: "minh-an", SourceID: "minh-an-skill-bao-gia", Old: "Bao_Gia_Minh_An", Name: "bao-gia-minh-an", Sum: sum,
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := callImport(t, ex, Options{
+		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var minhN, khacN int
-	for _, e := range sm.Entries {
-		switch e.TenantID {
-		case "minh-an":
-			minhN++
-		case "khac":
-			khacN++
-		default:
-			t.Fatal("unexpected tenant", e.TenantID)
+	if tenantCount(t, rep, "minh-an").Reasons["native-exists"] != 1 {
+		t.Fatalf("reasons %+v", tenantCount(t, rep, "minh-an"))
+	}
+	if readSkill(t, skillsDir, "bao-gia-minh-an") != "KEEP-NATIVE\n" {
+		t.Fatal("differing skill was updated")
+	}
+}
+
+func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, "skills")
+	for _, name := range []string{"keep-native", "minh-skill", "khac-skill"} {
+		if err := os.MkdirAll(filepath.Join(skillsDir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillsDir, name, "SKILL.md"), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if minhN != 6 || khacN != 2 {
-		t.Fatalf("source map tenants minh=%d khac=%d", minhN, khacN)
+	if err := saveSourceMap(skillsDir, sourceMap{Version: mapVersion, Entries: []sourceEntry{
+		{TenantID: "minh-an", SourceID: "s-minh", Old: "minh-skill", Name: "minh-skill", Sum: "a"},
+		{TenantID: "khac", SourceID: "s-khac", Old: "khac-skill", Name: "khac-skill", Sum: "b"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	deny := writeDeny(t, "not-this-tenant")
+	dry, err := Rollback(Options{Tenant: "minh-an", SkillsDir: skillsDir, DenyFile: deny})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dry.DryRun || dry.Matched != 1 || dry.Removed != 0 {
+		t.Fatalf("dry %+v", dry)
+	}
+	if readSkill(t, skillsDir, "minh-skill") != "minh-skill\n" {
+		t.Fatal("dry-run rollback removed a file")
+	}
+	got, err := Rollback(Options{Tenant: "minh-an", SkillsDir: skillsDir, DenyFile: deny, Apply: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Removed != 1 {
+		t.Fatalf("removed %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "minh-skill")); !os.IsNotExist(err) {
+		t.Fatal("mapped folder still present")
+	}
+	if readSkill(t, skillsDir, "keep-native") != "keep-native\n" || readSkill(t, skillsDir, "khac-skill") != "khac-skill\n" {
+		t.Fatal("rollback removed native or other-tenant data")
+	}
+	sm, err := loadSourceMap(skillsDir)
+	if err != nil || len(sm.Entries) != 1 || sm.Entries[0].TenantID != "khac" {
+		t.Fatalf("map %+v %v", sm, err)
+	}
+}
+
+func TestApplyWritesNothing(t *testing.T) {
+	ex := loadFixture(t)
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, "skills")
+	_, err := callImport(t, ex, Options{
+		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"), Apply: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "apply refused") {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(skillsDir); !os.IsNotExist(statErr) {
+		t.Fatal("apply created the skills dir")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "map.json")); !os.IsNotExist(statErr) {
+		t.Fatal("apply wrote the rename map")
+	}
+}
+
+func TestDenyFile(t *testing.T) {
+	ex := loadFixture(t)
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, "skills")
+	opt := func(deny string) Options {
+		return Options{
+			Tenant: "minh-an", SourceTenant: "minh-an", DenyFile: deny,
+			SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+			RenameMapPath: filepath.Join(dir, "map.json"),
+		}
+	}
+	assertZero := func(err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if _, statErr := os.Stat(skillsDir); !os.IsNotExist(statErr) {
+			t.Fatal("wrote the skills dir")
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "map.json")); !os.IsNotExist(statErr) {
+			t.Fatal("wrote the rename map")
+		}
+	}
+	_, err := Import(ex, opt(filepath.Join(dir, "missing.txt")))
+	assertZero(err)
+	if !strings.Contains(err.Error(), "missing") {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("\n# comment\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Import(ex, opt(empty))
+	assertZero(err)
+	if !strings.Contains(err.Error(), "empty") {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("not a tenant!!!\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Import(ex, opt(bad))
+	assertZero(err)
+	if !strings.Contains(err.Error(), "malformed") {
+		t.Fatal(err)
+	}
+	listed := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(listed, []byte("fake-co\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Import(ex, Options{
+		Tenant: "fake-co", SourceTenant: "minh-an", DenyFile: listed,
+		SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"),
+	})
+	assertZero(err)
+	if rep.DeniedTenants != 1 || strings.Contains(mustReport(t, rep), "fake-co") || strings.Contains(err.Error(), "fake-co") {
+		t.Fatalf("denied report leaked a name: %s %v", mustReport(t, rep), err)
+	}
+	rep, err = Import(ex, Options{
+		Tenant: "minh-an", SourceTenant: "fake-co", DenyFile: listed,
+		SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"),
+	})
+	assertZero(err)
+	if rep.DeniedTenants != 1 || strings.Contains(mustReport(t, rep), "fake-co") {
+		t.Fatalf("source deny %+v %s", rep, mustReport(t, rep))
+	}
+}
+
+func TestMaskPhone(t *testing.T) {
+	if strings.Contains(MaskIdentifiers("call 0901234567"), "0901234567") {
+		t.Fatal("phone leaked")
+	}
+	ex := &Export{Skills: []SkillRow{{
+		ID: "s", TenantID: "minh-an", Slug: "0901234567", Status: "active",
+		FilePath: "skills/bao-gia/SKILL.md",
+	}}, UserGrants: []UserGrantRow{{
+		ID: "g", TenantID: "minh-an", SkillID: "s", UserID: "0901234567", GrantedBy: "0901234567",
+	}}}
+	dir := t.TempDir()
+	rep, err := callImport(t, ex, Options{
+		Tenant: "minh-an", SkillsDir: filepath.Join(dir, "skills"), SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := mustReport(t, rep)
+	raw, err := os.ReadFile(filepath.Join(dir, "map.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out+string(raw), "0901234567") {
+		t.Fatal("report printed a phone")
 	}
 }
 
@@ -304,19 +367,15 @@ func TestRenameMapMismatchWritesNothing(t *testing.T) {
 	ex := loadFixture(t)
 	dir := t.TempDir()
 	skillsDir := filepath.Join(dir, "skills")
-	mapPath := filepath.Join(dir, "rename.json")
-	if err := os.WriteFile(mapPath, []byte("{}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Import(ex, Options{
+	_, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: mapPath, Apply: true,
+		RenameMapPath: filepath.Join(dir, "rename.json"), Apply: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "rename map does not match") {
+	if err == nil || !strings.Contains(err.Error(), "apply refused") {
 		t.Fatal(err)
 	}
 	if _, statErr := os.Stat(skillsDir); !os.IsNotExist(statErr) {
-		t.Fatal("mismatch created the skills dir")
+		t.Fatal("apply created the skills dir")
 	}
 }
 
@@ -360,9 +419,13 @@ func TestEdges(t *testing.T) {
 		{ID: "crlf", TenantID: "minh-an", Slug: "xuong-dong", Status: "active", FilePath: "skills/crlf/SKILL.md"},
 	}}
 	skillsDir := filepath.Join(dir, "skills")
-	rep, err := Import(ex, Options{
+	body, reason, err := readSkillBytes(src, "skills/crlf/SKILL.md")
+	if err != nil || reason != "" || string(body) != "dong\nmot\n" {
+		t.Fatalf("crlf %q %s %v", body, reason, err)
+	}
+	rep, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: src,
-		RenameMapPath: filepath.Join(dir, "map.json"), Apply: true,
+		RenameMapPath: filepath.Join(dir, "map.json"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -371,11 +434,10 @@ func TestEdges(t *testing.T) {
 	if c.Inserted != 1 || c.Reasons["too-large"] != 1 || c.Reasons["binary-skipped"] != 1 || c.Reasons["symlink"] != 1 || c.Reasons["path-escape"] != 1 || c.Reasons["duplicate"] != 1 {
 		t.Fatalf("edges %+v", c)
 	}
-	if readSkill(t, skillsDir, "xuong-dong") != "dong\nmot\n" {
-		t.Fatalf("crlf body %q", readSkill(t, skillsDir, "xuong-dong"))
+	if _, err := os.Stat(filepath.Join(skillsDir, "xuong-dong")); !os.IsNotExist(err) {
+		t.Fatal("dry-run wrote a skill")
 	}
-	tree := readTree(t, skillsDir)
-	if strings.Contains(tree, "SYMLINK-TARGET") {
+	if strings.Contains(readTree(t, skillsDir), "SYMLINK-TARGET") {
 		t.Fatal("followed a symlink")
 	}
 }
@@ -404,15 +466,18 @@ func TestJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 	skillsDir := filepath.Join(dir, "out")
-	rep, err := Import(ex, Options{
+	rep, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: filepath.Join(dir, "src"),
-		RenameMapPath: filepath.Join(dir, "map.json"), Apply: true,
+		RenameMapPath: filepath.Join(dir, "map.json"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tenantCount(t, rep, "minh-an").Inserted != 1 || readSkill(t, skillsDir, "mot") != "JSONL-BODY\n" {
+	if tenantCount(t, rep, "minh-an").Inserted != 1 {
 		t.Fatalf("jsonl import %+v", rep)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "mot")); !os.IsNotExist(err) {
+		t.Fatal("dry-run wrote a skill")
 	}
 	if strings.Contains(mustReport(t, rep), "AGENTMARKERno") || strings.Contains(mustReport(t, rep), "OLD-VERSION-BODY") {
 		t.Fatal("jsonl report leaked")
@@ -439,9 +504,9 @@ func TestImportLeavesMemoryUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	ex := loadFixture(t)
-	if _, err := Import(ex, Options{
+	if _, err := callImport(t, ex, Options{
 		Tenant: "minh-an", SkillsDir: filepath.Join(dir, "skills"), SrcDir: fixtureSrc(t),
-		RenameMapPath: filepath.Join(dir, "map.json"), Apply: true,
+		RenameMapPath: filepath.Join(dir, "map.json"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -469,6 +534,26 @@ func TestPackageDoesNotExecute(t *testing.T) {
 			t.Fatal(e.Name(), "imports an executor")
 		}
 	}
+}
+
+func callImport(t *testing.T, ex *Export, opt Options) (Report, error) {
+	t.Helper()
+	if opt.SourceTenant == "" {
+		opt.SourceTenant = opt.Tenant
+	}
+	if opt.DenyFile == "" {
+		opt.DenyFile = writeDeny(t, "not-this-tenant")
+	}
+	return Import(ex, opt)
+}
+
+func writeDeny(t *testing.T, id string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(path, []byte(id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func loadFixture(t *testing.T) *Export {

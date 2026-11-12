@@ -80,16 +80,21 @@ Goso's skill folder has no field for these. They are counted and dropped. This P
 
 One `GOSO_SKILLS_DIR` is shared by every tenant. This PR does not add a per-tenant skill directory. A run writes only `--tenant`. Another tenant's rows are `foreign-tenant`. A later run for that other tenant cannot replace a folder this source id does not own.
 
-## Add-only
+## Denylist
 
-The source-id file maps `(tenant_id, source_id)` to the folder name and a sha256 of the stored body. The same pair on a later run reuses that folder.
+`--deny-tenants` or `GOSO_IMPORT_DENY_TENANTS` is a local file, one tenant id per line. The file is required. Missing, empty, and malformed files stop the process before a dry-run and before any write. If `--tenant` or `--source-tenant` is listed, the run writes nothing. The report field `denied_tenants` is a count. The names in the file are not printed.
 
-- Same bytes: `unchanged`. No write.
-- Different bytes: `add-only`. The file stays.
-- Missing file, known source id: the file is created again. No second folder.
-- Unknown source id, folder name already present: the next free suffix is used. The existing folder is not modified and not deleted.
+## Apply
 
-Nothing in this tool deletes a skill folder or a source-id row.
+`GOSO_SKILLS_DIR` is one directory. `skill.List` and `skill.Load` do not take a tenant, so a folder written for one tenant is visible to every tenant. `--apply` returns an error and writes no files. The folder writer stays in the package for a later per-tenant skills spec. It is not called by `--apply`.
+
+## Rollback
+
+`--rollback` counts folders recorded in `.goso-skill-import.json` for the exact `--tenant`. `--rollback --apply` removes those folders and those map rows. A folder that is not in the map, and a folder recorded for another tenant, stay.
+
+## Existing folders
+
+When the destination folder already exists and the bytes differ, the plan reason is `native-exists`. The file is not updated. A second skill is not created beside it.
 
 ## Report
 
