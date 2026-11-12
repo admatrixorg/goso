@@ -1,0 +1,70 @@
+# SPEC 181 — KG import
+
+Offline import of a JSONL export into the existing `kg_entities` and `kg_relations` tables. No UI change, so prototype screenshots do not apply. No customer data and no secret values. The Postgres DSN is named, not filled in.
+
+The tool never opens a GoClaw database. `--export` is JSONL. `--db` is a local SQLite file or a loopback Postgres DSN.
+
+## Flags
+
+| Flag | Meaning |
+|---|---|
+| `--export` | JSONL. Each line is `kg_entities` or `kg_relations` with the GoClaw column names. `embedding` and `tsv` are dropped |
+| `--tenant-map` | SPEC 152 pairs. `source_tenant`, `dest_tenant`, `slug`. Slug `mq-capital` is counted `mq` and is not written |
+| `--agent-map` | SPEC 174 pairs. `goclaw_agent_id`, `goso_agent_id`, optional `source_tenant`. The Goso agent must already exist in the destination tenant |
+| `--db` | Local SQLite file or loopback Postgres DSN. `GOSO_DATABASE_URL` is not opened |
+| `--dry-run` | Counts only. `read = will_write + sum(skipped)` per source tenant and table |
+| `--remove` | Delete `gc-` rows in `kg_entities` and `kg_relations` for `--dest-tenant`. Other ids and other tables stay |
+| `--dest-tenant` | Required with `--remove`. `mq-capital` is refused |
+
+Skipped keys: `expired` (stays 0; a past `valid_until` is kept), `customer-private`, `team/scope`, `mq`, `unmapped`, `missing relation endpoint`, `exists`, `invalid`.
+
+```bash
+go run ./gateway/cmd/goso-kg-import \
+  --export export.jsonl \
+  --tenant-map tenants.json \
+  --agent-map agents.json \
+  --db /path/to/local.db \
+  --dry-run
+```
+
+```bash
+go run ./gateway/cmd/goso-kg-import \
+  --remove --dest-tenant minh-an \
+  --db /path/to/local.db
+```
+
+## Maps
+
+Tenant file:
+
+```json
+{"tenants":[{"source_tenant":"<goclaw tenant uuid>","dest_tenant":"minh-an","slug":"minh-an"}]}
+```
+
+Agent file. This PR does not read the agents-importer branch. SPEC 174 is expected to be able to emit this file.
+
+```json
+{"agents":[{"goclaw_agent_id":"<uuid>","goso_agent_id":"<goso id>","source_tenant":"<goclaw tenant uuid>"}]}
+```
+
+## What was run
+
+From the repo root, on this branch, with `GOSO_TEST_POSTGRES_DSN` unset (no local Postgres server in this environment):
+
+```bash
+go build -o /tmp/goso-kg-import ./gateway/cmd/goso-kg-import
+go test ./gateway/internal/kgimport ./gateway/internal/store ./gateway/cmd/goso-kg-import -count=1 -timeout 180s
+go test -race -count=1 -timeout 240s ./gateway/internal/kgimport ./gateway/internal/store ./gateway/cmd/goso-kg-import
+```
+
+Exit 0. Memory and SQLite ran `TestMinhAnFixture`, `TestConflictDoesNotOverwrite`, `TestDeleteImportedKGLeavesLiveRows`, and the CLI test. The Postgres subtest skips when `GOSO_TEST_POSTGRES_DSN` is unset, and fails in CI when that variable is missing. No customer export is in this directory.
+
+## Column assumptions that are not in the `\d`
+
+The `\d` of 2026-11-12 is the column list. These are the file and mapping choices around it:
+
+- JSONL, one object per line, with a `table` field. That is this tool's export, not a `pg_dump`.
+- JSON `null` `user_id` is treated as empty.
+- `kg_relations` has no description, so the relation body is compact `properties` only.
+- A relation id is `gc-kg:<relation uuid>`. Endpoint ids are `gc-kg:<entity uuid>`.
+- `GetKGEntity` still classifies an unknown provenance as `posted`. The column value is `goclaw:<uuid>`.
