@@ -61,6 +61,13 @@ jobs:
       - name: make verify
         run: make verify
 
+      # SPEC 153. make verify already runs this package via go test ./...
+      # This step prints the SQLite and Postgres score table. The job DSN is
+      # GOSO_TEST_POSTGRES_DSN. A miss that passed at 9545d08 fails the step.
+      # The checked-in floor itself does not.
+      - name: memory-vi bench (sqlite + postgres)
+        run: go test ./gateway/memorybench -count=1 -timeout 15m -v
+
       - name: desktop verify
         run: make -C desktop verify
 

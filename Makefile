@@ -1,9 +1,9 @@
 # GOSO — Makefile (Harness)
 
-.PHONY: verify lint vet fmt fmt-fix test build doctor version help mcp-verify scan e2e smoke package-desktop
+.PHONY: verify lint vet fmt fmt-fix test build doctor version help mcp-verify scan e2e smoke package-desktop bench-memory-vi
 
 help:
-	@echo "Targets: verify | lint | vet | fmt | test | mcp-verify | scan | e2e | build | smoke | package-desktop"
+	@echo "Targets: verify | lint | vet | fmt | test | bench-memory-vi | mcp-verify | scan | e2e | build | smoke | package-desktop"
 
 # vet + fmt + test + mcp + gitleaks/semgrep (if installed) + e2e
 verify: vet fmt test mcp-verify scan e2e
@@ -23,8 +23,15 @@ fmt:
 fmt-fix:
 	gofmt -w gateway desktop
 
+# SPEC 153 bench/memory-vi is part of this test (package gateway/memorybench).
+# SQLite always runs. Postgres runs when GOSO_TEST_POSTGRES_DSN is set; CI sets it.
+# The bench fails when a case that passed at main 9545d08 fails, or when a case
+# that must return nothing admits an item. A score below 100% is the floor, not a failure.
 test:
 	go test ./... -count=1
+
+bench-memory-vi:
+	go test ./gateway/memorybench -count=1 -timeout 15m -v
 
 scan:
 	@sh scripts/scan.sh
