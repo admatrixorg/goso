@@ -21,18 +21,41 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func TestEncodeDestDoesNotCollapseThread(t *testing.T) {
-	plain := encodeDest(SharedSender, "")
-	thread := encodeDest(SharedSender, SharedThread)
-	if plain == thread {
-		t.Fatal("thread dest collapsed into the person")
+func TestRawDestKeepsSenderAndThread(t *testing.T) {
+	got := rawDests(SharedSender, "")
+	if len(got) != 1 || got[0] != SharedSender {
+		t.Fatalf("%v", got)
 	}
-	if encodeDest("s1:xt0:", "") == encodeDest("x", "") {
-		t.Fatal("length prefix collapsed")
+	both := rawDests(SharedSender, SharedThread)
+	if len(both) != 2 || both[0] != SharedSender || both[1] != SharedThread {
+		t.Fatalf("%v", both)
 	}
-	if !strings.Contains(thread, SharedThread) || !strings.Contains(plain, "t0:") {
-		t.Fatalf("plain %s thread %s", plain, thread)
+	ch, ok := gosoChannel("zalo_personal")
+	if !ok || ch != "zalo-personal" {
+		t.Fatalf("rename %q %v", ch, ok)
 	}
+	if _, ok := gosoChannel("zcrm"); ok {
+		t.Fatal("unknown channel accepted")
+	}
+	key, ok := customerKey("telegram", "4242", "")
+	if !ok || key != "telegram:4242" {
+		t.Fatalf("key %q", key)
+	}
+	key, ok = customerKey("telegram", "", "user-1")
+	if !ok || key != "goclaw:user-1" {
+		t.Fatalf("fallback %q", key)
+	}
+	if _, ok := customerKey("", "", ""); ok {
+		t.Fatal("empty customer key")
+	}
+}
+
+func denySet() map[string]struct{} {
+	return map[string]struct{}{"blocked-tenant": {}}
+}
+
+func minhOpts(dry bool) Options {
+	return Options{Tenant: "minh-an", SourceTenant: "minh-an", Deny: denySet(), DryRun: dry}
 }
 
 func TestFixtureFileMatchesGenerator(t *testing.T) {
@@ -144,7 +167,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	t.Helper()
 	assertSideTables(t, s)
 	if _, err := s.BulkUpsertContacts([]store.ContactSeed{{
-		TenantID: "tenant-bee", Channel: "telegram", Dest: encodeDest("ext-bee-keep", ""),
+		TenantID: "tenant-bee", Channel: "telegram", Dest: "ext-bee-keep",
 		Display: "Bee Keep", Kind: "user", AgentID: "bee-agent", Count: 3,
 		FirstSeen: mustStamp(t, "2026-01-15T08:00:00Z"), LastSeen: mustStamp(t, "2026-01-15T09:00:00Z"),
 	}}); err != nil {
@@ -155,7 +178,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	spy := &spyStore{SQLiteStore: s}
-	rep, err := Import(spy, ex, Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(spy, ex, minhOpts(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,17 +194,17 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatalf("dry-run wrote %d", n)
 	}
 
-	rep, err = Import(spy, ex, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rep.New != FixtureLive || rep.Skipped != FixtureMerged || rep.Invalid != 0 || rep.DryRun {
 		t.Fatalf("apply %+v", rep)
 	}
-	if spy.calls != 1 || spy.last != FixtureLive || spy.lists != 2 {
+	if spy.calls != 1 || spy.last != storedCount(MinhAnFile()) || spy.lists != 3 {
 		t.Fatalf("upsert calls %d last %d lists %d", spy.calls, spy.last, spy.lists)
 	}
-	if n := mustCount(t, s, "minh-an"); n != FixtureLive {
+	if n := mustCount(t, s, "minh-an"); n != storedCount(MinhAnFile()) {
 		t.Fatalf("count %d", n)
 	}
 	rows, err := s.ListContacts("minh-an", "", "", "")
@@ -202,8 +225,8 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 			t.Fatalf("count %d", row.Count)
 		}
 	}
-	person := encodeDest(SharedSender, "")
-	thread := encodeDest(SharedSender, SharedThread)
+	person := SharedSender
+	thread := SharedThread
 	if _, ok := byDest[person]; !ok {
 		t.Fatal("missing person")
 	}
@@ -213,10 +236,10 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	if person == thread {
 		t.Fatal("same dest")
 	}
-	if _, ok := byDest[encodeDest(MergedSender, "")]; ok {
+	if _, ok := byDest[MergedSender]; ok {
 		t.Fatal("merged row was inserted")
 	}
-	if groups != 1 {
+	if groups != 2 {
 		t.Fatalf("groups %d", groups)
 	}
 	wantFirst := mustStamp(t, "2026-01-15T08:00:00Z")
@@ -235,14 +258,14 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	}
 	assertSideTables(t, s)
 
-	rep, err = Import(spy, ex, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rep.New != 0 || rep.Updated != 0 || rep.Skipped != FixtureRows || rep.Invalid != 0 || spy.calls != 1 {
 		t.Fatalf("rerun %+v calls %d", rep, spy.calls)
 	}
-	if n := mustCount(t, s, "minh-an"); n != FixtureLive {
+	if n := mustCount(t, s, "minh-an"); n != storedCount(MinhAnFile()) {
 		t.Fatalf("rerun count %d", n)
 	}
 
@@ -256,7 +279,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	calls := spy.calls
-	rep, err = Import(spy, ex, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,20 +310,21 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err = Import(spy, one, Options{Tenant: "minh-an", DryRun: true})
+	rep, err = Import(spy, one, minhOpts(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Updated != 1 || spy.calls != calls {
+	if rep.Updated != 0 || rep.New != 0 || rep.Skipped != 1 || spy.calls != calls {
 		t.Fatalf("rename dry-run %+v", rep)
 	}
+	assertReasons(t, rep, map[string]int{"native-exists": 1})
 	assertNoLeak(t, rep)
-	rep, err = Import(spy, one, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, one, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Updated != 1 || spy.last != 1 {
-		t.Fatalf("rename %+v last %d", rep, spy.last)
+	if rep.Updated != 0 || rep.New != 0 || rep.Skipped != 1 || spy.calls != calls {
+		t.Fatalf("rename %+v calls %d", rep, spy.calls)
 	}
 	after, err := s.ListContacts("minh-an", "", "", "")
 	if err != nil {
@@ -310,14 +334,14 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		if row.Dest != person {
 			continue
 		}
-		if row.Display != "Minh An Renamed" || row.Count != 7 || row.AgentID != "minh-an-sales" || row.ID != bumped.ID {
-			t.Fatalf("updated %#v", row)
+		if row.Display != "Minh An 0000" || row.Count != 7 || row.AgentID != "minh-an-sales" || row.ID != bumped.ID {
+			t.Fatalf("native contact changed %#v", row)
 		}
-		if !row.FirstSeen.Equal(wantFirst) || !row.LastSeen.Equal(mustStamp(t, "2026-01-15T10:00:00Z")) {
-			t.Fatalf("updated times %s %s", row.FirstSeen, row.LastSeen)
+		if !row.FirstSeen.Equal(wantFirst) || !row.LastSeen.Equal(wantFirst.Add(time.Hour)) {
+			t.Fatalf("native times %s %s", row.FirstSeen, row.LastSeen)
 		}
 	}
-	if n := mustCount(t, s, "minh-an"); n != FixtureLive {
+	if n := mustCount(t, s, "minh-an"); n != storedCount(MinhAnFile()) {
 		t.Fatalf("after rename %d", n)
 	}
 	assertMarkerAbsent(t, s, "DROPME")
@@ -412,7 +436,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(&spyStore{SQLiteStore: s}, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +457,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 		"time":           1,
 	})
 	assertNoLeak(t, rep)
-	blankDest := encodeDest("ext-blank-name-0001", "")
+	blankDest := "ext-blank-name-0001"
 	rowsOut, err := s.ListContacts("minh-an", "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -446,7 +470,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 		if row.Dest == blankDest {
 			blank = row
 		}
-		if row.Dest == encodeDest("ext-kind-group", "") {
+		if row.Dest == "ext-kind-group" {
 			peer = row
 		}
 	}
@@ -456,7 +480,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 	if peer.Kind != "group" {
 		t.Fatalf("peer %#v", peer)
 	}
-	user := encodeDest("ext-username-0001", "")
+	user := "ext-username-0001"
 	for _, row := range rowsOut {
 		if row.Dest == user && row.Display != "Minh An User" {
 			t.Fatalf("username %#v", row)
@@ -489,7 +513,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	before := mustCount(t, s, "minh-an")
-	rep, err = Import(&spyStore{SQLiteStore: s}, ex, Options{Tenant: "minh-an", SourceTenant: src})
+	rep, err = Import(&spyStore{SQLiteStore: s}, ex, Options{Tenant: "minh-an", SourceTenant: src, Deny: denySet()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,6 +533,112 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 	}
 }
 
+func TestObserveImportedSender(t *testing.T) {
+	s := openSQLite(t)
+	row := person("4242", "", "Minh An 4242", "user", "user", "", time.Date(2026, 1, 15, 8, 0, 0, 0, time.UTC))
+	row.ChannelType = "zalo_personal"
+	row.UserID = "user-4242"
+	ex, err := ReadExport(bytes.NewReader(mustExport(t, File{Contacts: []Contact{row}})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapPath := filepath.Join(t.TempDir(), "customers.tsv")
+	opt := minhOpts(false)
+	opt.CustomerMap = mapPath
+	if _, err := Import(&spyStore{SQLiteStore: s}, ex, opt); err != nil {
+		t.Fatal(err)
+	}
+	again := opt
+	if _, err := Import(&spyStore{SQLiteStore: s}, ex, again); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.ListContacts("minh-an", "", "", "")
+	if err != nil || len(rows) != 1 || rows[0].Channel != "zalo-personal" || rows[0].Dest != "4242" {
+		t.Fatalf("%#v %v", rows, err)
+	}
+	got, err := s.ObserveContact(store.ContactSighting{
+		Channel: "zalo-personal", Dest: "4242", Kind: "user", TenantID: "minh-an",
+		At: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != rows[0].ID || got.Dest != "4242" {
+		t.Fatalf("observe %#v imported %#v", got, rows[0])
+	}
+	if n := mustCount(t, s, "minh-an"); n != 1 {
+		t.Fatalf("second contact %d", n)
+	}
+	first, err := os.ReadFile(mapPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(&spyStore{SQLiteStore: s}, ex, opt); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(mapPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("map changed %q %q", first, second)
+	}
+	text := string(first)
+	if !strings.Contains(text, "zalo-personal\t4242\tuser-4242\tzalo-personal:4242\n") {
+		t.Fatalf("map %q", text)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) != 4 || parts[3] == "" {
+			t.Fatalf("empty key %q", line)
+		}
+	}
+}
+
+func TestNativeSkipAndRollback(t *testing.T) {
+	s := openSQLite(t)
+	real := store.ContactSeed{
+		TenantID: "minh-an", Channel: "telegram", Dest: "real-minh-an", Display: "Minh An Real",
+		Kind: "user", Count: 4, AgentID: "kept-agent",
+		FirstSeen: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		LastSeen:  time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+	}
+	if _, err := s.BulkUpsertContacts([]store.ContactSeed{real}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := person("new-minh-an", "", "Minh An New", "user", "user", "", time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))
+	clash := person("real-minh-an", "", "Minh An Replaced", "user", "user", "", time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
+	ex, err := ReadExport(bytes.NewReader(mustExport(t, File{Contacts: []Contact{clash, fresh}})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.New != 1 || rep.Updated != 0 || rep.Skipped != 1 {
+		t.Fatalf("%+v", rep)
+	}
+	assertReasons(t, rep, map[string]int{"native-exists": 1})
+	rows, err := s.ListContacts("minh-an", "", "", "")
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("%#v %v", rows, err)
+	}
+	for _, row := range rows {
+		if row.Dest == "real-minh-an" && (row.Display != "Minh An Real" || row.Count != 4 || row.AgentID != "kept-agent") {
+			t.Fatalf("real changed %#v", row)
+		}
+	}
+	n, err := s.RollbackContactImport("minh-an")
+	if err != nil || n != 1 {
+		t.Fatalf("rollback %d %v", n, err)
+	}
+	left, err := s.ListContacts("minh-an", "", "", "")
+	if err != nil || len(left) != 1 || left[0].Dest != "real-minh-an" || left[0].Display != "Minh An Real" {
+		t.Fatalf("after rollback %#v %v", left, err)
+	}
+}
+
 func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 	t.Helper()
 	rows := make([]Contact, 0, n)
@@ -521,7 +651,7 @@ func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 		t.Fatal(err)
 	}
 	spy := &spyStore{SQLiteStore: s}
-	rep, err := Import(spy, ex, Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(spy, ex, minhOpts(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,21 +661,21 @@ func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 	if mustCount(t, s, "minh-an") != 0 {
 		t.Fatal("dry-run wrote")
 	}
-	rep, err = Import(spy, ex, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.New != n || spy.calls != 1 || spy.last != n || spy.lists != 2 {
+	if rep.New != n || spy.calls != 1 || spy.last != n || spy.lists != 3 {
 		t.Fatalf("apply %+v calls %d last %d lists %d", rep, spy.calls, spy.last, spy.lists)
 	}
 	if mustCount(t, s, "minh-an") != n {
 		t.Fatalf("count %d", mustCount(t, s, "minh-an"))
 	}
-	rep, err = Import(spy, ex, Options{Tenant: "minh-an"})
+	rep, err = Import(spy, ex, minhOpts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Skipped != n || rep.New != 0 || rep.Updated != 0 || spy.calls != 1 || spy.lists != 3 {
+	if rep.Skipped != n || rep.New != 0 || rep.Updated != 0 || spy.calls != 1 || spy.lists != 4 {
 		t.Fatalf("rerun %+v calls %d lists %d", rep, spy.calls, spy.lists)
 	}
 	assertSideTables(t, s)
@@ -562,10 +692,25 @@ func edge(sender, display string) map[string]any {
 		"first_seen_at": "2026-01-15T08:00:00Z",
 		"last_seen_at":  "2026-01-15T09:00:00Z",
 	}
-	if sender == "ext-inherit-0001" {
-		m["tenant_id"] = ""
-	}
 	return m
+}
+
+func storedCount(file File) int {
+	type pair struct{ ch, dest string }
+	seen := map[pair]struct{}{}
+	for _, c := range file.Contacts {
+		if strings.TrimSpace(c.MergedID) != "" {
+			continue
+		}
+		ch, ok := gosoChannel(c.ChannelType)
+		if !ok {
+			continue
+		}
+		for _, dest := range rawDests(c.SenderID, c.ThreadID) {
+			seen[pair{ch, dest}] = struct{}{}
+		}
+	}
+	return len(seen)
 }
 
 func assertReasons(t *testing.T, rep Report, want map[string]int) {

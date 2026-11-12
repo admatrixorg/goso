@@ -10,7 +10,10 @@ The source is `public.channel_contacts`. There is no `contacts` table. goso's ta
 |---|---|
 | `--export` | JSON `{"channel_contacts":[...]}` or JSONL of those objects. Required |
 | `--tenant` | goso tenant id written on every kept row. Required |
-| `--source-tenant` | Optional `channel_contacts.tenant_id` to keep. Any other id is `foreign-tenant` |
+| `--source-tenant` | Required `channel_contacts.tenant_id` to keep. Any other id is `foreign-tenant` |
+| `--deny-file` | Required local denylist, or `GOSO_CONTACTS_DENY_FILE`. One id per line |
+| `--customer-map` | Local TSV written on `--apply` |
+| `--rollback` | Delete only rows this importer inserted for `--tenant` |
 | `--db` | Local SQLite file or loopback Postgres DSN. Required. `GOSO_DATABASE_URL` is ignored |
 | `--apply` | Write new and updated rows |
 | `--dry-run` | Report counts and write nothing. This is the default |
@@ -21,6 +24,8 @@ Do not pass `--apply` and `--dry-run` together. `--dry-run=false` without `--app
 go run ./gateway/cmd/goso-contacts-import \
   --export gateway/internal/contactsimport/testdata/minh-an-contacts.json \
   --tenant minh-an \
+  --source-tenant minh-an \
+  --deny-file /tmp/deny.txt \
   --db /tmp/minh-an-contacts.db
 ```
 
@@ -35,28 +40,31 @@ Source unique key: `(tenant_id, channel_type, sender_id, COALESCE(thread_id, '')
 goso key: `(tenant_id, channel, dest)`.
 
 ```text
-channel = channel_type
-dest    = "s" + len(sender_id) + ":" + sender_id + "t" + len(thread_id) + ":" + thread_id
+channel = renamed goso name (zalo_personal → zalo-personal; unknown names are rejected)
+dest    = sender_id, and also thread_id when that id is different
 ```
 
-Lengths are bytes. `ext-minh-an-0000` with an empty thread and the same sender with `thread-minh-an-0000` are two contacts. A sender that contains the characters `t0:` does not collide with another pair, because both lengths are written in front of the values. `dest` over 128 bytes is `dest-length` and is not clipped.
+`ext-minh-an-0000` and the same sender with `thread-minh-an-0000` are two contacts. The person dest is the raw sender id, which is what a later observe uses. `dest` over 128 bytes is `dest-length` and is not clipped.
 
 | Source column | Where it goes |
 |---|---|
-| `channel_type` | `channel` |
-| `sender_id`, `thread_id` | `dest` |
+| `channel_type` | `channel` after the fixed rename |
+| `sender_id` | `dest` of the person |
+| `thread_id` | extra `dest` when it differs |
 | `display_name`, else `username` | `display` |
 | `contact_type`, `peer_kind`, `thread_type` | `kind`: `group` if any of them is `group`; otherwise `contact_type` is `user`, `direct`, or empty |
-| `first_seen_at`, `last_seen_at` | `first_seen`, `last_seen` |
-| `merged_id` | Skip. The row is not inserted. goso does not copy the merge edge. `merged_id` equal to `id` is `merged-self` |
-| `user_id` | Not stored. It is not `agent_id` |
+| `first_seen_at`, `last_seen_at` | `first_seen`, `last_seen` on insert |
+| `merged_id` | Skip. The row is not inserted. `merged_id` equal to `id` is `merged-self` |
+| `user_id` | Local `--customer-map` only. Key `<channel>:<sender_id>`, or `goclaw:<user_id>` when the sender is empty |
 | `channel_instance`, `avatar_url`, `metadata` | Not stored |
 
-A new row stores count 1. An update keeps the stored count and `agent_id`. The file's timestamps are written on insert and on update.
+An existing contact is `native-exists` and is not changed. New rows are listed in `contact_import_map`. `--rollback` deletes only those rows.
+
+`--source-tenant` and a denylist file are required. A missing, empty, or malformed denylist stops before any work. A listed `--tenant` or source tenant stops before any write. `denied` in the report is a count.
 
 One run calls `ListContacts` once and `BulkUpsertContacts` once. A 3300-row file is one batch.
 
-The sample file has 211 rows: 200 direct, 10 threads, 1 merged. The written count is 210.
+The sample file has 211 rows: 200 direct, 10 threads, 1 merged. The row report's `new` count is 210. Thread rows also insert the chat id, so the stored contact count is higher.
 
 ## Counts
 
@@ -69,6 +77,8 @@ The sample file has 211 rows: 200 direct, 10 threads, 1 merged. The written coun
 | `tenant` | `tenant_id` is not a tenant id, and `--source-tenant` is unset |
 | `foreign-tenant` | the row's tenant is not the one this run keeps |
 | `merged` | `merged_id` is set. Counted in `skipped` |
+| `native-exists` | `(channel, dest)` is already stored. Not updated. Counted in `skipped` |
+| `channel` | `channel_type` is not in the rename table |
 | `merged-self` | `merged_id` equals `id` |
 | `empty-channel` | `channel_type` is empty |
 | `empty-sender` | `sender_id` is empty |
@@ -96,6 +106,7 @@ Command above, no `--apply`. Stderr was empty. The SQLite `contacts` count staye
   "skipped": 1,
   "invalid": 0,
   "dry_run": true,
+  "denied": 0,
   "reasons": [
     {
       "code": "merged",

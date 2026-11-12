@@ -31,8 +31,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	exportPath := fs.String("export", "", "JSON or JSONL export of channel_contacts")
 	tenant := fs.String("tenant", "", "goso tenant_id to write (required)")
-	source := fs.String("source-tenant", "", "optional channel_contacts.tenant_id to keep; other tenants are foreign-tenant")
+	source := fs.String("source-tenant", "", "channel_contacts.tenant_id to keep (required)")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
+	denyPath := fs.String("deny-file", "", "local denylist, one tenant id per line (or GOSO_CONTACTS_DENY_FILE)")
+	mapPath := fs.String("customer-map", "", "local customer-key file written on --apply")
+	rollback := fs.Bool("rollback", false, "delete only contacts this importer inserted for --tenant")
 	apply := fs.Bool("apply", false, "write contacts; omit to dry-run")
 	dry := fs.Bool("dry-run", true, "report counts and write nothing (default)")
 	if err := fs.Parse(args); err != nil {
@@ -69,7 +72,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" {
+	if strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" || strings.TrimSpace(*source) == "" {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	if !*rollback && strings.TrimSpace(*exportPath) == "" {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
@@ -80,6 +87,42 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if badToken(*source) {
 		fmt.Fprintln(stderr, "source tenant is invalid")
 		return 2
+	}
+	denyFile := strings.TrimSpace(*denyPath)
+	if denyFile == "" {
+		denyFile = strings.TrimSpace(os.Getenv("GOSO_CONTACTS_DENY_FILE"))
+	}
+	deny, err := contactsimport.LoadDenyFile(denyFile)
+	if err != nil {
+		var cfg *contactsimport.ConfigError
+		if errors.As(err, &cfg) {
+			fmt.Fprintln(stderr, cfg.Error())
+		} else {
+			fmt.Fprintln(stderr, "deny file is missing")
+		}
+		return 1
+	}
+	if n := contactsimport.DeniedCount(deny, *tenant, *source); n > 0 {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(contactsimport.Report{Denied: n, DryRun: dryRun})
+		fmt.Fprintln(stderr, "tenant is denied")
+		return 1
+	}
+	if *rollback {
+		st, closeDB, err := openDB(*dbPath)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer closeDB()
+		n, err := st.RollbackContactImport(strings.TrimSpace(*tenant))
+		if err != nil {
+			fmt.Fprintln(stderr, "rollback failed")
+			return 1
+		}
+		fmt.Fprintf(stdout, "rollback count=%d\n", n)
+		return 0
 	}
 	f, err := os.Open(*exportPath)
 	if err != nil {
@@ -106,6 +149,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Tenant:       *tenant,
 		SourceTenant: *source,
 		DryRun:       dryRun,
+		Deny:         deny,
+		CustomerMap:  *mapPath,
 	})
 	if err != nil {
 		var cfg *contactsimport.ConfigError
@@ -125,7 +170,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-const usage = "usage: goso-contacts-import --export file.json --tenant id --db path [--source-tenant id] [--apply]\ndry-run is the default; --apply writes. Do not pass --apply and --dry-run together."
+const usage = "usage: goso-contacts-import --export file.json --tenant id --source-tenant id --db path --deny-file path [--customer-map path] [--apply]\ndry-run is the default; --apply writes. --rollback deletes only imported rows for --tenant. Do not pass --apply and --dry-run together."
 
 func badToken(s string) bool {
 	for _, r := range s {

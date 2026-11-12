@@ -7,28 +7,26 @@
 // one, and it does not add the source columns to goso. goso's natural key
 // stays (tenant_id, channel, dest).
 //
-// The source natural key is (tenant_id, channel_type, sender_id,
-// COALESCE(thread_id, ”)). It maps as:
+// The source natural key is (tenant_id, channel_type, sender_id, thread_id).
+// channel is the goso name from a fixed rename table. dest is the raw id
+// inbound already uses: sender_id for the person, and thread_id too when
+// it differs. A later ObserveContact of that sender returns this row.
 //
-//	channel = channel_type
-//	dest    = "s" + len(sender_id) + ":" + sender_id + "t" + len(thread_id) + ":" + thread_id
-//
-// Lengths are bytes. An empty thread_id and a non-empty thread_id for the
-// same sender are two dests, so a thread contact does not replace the
-// person. The encoding is length-prefixed, so a sender_id that contains
-// "t0:" does not collide with another pair. A dest over 128 bytes is
-// invalid and is not clipped.
+// A local customer-map file records channel, sender_id, and user_id to
+// customer_key "<channel>:<sender_id>", or "goclaw:<user_id>" when the
+// sender is empty. The key is never empty. The file is not a goso table.
 //
 // contact_type, peer_kind, and thread_type are kept only as goso's kind.
 // kind is group when any of those three is "group". Otherwise contact_type
 // must be "user", "direct", or empty, and kind is user. An unknown
 // contact_type is invalid. An unknown peer_kind does not change kind.
 //
-// display is display_name, then username, then channel:dest. user_id is not
-// agent_id. channel_instance, avatar_url, and metadata are not stored.
-// seen_count is not a source column: a new row stores 1, and an update keeps
-// the stored count and agent_id. first_seen_at and last_seen_at are stored
-// as first_seen and last_seen.
+// display is display_name, then username, then channel:dest.
+// channel_instance, avatar_url, and metadata are not stored. user_id is
+// not agent_id; it is kept only in the local customer-map file.
+// seen_count is not a source column. A new row stores 1. An existing row
+// is skipped and is not changed. first_seen_at and last_seen_at are stored
+// as first_seen and last_seen on insert.
 //
 // A non-empty merged_id means the source row was already merged into
 // another contact. The row is skipped and is not inserted. goso merge
@@ -36,16 +34,16 @@
 //
 // The file is JSON {"channel_contacts":[...]} or JSONL of one object per
 // line, using these column names. --tenant is the goso tenant that is
-// written. --source-tenant, when set, keeps only rows with that source
-// tenant_id. The report is counts and reason codes.
+// written. --source-tenant is required. A deny list stops the run before
+// any contact write. The report is counts and reason codes.
 package contactsimport
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -76,25 +74,34 @@ var ErrExportTooLarge = errors.New("export is too large")
 type Store interface {
 	ListContacts(tenant, q, channel, kind string) ([]store.ContactRow, error)
 	BulkUpsertContacts(seeds []store.ContactSeed) (store.ContactBulkResult, error)
+	PutContactImport(tenant, contactID, channel, dest string) error
+	RollbackContactImport(tenant string) (int, error)
+	ObserveContact(in store.ContactSighting) (store.ContactRow, error)
 }
 
 // Options is one run. Tenant is the goso tenant written on every kept row.
-// SourceTenant, when set, is the channel_contacts.tenant_id to keep.
+// SourceTenant is required and is the channel_contacts.tenant_id to keep.
+// Deny lists tenant ids that must not be written. CustomerMap, when set
+// and the run is not a dry-run, is a local file of customer keys.
 type Options struct {
 	Tenant       string
 	SourceTenant string
 	DryRun       bool
+	Deny         map[string]struct{}
+	CustomerMap  string
 }
 
-// Report is counts only. Reasons for invalid rows sum to Invalid. The
-// reason code "merged" counts skipped rows whose merged_id is set, and is
-// not part of Invalid. New + Updated + Skipped + Invalid equals the input.
+// Report is counts only. Reasons other than merged and native-exists sum
+// to Invalid. Those two codes are skipped rows. Updated stays 0: an
+// existing contact is not changed. New + Updated + Skipped + Invalid
+// equals the input.
 type Report struct {
 	New     int      `json:"new"`
 	Updated int      `json:"updated"`
 	Skipped int      `json:"skipped"`
 	Invalid int      `json:"invalid"`
 	DryRun  bool     `json:"dry_run"`
+	Denied  int      `json:"denied"`
 	Reasons []Reason `json:"reasons,omitempty"`
 }
 
@@ -248,9 +255,9 @@ func (r rowJSON) bad() bool {
 	return r.ID.Bad || r.TenantID.Bad || r.ChannelType.Bad || r.ChannelInstance.Bad || r.SenderID.Bad || r.UserID.Bad || r.DisplayName.Bad || r.Username.Bad || r.AvatarURL.Bad || r.PeerKind.Bad || r.MergedID.Bad || r.FirstSeenAt.Bad || r.LastSeenAt.Bad || r.ContactType.Bad || r.ThreadID.Bad || r.ThreadType.Bad
 }
 
-// Import lists the destination tenant once, then upserts every new and
-// updated row in one store call. A merged source row is skipped. DryRun
-// does not call the upsert.
+// Import lists the destination tenant once, then inserts new rows in one
+// store call. An existing contact is skipped. A merged source row is
+// skipped. DryRun does not call the upsert and does not write the map file.
 func Import(db Store, ex *Export, opt Options) (Report, error) {
 	tenant := strings.TrimSpace(opt.Tenant)
 	if tenant == "" {
@@ -260,8 +267,17 @@ func Import(db Store, ex *Export, opt Options) (Report, error) {
 		return Report{}, errConfig("tenant is invalid")
 	}
 	source := strings.TrimSpace(opt.SourceTenant)
+	if source == "" {
+		return Report{}, errConfig("source tenant is required")
+	}
 	if hasControl(source) {
 		return Report{}, errConfig("source tenant is invalid")
+	}
+	if len(opt.Deny) == 0 {
+		return Report{}, errConfig("deny file is empty")
+	}
+	if n := DeniedCount(opt.Deny, tenant, source); n > 0 {
+		return Report{Denied: n, DryRun: opt.DryRun}, errConfig("tenant is denied")
 	}
 	if ex == nil {
 		return Report{}, errConfig("export is required")
@@ -290,8 +306,10 @@ func Import(db Store, ex *Export, opt Options) (Report, error) {
 	reasons := map[string]int{}
 	seen := map[string]struct{}{}
 	upserts := make([]store.ContactSeed, 0)
+	inserted := make([][2]string, 0)
+	mapLines := make([]mapLine, 0)
 	for _, raw := range ex.rows {
-		seed, reason, merged := accept(raw, tenant, source)
+		plan, reason, merged := accept(raw, tenant, source)
 		if merged {
 			rep.Skipped++
 			reasons["merged"]++
@@ -302,119 +320,341 @@ func Import(db Store, ex *Export, opt Options) (Report, error) {
 			reasons[reason]++
 			continue
 		}
-		k := key(seed.Channel, seed.Dest)
-		if _, ok := seen[k]; ok {
-			rep.Invalid++
-			reasons["duplicate"]++
-			continue
-		}
-		seen[k] = struct{}{}
-		if prev, ok := existing[k]; ok {
-			// The export has no seen_count and no agent. Keep the stored
-			// values so a rerun does not wipe them.
-			seed.Count = prev.Count
-			seed.AgentID = prev.AgentID
-			if sameContact(prev, seed) {
-				rep.Skipped++
+		mapLines = append(mapLines, plan.line)
+		fresh := make([]store.ContactSeed, 0, len(plan.seeds))
+		existed := 0
+		dup := 0
+		for _, seed := range plan.seeds {
+			k := key(seed.Channel, seed.Dest)
+			if _, ok := seen[k]; ok {
+				dup++
 				continue
 			}
-			rep.Updated++
-			upserts = append(upserts, seed)
+			if _, ok := existing[k]; ok {
+				existed++
+				seen[k] = struct{}{}
+				continue
+			}
+			seen[k] = struct{}{}
+			seed.Count = 1
+			fresh = append(fresh, seed)
+		}
+		if len(fresh) == 0 {
+			rep.Skipped++
+			if existed > 0 && dup == 0 {
+				reasons["native-exists"]++
+			} else if dup > 0 && existed == 0 {
+				reasons["duplicate"]++
+				rep.Skipped--
+				rep.Invalid++
+			} else if existed > 0 {
+				reasons["native-exists"]++
+			} else {
+				reasons["duplicate"]++
+				rep.Skipped--
+				rep.Invalid++
+			}
 			continue
 		}
-		seed.Count = 1
 		rep.New++
-		upserts = append(upserts, seed)
+		for _, seed := range fresh {
+			upserts = append(upserts, seed)
+			inserted = append(inserted, [2]string{seed.Channel, seed.Dest})
+		}
 	}
 	rep.Reasons = reasonList(reasons)
 	if err := balanced(rep, len(ex.rows)); err != nil {
 		return Report{}, err
 	}
-	if opt.DryRun || len(upserts) == 0 {
+	if opt.DryRun {
 		return rep, nil
 	}
-	if _, err := db.BulkUpsertContacts(upserts); err != nil {
-		return Report{}, errors.New("upsert contacts failed")
+	if len(upserts) > 0 {
+		if _, err := db.BulkUpsertContacts(upserts); err != nil {
+			return Report{}, errors.New("upsert contacts failed")
+		}
+		if err := recordInserted(db, tenant, inserted); err != nil {
+			return Report{}, err
+		}
+	}
+	if err := writeCustomerMap(opt.CustomerMap, mapLines); err != nil {
+		return Report{}, err
 	}
 	return rep, nil
 }
 
+type rowPlan struct {
+	seeds []store.ContactSeed
+	line  mapLine
+}
+
+type mapLine struct {
+	channel string
+	sender  string
+	user    string
+	key     string
+}
+
 // accept returns merged=true when the source row was already merged away.
-func accept(raw json.RawMessage, destTenant, sourceTenant string) (store.ContactSeed, string, bool) {
+func accept(raw json.RawMessage, destTenant, sourceTenant string) (rowPlan, string, bool) {
 	var row rowJSON
 	if err := json.Unmarshal(raw, &row); err != nil || row.bad() {
-		return store.ContactSeed{}, "row", false
+		return rowPlan{}, "row", false
 	}
-	if hasControl(row.TenantID.Value) || hasControl(row.ChannelType.Value) || hasControl(row.SenderID.Value) || hasControl(row.ThreadID.Value) || hasControl(row.DisplayName.Value) || hasControl(row.Username.Value) || hasControl(row.ContactType.Value) || hasControl(row.PeerKind.Value) || hasControl(row.ThreadType.Value) || hasControl(row.MergedID.Value) || hasControl(row.ID.Value) {
-		return store.ContactSeed{}, "control", false
+	if hasControl(row.TenantID.Value) || hasControl(row.ChannelType.Value) || hasControl(row.SenderID.Value) || hasControl(row.ThreadID.Value) || hasControl(row.DisplayName.Value) || hasControl(row.Username.Value) || hasControl(row.ContactType.Value) || hasControl(row.PeerKind.Value) || hasControl(row.ThreadType.Value) || hasControl(row.MergedID.Value) || hasControl(row.ID.Value) || hasControl(row.UserID.Value) {
+		return rowPlan{}, "control", false
 	}
 	if reason := tenantReason(row.TenantID.Value, destTenant, sourceTenant); reason != "" {
-		return store.ContactSeed{}, reason, false
+		return rowPlan{}, reason, false
 	}
 	mergedID := strings.TrimSpace(row.MergedID.Value)
 	rowID := strings.TrimSpace(row.ID.Value)
 	if mergedID != "" {
 		if rowID != "" && mergedID == rowID {
-			return store.ContactSeed{}, "merged-self", false
+			return rowPlan{}, "merged-self", false
 		}
-		return store.ContactSeed{}, "merged", true
+		return rowPlan{}, "merged", true
 	}
-	channel := strings.TrimSpace(row.ChannelType.Value)
+	rawChannel := strings.TrimSpace(row.ChannelType.Value)
 	sender := strings.TrimSpace(row.SenderID.Value)
 	thread := strings.TrimSpace(row.ThreadID.Value)
-	if channel == "" {
-		return store.ContactSeed{}, "empty-channel", false
+	user := strings.TrimSpace(row.UserID.Value)
+	if rawChannel == "" {
+		return rowPlan{}, "empty-channel", false
 	}
-	if len(channel) > maxChannelLen {
-		return store.ContactSeed{}, "channel-length", false
+	channel, ok := gosoChannel(rawChannel)
+	if !ok {
+		return rowPlan{}, "channel", false
 	}
 	if sender == "" {
-		return store.ContactSeed{}, "empty-sender", false
+		return rowPlan{}, "empty-sender", false
 	}
-	if len(sender) > maxSenderLen {
-		return store.ContactSeed{}, "sender-length", false
+	if len(sender) > maxSenderLen || len(thread) > maxThreadLen {
+		return rowPlan{}, "sender-length", false
 	}
-	if len(thread) > maxThreadLen {
-		return store.ContactSeed{}, "thread-length", false
-	}
-	dest := encodeDest(sender, thread)
-	if len(dest) > maxDestLen {
-		return store.ContactSeed{}, "dest-length", false
+	dests := rawDests(sender, thread)
+	for _, dest := range dests {
+		if len(dest) > maxDestLen {
+			return rowPlan{}, "dest-length", false
+		}
 	}
 	display := strings.TrimSpace(row.DisplayName.Value)
 	if display == "" {
 		display = strings.TrimSpace(row.Username.Value)
 	}
 	if len(display) > maxDisplayLen {
-		return store.ContactSeed{}, "display-length", false
+		return rowPlan{}, "display-length", false
 	}
 	kind, ok := kindOf(row.ContactType.Value, row.PeerKind.Value, row.ThreadType.Value)
 	if !ok {
-		return store.ContactSeed{}, "kind", false
+		return rowPlan{}, "kind", false
 	}
 	first, okFirst := parseStamp(row.FirstSeenAt.Value)
 	last, okLast := parseStamp(row.LastSeenAt.Value)
 	if !okFirst || !okLast {
-		return store.ContactSeed{}, "time", false
+		return rowPlan{}, "time", false
 	}
-	if display == "" {
-		display = channel + ":" + dest
+	ck, ok := customerKey(channel, sender, user)
+	if !ok {
+		return rowPlan{}, "identity", false
 	}
-	return store.ContactSeed{
-		TenantID:  destTenant,
-		Display:   display,
-		Kind:      kind,
-		Channel:   channel,
-		Dest:      dest,
-		FirstSeen: first,
-		LastSeen:  last,
+	seeds := make([]store.ContactSeed, 0, len(dests))
+	for _, dest := range dests {
+		d := display
+		if d == "" {
+			d = channel + ":" + dest
+		}
+		k := kind
+		if dest == thread && thread != sender && (strings.EqualFold(strings.TrimSpace(row.ThreadType.Value), "group") || strings.EqualFold(strings.TrimSpace(row.ContactType.Value), "group")) {
+			k = "group"
+		}
+		if dest == sender && thread != "" && thread != sender && strings.EqualFold(strings.TrimSpace(row.ContactType.Value), "user") {
+			k = "user"
+		}
+		seeds = append(seeds, store.ContactSeed{
+			TenantID:  destTenant,
+			Display:   d,
+			Kind:      k,
+			Channel:   channel,
+			Dest:      dest,
+			FirstSeen: first,
+			LastSeen:  last,
+		})
+	}
+	return rowPlan{
+		seeds: seeds,
+		line:  mapLine{channel: channel, sender: sender, user: user, key: ck},
 	}, "", false
 }
 
-// encodeDest is the goso dest for one source key. sender and thread are
-// already trimmed. len is the byte length.
-func encodeDest(sender, thread string) string {
-	return fmt.Sprintf("s%d:%st%d:%s", len(sender), sender, len(thread), thread)
+// gosoChannel maps a source channel_type onto goso's catalog name.
+// Unknown names are rejected so a later inbound event uses the same channel.
+func gosoChannel(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "telegram":
+		return "telegram", true
+	case "zalo_personal", "zalo-personal":
+		return "zalo-personal", true
+	case "zalo_oa", "zalo-oa":
+		return "zalo-oa", true
+	case "discord":
+		return "discord", true
+	case "slack":
+		return "slack", true
+	case "feishu", "lark":
+		return "feishu", true
+	case "whatsapp":
+		return "whatsapp", true
+	default:
+		return "", false
+	}
+}
+
+// rawDests is the inbound key: the sender id, plus the thread id when it
+// names a different chat. Nothing is length-prefixed.
+func rawDests(sender, thread string) []string {
+	out := []string{sender}
+	if thread != "" && thread != sender {
+		out = append(out, thread)
+	}
+	return out
+}
+
+func customerKey(channel, sender, user string) (string, bool) {
+	if channel != "" && sender != "" {
+		return channel + ":" + sender, true
+	}
+	if user != "" {
+		return "goclaw:" + user, true
+	}
+	return "", false
+}
+
+func recordInserted(db Store, tenant string, keys [][2]string) error {
+	rows, err := db.ListContacts(tenant, "", "", "")
+	if err != nil {
+		return errors.New("list contacts failed")
+	}
+	by := map[string]string{}
+	for _, row := range rows {
+		if row.Channel != "" && row.Dest != "" {
+			by[key(row.Channel, row.Dest)] = row.ID
+		}
+		for _, id := range row.Identifiers {
+			by[key(id.Channel, id.Dest)] = row.ID
+		}
+	}
+	for _, pair := range keys {
+		id := by[key(pair[0], pair[1])]
+		if id == "" {
+			return errors.New("import map failed")
+		}
+		if err := db.PutContactImport(tenant, id, pair[0], pair[1]); err != nil {
+			return errors.New("import map failed")
+		}
+	}
+	return nil
+}
+
+func writeCustomerMap(path string, lines []mapLine) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	uniq := map[string]mapLine{}
+	for _, line := range lines {
+		if line.key == "" || line.channel == "" {
+			return errConfig("customer key is empty")
+		}
+		uniq[line.channel+"\t"+line.sender+"\t"+line.user] = line
+	}
+	keys := make([]string, 0, len(uniq))
+	for k := range uniq {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		line := uniq[k]
+		b.WriteString(line.channel)
+		b.WriteByte('\t')
+		b.WriteString(line.sender)
+		b.WriteByte('\t')
+		b.WriteString(line.user)
+		b.WriteByte('\t')
+		b.WriteString(line.key)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return errors.New("write customer map failed")
+	}
+	return nil
+}
+
+// LoadDenyFile reads one tenant id per line. A missing, empty, or malformed
+// file is an error. The returned set is lower-case and contains no names
+// in the error text.
+func LoadDenyFile(path string) (map[string]struct{}, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, errConfig("deny file is missing")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errConfig("deny file is missing")
+	}
+	if bytes.Contains(body, []byte{0}) {
+		return nil, errConfig("deny file is malformed")
+	}
+	ids := map[string]struct{}{}
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "\uFEFF"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.ContainsAny(line, " \t") || !denyTokenOK(line) {
+			return nil, errConfig("deny file is malformed")
+		}
+		ids[strings.ToLower(line)] = struct{}{}
+	}
+	if len(ids) == 0 {
+		return nil, errConfig("deny file is empty")
+	}
+	return ids, nil
+}
+
+func denyTokenOK(s string) bool {
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// DeniedCount is how many of the named tenants are on the denylist.
+// The number is safe to print. The names are not.
+func DeniedCount(ids map[string]struct{}, tenants ...string) int {
+	n := 0
+	seen := map[string]struct{}{}
+	for _, tenant := range tenants {
+		tenant = strings.ToLower(strings.TrimSpace(tenant))
+		if tenant == "" {
+			continue
+		}
+		if _, ok := seen[tenant]; ok {
+			continue
+		}
+		seen[tenant] = struct{}{}
+		if _, ok := ids[tenant]; ok {
+			n++
+		}
+	}
+	return n
 }
 
 func tenantReason(rowTenant, destTenant, sourceTenant string) string {
@@ -509,15 +749,15 @@ func balanced(rep Report, n int) error {
 		return errors.New("import tally failed")
 	}
 	invalidSum := 0
-	merged := 0
+	skipSum := 0
 	for _, r := range rep.Reasons {
-		if r.Code == "merged" {
-			merged += r.Count
+		if r.Code == "merged" || r.Code == "native-exists" {
+			skipSum += r.Count
 			continue
 		}
 		invalidSum += r.Count
 	}
-	if invalidSum != rep.Invalid || merged > rep.Skipped {
+	if invalidSum != rep.Invalid || skipSum != rep.Skipped {
 		return errors.New("import tally failed")
 	}
 	return nil

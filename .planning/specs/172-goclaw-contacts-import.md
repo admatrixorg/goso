@@ -18,22 +18,22 @@ goso's key stays `(tenant_id, channel, dest)` on `contact_identifiers`. No sourc
 
 | Source | goso |
 |---|---|
-| `tenant_id` | Filter only. The written tenant is `--tenant`. `--source-tenant` keeps that source id; every other id is `foreign-tenant`. With no `--source-tenant`, an empty `tenant_id` uses `--tenant` and any other id must equal `--tenant`. |
-| `channel_type` | `channel` |
-| `sender_id`, `thread_id` | `dest`, see below |
+| `tenant_id` | Filter only. `--source-tenant` is required. The written tenant is `--tenant`. Any other row id is `foreign-tenant`. |
+| `channel_type` | `channel`, via a fixed rename (`zalo_personal` → `zalo-personal`, `lark` → `feishu`, and the other catalog names). Unknown names are rejected. |
+| `sender_id` | `dest` for the person. This is the id inbound observe uses. |
+| `thread_id` | A second `dest` when it differs from `sender_id` (the chat id). |
 | `display_name`, else `username` | `display`. Both empty becomes `channel:dest`. |
 | `contact_type`, `peer_kind`, `thread_type` | `kind`. `group` when any of the three is `group`. Otherwise `contact_type` must be `user`, `direct`, or empty, and `kind` is `user`. |
 | `first_seen_at`, `last_seen_at` | `first_seen`, `last_seen` |
 | `merged_id` | Non-empty and not equal to `id`: skip. Not inserted. goso merge rows are not created. Equal to `id`: `merged-self`. |
-| `user_id`, `channel_instance`, `avatar_url`, `metadata` | Not stored. `user_id` is not `agent_id`. |
+| `user_id` | Not an `agent_id`. It is a column in the local `--customer-map` file. The key is `<channel>:<sender_id>`, or `goclaw:<user_id>` when the sender is empty. |
+| `channel_instance`, `avatar_url`, `metadata` | Not stored. |
 
-```text
-dest = "s" + len(sender_id) + ":" + sender_id + "t" + len(thread_id) + ":" + thread_id
-```
+`dest` is the raw sender id, plus the raw thread id when that id is different. A later observe of that sender returns the imported row. `dest` over 128 bytes is invalid and is not clipped.
 
-Lengths are bytes of the trimmed values. An empty thread and a non-empty thread for the same sender are different dests. The length prefix stops a sender that contains `t0:` from colliding with another pair. `dest` over 128 bytes, `sender_id` over 255, or `thread_id` over 100 is invalid and is not clipped.
+A new row stores `seen_count` 1. An existing contact is `native-exists` and is not changed. Inserted ids are stored in `contact_import_map`. `--rollback` deletes only those rows.
 
-A new row stores `seen_count` 1. An update keeps the stored count and `agent_id`, because the export has neither. `first_seen` and `last_seen` always come from the file.
+`--deny-file` or `GOSO_CONTACTS_DENY_FILE` is required. A missing, empty, or malformed file stops before any work. A listed tenant stops before any write. The report field `denied` is a count and never a name.
 
 The importer lists the destination tenant once and calls `BulkUpsertContacts` once.
 

@@ -21,7 +21,7 @@ import (
 func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 	exportPath := filepath.Join("..", "..", "internal", "contactsimport", "testdata", "minh-an-contacts.json")
 	dbPath := filepath.Join(t.TempDir(), "goso.db")
-	args := []string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath}
+	args := importArgs(t, exportPath, dbPath)
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
@@ -59,7 +59,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err = st.CountContacts("minh-an")
-	if err != nil || n != contactsimport.FixtureLive {
+	if err != nil || n != contactsimport.FixtureStoredCount() {
 		t.Fatalf("apply count %d %v", n, err)
 	}
 	other, err := st.CountContacts("tenant-bee")
@@ -83,7 +83,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 	}
 	defer st.Close()
 	n, err = st.CountContacts("minh-an")
-	if err != nil || n != contactsimport.FixtureLive {
+	if err != nil || n != contactsimport.FixtureStoredCount() {
 		t.Fatalf("rerun count %d %v", n, err)
 	}
 }
@@ -101,7 +101,7 @@ func TestCLITenantIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(dir, "goso.db")
-	args := []string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath, "--apply"}
+	args := append(importArgs(t, exportPath, dbPath), "--apply")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("exit %d %s", code, stderr.String())
@@ -126,7 +126,7 @@ func TestCLITenantIsolation(t *testing.T) {
 		t.Fatalf("bee %d %v", n, err)
 	}
 	rows, err := st.ListContacts("minh-an", "", "", "")
-	if err != nil || len(rows) != 1 || rows[0].Dest != "s15:ext-minh-an-clit0:" {
+	if err != nil || len(rows) != 1 || rows[0].Dest != "ext-minh-an-cli" || rows[0].Channel != "telegram" {
 		t.Fatalf("rows %#v %v", rows, err)
 	}
 	if _, err := st.GetContact(rows[0].ID, "tenant-bee"); err == nil {
@@ -159,7 +159,7 @@ func TestCLIRefusesWriteWithoutApply(t *testing.T) {
 	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath, "--apply", "--dry-run"}, stdout, stderr); code != 2 {
 		t.Fatalf("both flags exit %d %s", code, stderr.String())
 	}
-	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--db", "postgres://goso@db.example/goso", "--apply"}, stdout, stderr); code != 1 {
+	if code := run(append(importArgs(t, exportPath, "postgres://goso@db.example/goso"), "--apply"), stdout, stderr); code != 1 {
 		t.Fatalf("remote exit %d", code)
 	}
 	if !strings.Contains(stderr.String(), "refusing non-local database host") {
@@ -168,7 +168,7 @@ func TestCLIRefusesWriteWithoutApply(t *testing.T) {
 	t.Setenv("GOSO_DATABASE_URL", "postgres://goso@127.0.0.1/goso")
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath, "--apply"}, stdout, stderr); code != 1 {
+	if code := run(append(importArgs(t, exportPath, dbPath), "--apply"), stdout, stderr); code != 1 {
 		t.Fatalf("env dsn exit %d %s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "refusing GOSO_DATABASE_URL") {
@@ -220,7 +220,7 @@ func TestCLIPostgresApply(t *testing.T) {
 	u.RawQuery = q.Encode()
 	exportPath := filepath.Join("..", "..", "internal", "contactsimport", "testdata", "minh-an-contacts.json")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	args := []string{"--export", exportPath, "--tenant", "minh-an", "--db", u.String()}
+	args := importArgs(t, exportPath, u.String())
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
 	}
@@ -249,7 +249,7 @@ func TestCLIPostgresApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pg.Close()
-	if n, err := pg.CountContacts("minh-an"); err != nil || n != contactsimport.FixtureLive {
+	if n, err := pg.CountContacts("minh-an"); err != nil || n != contactsimport.FixtureStoredCount() {
 		t.Fatalf("count %d %v", n, err)
 	}
 	stdout.Reset()
@@ -259,6 +259,105 @@ func TestCLIPostgresApply(t *testing.T) {
 	rep = decodeReport(t, stdout.Bytes())
 	if rep.Skipped != contactsimport.FixtureRows || rep.New != 0 || rep.Updated != 0 {
 		t.Fatalf("rerun %+v", rep)
+	}
+}
+
+func importArgs(t *testing.T, exportPath, dbPath string) []string {
+	t.Helper()
+	t.Setenv("GOSO_CONTACTS_DENY_FILE", "")
+	deny := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(deny, []byte("blocked-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--deny-file", deny}
+}
+
+func TestCLIDenyFile(t *testing.T) {
+	t.Setenv("GOSO_CONTACTS_DENY_FILE", "")
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	body := `{"channel_contacts":[{"tenant_id":"minh-an","channel_type":"telegram","sender_id":"ext-minh-an-deny","display_name":"Minh An Deny","contact_type":"user","first_seen_at":"2026-01-15T08:00:00Z","last_seen_at":"2026-01-15T09:00:00Z"}]}`
+	if err := os.WriteFile(exportPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "goso.db")
+	base := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--apply"}
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := run(base, stdout, stderr); code == 0 {
+		t.Fatal("missing deny file succeeded")
+	}
+	if strings.Contains(stdout.String(), "minh-an") || strings.Contains(stderr.String(), "minh-an") {
+		t.Fatal("missing deny file printed a tenant")
+	}
+	assertNoRows(t, dbPath)
+
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("\n# comment only\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(base, "--deny-file", empty), stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "deny file is empty") {
+		t.Fatalf("empty exit stderr %s", stderr.String())
+	}
+	assertNoRows(t, dbPath)
+
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("not a tenant!\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(base, "--deny-file", bad), stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "deny file is malformed") {
+		t.Fatalf("malformed exit stderr %s", stderr.String())
+	}
+	assertNoRows(t, dbPath)
+
+	deny := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(deny, []byte("blocked-tenant\nminh-an\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(base, "--deny-file", deny), stdout, stderr); code == 0 {
+		t.Fatal("denied tenant succeeded")
+	}
+	if strings.Contains(stdout.String(), "minh-an") || strings.Contains(stdout.String(), "blocked-tenant") || strings.Contains(stderr.String(), "minh-an") {
+		t.Fatalf("denied report leaked a name stdout %s stderr %s", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"denied": 1`) {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	assertNoRows(t, dbPath)
+
+	other := filepath.Join(dir, "source.txt")
+	if err := os.WriteFile(other, []byte("11111111-1111-4111-8111-111111111111\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	srcArgs := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "11111111-1111-4111-8111-111111111111", "--db", dbPath, "--deny-file", other, "--apply"}
+	if code := run(srcArgs, stdout, stderr); code == 0 || !strings.Contains(stdout.String(), `"denied": 1`) {
+		t.Fatalf("source deny stdout %s stderr %s", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "11111111") {
+		t.Fatal("report printed a denied id")
+	}
+	assertNoRows(t, dbPath)
+}
+
+func assertNoRows(t *testing.T, dbPath string) {
+	t.Helper()
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return
+	}
+	st, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if n, err := st.CountContacts("minh-an"); err != nil || n != 0 {
+		t.Fatalf("rows %d %v", n, err)
 	}
 }
 

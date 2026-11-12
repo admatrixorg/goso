@@ -5,6 +5,7 @@ package contactsimport
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,24 @@ func person(sender, thread, display, contactType, peerKind, threadType string, f
 		ThreadID:    thread,
 		ThreadType:  threadType,
 	}
+}
+
+// FixtureStoredCount is how many goso contacts the sample file inserts.
+func FixtureStoredCount() int {
+	seen := map[string]struct{}{}
+	for _, c := range MinhAnFile().Contacts {
+		if strings.TrimSpace(c.MergedID) != "" {
+			continue
+		}
+		ch, ok := gosoChannel(c.ChannelType)
+		if !ok {
+			continue
+		}
+		for _, dest := range rawDests(c.SenderID, c.ThreadID) {
+			seen[ch+"\x00"+dest] = struct{}{}
+		}
+	}
+	return len(seen)
 }
 
 // FixtureJSON is the canonical bytes of MinhAnFile, with a trailing newline.
