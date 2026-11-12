@@ -386,6 +386,8 @@ func (s *SQLiteStore) migrate() error {
 			UNIQUE(tenant_id, scope, owner_id, name)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_context_files_owner ON context_files(tenant_id, scope, owner_id)`,
+		ingestJobCreateTable,
+		ingestJobCreateIndex,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {

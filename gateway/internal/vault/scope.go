@@ -334,6 +334,10 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
 		return nil, ErrScan
 	}
+	// Always record raw/ as unverified, even when the folder is missing, so
+	// a raw row is not deleted and its absence is not a reason to delete
+	// sources/ or wiki/ rows.
+	s.noteSkip("raw/")
 	var out []diskFile
 	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -347,6 +351,21 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 			return relErr
 		}
 		rel = filepath.ToSlash(rel)
+		// raw/ is immutable upload storage. Skip it before the extension
+		// filter so a .md under raw/ is neither upserted nor a reason to
+		// delete a sources/ or wiki/ row. The skip prefix keeps a registry
+		// row under that directory from being deleted.
+		if d.Name() == "raw" || UnderRaw(rel) {
+			if d.IsDir() {
+				s.noteSkip(rel + "/")
+				return fs.SkipDir
+			}
+			s.noteSkip(rel)
+			if rel == "raw" || strings.HasSuffix(rel, "/raw") {
+				s.noteSkip(rel + "/")
+			}
+			return nil
+		}
 		// A directory symlink is not IsDir. Record it before the extension
 		// check, or descendants such as nhom/note.md look missing and are deleted.
 		if d.Type()&os.ModeSymlink != 0 {
@@ -527,7 +546,7 @@ func (s *Service) Inventory(tenant string) (Inventory, error) {
 	tenant = store.NormalizeTenant(tenant)
 	out := Inventory{DryRun: true, Applied: false, Tenant: tenant, Entries: []InventoryEntry{}}
 	for _, d := range s.Store.ListVaultDocs() {
-		if d == nil || !store.SameTenant(d.TenantID, tenant) {
+		if d == nil || !store.SameTenant(d.TenantID, tenant) || UnderRaw(d.Path) {
 			continue
 		}
 		e := InventoryEntry{DocID: d.ID, Path: d.Path, Tenant: store.NormalizeTenant(d.TenantID)}

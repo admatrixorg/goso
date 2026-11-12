@@ -108,6 +108,9 @@ func classifyPath(raw, root string, keepPrefix bool) decision {
 	if err != nil || checked == "" {
 		return decision{Reason: reasonLogical}
 	}
+	if vault.UnderRaw(cleaned) || vault.UnderRaw(checked) || vault.UnderRaw(rel) {
+		return decision{Reason: "raw-skipped"}
+	}
 	return decision{Logical: checked}
 }
 

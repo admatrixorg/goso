@@ -1,0 +1,13 @@
+=== RUN   TestPutTenantAt_RenameFailureRollsBack
+=== RUN   TestPutTenantAt_RenameFailureRollsBack/memory
+=== RUN   TestPutTenantAt_RenameFailureRollsBack/sqlite
+=== RUN   TestPutTenantAt_RenameFailureRollsBack/postgres
+2026/11/12 01:47:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestPutTenantAt_RenameFailureRollsBack (0.16s)
+    --- PASS: TestPutTenantAt_RenameFailureRollsBack/memory (0.00s)
+    --- PASS: TestPutTenantAt_RenameFailureRollsBack/sqlite (0.04s)
+    --- PASS: TestPutTenantAt_RenameFailureRollsBack/postgres (0.12s)
+=== RUN   TestPutTenantAt_LinkRefreshDoesNotFailWrite
+--- PASS: TestPutTenantAt_LinkRefreshDoesNotFailWrite (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/vault	0.163s

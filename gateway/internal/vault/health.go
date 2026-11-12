@@ -12,6 +12,9 @@ type Health struct {
 	Unindexed     int  `json:"unindexed"`
 	HashMismatch  int  `json:"hash_mismatch"`
 	Stale         bool `json:"stale"`
+	// QuotaRequired is set only when vault upload is on and the per-tenant
+	// disk quota is missing or not a positive byte count.
+	QuotaRequired bool `json:"quota_required,omitempty"`
 }
 
 // Health reports one tenant's index vs that tenant's namespace. Other tenants'
@@ -62,5 +65,6 @@ func (s *Service) Health(tenant string) (*Health, error) {
 		h.DiskFiles++
 	}
 	h.Stale = h.MissingOnDisk > 0 || h.Unindexed > 0 || h.HashMismatch > 0
+	h.QuotaRequired = QuotaStatus() == "quota_required"
 	return h, nil
 }
