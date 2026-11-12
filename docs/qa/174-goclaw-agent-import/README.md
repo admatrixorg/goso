@@ -22,6 +22,16 @@ Logs from this branch:
 
 `gitleaks detect` on the git history and `gitleaks detect --no-git` on the working tree both reported no leaks. The Postgres DSN is not in either log.
 
+## qa:tabs
+
+Code under test: `97f20f59fb3c83a4a99b018a233331e447288652`. The log is [qa-tabs-97f20f59fb3c83a4a99b018a233331e447288652.log](../174/qa-tabs-97f20f59fb3c83a4a99b018a233331e447288652.log).
+
+Chrome **156.0.8078.47**. `CHROME_PATH=/usr/local/bin/google-chrome`. `QA_SKIP_TABS` and `QA_SHOTS` were unset.
+
+Gateway was this commit, `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080`, fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` `development`. Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+
 ## Dry-run shape
 
 ```bash
