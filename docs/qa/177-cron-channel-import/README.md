@@ -24,6 +24,8 @@ go run ./gateway/cmd/goso-cron-channel-import \
 - Rows whose `tenant_id` is `other-co` are not written when `--source-tenant` is `minh-an`.
 - The fixture secret string is absent from the report, the log, and the SQLite file.
 
+Code under the browser check: `4bfc382ba3dfb4d31a45a11c279d2a0a15043c21`. The log is [qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log](../177/qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+
 `go build` of `goso-gateway` and `goso-cron-channel-import` exited 0.
 
 `go test -count=1 -timeout 25m ./...` exited 0.
