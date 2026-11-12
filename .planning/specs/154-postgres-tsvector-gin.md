@@ -93,6 +93,7 @@ DROP INDEX IF EXISTS idx_memories_body_tsv;
 DROP INDEX IF EXISTS idx_vault_docs_body_tsv;
 DROP INDEX IF EXISTS idx_kg_entities_body_tsv;
 DROP INDEX IF EXISTS idx_memories_tenant_created;
+DROP INDEX IF EXISTS idx_memories_customer_created;
 ```
 
 After the indexes are gone, this code still reads `body_tsv`, so a note older than 500 rows is still returned; Postgres scans the column instead of using the index. Restoring the newest-500 scan means reverting the query code in this spec. The generated columns may be dropped only after that revert:

@@ -262,7 +262,7 @@ func TestPostgresTSVectorRollbackDropsIndexOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, idx := range []string{idxMemoriesBodyTSV, idxVaultBodyTSV, idxKGBodyTSV, idxMemoriesTenantCreated} {
+	for _, idx := range []string{idxMemoriesBodyTSV, idxVaultBodyTSV, idxKGBodyTSV, idxMemoriesTenantCreated, idxMemoriesCustomerCreated} {
 		if _, err := st.db.Exec(`DROP INDEX IF EXISTS ` + idx); err != nil {
 			t.Fatal(err)
 		}
@@ -1073,10 +1073,10 @@ func TestPostgresRecall50kCustomerBitmapSwamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	match := tsOrQuery(toks)
-	bq, bargs := recallTSVORBitmapQuery(q, q.TenantID, ag.ID, match, recallORLimit(n1))
-	plan := explainAnalyzeGUCs(t, st, recallORBitmapGUCs, bq, bargs...)
+	bq, bargs := recallTSVORCustomerBoundQuery(q, q.TenantID, ag.ID, match, orRecallProbeBudget(recallORLimit(n1)), recallORLimit(n1))
+	plan := explainAnalyzeGUCs(t, st, recallORCustomerBoundGUCs, bq, bargs...)
 	fmt.Printf("SPEC154 explain_customer_swamp:\n%s\n", plan)
-	requirePlan(t, plan, []string{"idx_memories_customer", "customer_key"}, []string{"Seq Scan on memories"})
+	requirePlan(t, plan, []string{"Index Scan using " + idxMemoriesCustomerCreated}, []string{"Seq Scan on memories"})
 	samples := timeRecall(t, st, q, needleID, 5)
 	med, max := medianDuration(samples), maxDuration(samples)
 	path := orStepPath(t, st, q)

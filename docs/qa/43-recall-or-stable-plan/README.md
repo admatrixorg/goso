@@ -21,7 +21,7 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 | Customer scope, 5 rows for the customer, 49,995 other customers all match | Customer index | `Index Scan using idx_memories_customer` | 1.692492 ms | 2.121189 ms |
 | Agent scope, 16 rows for the agent, 49,980 rows for another agent all match | Agent sessions | `Nested Loop` + `Index Scan using idx_memories_session` | 10.604821 ms | 11.270847 ms |
 | Agent A ~5,000 older matches, agent B ~45,000 newer matches (bitmap fallback) | Agent's sessions inside the CTE | `Bitmap Index Scan on idx_memories_session` (5,000 rows) | 18.275472 ms | 30.996716 ms |
-| Customer ~5,000 older matches, other customers ~45,000 newer matches (bitmap fallback) | Customer index inside the CTE | `Bitmap Index Scan on idx_memories_customer` (`tenant_id`, `customer_key`, 5,000 rows) | 17.992692 ms | 36.257238 ms |
+| Customer ~5,000 older matches, other customers ~45,000 newer matches | Newest customer rows | `Index Scan using idx_memories_customer_created` (stops at 2,000) | 11.194523 ms | 18.127638 ms |
 
 The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all four plans and checks every returned row (tenant, customer when scoped, agent, kind, excluded session) against poison rows in another tenant, another customer, another agent, and the excluded session.
 
@@ -96,6 +96,6 @@ One customer has 5,000 older matches. Other customers have 45,000 newer matches.
 
 `Bitmap Index Scan on idx_memories_customer`, index condition `tenant_id` and `customer_key`, 5,000 rows, execution 5.690 ms.
 
-A large customer does not scan the newer rows of other customers first. The CTE uses the customer index.
+The customer is larger than the probe budget, so the small-customer path does not run. `idx_memories_customer_created` is `(tenant_id, customer_key, created_at DESC)`. With bitmap scans disabled, the plan is `Index Scan using idx_memories_customer_created` and it stops at 2,000 rows. Execution 1.239 ms. Other customers are not read. Rollback drops this index.
 
-Samples: 15.885799 ms, 15.687607 ms, 15.284735 ms, 15.866209 ms, 32.725125 ms. Median **15.866209 ms**. Max **32.725125 ms**.
+Samples: 10.879185 ms, 11.194523 ms, 11.041417 ms, 11.277042 ms, 18.127638 ms. Median **11.194523 ms**. Max **18.127638 ms**.

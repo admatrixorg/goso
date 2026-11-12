@@ -18,6 +18,7 @@ import (
 //	DROP INDEX IF EXISTS idx_vault_docs_body_tsv;
 //	DROP INDEX IF EXISTS idx_kg_entities_body_tsv;
 //	DROP INDEX IF EXISTS idx_memories_tenant_created;
+//	DROP INDEX IF EXISTS idx_memories_customer_created;
 //
 // Recall still reads body_tsv after that, so a note older than recallScanCap
 // is still found; the read is a sequential scan until the index is recreated.
@@ -27,10 +28,11 @@ import (
 const postgresTextSearchConfig = "simple"
 
 const (
-	idxMemoriesBodyTSV       = "idx_memories_body_tsv"
-	idxVaultBodyTSV          = "idx_vault_docs_body_tsv"
-	idxKGBodyTSV             = "idx_kg_entities_body_tsv"
-	idxMemoriesTenantCreated = "idx_memories_tenant_created"
+	idxMemoriesBodyTSV         = "idx_memories_body_tsv"
+	idxVaultBodyTSV            = "idx_vault_docs_body_tsv"
+	idxKGBodyTSV               = "idx_kg_entities_body_tsv"
+	idxMemoriesTenantCreated   = "idx_memories_tenant_created"
+	idxMemoriesCustomerCreated = "idx_memories_customer_created"
 )
 
 func (s *PostgresStore) migrateBodyTSV() error {
@@ -45,6 +47,10 @@ func (s *PostgresStore) migrateBodyTSV() error {
 		// Scope always filters tenant_id and orders by created_at. No existing
 		// index covers that pair (idx_memories_tenant is tenant_id only).
 		`CREATE INDEX IF NOT EXISTS ` + idxMemoriesTenantCreated + ` ON memories (tenant_id, created_at DESC)`,
+		// Customer-scoped OR recall orders by created_at. idx_memories_customer
+		// is (tenant_id, customer_key) only, so a large customer would be read
+		// in full and sorted. This index stops after the LIMIT.
+		`CREATE INDEX IF NOT EXISTS ` + idxMemoriesCustomerCreated + ` ON memories (tenant_id, customer_key, created_at DESC)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.db.Exec(stmt); err != nil {
@@ -110,6 +116,16 @@ var recallORBitmapGUCs = []string{
 	`SET LOCAL enable_indexscan = off`,
 	`SET LOCAL enable_indexonlyscan = off`,
 	`SET LOCAL cpu_tuple_cost = 1`,
+	`SET LOCAL jit = off`,
+	`SET LOCAL max_parallel_workers_per_gather = 0`,
+}
+
+// recallORCustomerBoundGUCs keeps the large-customer window on
+// idx_memories_customer_created. A bitmap of that index cannot stop after
+// the newest rows, so bitmap scans are off.
+var recallORCustomerBoundGUCs = []string{
+	`SET LOCAL enable_seqscan = off`,
+	`SET LOCAL enable_bitmapscan = off`,
 	`SET LOCAL jit = off`,
 	`SET LOCAL max_parallel_workers_per_gather = 0`,
 }
@@ -252,8 +268,19 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 			}
 			return hits, n, recallPathCustomerIndex, nil
 		}
+		// Newest window of this customer. When it already holds lim hits, other
+		// customers are never read. Otherwise the bitmap CTE still filters
+		// customer_key, so the swamp is not materialized either.
+		query, args := recallTSVORCustomerBoundQuery(q, tenant, agent, match, budget, lim)
+		hits, n, err := s.execRecallTSV(toks, query, args, recallORCustomerBoundGUCs)
+		if err != nil {
+			return nil, n, "", err
+		}
+		if n >= lim {
+			return hits, n, recallPathBitmapAnd, nil
+		}
 		bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
-		hits, n, err := s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+		hits, n, err = s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
 		if err != nil {
 			return nil, n, "", err
 		}
@@ -447,6 +474,34 @@ func recallTSVORBitmapQuery(q RecallQuery, tenant, agent, match string, lim int)
 		JOIN sessions sess ON sess.id = m.session_id
 		WHERE sess.tenant_id = ?`
 	args = append(args, tenant)
+	if agent != "" {
+		query += ` AND sess.agent_id = ?`
+		args = append(args, agent)
+	}
+	query += ` ORDER BY m.created_at DESC LIMIT ?`
+	args = append(args, lim)
+	return query, args
+}
+
+// recallTSVORCustomerBoundQuery reads at most lim newest rows of one
+// customer through idx_memories_customer_created, then applies the OR and
+// the agent filter. The inner LIMIT is the fence, so other customers are
+// not read.
+func recallTSVORCustomerBoundQuery(q RecallQuery, tenant, agent, match string, window, lim int) (string, []any) {
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+		FROM (
+			SELECT id, session_id, kind, body, created_at, tenant_id, customer_key, body_tsv
+			FROM memories
+			WHERE tenant_id = ? AND customer_key = ?
+			ORDER BY created_at DESC
+			LIMIT ?
+		) m
+		JOIN sessions sess ON sess.id = m.session_id
+		WHERE m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		AND sess.tenant_id = ?
+		AND m.kind IN (?, ?)
+		AND m.session_id <> ?`
+	args := []any{tenant, q.CustomerKey, window, match, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
 	if agent != "" {
 		query += ` AND sess.agent_id = ?`
 		args = append(args, agent)
