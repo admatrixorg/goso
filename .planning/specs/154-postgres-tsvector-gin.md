@@ -16,7 +16,7 @@ On Postgres, recall and memory search stop at the newest rows (`MemoryQueryCap` 
 
 1. Add a `tsvector` column, maintained from the existing body, on `memories.body`, `vault_docs.body`, and `kg_entities.body`. Add a GIN index on each new column. The text search configuration is `simple`.
 2. The migration only adds columns and indexes. It does not change the type, default, or contents of a column that already exists on `9545d08`.
-3. Recall and search on Postgres use the index. They do not use “newest 500 rows” as the candidate set. Postgres recall loads at most `recallCandidateCap` rows (`2000` in `gateway/internal/store`), ordered by `ts_rank_cd(body_tsv, query) DESC, created_at DESC`. Token-overlap scoring still runs in Go on that set. SQLite’s FTS5 path is unchanged in this spec (diacritics are SPEC 155).
+3. Recall and search on Postgres use the index. They do not use “newest 500 rows” as the candidate set. Postgres recall loads at most `recallCandidateCap` rows (`2000` in `gateway/internal/store`): an AND of the tokens first, then an OR of the same tokens only when the AND returned fewer rows than the caller asked for. Both steps order by `created_at DESC`. There is no `ts_rank` in SQL. Token-overlap scoring still runs in Go. SQLite’s FTS5 path is unchanged in this spec (diacritics are SPEC 155).
 4. The 50,000-row check inserts synthetic rows that repeat Minh An demo sentences. It does not import an external corpus.
 5. Run SPEC 153. The Postgres score equals the SQLite score. On this branch both engines stay at the `9545d08` floor, 20/30, with the same per-group scores. `bench/memory-vi/baseline-9545d08.json` is not edited. `tv-03` stays a Postgres miss because `unaccent` is SPEC 155.
 
@@ -36,15 +36,14 @@ The migration in `gateway/internal/store/postgres_tsvector.go` adds, and does no
 | `memories` | `body_tsv` | `to_tsvector('simple', coalesce(body, ''))` STORED | `idx_memories_body_tsv` GIN |
 | `vault_docs` | `body_tsv` | same | `idx_vault_docs_body_tsv` GIN |
 | `kg_entities` | `body_tsv` | same | `idx_kg_entities_body_tsv` GIN |
+| `memories` | (no new column) | existing `tenant_id`, `created_at` | `idx_memories_tenant_created` btree `(tenant_id, created_at DESC)` |
 
-Recall on Postgres matches `body_tsv @@ to_tsquery('simple', …)`. The SQL is:
+Recall does not use `ts_rank` or `ts_rank_cd`. Scoring stays in Go (`lexicalScore`). Postgres loads candidates in two steps, each `ORDER BY m.created_at DESC`, and never more than `recallCandidateCap` (2000) rows together:
 
-```sql
-ORDER BY ts_rank_cd(m.body_tsv, q.query) DESC, m.created_at DESC
-LIMIT 2000
-```
+1. `body_tsv @@ to_tsquery('simple', 't1 & t2 & …')` with tokens kept only by `safeTSToken`. Same tenant, agent, and customer scope as before. `LIMIT recallCandidateCap`.
+2. Run only when step 1 returned fewer than the caller's `limit`. `body_tsv @@ to_tsquery('simple', 't1 | t2 | …')`, same scope, `ORDER BY m.created_at DESC`, `LIMIT` the unused part of the cap. Rows already returned by step 1 are dropped.
 
-`2000` is the named constant `recallCandidateCap`. It is not `recallScanCap` (500). A note older than 500 rows is still in the candidate set when its `ts_rank_cd` keeps it inside the 2000. Go then scores those rows by token overlap, same as before, so admission is unchanged on the bench. SQLite still uses FTS5. `unaccent` is not installed.
+`idx_memories_tenant` is only `(tenant_id)`. `idx_memories_session` is `(session_id, created_at)`. `idx_memories_customer` is `(tenant_id, customer_key)`. None of those is `(tenant_id, created_at)`, which is the pair this query always filters and sorts. Agent and customer filters stay in the WHERE because they are optional. SQLite still uses FTS5. `unaccent` is not installed.
 
 Search of those three bodies uses `phraseto_tsquery('simple', …)`, which is a whole word or phrase. It is not the old Postgres substring (`instr` / `strpos`) on the body. Typing `Min` does not find `Minh`. Typing `Minh` does. `TestPostgresSearchMinDoesNotMatchMinh` locks that. Message text, vault titles, and entity names stay on `strpos`, because this spec does not add a column for them. A vault title can still match a substring.
 
@@ -62,9 +61,8 @@ These search queries already have a limit: memory search 50, vault search `Vault
 | Backfill of an existing body | `TestPostgresBodyTSVBackfillAndSearch` |
 | Negative: note older than `recallScanCap` | `TestRecallOlderThanScanCap` (store) and `TestRecallForOlderThanScanCap` (pipeline) |
 | 50,000 rows under 50 ms | `TestPostgresRecall50kUnder50ms` (store `RecallMemories`) and `TestRecallFor50kUnder50ms` (pipeline `RecallFor`) |
-| 50,000 rows that all match one query token stay inside `recallCandidateCap`, and the needle is still recalled | `TestPostgresRecall50kAllMatchWithinCap` |
-
-`TestPostgresRecall50kAllMatchWithinCap` also times that query. On Postgres 16.15, commit `484042b`, the five samples were 436.450566ms, 455.045362ms, 459.285839ms, 463.110639ms, and 446.988949ms. Median 455.045362ms. Max 463.110639ms. Fetched rows were 2000, the cap, and the older needle was in the result. That max is over 50 ms. The selective 50,000-row case (fillers that do not share a query token) stays under 50 ms. The all-match number is the measurement; it is not replaced with the selective number. The same lines are in `docs/qa/154-postgres-tsvector-gin/`.
+| 50,000 rows that all match one query token stay inside `recallCandidateCap`, and the needle is still recalled, in under 50 ms | `TestPostgresRecall50kAllMatchWithinCap` |
+| Oldest note that contains every query token is recalled when 50,000 newer rows share only one token | `TestPostgresRecallOldestFullMatch` |
 | `Min` does not match `Minh` | `TestPostgresSearchMinDoesNotMatchMinh` |
 | Bench, Postgres not below SQLite | `gateway/memorybench` `TestBaseline9545d08` |
 | Rollback drops the index only | `TestPostgresTSVectorRollbackDropsIndexOnly` |
@@ -93,6 +91,7 @@ Drop the new indexes. Do not drop or alter a column that existed before this spe
 DROP INDEX IF EXISTS idx_memories_body_tsv;
 DROP INDEX IF EXISTS idx_vault_docs_body_tsv;
 DROP INDEX IF EXISTS idx_kg_entities_body_tsv;
+DROP INDEX IF EXISTS idx_memories_tenant_created;
 ```
 
 After the indexes are gone, this code still reads `body_tsv`, so a note older than 500 rows is still returned; Postgres scans the column instead of using the index. Restoring the newest-500 scan means reverting the query code in this spec. The generated columns may be dropped only after that revert:

@@ -29,6 +29,10 @@ func TestTsOrQueryQuotesTokens(t *testing.T) {
 	if got != "'mã' | 'walnut' | '77'" {
 		t.Fatalf("tsquery %s", got)
 	}
+	and := tsAndQuery([]string{"mã", "walnut", "a&b"})
+	if and != "'mã' & 'walnut'" {
+		t.Fatalf("and query %s", and)
+	}
 	if tsOrQuery([]string{"a&b", "ok"}) != "'ok'" {
 		t.Fatal("unsafe token must be dropped")
 	}
@@ -93,6 +97,17 @@ func TestPostgresBodyTSVAdditive(t *testing.T) {
 		if am != "gin" {
 			t.Fatalf("index %s method %s", idx, am)
 		}
+	}
+	var am string
+	if err := st.db.QueryRow(`SELECT am.amname
+		FROM pg_class c
+		JOIN pg_am am ON am.oid = c.relam
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND c.relname = ?`, idxMemoriesTenantCreated).Scan(&am); err != nil {
+		t.Fatal(err)
+	}
+	if am != "btree" {
+		t.Fatalf("tenant created index method %s", am)
 	}
 	dsn := dsnFromStore(t, st)
 	again, err := OpenPostgres(dsn)
@@ -206,7 +221,7 @@ func TestPostgresTSVectorRollbackDropsIndexOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, idx := range []string{idxMemoriesBodyTSV, idxVaultBodyTSV, idxKGBodyTSV} {
+	for _, idx := range []string{idxMemoriesBodyTSV, idxVaultBodyTSV, idxKGBodyTSV, idxMemoriesTenantCreated} {
 		if _, err := st.db.Exec(`DROP INDEX IF EXISTS ` + idx); err != nil {
 			t.Fatal(err)
 		}
@@ -382,8 +397,14 @@ func TestPostgresRecall50kAllMatchWithinCap(t *testing.T) {
 	}
 	const needleID = "spec154-needle-all"
 	const nFill = 49999
+	needleBody := spec154Needle + " gì"
+	for _, tok := range toks {
+		if !strings.Contains(strings.ToLower(needleBody), tok) {
+			t.Fatalf("needle missing query token %q", tok)
+		}
+	}
 	if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
-		needleID, needleSess.ID, KindEpisodic, spec154Needle, "2000-01-01T00:00:00Z", needleSess.TenantID, ""); err != nil {
+		needleID, needleSess.ID, KindEpisodic, needleBody, "2000-01-01T00:00:00Z", needleSess.TenantID, ""); err != nil {
 		t.Fatal(err)
 	}
 	bulkMemories(t, st, fillerSess.ID, fillerSess.TenantID, nFill, fillers, "2026-06-01T00:00:00Z")
@@ -413,12 +434,22 @@ func TestPostgresRecall50kAllMatchWithinCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fetched > recallCandidateCap || fetched != recallCandidateCap {
+	if fetched > recallCandidateCap {
 		t.Fatalf("fetched %d, cap %d", fetched, recallCandidateCap)
 	}
 	if !recallHas(hits, needleID) {
 		t.Fatal("needle was not in the capped candidate set")
 	}
+	_, n1, err := st.recallTSVStep(q, q.TenantID, q.AgentID, toks, tsAndQuery(toks), recallCandidateCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("SPEC154 explain_and:\n%s\n", explainAnalyze(t, st, q, tsAndQuery(toks), recallCandidateCap))
+	orLim := recallCandidateCap - n1
+	if orLim < 1 {
+		orLim = 1
+	}
+	fmt.Printf("SPEC154 explain_or limit=%d:\n%s\n", orLim, explainAnalyze(t, st, q, tsOrQuery(toks), orLim))
 	samples := make([]time.Duration, 0, 5)
 	for i := 0; i < 5; i++ {
 		start := time.Now()
@@ -440,6 +471,84 @@ func TestPostgresRecall50kAllMatchWithinCap(t *testing.T) {
 		rows, fetched, recallCandidateCap, formatDurations(samples), med, max)
 	if max >= 50*time.Millisecond {
 		t.Fatalf("worst-case recall max %s is not under 50ms (median %s)", max, med)
+	}
+}
+
+func TestPostgresRecallOldestFullMatch(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "1")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	st := openSpec154(t, "goso_spec154_oldest")
+	toks := RecallTokens(spec154Query)
+	const filler = "Công ty mẫu Minh An ghi mã riêng."
+	nTok := 0
+	for _, tok := range toks {
+		if strings.Contains(strings.ToLower(filler), tok) {
+			nTok++
+		}
+	}
+	if nTok != 1 {
+		t.Fatalf("common filler matches %d query tokens", nTok)
+	}
+	ag, err := st.CreateAgent(Agent{AgentKey: "minh-an-sales", DisplayName: "Cố vấn Minh An"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	needleSess, err := st.CreateSession(Session{AgentID: ag.ID, Label: "cu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillerSess, err := st.CreateSession(Session{AgentID: ag.ID, Label: "moi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask, err := st.CreateSession(Session{AgentID: ag.ID, Label: "hoi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const needleID = "spec154-needle-oldest"
+	const nFill = 49999
+	needleBody := spec154Needle + " gì"
+	for _, tok := range toks {
+		if !strings.Contains(strings.ToLower(needleBody), tok) {
+			t.Fatalf("needle missing query token %q", tok)
+		}
+	}
+	if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+		needleID, needleSess.ID, KindEpisodic, needleBody, "2000-01-01T00:00:00Z", needleSess.TenantID, ""); err != nil {
+		t.Fatal(err)
+	}
+	bulkMemories(t, st, fillerSess.ID, fillerSess.TenantID, nFill, []string{filler}, "2026-06-01T00:00:00Z")
+	if _, err := st.db.Exec(`ANALYZE memories`); err != nil {
+		t.Fatal(err)
+	}
+	newest, err := st.db.Query(`SELECT id FROM memories ORDER BY created_at DESC LIMIT ?`, recallCandidateCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for newest.Next() {
+		var id string
+		if err := newest.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if id == needleID {
+			t.Fatal("pure newest cap already contains the oldest needle")
+		}
+	}
+	newest.Close()
+	q := RecallQuery{TenantID: needleSess.TenantID, AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query, Limit: 20}
+	hits, fetched, err := st.recallTSVFetch(q, q.TenantID, ag.ID, toks, q.Limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched > recallCandidateCap {
+		t.Fatalf("fetched %d, cap %d", fetched, recallCandidateCap)
+	}
+	if !recallHas(hits, needleID) {
+		t.Fatal("oldest full-match needle was not recalled")
+	}
+	got, err := st.RecallMemories(q)
+	if err != nil || !recallHas(got, needleID) {
+		t.Fatalf("RecallMemories %#v %v", got, err)
 	}
 }
 
@@ -626,6 +735,12 @@ func formatDurations(ds []time.Duration) string {
 		parts[i] = d.String()
 	}
 	return strings.Join(parts, ",")
+}
+
+func explainAnalyze(t *testing.T, st *PostgresStore, q RecallQuery, match string, lim int) string {
+	t.Helper()
+	query, args := recallTSVStepQuery(q, q.TenantID, q.AgentID, match, lim)
+	return explain(t, st, `EXPLAIN (ANALYZE, BUFFERS) `+query, args...)
 }
 
 func explain(t *testing.T, st *PostgresStore, query string, args ...any) string {

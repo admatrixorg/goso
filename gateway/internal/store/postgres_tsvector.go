@@ -16,6 +16,7 @@ import (
 //	DROP INDEX IF EXISTS idx_memories_body_tsv;
 //	DROP INDEX IF EXISTS idx_vault_docs_body_tsv;
 //	DROP INDEX IF EXISTS idx_kg_entities_body_tsv;
+//	DROP INDEX IF EXISTS idx_memories_tenant_created;
 //
 // Recall still reads body_tsv after that, so a note older than recallScanCap
 // is still found; the read is a sequential scan until the index is recreated.
@@ -25,9 +26,10 @@ import (
 const postgresTextSearchConfig = "simple"
 
 const (
-	idxMemoriesBodyTSV = "idx_memories_body_tsv"
-	idxVaultBodyTSV    = "idx_vault_docs_body_tsv"
-	idxKGBodyTSV       = "idx_kg_entities_body_tsv"
+	idxMemoriesBodyTSV       = "idx_memories_body_tsv"
+	idxVaultBodyTSV          = "idx_vault_docs_body_tsv"
+	idxKGBodyTSV             = "idx_kg_entities_body_tsv"
+	idxMemoriesTenantCreated = "idx_memories_tenant_created"
 )
 
 func (s *PostgresStore) migrateBodyTSV() error {
@@ -39,6 +41,9 @@ func (s *PostgresStore) migrateBodyTSV() error {
 		`CREATE INDEX IF NOT EXISTS ` + idxVaultBodyTSV + ` ON vault_docs USING GIN (body_tsv)`,
 		`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS body_tsv tsvector GENERATED ALWAYS AS (` + expr + `) STORED`,
 		`CREATE INDEX IF NOT EXISTS ` + idxKGBodyTSV + ` ON kg_entities USING GIN (body_tsv)`,
+		// Scope always filters tenant_id and orders by created_at. No existing
+		// index covers that pair (idx_memories_tenant is tenant_id only).
+		`CREATE INDEX IF NOT EXISTS ` + idxMemoriesTenantCreated + ` ON memories (tenant_id, created_at DESC)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.db.Exec(stmt); err != nil {
@@ -50,8 +55,17 @@ func (s *PostgresStore) migrateBodyTSV() error {
 }
 
 // tsOrQuery builds a simple-config to_tsquery OR. Tokens are letters and
-// digits from RecallTokens, so the string is not raw user text.
+// digits from RecallTokens, kept only when safeTSToken accepts them.
 func tsOrQuery(toks []string) string {
+	return tsJoinQuery(toks, " | ")
+}
+
+// tsAndQuery builds a simple-config to_tsquery AND. Same sanitizing as tsOrQuery.
+func tsAndQuery(toks []string) string {
+	return tsJoinQuery(toks, " & ")
+}
+
+func tsJoinQuery(toks []string, op string) string {
 	parts := make([]string, 0, len(toks))
 	for _, t := range toks {
 		if t == "" || !safeTSToken(t) {
@@ -59,7 +73,7 @@ func tsOrQuery(toks []string) string {
 		}
 		parts = append(parts, "'"+t+"'")
 	}
-	return strings.Join(parts, " | ")
+	return strings.Join(parts, op)
 }
 
 func safeTSToken(t string) bool {
@@ -75,34 +89,65 @@ func tsPhraseSQL(column string) string {
 	return column + " @@ phraseto_tsquery('" + postgresTextSearchConfig + "', ?)"
 }
 
-// recallTSV is the Postgres candidate set. It does not apply recallScanCap.
-// Candidates are the top recallCandidateCap rows by ts_rank_cd, then newest
-// created_at. A matching note older than 500 rows is still returned when its
-// rank keeps it inside that cap. Scores stay token-overlap so admission
-// matches the previous Postgres path.
+// recallTSV is the Postgres candidate set. It does not apply recallScanCap
+// and it does not rank in SQL. Step 1 is the AND of every safe token, newest
+// first, at most recallCandidateCap rows. Step 2 runs only when that returned
+// fewer than limit rows: the OR of the same tokens, newest first, only for
+// the unused part of the cap, skipping ids step 1 already returned. Go scores
+// the union with lexicalScore.
 func (s *SQLiteStore) recallTSV(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, error) {
 	hits, _, err := s.recallTSVFetch(q, tenant, agent, toks, limit)
 	return hits, err
 }
 
 func (s *SQLiteStore) recallTSVFetch(q RecallQuery, tenant, agent string, toks []string, limit int) ([]RecallHit, int, error) {
-	match := tsOrQuery(toks)
-	if match == "" {
+	andMatch := tsAndQuery(toks)
+	orMatch := tsOrQuery(toks)
+	if orMatch == "" {
 		return []RecallHit{}, 0, nil
 	}
-	query := `WITH q AS (SELECT to_tsquery('` + postgresTextSearchConfig + `', ?) AS query)
-		SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
-		FROM memories m
-		JOIN sessions sess ON sess.id = m.session_id
-		CROSS JOIN q
-		WHERE m.body_tsv @@ q.query
-		AND m.tenant_id = ? AND sess.tenant_id = ?
-		AND m.kind IN (?, ?)
-		AND m.session_id <> ?`
-	args := []any{match, tenant, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
-	query, args = recallScope(query, args, q, agent)
-	query += ` ORDER BY ts_rank_cd(m.body_tsv, q.query) DESC, m.created_at DESC LIMIT ?`
-	args = append(args, recallCandidateCap)
+	if limit <= 0 {
+		limit = recallDefaultLimit
+	}
+	step1, n1, err := s.recallTSVStep(q, tenant, agent, toks, andMatch, recallCandidateCap)
+	if err != nil {
+		return nil, n1, err
+	}
+	hits := step1
+	fetched := n1
+	if len(hits) >= limit || fetched >= recallCandidateCap {
+		if fetched > recallCandidateCap {
+			return nil, fetched, fmt.Errorf("recall fetched %d rows, cap is %d", fetched, recallCandidateCap)
+		}
+		return sortRecall(hits, limit), fetched, nil
+	}
+	seen := make(map[string]struct{}, len(hits))
+	for _, h := range hits {
+		seen[h.Memory.ID] = struct{}{}
+	}
+	remain := recallCandidateCap - fetched
+	step2, n2, err := s.recallTSVStep(q, tenant, agent, toks, orMatch, remain)
+	fetched += n2
+	if err != nil {
+		return nil, fetched, err
+	}
+	for _, h := range step2 {
+		if _, ok := seen[h.Memory.ID]; ok {
+			continue
+		}
+		hits = append(hits, h)
+	}
+	if fetched > recallCandidateCap {
+		return nil, fetched, fmt.Errorf("recall fetched %d rows, cap is %d", fetched, recallCandidateCap)
+	}
+	return sortRecall(hits, limit), fetched, nil
+}
+
+func (s *SQLiteStore) recallTSVStep(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, error) {
+	if match == "" || lim <= 0 {
+		return nil, 0, nil
+	}
+	query, args := recallTSVStepQuery(q, tenant, agent, match, lim)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, 0, err
@@ -123,10 +168,24 @@ func (s *SQLiteStore) recallTSVFetch(q RecallQuery, tenant, agent string, toks [
 	if err := rows.Err(); err != nil {
 		return nil, fetched, err
 	}
-	if fetched > recallCandidateCap {
-		return nil, fetched, fmt.Errorf("recall fetched %d rows, cap is %d", fetched, recallCandidateCap)
-	}
-	return sortRecall(hits, limit), fetched, nil
+	return hits, fetched, nil
+}
+
+// recallTSVStepQuery is the SQL for one AND or OR pass. match is a bound
+// to_tsquery string, not interpolated SQL.
+func recallTSVStepQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+		FROM memories m
+		JOIN sessions sess ON sess.id = m.session_id
+		WHERE m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		AND m.tenant_id = ? AND sess.tenant_id = ?
+		AND m.kind IN (?, ?)
+		AND m.session_id <> ?`
+	args := []any{match, tenant, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
+	query, args = recallScope(query, args, q, agent)
+	query += ` ORDER BY m.created_at DESC LIMIT ?`
+	args = append(args, lim)
+	return query, args
 }
 
 func (s *SQLiteStore) searchMemoryTSV(q string) ([]SearchHit, error) {
