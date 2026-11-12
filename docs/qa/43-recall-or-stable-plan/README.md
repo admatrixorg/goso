@@ -1,6 +1,6 @@
 # Issue 43 — stable plan for recall step 2
 
-Follow-up to SPEC 154. Postgres recall step 2 is the OR of the query tokens. It still orders by `created_at DESC`, still stops at the unused part of `recallCandidateCap` (2000), and still does not call `ts_rank`. No new index. Sample rows are Minh An fixtures only. The DSN is `GOSO_TEST_POSTGRES_DSN`; the value is not stored here.
+Follow-up to SPEC 154. Postgres recall step 2 is the OR of the query tokens. It still orders by `created_at DESC`, still stops at the unused part of `recallCandidateCap` (2000), and still does not call `ts_rank`. One new index, `idx_memories_customer_created` on `(tenant_id, customer_key, created_at DESC)`, lets a large customer stop at the limit. Rollback drops it. Sample rows are Minh An fixtures only. The DSN is `GOSO_TEST_POSTGRES_DSN`; the value is not stored here.
 
 Local run: PostgreSQL 16.15. The statements below are `EXPLAIN (ANALYZE, BUFFERS)` from that run. Full text: [explain-analyze.txt](explain-analyze.txt).
 
@@ -92,10 +92,6 @@ Samples: 18.275472 ms, 26.432583 ms, 17.911093 ms, 17.92427 ms, 30.996716 ms. Me
 
 ## Customer swamp (bitmap fallback)
 
-One customer has 5,000 older matches. Other customers have 45,000 newer matches. The customer is larger than the budget, so the small-customer path does not run. The CTE uses the customer index:
-
-`Bitmap Index Scan on idx_memories_customer`, index condition `tenant_id` and `customer_key`, 5,000 rows, execution 5.690 ms.
-
-The customer is larger than the probe budget, so the small-customer path does not run. `idx_memories_customer_created` is `(tenant_id, customer_key, created_at DESC)`. With bitmap scans disabled, the plan is `Index Scan using idx_memories_customer_created` and it stops at 2,000 rows. Execution 1.239 ms. Other customers are not read. Rollback drops this index.
+One customer has 5,000 older matches. Other customers have 45,000 newer matches. The customer is larger than the budget, so the small-customer path does not run. `idx_memories_customer_created` is `(tenant_id, customer_key, created_at DESC)`. With bitmap scans disabled, the plan is `Index Scan using idx_memories_customer_created` and it stops at 2,000 rows. Execution 1.239 ms. Other customers are not read. Rollback drops this index.
 
 Samples: 10.879185 ms, 11.194523 ms, 11.041417 ms, 11.277042 ms, 18.127638 ms. Median **11.194523 ms**. Max **18.127638 ms**.
