@@ -288,7 +288,7 @@ type KGRelation struct {
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 	// Exclusive: on insert, close every current relation with the same
-	// (tenant, from_id, rel) but a different to_id (temporal supersede).
+	// (tenant, from_id, rel, customer_key) but a different to_id.
 	Exclusive bool `json:"exclusive,omitempty"`
 	// CustomerKey and SessionID follow the entity rules.
 	CustomerKey string `json:"customer_key,omitempty"`
