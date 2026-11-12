@@ -1,0 +1,1 @@
+ok  	github.com/mqglobal/goso/gateway/internal/store	52.587s

@@ -187,7 +187,13 @@ func (s *SQLiteStore) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 	return s.recallScan(q, tenant, agent, toks, limit)
 }
 
-// recallScope appends the agent and customer filters shared by both paths.
+// recallScope appends the agent and customer filters shared by the FTS and
+// substring scans. Postgres OR recall copies those conditions by hand in
+// recallTSVORCustomerQuery, recallTSVORCustomerBoundQuery,
+// recallTSVORAgentQuery, and recallTSVORBitmapQuery (the agent in the bitmap
+// query is session_id IN that agent's sessions, inside the CTE). A change
+// here must update those queries. TestPostgresRecallORScopeIsolation guards
+// the copy, including customer-window and bitmap-and-customer.
 func recallScope(query string, args []any, q RecallQuery, agent string) (string, []any) {
 	if agent != "" {
 		query += ` AND sess.agent_id = ?`
