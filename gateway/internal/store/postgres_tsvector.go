@@ -120,6 +120,22 @@ var recallORBitmapGUCs = []string{
 	`SET LOCAL max_parallel_workers_per_gather = 0`,
 }
 
+// recallORBitmapFollowGUCs is recallORBitmapGUCs plus the switches an earlier
+// statement in the same transaction may have turned off. Explain uses
+// recallORBitmapGUCs alone, on a fresh transaction, where those switches
+// are already on.
+var recallORBitmapFollowGUCs = []string{
+	`SET LOCAL enable_seqscan = off`,
+	`SET LOCAL enable_indexscan = off`,
+	`SET LOCAL enable_indexonlyscan = off`,
+	`SET LOCAL enable_bitmapscan = on`,
+	`SET LOCAL enable_hashjoin = on`,
+	`SET LOCAL enable_mergejoin = on`,
+	`SET LOCAL cpu_tuple_cost = 1`,
+	`SET LOCAL jit = off`,
+	`SET LOCAL max_parallel_workers_per_gather = 0`,
+}
+
 // recallORCustomerBoundGUCs keeps the large-customer window on
 // idx_memories_customer_created. A bitmap of that index cannot stop after
 // the newest rows, so bitmap scans are off.
@@ -291,34 +307,73 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 		}
 		return hits, n, recallPathBitmapAndCustomer, nil
 	}
+	// Probe, agent count, and bitmap share one transaction. Each used to be its
+	// own begin/commit, and that round trip was most of the gap between the
+	// SQL time and the 50 ms samples. SET LOCAL still ends with the transaction.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, 0, "", err
+	}
+	defer tx.Rollback()
 	probeQ, probeArgs := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
-	hits, n, err := s.execRecallTSV(toks, probeQ, probeArgs, recallORStableGUCs)
+	hits, n, err := execRecallTSVOn(tx, toks, probeQ, probeArgs, recallORStableGUCs)
 	if err != nil {
 		return nil, n, "", err
 	}
 	if n >= lim {
+		if err := tx.Commit(); err != nil {
+			return nil, n, "", err
+		}
 		return hits, n, recallPathTenantWindow, nil
 	}
 	if agent != "" {
-		nAgent, err := s.recallORCountGUCs(recallORAgentGUCs, recallORAgentCountSQL(), agent, tenant, budget)
-		if err != nil {
+		if err := applyLocalGUCs(tx, recallORAgentGUCs); err != nil {
+			return nil, n, "", err
+		}
+		var nAgent int
+		if err := tx.QueryRow(recallORAgentCountSQL(), agent, tenant, budget).Scan(&nAgent); err != nil {
 			return nil, n, "", err
 		}
 		if nAgent < budget {
 			query, args := recallTSVORAgentQuery(q, tenant, agent, match, lim)
-			hits, n, err = s.execRecallTSV(toks, query, args, recallORAgentGUCs)
+			hits, n, err = execRecallTSVOn(tx, toks, query, args, nil)
 			if err != nil {
+				return nil, n, "", err
+			}
+			if err := tx.Commit(); err != nil {
 				return nil, n, "", err
 			}
 			return hits, n, recallPathAgentNested, nil
 		}
 	}
 	bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
-	hits, n, err = s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+	hits, n, err = execRecallTSVOn(tx, toks, bitQ, bitArgs, recallORBitmapFollowGUCs)
 	if err != nil {
 		return nil, n, "", err
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, n, "", err
+	}
 	return hits, n, recallPathBitmapAnd, nil
+}
+
+func execRecallTSVOn(tx txHandle, toks []string, query string, args []any, gucs []string) ([]RecallHit, int, error) {
+	if err := applyLocalGUCs(tx, gucs); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	hits, n, scanErr := scanRecallTSV(rows, toks)
+	closeErr := rows.Close()
+	if scanErr != nil {
+		return nil, n, scanErr
+	}
+	if closeErr != nil {
+		return nil, n, closeErr
+	}
+	return hits, n, nil
 }
 
 func (s *SQLiteStore) recallORCount(query string, args ...any) (int, error) {

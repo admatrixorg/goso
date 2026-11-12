@@ -1,1 +1,1 @@
-ok  	github.com/mqglobal/goso/gateway/internal/store	54.082s
+ok  	github.com/mqglobal/goso/gateway/internal/store	53.614s

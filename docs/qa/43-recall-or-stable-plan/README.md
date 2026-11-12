@@ -25,11 +25,11 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 
 The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all six plans (tenant-window, customer-index, customer-window, agent-nested-loop, bitmap-and, bitmap-and-customer) and checks every returned row (tenant, customer when scoped, agent, kind, excluded session). The two customer-scoped large-customer cases include a different customer with newer rows, a different agent with the same customer, another tenant, the excluded session, and a wrong kind.
 
-The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149` failed between 50.3 ms and 57.6 ms. If main fails one of these tests again, open an issue. Do not raise the threshold.
+The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149` failed between 50.3 ms and 57.6 ms. Head `7b86300` failed the same way (5% max 55.118961 ms, agent swamp max 55.85815 ms) while the SQL plans stayed under 16 ms. The tenant probe, the agent count, and the bitmap now share one transaction so those statements do not each pay for begin and commit. `SET LOCAL` still ends with that transaction. If main fails one of these tests again, open an issue. Do not raise the threshold.
 
 `CREATE INDEX idx_memories_customer_created` is not `CONCURRENTLY`. It runs when the gateway opens Postgres, and the build locks writes on `memories` until it finishes. Deploy conditions are the same as #41: count rows per tenant, take a backup, pick an off-hours window, and deploy only with Dat's approval.
 
-`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (54.082s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
+`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (53.614s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
 
 ## Selective (near 0)
 
