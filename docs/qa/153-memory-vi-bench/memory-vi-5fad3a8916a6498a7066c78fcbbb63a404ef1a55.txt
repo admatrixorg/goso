@@ -1,0 +1,42 @@
+=== RUN   TestBaseline9545d08
+==== memory-vi ====
+memory-vi sqlite 20/30
+  Trích xuất thông tin 6/6
+  Suy luận nhiều phiên 3/4
+  Cập nhật tri thức 0/4
+  Thẩm quyền 0/4
+  Từ chối 4/4
+  Cô lập 4/4
+  Tiếng Việt không dấu, đồng nghĩa 3/4
+  miss sl-03 Ghép giai đoạn, nhu cầu và nơi giao (injected=1 missing=[khu A] forbidden=[])
+  miss cn-01 Đổi dạng báo giá từ PDF sang Excel (injected=2 missing=[] forbidden=[PDF])
+  miss cn-02 Đổi chiết khấu từ tám phần trăm sang chín (injected=2 missing=[] forbidden=[tám phần trăm])
+  miss cn-03 Đổi giai đoạn từ khảo sát sang thương lượng (injected=2 missing=[] forbidden=[khảo sát])
+  miss cn-04 Chuyển bộ phận sang pháp chế, có ngày hiệu lực (injected=2 missing=[] forbidden=[kinh doanh])
+  miss tq-01 Xác nhận chiết khấu của người dùng, extractor nói khác (injected=2 missing=[] forbidden=[mười lăm])
+  miss tq-02 Xác nhận dạng báo giá, extractor nói khác (injected=2 missing=[] forbidden=[Excel])
+  miss tq-03 Xác nhận giờ gọi, extractor nói khác (injected=2 missing=[] forbidden=[trước bảy giờ])
+  miss tq-04 Xác nhận bảo hành, extractor nói khác (injected=2 missing=[] forbidden=[sáu tháng])
+  miss tv-04 Đồng nghĩa: quotation phải gặp báo giá (injected=0 missing=[báo giá] forbidden=[])
+memory-vi postgres 20/30
+  Trích xuất thông tin 6/6
+  Suy luận nhiều phiên 4/4
+  Cập nhật tri thức 0/4
+  Thẩm quyền 0/4
+  Từ chối 4/4
+  Cô lập 4/4
+  Tiếng Việt không dấu, đồng nghĩa 2/4
+  miss cn-01 Đổi dạng báo giá từ PDF sang Excel (injected=2 missing=[] forbidden=[PDF])
+  miss cn-02 Đổi chiết khấu từ tám phần trăm sang chín (injected=2 missing=[] forbidden=[tám phần trăm])
+  miss cn-03 Đổi giai đoạn từ khảo sát sang thương lượng (injected=2 missing=[] forbidden=[khảo sát])
+  miss cn-04 Chuyển bộ phận sang pháp chế, có ngày hiệu lực (injected=2 missing=[] forbidden=[kinh doanh])
+  miss tq-01 Xác nhận chiết khấu của người dùng, extractor nói khác (injected=2 missing=[] forbidden=[mười lăm])
+  miss tq-02 Xác nhận dạng báo giá, extractor nói khác (injected=2 missing=[] forbidden=[Excel])
+  miss tq-03 Xác nhận giờ gọi, extractor nói khác (injected=2 missing=[] forbidden=[trước bảy giờ])
+  miss tq-04 Xác nhận bảo hành, extractor nói khác (injected=2 missing=[] forbidden=[sáu tháng])
+  miss tv-03 Không dấu: gui bao gia phải gặp báo giá (injected=0 missing=[báo giá] forbidden=[])
+  miss tv-04 Đồng nghĩa: quotation phải gặp báo giá (injected=0 missing=[báo giá] forbidden=[])
+==== memory-vi end ====
+--- PASS: TestBaseline9545d08 (0.97s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/memorybench	0.977s
