@@ -16,7 +16,7 @@ import (
 // Postgres, with no change to existing vault_docs columns.
 func TestIngestJobTableAdditive(t *testing.T) {
 	wantDocs := []string{"id", "title", "path", "sha256", "mtime", "body", "tenant_id", "owner_explicit"}
-	wantJobs := []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id"}
+	wantJobs := []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at"}
 
 	t.Run("memory", func(t *testing.T) {
 		s := New()
@@ -122,6 +122,75 @@ func assertIngestRoundTrip(t *testing.T, s StoreIface) {
 	}
 	if _, err := s.FindUploadedIngestJob("minh-an-legal", "abc"); err != ErrNotFound {
 		t.Fatalf("other tenant must not see the job: %v", err)
+	}
+	job.Status = IngestConverted
+	job.SourcePaths = []string{"sources/inbox/" + job.ID + ".md"}
+	job.OCREngine = "tesseract"
+	job.OCRLang = "vie+eng"
+	job.PageCount = 2
+	job.ConvertedAt = when
+	if _, err := s.PutIngestJob(*job); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetIngestJob(job.ID)
+	if err != nil || got.Status != IngestConverted || got.OCREngine != "tesseract" || got.OCRLang != "vie+eng" || got.PageCount != 2 || len(got.SourcePaths) != 1 || !got.ConvertedAt.Equal(when) {
+		t.Fatalf("convert fields %#v %v", got, err)
+	}
+	if _, err := s.FindUploadedIngestJob("minh-an", "abc"); err != ErrNotFound {
+		t.Fatalf("converted job is not uploaded: %v", err)
+	}
+	original, err := s.FindIngestOriginal("minh-an", "abc")
+	if err != nil || original.ID != job.ID || original.Status != IngestConverted {
+		t.Fatalf("original %#v %v", original, err)
+	}
+	if _, err := s.FindIngestOriginal("minh-an-legal", "abc"); err != ErrNotFound {
+		t.Fatalf("other tenant original: %v", err)
+	}
+}
+
+func TestIngestJobConvertColumnsAddedToOldTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE vault_ingest_jobs (
+		id TEXT PRIMARY KEY,
+		tenant_id TEXT NOT NULL,
+		sha256_original TEXT NOT NULL,
+		original_filename TEXT NOT NULL,
+		mime_detected TEXT NOT NULL,
+		bytes BIGINT NOT NULL,
+		raw_path TEXT NOT NULL,
+		status TEXT NOT NULL,
+		error_class TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		existing_job_id TEXT NOT NULL DEFAULT ''
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	assertColumns(t, s, false, "vault_ingest_jobs", []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at"})
+	job, err := s.PutIngestJob(IngestJob{
+		TenantID: "minh-an", SHA256: "abc", OriginalFilename: "a.txt", MIME: "text/plain",
+		Bytes: 1, RawPath: "raw/abc.txt", Status: IngestUploaded,
+		SourcePaths: []string{"sources/inbox/a.md"}, OCREngine: "tesseract", OCRLang: "vie+eng", PageCount: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetIngestJob(job.ID)
+	if err != nil || len(got.SourcePaths) != 1 || got.OCRLang != "vie+eng" {
+		t.Fatalf("old table %#v %v", got, err)
 	}
 }
 

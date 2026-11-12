@@ -98,7 +98,7 @@ func (s *Service) SaveUpload(tenant, filename string, r io.Reader) (*UploadResul
 	unlock := lockNamespace(s.Root)
 	defer unlock()
 
-	existing, err := s.Store.FindUploadedIngestJob(tenant, sum)
+	existing, err := s.Store.FindIngestOriginal(tenant, sum)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}

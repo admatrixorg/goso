@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/apikey"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
@@ -118,18 +119,32 @@ func handleGetVaultIngest(st store.StoreIface) http.HandlerFunc {
 }
 
 type ingestJobView struct {
-	ID               string `json:"id"`
-	TenantID         string `json:"tenant_id"`
-	Status           string `json:"status"`
-	SHA256           string `json:"sha256"`
-	Bytes            int64  `json:"bytes"`
-	OriginalFilename string `json:"original_filename"`
-	RawPath          string `json:"raw_path"`
+	ID               string   `json:"id"`
+	TenantID         string   `json:"tenant_id"`
+	Status           string   `json:"status"`
+	SHA256           string   `json:"sha256"`
+	Bytes            int64    `json:"bytes"`
+	OriginalFilename string   `json:"original_filename"`
+	RawPath          string   `json:"raw_path"`
+	SourcePaths      []string `json:"source_paths"`
+	OCREngine        string   `json:"ocr_engine"`
+	OCRLang          string   `json:"ocr_lang"`
+	PageCount        int      `json:"page_count"`
+	ConvertedAt      string   `json:"converted_at"`
+	ErrorClass       string   `json:"error_class,omitempty"`
 }
 
 func viewIngestJob(job *store.IngestJob) ingestJobView {
 	if job == nil {
-		return ingestJobView{}
+		return ingestJobView{SourcePaths: []string{}}
+	}
+	paths := job.SourcePaths
+	if paths == nil {
+		paths = []string{}
+	}
+	converted := ""
+	if !job.ConvertedAt.IsZero() {
+		converted = job.ConvertedAt.UTC().Format(time.RFC3339Nano)
 	}
 	return ingestJobView{
 		ID:               job.ID,
@@ -139,6 +154,12 @@ func viewIngestJob(job *store.IngestJob) ingestJobView {
 		Bytes:            job.Bytes,
 		OriginalFilename: job.OriginalFilename,
 		RawPath:          job.RawPath,
+		SourcePaths:      paths,
+		OCREngine:        job.OCREngine,
+		OCRLang:          job.OCRLang,
+		PageCount:        job.PageCount,
+		ConvertedAt:      converted,
+		ErrorClass:       job.ErrorClass,
 	}
 }
 

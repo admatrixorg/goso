@@ -93,6 +93,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateTenantRegistry(); err != nil {
 		return fmt.Errorf("postgres migrate tenant registry: %w", err)
 	}
+	if err := s.migrateIngestConvert(); err != nil {
+		return fmt.Errorf("postgres migrate ingest convert: %w", err)
+	}
 	return nil
 }
 

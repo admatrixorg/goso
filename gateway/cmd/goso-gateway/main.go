@@ -27,6 +27,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/serve"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/vault"
 )
 
 const (
@@ -122,6 +123,11 @@ Environment:
   GOSO_VAULT_UPLOAD        1 = POST /api/vault/upload (admin or write key). Default off (404, body still capped at 1 MiB)
   GOSO_VAULT_INGEST_MAX_BYTES  Per-file cap when upload is on (default 20971520). Other /api routes stay at 1 MiB
   GOSO_VAULT_INGEST_QUOTA_BYTES  Per-tenant disk quota in bytes. Required before upload can write. Missing or invalid fails closed
+  GOSO_VAULT_DOCLING       1 = convert uploaded raw files to sources/inbox via the Docling sidecar. Default off (jobs stay uploaded, sidecar is not called)
+  GOSO_VAULT_DOCLING_URL   Internal sidecar base URL. Empty, or a refused connection, fails the job as not_configured. Default empty
+  GOSO_VAULT_DOCLING_PAGE_TIMEOUT  Per-page limit (Go duration or seconds). Default 60s. Not measured on VPS2
+  GOSO_VAULT_DOCLING_PAGE_ATTEMPTS Per-page tries before the job is failed as timeout. Default 2, cap 10
+  GOSO_VAULT_DOCLING_PAGE_BUDGET   Page slots the gateway waits for one sidecar call. Default 32, cap 500. Not measured on VPS2
   GOSO_CONTACTS_DURABLE    1 = persist the contact directory in SQLite or Postgres (no 200 cap). Default off keeps the in-memory directory
   GOSO_LITE                1 = cap 5 agents / 1 team; Channels page lite-off (SPEC 038/055)
   GOSO_ADMIN_TOKEN         Bearer token for /api/* and /ws (required unless GOSO_DEV_MODE=1)
@@ -262,6 +268,14 @@ func runGateway(args []string) {
 		fmt.Println("rate limit: off")
 	}
 
+	convertCtx, convertStop := context.WithCancel(context.Background())
+	defer convertStop()
+	if vault.DoclingEnabled() {
+		worker := vault.NewConvertWorker(st, vault.Dir())
+		go worker.Loop(convertCtx)
+		log.Printf("vault docling: on")
+	}
+
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -272,6 +286,7 @@ func runGateway(args []string) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	convertStop()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)

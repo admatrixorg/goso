@@ -70,6 +70,7 @@ type IntegrationView struct {
 	VaultDir         Field `json:"vault_dir"`
 	VaultUpload      Field `json:"vault_upload"`
 	VaultIngestQuota Field `json:"vault_ingest_quota"`
+	VaultDocling     Field `json:"vault_docling"`
 }
 
 func boolField(key, envKey string, truthy bool) Field {
@@ -215,6 +216,7 @@ func BuildSnapshot(updatedAt time.Time) Snapshot {
 			VaultDir:         stringField("vault_dir", "GOSO_VAULT_DIR", os.Getenv("GOSO_VAULT_DIR"), false),
 			VaultUpload:      boolField("vault_upload", "GOSO_VAULT_UPLOAD", envTruthy(os.Getenv("GOSO_VAULT_UPLOAD"))),
 			VaultIngestQuota: vaultIngestQuotaField(),
+			VaultDocling:     boolField("vault_docling", "GOSO_VAULT_DOCLING", envTruthy(os.Getenv("GOSO_VAULT_DOCLING"))),
 		},
 	}
 }
