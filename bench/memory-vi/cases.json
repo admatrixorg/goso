@@ -1,0 +1,655 @@
+[
+  {
+    "id": "tx-01",
+    "group": "trich-xuat",
+    "title": "Hỏi lại dạng báo giá đã nói ở phiên trước",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Công ty mẫu Minh An gửi báo giá dạng PDF có VAT."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "Minh An gửi báo giá dạng gì",
+    "must_contain": [
+      "PDF"
+    ]
+  },
+  {
+    "id": "tx-02",
+    "group": "trich-xuat",
+    "title": "Hỏi lại mức chiết khấu đã chốt",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "durable",
+        "body": "Chiết khấu nội bộ Minh An đã chốt tám phần trăm."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "chiết khấu nội bộ Minh An đã chốt bao nhiêu",
+    "must_contain": [
+      "tám phần trăm"
+    ]
+  },
+  {
+    "id": "tx-03",
+    "group": "trich-xuat",
+    "title": "Hỏi lại chất liệu của mã ghế mẫu",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Ghế mẫu Minh An mã MA-SOFA-01 làm bằng gỗ walnut."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "mã MA-SOFA-01 làm bằng gì",
+    "must_contain": [
+      "walnut"
+    ]
+  },
+  {
+    "id": "tx-04",
+    "group": "trich-xuat",
+    "title": "Hỏi lại vị trí kho mẫu",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Kho mẫu Minh An đặt tại khu A và không giao trước chín giờ."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "kho mẫu Minh An đặt tại đâu",
+    "must_contain": [
+      "khu A"
+    ]
+  },
+  {
+    "id": "tx-05",
+    "group": "trich-xuat",
+    "title": "Hỏi lại thời hạn bảo hành pháp chế đã ghi",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "durable",
+        "body": "Pháp chế Minh An yêu cầu bảo hành mẫu mười hai tháng."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "pháp chế Minh An yêu cầu bảo hành bao lâu",
+    "must_contain": [
+      "mười hai tháng"
+    ]
+  },
+  {
+    "id": "tx-06",
+    "group": "trich-xuat",
+    "title": "Phiên hiện tại không che ghi chú phiên trước",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An gửi báo giá dạng PDF cho đơn mẫu."
+      },
+      {
+        "session": "now",
+        "kind": "episodic",
+        "body": "Minh An gửi báo giá dạng Excel trong phiên này."
+      }
+    ],
+    "ask_session": "now",
+    "query": "Minh An gửi báo giá dạng gì",
+    "must_contain": [
+      "PDF"
+    ],
+    "must_not_contain": [
+      "Excel"
+    ]
+  },
+  {
+    "id": "sl-01",
+    "group": "suy-luan",
+    "title": "Ghép đơn mẫu với thời hạn bảo hành",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Đơn mẫu MA-SOFA-01 của Minh An gồm ghế walnut."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Ghế walnut thuộc đơn mẫu Minh An được bảo hành mười hai tháng."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "Đơn mẫu MA-SOFA-01 bảo hành bao lâu",
+    "must_contain": [
+      "MA-SOFA-01",
+      "mười hai tháng"
+    ]
+  },
+  {
+    "id": "sl-02",
+    "group": "suy-luan",
+    "title": "Ghép lịch nhận báo giá và điều kiện VAT",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Khách mẫu của Minh An thích nhận báo giá vào thứ hai."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Khách mẫu của Minh An thích nhận báo giá kèm VAT."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "khách mẫu của Minh An thích nhận báo giá thế nào",
+    "must_contain": [
+      "thứ hai",
+      "VAT"
+    ]
+  },
+  {
+    "id": "sl-03",
+    "group": "suy-luan",
+    "title": "Ghép giai đoạn, nhu cầu và nơi giao",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Dự án mẫu Minh An đang ở giai đoạn khảo sát."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Dự án mẫu Minh An cần ghế walnut."
+      },
+      {
+        "session": "s3",
+        "kind": "episodic",
+        "body": "Dự án mẫu Minh An giao tại kho khu A."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "dự án mẫu Minh An cần gì và giao ở đâu",
+    "must_contain": [
+      "walnut",
+      "khu A"
+    ]
+  },
+  {
+    "id": "sl-04",
+    "group": "suy-luan",
+    "title": "Ghép cách ký và nơi lưu hợp đồng mẫu",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Hợp đồng mẫu Minh An ký bằng chữ ký số."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Hợp đồng mẫu Minh An được lưu ở tủ pháp chế."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "hợp đồng mẫu Minh An ký bằng gì và lưu ở đâu",
+    "must_contain": [
+      "chữ ký số",
+      "tủ pháp chế"
+    ]
+  },
+  {
+    "id": "cn-01",
+    "group": "cap-nhat",
+    "title": "Đổi dạng báo giá từ PDF sang Excel",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An thích báo giá dạng PDF."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Minh An thích báo giá dạng Excel kể từ hôm nay."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "Minh An thích báo giá dạng gì",
+    "must_contain": [
+      "Excel"
+    ],
+    "must_not_contain": [
+      "PDF"
+    ]
+  },
+  {
+    "id": "cn-02",
+    "group": "cap-nhat",
+    "title": "Đổi chiết khấu từ tám phần trăm sang chín",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "durable",
+        "body": "Chiết khấu mẫu Minh An là tám phần trăm."
+      },
+      {
+        "session": "s2",
+        "kind": "durable",
+        "body": "Chiết khấu mẫu Minh An là chín phần trăm kể từ tháng này."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "chiết khấu mẫu Minh An hiện là bao nhiêu",
+    "must_contain": [
+      "chín phần trăm"
+    ],
+    "must_not_contain": [
+      "tám phần trăm"
+    ]
+  },
+  {
+    "id": "cn-03",
+    "group": "cap-nhat",
+    "title": "Đổi giai đoạn từ khảo sát sang thương lượng",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Dự án mẫu Minh An đang ở giai đoạn khảo sát."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Dự án mẫu Minh An đang ở giai đoạn thương lượng."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "dự án mẫu Minh An đang ở giai đoạn nào",
+    "must_contain": [
+      "thương lượng"
+    ],
+    "must_not_contain": [
+      "khảo sát"
+    ]
+  },
+  {
+    "id": "cn-04",
+    "group": "cap-nhat",
+    "title": "Chuyển bộ phận sang pháp chế, có ngày hiệu lực",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Bộ phận mẫu Minh An trực thuộc phòng kinh doanh."
+      },
+      {
+        "session": "s2",
+        "kind": "episodic",
+        "body": "Bộ phận mẫu Minh An trực thuộc phòng pháp chế từ ngày mười một tháng mười một."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "bộ phận mẫu Minh An trực thuộc phòng nào",
+    "must_contain": [
+      "pháp chế"
+    ],
+    "must_not_contain": [
+      "kinh doanh"
+    ]
+  },
+  {
+    "id": "tq-01",
+    "group": "tham-quyen",
+    "title": "Xác nhận chiết khấu của người dùng, extractor nói khác",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "user",
+        "kind": "durable",
+        "body": "Người dùng xác nhận chiết khấu mẫu Minh An là tám phần trăm."
+      },
+      {
+        "session": "extractor",
+        "kind": "episodic",
+        "body": "Extractor suy đoán chiết khấu mẫu Minh An là mười lăm phần trăm."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "chiết khấu mẫu Minh An là bao nhiêu",
+    "must_contain": [
+      "tám phần trăm"
+    ],
+    "must_not_contain": [
+      "mười lăm"
+    ]
+  },
+  {
+    "id": "tq-02",
+    "group": "tham-quyen",
+    "title": "Xác nhận dạng báo giá, extractor nói khác",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "user",
+        "kind": "durable",
+        "body": "Người dùng xác nhận Minh An chỉ gửi báo giá dạng PDF."
+      },
+      {
+        "session": "extractor",
+        "kind": "episodic",
+        "body": "Extractor suy đoán Minh An gửi báo giá dạng Excel."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "Minh An gửi báo giá dạng nào",
+    "must_contain": [
+      "PDF"
+    ],
+    "must_not_contain": [
+      "Excel"
+    ]
+  },
+  {
+    "id": "tq-03",
+    "group": "tham-quyen",
+    "title": "Xác nhận giờ gọi, extractor nói khác",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "user",
+        "kind": "durable",
+        "body": "Người dùng xác nhận giờ gọi mẫu của Minh An là sau chín giờ."
+      },
+      {
+        "session": "extractor",
+        "kind": "episodic",
+        "body": "Extractor suy đoán giờ gọi mẫu của Minh An là trước bảy giờ."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "giờ gọi mẫu của Minh An là khi nào",
+    "must_contain": [
+      "sau chín giờ"
+    ],
+    "must_not_contain": [
+      "trước bảy giờ"
+    ]
+  },
+  {
+    "id": "tq-04",
+    "group": "tham-quyen",
+    "title": "Xác nhận bảo hành, extractor nói khác",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "user",
+        "kind": "durable",
+        "body": "Người dùng xác nhận bảo hành mẫu Minh An là mười hai tháng."
+      },
+      {
+        "session": "extractor",
+        "kind": "episodic",
+        "body": "Extractor suy đoán bảo hành mẫu Minh An là sáu tháng."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "bảo hành mẫu Minh An là bao lâu",
+    "must_contain": [
+      "mười hai tháng"
+    ],
+    "must_not_contain": [
+      "sáu tháng"
+    ]
+  },
+  {
+    "id": "tc-01",
+    "group": "tu-choi",
+    "title": "Hỏi chính sách nghỉ phép khi chưa từng nói",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Công ty mẫu giữ ghế sofa walnut mã nội bộ và gửi bản pdf có thuế giá trị gia tăng."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "chính sách nghỉ phép ngày lễ tết",
+    "expect_zero": true,
+    "zero_reason": "never-said"
+  },
+  {
+    "id": "tc-02",
+    "group": "tu-choi",
+    "title": "Câu chào và cảm ơn không được nạp",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An ghi nhận lời cảm ơn của khách mẫu sau buổi demo ghế."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "ok cảm ơn",
+    "expect_zero": true,
+    "zero_reason": "trivial"
+  },
+  {
+    "id": "tc-03",
+    "group": "tu-choi",
+    "title": "Hỏi lịch trực đêm khi chưa từng nói",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Báo giá mẫu Minh An gồm ghế sofa walnut."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "lịch trực đêm khu vực vệ sinh",
+    "expect_zero": true,
+    "zero_reason": "never-said"
+  },
+  {
+    "id": "tc-04",
+    "group": "tu-choi",
+    "title": "Hỏi máy lạnh và hộp mực khi chưa từng nói",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "durable",
+        "body": "Báo giá mẫu Minh An gồm ghế sofa walnut."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "may lanh cong nghiep hop muc",
+    "expect_zero": true,
+    "zero_reason": "never-said"
+  },
+  {
+    "id": "cl-01",
+    "group": "co-lap",
+    "title": "Khách mẫu B không thấy ghi chú khách mẫu A",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s-a",
+        "kind": "durable",
+        "label": "zalo-personal:mau-a",
+        "body": "Khách mẫu kênh A của Minh An đặt ghế walnut mã MA-SOFA-01."
+      }
+    ],
+    "ask_session": "ask-b",
+    "ask_label": "zalo-personal:mau-b",
+    "customer_scoped": true,
+    "query": "khách mẫu kênh đặt ghế walnut mã nào",
+    "expect_zero": true,
+    "zero_reason": "isolated"
+  },
+  {
+    "id": "cl-02",
+    "group": "co-lap",
+    "title": "Tenant pháp chế không thấy ghi chú tenant kinh doanh",
+    "tenant": "minh-an-sales",
+    "notes": [
+      {
+        "session": "s1",
+        "tenant": "minh-an-sales",
+        "kind": "durable",
+        "body": "Chiết khấu mẫu phòng kinh doanh Minh An là chín phần trăm."
+      }
+    ],
+    "ask_session": "ask",
+    "ask_tenant": "minh-an-legal",
+    "query": "chiết khấu mẫu phòng kinh doanh Minh An là bao nhiêu",
+    "expect_zero": true,
+    "zero_reason": "isolated"
+  },
+  {
+    "id": "cl-03",
+    "group": "co-lap",
+    "title": "Agent pháp chế không thấy ghi chú agent kinh doanh",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "agent": "sales",
+        "kind": "episodic",
+        "body": "Phòng kinh doanh Minh An giữ mẫu ghế walnut."
+      }
+    ],
+    "ask_session": "ask",
+    "ask_agent": "legal",
+    "query": "phòng kinh doanh Minh An giữ mẫu gì",
+    "expect_zero": true,
+    "zero_reason": "isolated"
+  },
+  {
+    "id": "cl-04",
+    "group": "co-lap",
+    "title": "Khách mẫu A thấy ghi chú của mình, không thấy khách B",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s-a",
+        "kind": "durable",
+        "label": "zalo-personal:mau-a",
+        "body": "Kênh mẫu A của Minh An chốt bảo hành mười hai tháng."
+      },
+      {
+        "session": "s-b",
+        "kind": "durable",
+        "label": "zalo-personal:mau-b",
+        "body": "Kênh mẫu B của Minh An chốt bảo hành sáu tháng."
+      }
+    ],
+    "ask_session": "ask-a",
+    "ask_label": "zalo-personal:mau-a",
+    "customer_scoped": true,
+    "query": "kênh mẫu chốt bảo hành bao lâu",
+    "must_contain": [
+      "mười hai tháng"
+    ],
+    "must_not_contain": [
+      "sáu tháng"
+    ]
+  },
+  {
+    "id": "tv-01",
+    "group": "tieng-viet",
+    "title": "Có dấu: tìm báo giá",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An gửi báo giá PDF cho đơn mẫu nội bộ."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "báo giá PDF",
+    "must_contain": [
+      "báo giá"
+    ]
+  },
+  {
+    "id": "tv-02",
+    "group": "tieng-viet",
+    "title": "Có dấu: tìm bảo hành",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "durable",
+        "body": "Pháp chế Minh An yêu cầu bảo hành mười hai tháng cho đơn mẫu."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "bảo hành mười hai tháng",
+    "must_contain": [
+      "mười hai tháng"
+    ]
+  },
+  {
+    "id": "tv-03",
+    "group": "tieng-viet",
+    "title": "Không dấu: gui bao gia phải gặp báo giá",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An gửi báo giá PDF cho đơn mẫu nội bộ."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "gui bao gia",
+    "must_contain": [
+      "báo giá"
+    ]
+  },
+  {
+    "id": "tv-04",
+    "group": "tieng-viet",
+    "title": "Đồng nghĩa: quotation phải gặp báo giá",
+    "tenant": "minh-an",
+    "notes": [
+      {
+        "session": "s1",
+        "kind": "episodic",
+        "body": "Minh An gửi báo giá PDF cho đơn mẫu nội bộ."
+      }
+    ],
+    "ask_session": "ask",
+    "query": "quotation sheet",
+    "must_contain": [
+      "báo giá"
+    ]
+  }
+]

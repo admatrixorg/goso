@@ -1,0 +1,193 @@
+{
+  "spec": 153,
+  "commit": "9545d08",
+  "floor": "Floor of cross-session recall at main 9545d08. A later run fails when a case marked true here fails, or when any case that must return nothing admits an item. A higher score does not fail and does not require editing this file.",
+  "engines": {
+    "postgres": {
+      "passed": 20,
+      "total": 30,
+      "score": "20/30",
+      "groups": {
+        "cap-nhat": {
+          "name": "Cập nhật tri thức",
+          "passed": 0,
+          "total": 4,
+          "score": "0/4",
+          "cases": {
+            "cn-01": false,
+            "cn-02": false,
+            "cn-03": false,
+            "cn-04": false
+          }
+        },
+        "co-lap": {
+          "name": "Cô lập",
+          "passed": 4,
+          "total": 4,
+          "score": "4/4",
+          "cases": {
+            "cl-01": true,
+            "cl-02": true,
+            "cl-03": true,
+            "cl-04": true
+          }
+        },
+        "suy-luan": {
+          "name": "Suy luận nhiều phiên",
+          "passed": 4,
+          "total": 4,
+          "score": "4/4",
+          "cases": {
+            "sl-01": true,
+            "sl-02": true,
+            "sl-03": true,
+            "sl-04": true
+          }
+        },
+        "tham-quyen": {
+          "name": "Thẩm quyền",
+          "passed": 0,
+          "total": 4,
+          "score": "0/4",
+          "cases": {
+            "tq-01": false,
+            "tq-02": false,
+            "tq-03": false,
+            "tq-04": false
+          }
+        },
+        "tieng-viet": {
+          "name": "Tiếng Việt không dấu, đồng nghĩa",
+          "passed": 2,
+          "total": 4,
+          "score": "2/4",
+          "cases": {
+            "tv-01": true,
+            "tv-02": true,
+            "tv-03": false,
+            "tv-04": false
+          }
+        },
+        "trich-xuat": {
+          "name": "Trích xuất thông tin",
+          "passed": 6,
+          "total": 6,
+          "score": "6/6",
+          "cases": {
+            "tx-01": true,
+            "tx-02": true,
+            "tx-03": true,
+            "tx-04": true,
+            "tx-05": true,
+            "tx-06": true
+          }
+        },
+        "tu-choi": {
+          "name": "Từ chối",
+          "passed": 4,
+          "total": 4,
+          "score": "4/4",
+          "cases": {
+            "tc-01": true,
+            "tc-02": true,
+            "tc-03": true,
+            "tc-04": true
+          }
+        }
+      }
+    },
+    "sqlite": {
+      "passed": 20,
+      "total": 30,
+      "score": "20/30",
+      "groups": {
+        "cap-nhat": {
+          "name": "Cập nhật tri thức",
+          "passed": 0,
+          "total": 4,
+          "score": "0/4",
+          "cases": {
+            "cn-01": false,
+            "cn-02": false,
+            "cn-03": false,
+            "cn-04": false
+          }
+        },
+        "co-lap": {
+          "name": "Cô lập",
+          "passed": 4,
+          "total": 4,
+          "score": "4/4",
+          "cases": {
+            "cl-01": true,
+            "cl-02": true,
+            "cl-03": true,
+            "cl-04": true
+          }
+        },
+        "suy-luan": {
+          "name": "Suy luận nhiều phiên",
+          "passed": 3,
+          "total": 4,
+          "score": "3/4",
+          "cases": {
+            "sl-01": true,
+            "sl-02": true,
+            "sl-03": false,
+            "sl-04": true
+          }
+        },
+        "tham-quyen": {
+          "name": "Thẩm quyền",
+          "passed": 0,
+          "total": 4,
+          "score": "0/4",
+          "cases": {
+            "tq-01": false,
+            "tq-02": false,
+            "tq-03": false,
+            "tq-04": false
+          }
+        },
+        "tieng-viet": {
+          "name": "Tiếng Việt không dấu, đồng nghĩa",
+          "passed": 3,
+          "total": 4,
+          "score": "3/4",
+          "cases": {
+            "tv-01": true,
+            "tv-02": true,
+            "tv-03": true,
+            "tv-04": false
+          }
+        },
+        "trich-xuat": {
+          "name": "Trích xuất thông tin",
+          "passed": 6,
+          "total": 6,
+          "score": "6/6",
+          "cases": {
+            "tx-01": true,
+            "tx-02": true,
+            "tx-03": true,
+            "tx-04": true,
+            "tx-05": true,
+            "tx-06": true
+          }
+        },
+        "tu-choi": {
+          "name": "Từ chối",
+          "passed": 4,
+          "total": 4,
+          "score": "4/4",
+          "cases": {
+            "tc-01": true,
+            "tc-02": true,
+            "tc-03": true,
+            "tc-04": true
+          }
+        }
+      }
+    }
+  }
+}
