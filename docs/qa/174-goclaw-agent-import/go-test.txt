@@ -1,0 +1,53 @@
+go: downloading connectrpc.com/connect v1.18.1
+go: downloading golang.org/x/net v0.56.0
+go: downloading google.golang.org/protobuf v1.34.2
+go: downloading github.com/gorilla/websocket v1.5.3
+ok  	github.com/mqglobal/goso/desktop/internal/host	0.206s
+ok  	github.com/mqglobal/goso/gateway	0.092s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-agent-import	0.145s
+?   	github.com/mqglobal/goso/gateway/cmd/goso-gateway	[no test files]
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-vault-import	0.125s
+ok  	github.com/mqglobal/goso/gateway/internal/agent	0.014s
+ok  	github.com/mqglobal/goso/gateway/internal/agentimport	0.919s
+ok  	github.com/mqglobal/goso/gateway/internal/apikey	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/approval	0.027s
+ok  	github.com/mqglobal/goso/gateway/internal/auditlog	0.021s
+ok  	github.com/mqglobal/goso/gateway/internal/auth	0.005s
+ok  	github.com/mqglobal/goso/gateway/internal/backup	0.088s
+ok  	github.com/mqglobal/goso/gateway/internal/billing	0.008s
+ok  	github.com/mqglobal/goso/gateway/internal/bridge	5.119s
+?   	github.com/mqglobal/goso/gateway/internal/bridge/gosov1	[no test files]
+ok  	github.com/mqglobal/goso/gateway/internal/builtin	0.491s
+ok  	github.com/mqglobal/goso/gateway/internal/channel	0.941s
+ok  	github.com/mqglobal/goso/gateway/internal/config	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/connector	0.151s
+ok  	github.com/mqglobal/goso/gateway/internal/contextfile	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/cron	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/eventstore	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/guardrail	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/health	0.001s
+ok  	github.com/mqglobal/goso/gateway/internal/heartbeat	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/httpapi	7.178s
+ok  	github.com/mqglobal/goso/gateway/internal/impexp	0.005s
+ok  	github.com/mqglobal/goso/gateway/internal/llm	0.698s
+ok  	github.com/mqglobal/goso/gateway/internal/logstore	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/node	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/observe	0.013s
+ok  	github.com/mqglobal/goso/gateway/internal/pipeline	3.213s
+ok  	github.com/mqglobal/goso/gateway/internal/pkgmgr	2.016s
+ok  	github.com/mqglobal/goso/gateway/internal/ratelimit	0.002s
+ok  	github.com/mqglobal/goso/gateway/internal/replycheck	0.311s
+ok  	github.com/mqglobal/goso/gateway/internal/secrets	0.010s
+ok  	github.com/mqglobal/goso/gateway/internal/security	0.004s
+ok  	github.com/mqglobal/goso/gateway/internal/serve	0.044s
+ok  	github.com/mqglobal/goso/gateway/internal/skill	0.006s
+ok  	github.com/mqglobal/goso/gateway/internal/storage	0.006s
+ok  	github.com/mqglobal/goso/gateway/internal/store	24.942s
+ok  	github.com/mqglobal/goso/gateway/internal/team	0.003s
+ok  	github.com/mqglobal/goso/gateway/internal/tenant	0.508s
+ok  	github.com/mqglobal/goso/gateway/internal/tts	0.007s
+ok  	github.com/mqglobal/goso/gateway/internal/vault	2.470s
+ok  	github.com/mqglobal/goso/gateway/internal/vaultimport	0.433s
+ok  	github.com/mqglobal/goso/gateway/internal/webhook	0.142s
+ok  	github.com/mqglobal/goso/gateway/internal/workstation	0.002s
+ok  	github.com/mqglobal/goso/gateway/memorybench	1.016s
