@@ -11,3 +11,11 @@ go build -o /tmp/goso-mcp-import ./gateway/cmd/goso-mcp-import
 ```
 
 `GOSO_TEST_POSTGRES_DSN` was unset here, so `TestCLIPostgresApply` skipped. SQLite and the in-memory store ran. Logs: `go-test.txt`, `go-test-race.txt`.
+
+## qa:tabs
+
+Code under test: `fbc2a9b1a6a0573f216183f2310cef1fc13e06e5`.
+
+[qa-tabs log](../176/qa-tabs-fbc2a9b1a6a0573f216183f2310cef1fc13e06e5.log)
+
+Gateway from that commit, fresh SQLite database, seed `minh-an-sales` / `Cố vấn Minh An` / `echo`. `CHROME_PATH=/usr/local/bin/google-chrome`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
