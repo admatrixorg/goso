@@ -64,7 +64,13 @@ go test ./gateway/internal/kgimport ./gateway/internal/store ./gateway/cmd/goso-
 go test -race -count=1 -timeout 240s ./gateway/internal/kgimport ./gateway/internal/store ./gateway/cmd/goso-kg-import
 ```
 
-Exit 0. Memory and SQLite ran `TestMinhAnFixture`, `TestConflictDoesNotOverwrite`, `TestDeleteImportedKGLeavesLiveRows`, and the CLI test. The Postgres subtest skips when `GOSO_TEST_POSTGRES_DSN` is unset, and fails in CI when that variable is missing. No customer export is in this directory.
+Exit 0. Memory and SQLite ran `TestMinhAnFixture`, `TestConflictDoesNotOverwrite`, `TestDeleteImportedKGLeavesLiveRows`, `TestDenyFileAndDeniedTenant`, and the CLI test. The Postgres subtest skips when `GOSO_TEST_POSTGRES_DSN` is unset, and fails in CI when that variable is missing. No customer export is in this directory.
+
+## qa:tabs
+
+Log for code commit `764015195370d514859a2a312d3dd5b2efc1247a`: [qa-tabs-764015195370d514859a2a312d3dd5b2efc1247a.log](../181/qa-tabs-764015195370d514859a2a312d3dd5b2efc1247a.log).
+
+Chrome binary `/usr/local/bin/google-chrome`. Gateway from that commit, fresh SQLite `GOSO_DB_PATH`, `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` development. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
 
 ## Column assumptions that are not in the `\d`
 
