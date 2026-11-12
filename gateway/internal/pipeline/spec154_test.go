@@ -5,9 +5,11 @@ package pipeline
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +49,9 @@ func TestRecallForOlderThanScanCap(t *testing.T) {
 }
 
 func TestRecallFor50kUnder50ms(t *testing.T) {
+	if os.Getenv("GOSO_RECALL_BENCH") != "1" {
+		t.Skip("wall-clock bench; set GOSO_RECALL_BENCH=1; CI asserts plan/buffers instead, see docs/qa/43")
+	}
 	t.Setenv("GOSO_MEMORY_RECALL", "1")
 	t.Setenv("GOSO_DATABASE_URL", "")
 	dsn := spec154DSN(t, "goso_spec154_50k_for", true)
@@ -124,15 +129,23 @@ func TestRecallFor50kUnder50ms(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := store.RecallQuery{TenantID: needleSess.TenantID, AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query}
-	start := time.Now()
-	note, n := RecallFor(st, q)
-	elapsed := time.Since(start)
-	if n != 1 || !strings.Contains(note, "MA-WALNUT-77") || !strings.Contains(note, "gỗ sồi") {
-		t.Fatalf("RecallFor n=%d note=%q", n, note)
+	samples := make([]time.Duration, 0, 20)
+	for i := 0; i < 20; i++ {
+		start := time.Now()
+		note, n := RecallFor(st, q)
+		elapsed := time.Since(start)
+		if n != 1 || !strings.Contains(note, "MA-WALNUT-77") || !strings.Contains(note, "gỗ sồi") {
+			t.Fatalf("sample %d RecallFor n=%d note=%q", i, n, note)
+		}
+		samples = append(samples, elapsed)
 	}
-	fmt.Printf("SPEC154 recall_for_50k rows=%d elapsed=%s\n", nFill+1, elapsed)
-	if elapsed >= 50*time.Millisecond {
-		t.Fatalf("RecallFor %s is not under 50ms", elapsed)
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	med := samples[len(samples)/2]
+	p95i := int(math.Ceil(0.95*float64(len(samples)))) - 1
+	max := samples[len(samples)-1]
+	fmt.Printf("SPEC154 bench shape=recall-for n=20 median=%s p95=%s max=%s samples=%v\n", med, samples[p95i], max, samples)
+	if max >= 50*time.Millisecond {
+		t.Fatalf("RecallFor %s is not under 50ms (median %s)", max, med)
 	}
 }
 

@@ -38,10 +38,10 @@ The migration in `gateway/internal/store/postgres_tsvector.go` adds, and does no
 | `kg_entities` | `body_tsv` | same | `idx_kg_entities_body_tsv` GIN |
 | `memories` | (no new column) | existing `tenant_id`, `created_at` | `idx_memories_tenant_created` btree `(tenant_id, created_at DESC)` |
 
-Recall does not use `ts_rank` or `ts_rank_cd`. Scoring stays in Go (`lexicalScore`). Postgres loads candidates in two steps, each `ORDER BY m.created_at DESC`, and never more than `recallCandidateCap` (2000) rows together:
+Recall does not use `ts_rank` or `ts_rank_cd`. Scoring stays in Go (`lexicalScore`). Postgres loads candidates in two steps, each `ORDER BY created_at DESC`, and never more than `recallCandidateCap` (2000) rows together:
 
 1. `body_tsv @@ to_tsquery('simple', 't1 & t2 & …')` with tokens kept only by `safeTSToken`. Same tenant, agent, and customer scope as before. `LIMIT recallCandidateCap`.
-2. Run only when step 1 returned fewer than the caller's `limit`. `body_tsv @@ to_tsquery('simple', 't1 | t2 | …')`, same scope, `ORDER BY m.created_at DESC`, `LIMIT` the unused part of the cap. Rows already returned by step 1 are dropped.
+2. Run only when step 1 returned fewer than the caller's `limit`. Same OR tokens, same scope, same order, `LIMIT` the unused part of the cap. Rows already returned by step 1 are dropped. Step 2 does not leave the plan to the row estimate. A customer with fewer memories than the probe budget is read through `idx_memories_customer`. An agent with fewer memories than that budget is read through `idx_memories_session` from that agent's sessions. Otherwise it reads at most twice the limit of the newest rows through `idx_memories_tenant_created` (`SET LOCAL enable_seqscan = off`). If that window already holds enough matches, those are the candidates. If it does not, the window is discarded and a second statement loads the newest matches for that tenant: `tenant_id = ?` and `body_tsv @@`, plus `session_id IN` that agent's sessions and `customer_key = ?` when the recall is customer scoped, both inside the CTE. Sequential scans and plain index scans are disabled and `cpu_tuple_cost = 1`. The plan name is returned from `recallTSVORPath`; there is no shared path variable.
 
 `idx_memories_tenant` is only `(tenant_id)`. `idx_memories_session` is `(session_id, created_at)`. `idx_memories_customer` is `(tenant_id, customer_key)`. None of those is `(tenant_id, created_at)`, which is the pair this query always filters and sorts. Agent and customer filters stay in the WHERE because they are optional. SQLite still uses FTS5. `unaccent` is not installed.
 
@@ -62,6 +62,7 @@ These search queries already have a limit: memory search 50, vault search `Vault
 | Negative: note older than `recallScanCap` | `TestRecallOlderThanScanCap` (store) and `TestRecallForOlderThanScanCap` (pipeline) |
 | 50,000 rows under 50 ms | `TestPostgresRecall50kUnder50ms` (store `RecallMemories`) and `TestRecallFor50kUnder50ms` (pipeline `RecallFor`) |
 | 50,000 rows that all match one query token stay inside `recallCandidateCap`, and the needle is still recalled, in under 50 ms | `TestPostgresRecall50kAllMatchWithinCap` |
+| 50,000 rows, about 5% matching the OR, stay under 50 ms | `TestPostgresRecall50kFivePercentWithinCap` |
 | Oldest note that contains every query token is recalled when 50,000 newer rows share only one token | `TestPostgresRecallOldestFullMatch` |
 | `Min` does not match `Minh` | `TestPostgresSearchMinDoesNotMatchMinh` |
 | Bench, Postgres not below SQLite | `gateway/memorybench` `TestBaseline9545d08` |
@@ -92,6 +93,7 @@ DROP INDEX IF EXISTS idx_memories_body_tsv;
 DROP INDEX IF EXISTS idx_vault_docs_body_tsv;
 DROP INDEX IF EXISTS idx_kg_entities_body_tsv;
 DROP INDEX IF EXISTS idx_memories_tenant_created;
+DROP INDEX IF EXISTS idx_memories_customer_created;
 ```
 
 After the indexes are gone, this code still reads `body_tsv`, so a note older than 500 rows is still returned; Postgres scans the column instead of using the index. Restoring the newest-500 scan means reverting the query code in this spec. The generated columns may be dropped only after that revert:
