@@ -1,95 +1,95 @@
-2026/11/12 04:26:20 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:20 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:21 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:21 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:22 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:22 goso store: backfilled customer_key on 2 channel memory notes
-2026/11/12 04:26:23 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:23 goso store: backfilled customer_key on 2 channel memory notes
-2026/11/12 04:26:23 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:23 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:23 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:23 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:24 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:25 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:26 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:27 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:35 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:40 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:40 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:41 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:41 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:41 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:42 goso store: backfilled customer_key on 2 channel memory notes
+2026/11/12 04:31:42 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:42 goso store: backfilled customer_key on 2 channel memory notes
+2026/11/12 04:31:42 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:43 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:43 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:43 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:43 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:45 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:46 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:48 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:55 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_or_probe budget=4000 limit=2000:
-Limit  (cost=0.44..566.08 rows=1 width=146) (actual time=1.653..1.654 rows=0 loops=1)
+Limit  (cost=0.45..560.42 rows=1 width=146) (actual time=1.726..1.728 rows=0 loops=1)
   Buffers: shared hit=178
-  ->  Nested Loop  (cost=0.44..566.08 rows=1 width=146) (actual time=1.653..1.653 rows=0 loops=1)
-        Join Filter: (sess.id = m.session_id)
+  ->  Nested Loop  (cost=0.45..560.42 rows=1 width=146) (actual time=1.726..1.727 rows=0 loops=1)
         Buffers: shared hit=178
-        ->  Subquery Scan on m  (cost=0.29..555.55 rows=157 width=146) (actual time=1.652..1.653 rows=0 loops=1)
-              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-50d14fb9b79877c5'::text))
+        ->  Subquery Scan on m  (cost=0.29..555.55 rows=157 width=146) (actual time=1.726..1.726 rows=0 loops=1)
+              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-71b92e72d0674adf'::text))
               Rows Removed by Filter: 4000
               Buffers: shared hit=178
-              ->  Limit  (cost=0.29..485.55 rows=4000 width=311) (actual time=0.008..0.577 rows=4000 loops=1)
+              ->  Limit  (cost=0.29..485.55 rows=4000 width=311) (actual time=0.012..0.633 rows=4000 loops=1)
                     Buffers: shared hit=178
-                    ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..6066.04 rows=50000 width=311) (actual time=0.008..0.342 rows=4000 loops=1)
+                    ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..6066.04 rows=50000 width=311) (actual time=0.012..0.401 rows=4000 loops=1)
                           Index Cond: (tenant_id = 'default'::text)
                           Buffers: shared hit=178
-        ->  Materialize  (cost=0.15..8.17 rows=1 width=32) (never executed)
-              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (never executed)
-                    Index Cond: (tenant_id = 'default'::text)
-                    Filter: (agent_id = '20261112-42bf3b5be4abc87d'::text)
-Planning Time: 0.103 ms
-Execution Time: 1.666 ms
+        ->  Memoize  (cost=0.16..0.49 rows=1 width=32) (never executed)
+              Cache Key: m.session_id
+              Cache Mode: logical
+              ->  Index Scan using sessions_pkey on sessions sess  (cost=0.15..0.48 rows=1 width=32) (never executed)
+                    Index Cond: (id = m.session_id)
+                    Filter: ((tenant_id = 'default'::text) AND (agent_id = '20261112-0bfd39172faf4abd'::text))
+Planning Time: 0.113 ms
+Execution Time: 1.743 ms
 
 SPEC154 or_probe_rows=0 limit=2000
 SPEC154 explain_or_bitmap limit=2000:
-Limit  (cost=4237.60..4237.60 rows=1 width=224) (actual time=1.421..1.423 rows=1 loops=1)
-  Buffers: shared hit=140
+Limit  (cost=4448.11..4448.12 rows=1 width=224) (actual time=0.268..0.270 rows=1 loops=1)
+  Buffers: shared hit=35
   CTE hits
-    ->  Nested Loop  (cost=483.79..4213.40 rows=7 width=146) (actual time=0.258..1.411 rows=1 loops=1)
-          Buffers: shared hit=138
-          ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.006..0.007 rows=3 loops=1)
-                Recheck Cond: (tenant_id = 'default'::text)
-                Filter: (agent_id = '20261112-42bf3b5be4abc87d'::text)
+    ->  Hash Join  (cost=217.52..4423.92 rows=7 width=146) (actual time=0.258..0.259 rows=1 loops=1)
+          Hash Cond: (memories.session_id = sessions.id)
+          Buffers: shared hit=33
+          ->  Bitmap Heap Scan on memories  (cost=207.35..4401.59 rows=1965 width=146) (actual time=0.244..0.245 rows=1 loops=1)
+                Recheck Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+                Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-71b92e72d0674adf'::text) AND (tenant_id = 'default'::text))
                 Heap Blocks: exact=1
+                Buffers: shared hit=31
+                ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0) (actual time=0.243..0.243 rows=1 loops=1)
+                      Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+                      Buffers: shared hit=30
+          ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.010..0.010 rows=3 loops=1)
+                Buckets: 1024  Batches: 1  Memory Usage: 9kB
                 Buffers: shared hit=2
-                ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.004..0.004 rows=3 loops=1)
-                      Index Cond: (tenant_id = 'default'::text)
-                      Buffers: shared hit=1
-          ->  Bitmap Heap Scan on memories  (cost=479.64..3221.24 rows=983 width=146) (actual time=0.467..0.467 rows=0 loops=3)
-                Recheck Cond: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (session_id = sessions.id))
-                Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-50d14fb9b79877c5'::text) AND (tenant_id = 'default'::text))
-                Heap Blocks: exact=1
-                Buffers: shared hit=136
-                ->  BitmapAnd  (cost=479.64..479.64 rows=983 width=0) (actual time=0.466..0.466 rows=0 loops=3)
-                      Buffers: shared hit=135
-                      ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0) (actual time=0.230..0.230 rows=1 loops=3)
-                            Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
-                            Buffers: shared hit=90
-                      ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..271.79 rows=25000 width=0) (actual time=0.235..0.235 rows=16667 loops=3)
-                            Index Cond: (session_id = sessions.id)
-                            Buffers: shared hit=45
-  ->  Sort  (cost=24.19..24.20 rows=1 width=224) (actual time=1.420..1.421 rows=1 loops=1)
+                ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.007..0.008 rows=3 loops=1)
+                      Recheck Cond: (tenant_id = 'default'::text)
+                      Filter: (agent_id = '20261112-0bfd39172faf4abd'::text)
+                      Heap Blocks: exact=1
+                      Buffers: shared hit=2
+                      ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.004..0.004 rows=3 loops=1)
+                            Index Cond: (tenant_id = 'default'::text)
+                            Buffers: shared hit=1
+  ->  Sort  (cost=24.19..24.20 rows=1 width=224) (actual time=0.268..0.268 rows=1 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 25kB
-        Buffers: shared hit=140
-        ->  Hash Join  (cost=10.16..24.18 rows=1 width=224) (actual time=0.265..1.419 rows=1 loops=1)
+        Buffers: shared hit=35
+        ->  Hash Join  (cost=10.16..24.18 rows=1 width=224) (actual time=0.264..0.265 rows=1 loops=1)
               Hash Cond: (m.session_id = sess.id)
-              Buffers: shared hit=140
-              ->  CTE Scan on hits m  (cost=0.00..14.00 rows=7 width=224) (actual time=0.259..1.411 rows=1 loops=1)
-                    Buffers: shared hit=138
-              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.003..0.004 rows=3 loops=1)
+              Buffers: shared hit=35
+              ->  CTE Scan on hits m  (cost=0.00..14.00 rows=7 width=224) (actual time=0.259..0.259 rows=1 loops=1)
+                    Buffers: shared hit=33
+              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.003..0.003 rows=3 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
-                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.001..0.002 rows=3 loops=1)
+                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.002..0.002 rows=3 loops=1)
                           Recheck Cond: (tenant_id = 'default'::text)
-                          Filter: (agent_id = '20261112-42bf3b5be4abc87d'::text)
+                          Filter: (agent_id = '20261112-0bfd39172faf4abd'::text)
                           Heap Blocks: exact=1
                           Buffers: shared hit=2
                           ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.001..0.001 rows=3 loops=1)
@@ -97,260 +97,258 @@ Limit  (cost=4237.60..4237.60 rows=1 width=224) (actual time=1.421..1.423 rows=1
                                 Buffers: shared hit=1
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.147 ms
-Execution Time: 1.443 ms
+Planning Time: 0.180 ms
+Execution Time: 0.291 ms
 
 SPEC154 step2_path=bitmap idx_memories_body_tsv
-SPEC154 recall_50k rows=50000 index=idx_memories_body_tsv samples=5.794162ms,6.492777ms,5.619144ms,5.853717ms,5.943127ms median=5.853717ms max=6.492777ms path=bitmap-and
+SPEC154 recall_50k rows=50000 index=idx_memories_body_tsv samples=11.9787ms,12.165582ms,11.969191ms,12.173658ms,11.973798ms median=11.9787ms max=12.173658ms path=bitmap-and
 SPEC154 plan:
-Nested Loop  (cost=479.79..2266.07 rows=7 width=15)
+Nested Loop  (cost=207.50..2488.97 rows=7 width=15)
+  Join Filter: (m.session_id = sess.id)
   ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32)
         Index Cond: (tenant_id = 'default'::text)
-  ->  Bitmap Heap Scan on memories m  (cost=479.64..2248.07 rows=983 width=41)
-        Recheck Cond: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (session_id = sess.id))
-        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-50d14fb9b79877c5'::text) AND (tenant_id = 'default'::text))
-        ->  BitmapAnd  (cost=479.64..479.64 rows=983 width=0)
-              ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
-                    Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
-              ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..271.79 rows=25000 width=0)
-                    Index Cond: (session_id = sess.id)
+  ->  Bitmap Heap Scan on memories m  (cost=207.35..2456.24 rows=1965 width=41)
+        Recheck Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
+        Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-71b92e72d0674adf'::text) AND (tenant_id = 'default'::text))
+        ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..206.86 rows=1965 width=0)
+              Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
 
-2026/11/12 04:26:36 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:31:57 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_and:
-Limit  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.530..8.532 rows=1 loops=1)
+Limit  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.706..8.708 rows=1 loops=1)
   Buffers: shared hit=488
-  ->  Sort  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.530..8.531 rows=1 loops=1)
+  ->  Sort  (cost=2070.67..2070.67 rows=1 width=119) (actual time=8.705..8.706 rows=1 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 25kB
         Buffers: shared hit=488
-        ->  Nested Loop  (cost=2058.60..2070.66 rows=1 width=119) (actual time=8.526..8.527 rows=1 loops=1)
+        ->  Nested Loop  (cost=2058.60..2070.66 rows=1 width=119) (actual time=8.700..8.702 rows=1 loops=1)
               Join Filter: (m.session_id = sess.id)
               Buffers: shared hit=488
-              ->  Bitmap Heap Scan on memories m  (cost=2058.46..2062.48 rows=1 width=119) (actual time=8.520..8.520 rows=1 loops=1)
+              ->  Bitmap Heap Scan on memories m  (cost=2058.46..2062.48 rows=1 width=119) (actual time=8.689..8.690 rows=1 loops=1)
                     Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
-                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-d9103c45d3a40a42'::text) AND (tenant_id = 'default'::text))
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-b261040437965af3'::text) AND (tenant_id = 'default'::text))
                     Heap Blocks: exact=1
                     Buffers: shared hit=486
-                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..2058.46 rows=1 width=0) (actual time=8.514..8.515 rows=1 loops=1)
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..2058.46 rows=1 width=0) (actual time=8.682..8.682 rows=1 loops=1)
                           Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
                           Buffers: shared hit=485
-              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.008..0.008 rows=1 loops=1)
                     Index Cond: (tenant_id = 'default'::text)
-                    Filter: (agent_id = '20261112-0484b143a911fc39'::text)
+                    Filter: (agent_id = '20261112-b3280d0fcbcda667'::text)
                     Buffers: shared hit=2
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.120 ms
-Execution Time: 8.546 ms
+Planning Time: 0.145 ms
+Execution Time: 8.727 ms
 
 SPEC154 explain_or_probe budget=3998 limit=1999:
-Limit  (cost=457.79..457.81 rows=9 width=119) (actual time=3.095..3.279 rows=1999 loops=1)
+Limit  (cost=457.79..457.81 rows=9 width=119) (actual time=3.257..3.442 rows=1999 loops=1)
   Buffers: shared hit=132
-  ->  Sort  (cost=457.79..457.81 rows=9 width=119) (actual time=3.095..3.165 rows=1999 loops=1)
+  ->  Sort  (cost=457.79..457.81 rows=9 width=119) (actual time=3.256..3.327 rows=1999 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 1127kB
         Buffers: shared hit=132
-        ->  Hash Join  (cost=8.47..457.65 rows=9 width=119) (actual time=0.016..2.314 rows=3998 loops=1)
+        ->  Hash Join  (cost=8.47..457.65 rows=9 width=119) (actual time=0.026..2.407 rows=3998 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=132
-              ->  Subquery Scan on m  (cost=0.29..442.48 rows=2625 width=119) (actual time=0.009..1.797 rows=3998 loops=1)
-                    Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-d9103c45d3a40a42'::text))
+              ->  Subquery Scan on m  (cost=0.29..442.48 rows=2625 width=119) (actual time=0.015..1.883 rows=3998 loops=1)
+                    Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-b261040437965af3'::text))
                     Buffers: shared hit=130
-                    ->  Limit  (cost=0.29..372.51 rows=3998 width=222) (actual time=0.007..0.604 rows=3998 loops=1)
+                    ->  Limit  (cost=0.29..372.51 rows=3998 width=222) (actual time=0.012..0.666 rows=3998 loops=1)
                           Buffers: shared hit=130
-                          ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..4655.41 rows=50000 width=222) (actual time=0.007..0.368 rows=3998 loops=1)
+                          ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..4655.41 rows=50000 width=222) (actual time=0.012..0.428 rows=3998 loops=1)
                                 Index Cond: (tenant_id = 'default'::text)
                                 Buffers: shared hit=130
-              ->  Hash  (cost=8.17..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=3 loops=1)
+              ->  Hash  (cost=8.17..8.17 rows=1 width=32) (actual time=0.007..0.007 rows=3 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
-                    ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.002..0.003 rows=3 loops=1)
+                    ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.003..0.004 rows=3 loops=1)
                           Index Cond: (tenant_id = 'default'::text)
-                          Filter: (agent_id = '20261112-0484b143a911fc39'::text)
+                          Filter: (agent_id = '20261112-b3280d0fcbcda667'::text)
                           Buffers: shared hit=2
-Planning Time: 0.104 ms
-Execution Time: 3.356 ms
+Planning Time: 0.136 ms
+Execution Time: 3.524 ms
 
 SPEC154 or_probe_rows=1999 limit=1999
 SPEC154 step2_path=Index Scan using idx_memories_tenant_created
-SPEC154 worst_case rows=50000 fetched=2000 cap=2000 samples=32.355336ms,32.55891ms,32.013108ms,31.698828ms,31.741013ms median=32.013108ms max=32.55891ms path=tenant-window
-2026/11/12 04:26:38 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 worst_case rows=50000 fetched=2000 cap=2000 samples=34.805898ms,32.479017ms,32.128376ms,33.008163ms,33.837276ms median=33.008163ms max=34.805898ms path=tenant-window
+2026/11/12 04:31:58 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_and:
-Limit  (cost=1968.67..1968.67 rows=1 width=138) (actual time=5.122..5.124 rows=1 loops=1)
+Limit  (cost=1968.67..1968.67 rows=1 width=137) (actual time=8.761..8.763 rows=1 loops=1)
   Buffers: shared hit=456
-  ->  Sort  (cost=1968.67..1968.67 rows=1 width=138) (actual time=5.121..5.122 rows=1 loops=1)
+  ->  Sort  (cost=1968.67..1968.67 rows=1 width=137) (actual time=8.760..8.762 rows=1 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 25kB
         Buffers: shared hit=456
-        ->  Nested Loop  (cost=1956.60..1968.66 rows=1 width=138) (actual time=5.118..5.119 rows=1 loops=1)
+        ->  Nested Loop  (cost=1956.60..1968.66 rows=1 width=137) (actual time=8.753..8.755 rows=1 loops=1)
               Join Filter: (m.session_id = sess.id)
               Buffers: shared hit=456
-              ->  Bitmap Heap Scan on memories m  (cost=1956.46..1960.48 rows=1 width=138) (actual time=5.111..5.112 rows=1 loops=1)
+              ->  Bitmap Heap Scan on memories m  (cost=1956.46..1960.48 rows=1 width=137) (actual time=8.740..8.741 rows=1 loops=1)
                     Recheck Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
-                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-464bec7717094762'::text) AND (tenant_id = 'default'::text))
+                    Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-4fb9a388bb1496d6'::text) AND (tenant_id = 'default'::text))
                     Heap Blocks: exact=1
                     Buffers: shared hit=454
-                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1956.45 rows=1 width=0) (actual time=5.105..5.105 rows=1 loops=1)
+                    ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1956.45 rows=1 width=0) (actual time=8.730..8.731 rows=1 loops=1)
                           Index Cond: (body_tsv @@ '''mã'' & ''ma'' & ''walnut'' & ''77'' & ''làm'' & ''bằng'' & ''gỗ'' & ''gì'''::tsquery)
                           Buffers: shared hit=453
-              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=1)
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.009..0.009 rows=1 loops=1)
                     Index Cond: (tenant_id = 'default'::text)
-                    Filter: (agent_id = '20261112-f0dc958c764b876d'::text)
+                    Filter: (agent_id = '20261112-243e0da05a857918'::text)
                     Buffers: shared hit=2
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.134 ms
-Execution Time: 5.139 ms
+Planning Time: 0.198 ms
+Execution Time: 8.788 ms
 
 SPEC154 explain_or_probe budget=3998 limit=1999:
-Limit  (cost=0.44..536.74 rows=1 width=138) (actual time=1.582..1.583 rows=0 loops=1)
+Limit  (cost=0.44..536.78 rows=1 width=137) (actual time=1.574..1.575 rows=0 loops=1)
   Buffers: shared hit=174
-  ->  Nested Loop  (cost=0.44..536.74 rows=1 width=138) (actual time=1.582..1.583 rows=0 loops=1)
+  ->  Nested Loop  (cost=0.44..536.78 rows=1 width=137) (actual time=1.574..1.574 rows=0 loops=1)
         Join Filter: (sess.id = m.session_id)
         Buffers: shared hit=174
-        ->  Subquery Scan on m  (cost=0.29..523.60 rows=331 width=138) (actual time=1.581..1.582 rows=0 loops=1)
-              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-464bec7717094762'::text))
+        ->  Subquery Scan on m  (cost=0.29..523.60 rows=334 width=137) (actual time=1.573..1.574 rows=0 loops=1)
+              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-4fb9a388bb1496d6'::text))
               Rows Removed by Filter: 3998
               Buffers: shared hit=174
-              ->  Limit  (cost=0.29..453.64 rows=3998 width=291) (actual time=0.011..0.566 rows=3998 loops=1)
+              ->  Limit  (cost=0.29..453.64 rows=3998 width=290) (actual time=0.015..0.597 rows=3998 loops=1)
                     Buffers: shared hit=174
-                    ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..5669.98 rows=50000 width=291) (actual time=0.011..0.337 rows=3998 loops=1)
+                    ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.29..5669.98 rows=50000 width=290) (actual time=0.015..0.366 rows=3998 loops=1)
                           Index Cond: (tenant_id = 'default'::text)
                           Buffers: shared hit=174
         ->  Materialize  (cost=0.15..8.17 rows=1 width=32) (never executed)
               ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (never executed)
                     Index Cond: (tenant_id = 'default'::text)
-                    Filter: (agent_id = '20261112-f0dc958c764b876d'::text)
-Planning Time: 0.123 ms
-Execution Time: 1.596 ms
+                    Filter: (agent_id = '20261112-243e0da05a857918'::text)
+Planning Time: 0.144 ms
+Execution Time: 1.590 ms
 
 SPEC154 or_probe_rows=0 limit=1999
 SPEC154 explain_or_bitmap limit=1999:
-Limit  (cost=8237.94..8237.94 rows=1 width=224) (actual time=8.879..9.138 rows=1999 loops=1)
+Limit  (cost=8273.56..8273.57 rows=1 width=224) (actual time=9.258..9.448 rows=1999 loops=1)
   Buffers: shared hit=2457
   CTE hits
-    ->  Hash Join  (cost=1992.47..8197.73 rows=15 width=138) (actual time=5.344..6.912 rows=2501 loops=1)
+    ->  Hash Join  (cost=1992.65..8233.35 rows=15 width=137) (actual time=5.463..7.244 rows=2501 loops=1)
           Hash Cond: (memories.session_id = sessions.id)
           Buffers: shared hit=2455
-          ->  Bitmap Heap Scan on memories  (cost=1982.30..8161.68 rows=4138 width=138) (actual time=5.328..6.535 rows=2501 loops=1)
+          ->  Bitmap Heap Scan on memories  (cost=1982.49..8197.22 rows=4173 width=137) (actual time=5.447..6.887 rows=2501 loops=1)
                 Recheck Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
-                Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-464bec7717094762'::text) AND (tenant_id = 'default'::text))
+                Filter: ((kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-4fb9a388bb1496d6'::text) AND (tenant_id = 'default'::text))
                 Heap Blocks: exact=2000
                 Buffers: shared hit=2453
-                ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1981.27 rows=4138 width=0) (actual time=5.142..5.142 rows=2501 loops=1)
+                ->  Bitmap Index Scan on idx_memories_body_tsv  (cost=0.00..1981.45 rows=4173 width=0) (actual time=5.258..5.258 rows=2501 loops=1)
                       Index Cond: (body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery)
                       Buffers: shared hit=453
-          ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.011..0.012 rows=3 loops=1)
+          ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.010..0.011 rows=3 loops=1)
                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
                 Buffers: shared hit=2
                 ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.007..0.008 rows=3 loops=1)
                       Recheck Cond: (tenant_id = 'default'::text)
-                      Filter: (agent_id = '20261112-f0dc958c764b876d'::text)
+                      Filter: (agent_id = '20261112-243e0da05a857918'::text)
                       Heap Blocks: exact=1
                       Buffers: shared hit=2
                       ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.004..0.004 rows=3 loops=1)
                             Index Cond: (tenant_id = 'default'::text)
                             Buffers: shared hit=1
-  ->  Sort  (cost=40.21..40.22 rows=1 width=224) (actual time=8.878..8.977 rows=1999 loops=1)
+  ->  Sort  (cost=40.21..40.22 rows=1 width=224) (actual time=9.257..9.331 rows=1999 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 741kB
         Buffers: shared hit=2457
-        ->  Hash Join  (cost=10.16..40.20 rows=1 width=224) (actual time=5.357..8.308 rows=2501 loops=1)
+        ->  Hash Join  (cost=10.16..40.20 rows=1 width=224) (actual time=5.475..8.680 rows=2501 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=2457
-              ->  CTE Scan on hits m  (cost=0.00..30.00 rows=15 width=224) (actual time=5.345..7.899 rows=2501 loops=1)
+              ->  CTE Scan on hits m  (cost=0.00..30.00 rows=15 width=224) (actual time=5.465..8.296 rows=2501 loops=1)
                     Buffers: shared hit=2455
-              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.007..0.008 rows=3 loops=1)
+              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.006..0.007 rows=3 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
-                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.005..0.006 rows=3 loops=1)
+                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.004..0.005 rows=3 loops=1)
                           Recheck Cond: (tenant_id = 'default'::text)
-                          Filter: (agent_id = '20261112-f0dc958c764b876d'::text)
+                          Filter: (agent_id = '20261112-243e0da05a857918'::text)
                           Heap Blocks: exact=1
                           Buffers: shared hit=2
-                          ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.003..0.003 rows=3 loops=1)
+                          ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.002..0.003 rows=3 loops=1)
                                 Index Cond: (tenant_id = 'default'::text)
                                 Buffers: shared hit=1
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.174 ms
-Execution Time: 9.283 ms
+Planning Time: 0.155 ms
+Execution Time: 9.557 ms
 
 SPEC154 step2_path=bitmap idx_memories_body_tsv
-SPEC154 five_percent rows=50000 or_hits=2501 fetched=2000 cap=2000 samples=52.490387ms,52.477952ms,51.548264ms,52.363803ms,53.657734ms median=52.477952ms max=53.657734ms path=bitmap-and
---- FAIL: TestPostgresRecall50kFivePercentWithinCap (1.94s)
-    postgres_tsvector_test.go:638: 5% recall max 53.657734ms is not under 50ms (median 52.477952ms)
-2026/11/12 04:26:40 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 five_percent rows=50000 or_hits=2501 fetched=2000 cap=2000 samples=39.603919ms,57.153934ms,43.861569ms,43.363348ms,55.168835ms median=43.861569ms max=57.153934ms path=bitmap-and
+--- FAIL: TestPostgresRecall50kFivePercentWithinCap (2.13s)
+    postgres_tsvector_test.go:638: 5% recall max 57.153934ms is not under 50ms (median 43.861569ms)
+2026/11/12 04:32:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_or_probe budget=4000 limit=2000:
-Limit  (cost=1415.67..1415.70 rows=12 width=122) (actual time=1.639..1.641 rows=0 loops=1)
+Limit  (cost=1416.26..1416.29 rows=12 width=122) (actual time=2.052..2.053 rows=0 loops=1)
   Buffers: shared hit=167
-  ->  Sort  (cost=1415.67..1415.70 rows=12 width=122) (actual time=1.639..1.640 rows=0 loops=1)
+  ->  Sort  (cost=1416.26..1416.29 rows=12 width=122) (actual time=2.051..2.053 rows=0 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 25kB
         Buffers: shared hit=167
-        ->  Hash Join  (cost=8.60..1415.46 rows=12 width=122) (actual time=1.637..1.638 rows=0 loops=1)
+        ->  Hash Join  (cost=8.60..1416.05 rows=12 width=122) (actual time=2.048..2.049 rows=0 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=167
-              ->  Subquery Scan on m  (cost=0.42..1398.66 rows=3231 width=122) (actual time=1.636..1.637 rows=0 loops=1)
-                    Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-6ca7d175d83423cd'::text))
+              ->  Subquery Scan on m  (cost=0.42..1399.25 rows=3232 width=122) (actual time=2.047..2.048 rows=0 loops=1)
+                    Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-1684ad33f3059e72'::text))
                     Rows Removed by Filter: 4000
                     Buffers: shared hit=167
-                    ->  Limit  (cost=0.42..1328.66 rows=4000 width=235) (actual time=0.010..0.589 rows=4000 loops=1)
+                    ->  Limit  (cost=0.42..1329.25 rows=4000 width=235) (actual time=0.017..0.750 rows=4000 loops=1)
                           Buffers: shared hit=167
-                          ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.42..16523.12 rows=49758 width=235) (actual time=0.010..0.351 rows=4000 loops=1)
+                          ->  Index Scan using idx_memories_tenant_created on memories  (cost=0.42..16522.12 rows=49733 width=235) (actual time=0.017..0.459 rows=4000 loops=1)
                                 Index Cond: (tenant_id = 'tenant-a'::text)
                                 Buffers: shared hit=167
               ->  Hash  (cost=8.17..8.17 rows=1 width=32) (never executed)
                     ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (never executed)
                           Index Cond: (tenant_id = 'tenant-a'::text)
-                          Filter: (agent_id = '20261112-b687ea8a1de90f68'::text)
-Planning Time: 0.105 ms
-Execution Time: 1.655 ms
+                          Filter: (agent_id = '20261112-197a87938e573b87'::text)
+Planning Time: 0.139 ms
+Execution Time: 2.074 ms
 
 SPEC154 or_probe_rows=0 limit=2000
 SPEC154 explain_or_bitmap limit=2000:
-Limit  (cost=28265.05..28265.05 rows=1 width=224) (actual time=16.779..16.783 rows=1 loops=1)
+Limit  (cost=28256.58..28256.58 rows=1 width=224) (actual time=17.354..17.358 rows=1 loops=1)
   Buffers: shared hit=2200
   CTE hits
-    ->  Nested Loop  (cost=1101.36..27965.50 rows=144 width=122) (actual time=1.742..16.766 rows=1 loops=1)
+    ->  Nested Loop  (cost=1101.17..27957.03 rows=144 width=122) (actual time=1.601..17.339 rows=1 loops=1)
           Buffers: shared hit=2198
-          ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.006..0.007 rows=2 loops=1)
+          ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.007..0.009 rows=2 loops=1)
                 Recheck Cond: (tenant_id = 'tenant-a'::text)
-                Filter: (agent_id = '20261112-b687ea8a1de90f68'::text)
+                Filter: (agent_id = '20261112-197a87938e573b87'::text)
                 Heap Blocks: exact=1
                 Buffers: shared hit=2
-                ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.003..0.003 rows=2 loops=1)
+                ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.004..0.004 rows=2 loops=1)
                       Index Cond: (tenant_id = 'tenant-a'::text)
                       Buffers: shared hit=1
-          ->  Bitmap Heap Scan on memories  (cost=1097.21..19917.33 rows=8039 width=122) (actual time=1.234..8.377 rows=0 loops=2)
+          ->  Bitmap Heap Scan on memories  (cost=1097.02..19911.87 rows=8036 width=122) (actual time=1.198..8.662 rows=0 loops=2)
                 Recheck Cond: ((tenant_id = 'tenant-a'::text) AND (session_id = sessions.id))
-                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-6ca7d175d83423cd'::text))
+                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-1684ad33f3059e72'::text))
                 Rows Removed by Filter: 25000
                 Heap Blocks: exact=2067
                 Buffers: shared hit=2196
-                ->  BitmapAnd  (cost=1097.21..1097.21 rows=9952 width=0) (actual time=1.136..1.136 rows=0 loops=2)
+                ->  BitmapAnd  (cost=1097.02..1097.02 rows=9947 width=0) (actual time=1.100..1.100 rows=0 loops=2)
                       Buffers: shared hit=129
-                      ->  Bitmap Index Scan on idx_memories_customer  (cost=0.00..537.48 rows=49758 width=0) (actual time=0.709..0.709 rows=50000 loops=2)
+                      ->  Bitmap Index Scan on idx_memories_customer  (cost=0.00..537.29 rows=49733 width=0) (actual time=0.714..0.714 rows=50000 loops=2)
                             Index Cond: (tenant_id = 'tenant-a'::text)
                             Buffers: shared hit=82
-                      ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..547.42 rows=50000 width=0) (actual time=0.384..0.384 rows=25000 loops=2)
+                      ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..547.42 rows=50000 width=0) (actual time=0.343..0.344 rows=25000 loops=2)
                             Index Cond: (session_id = sessions.id)
                             Buffers: shared hit=47
-  ->  Sort  (cost=299.55..299.56 rows=1 width=224) (actual time=16.779..16.781 rows=1 loops=1)
+  ->  Sort  (cost=299.55..299.56 rows=1 width=224) (actual time=17.353..17.355 rows=1 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 25kB
         Buffers: shared hit=2200
-        ->  Hash Join  (cost=10.16..299.54 rows=1 width=224) (actual time=1.752..16.778 rows=1 loops=1)
+        ->  Hash Join  (cost=10.16..299.54 rows=1 width=224) (actual time=1.611..17.351 rows=1 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=2200
-              ->  CTE Scan on hits m  (cost=0.00..288.00 rows=144 width=224) (actual time=1.744..16.767 rows=1 loops=1)
+              ->  CTE Scan on hits m  (cost=0.00..288.00 rows=144 width=224) (actual time=1.603..17.340 rows=1 loops=1)
                     Buffers: shared hit=2198
-              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.004..0.005 rows=2 loops=1)
+              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.005..0.006 rows=2 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
                     ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.002..0.003 rows=2 loops=1)
                           Recheck Cond: (tenant_id = 'tenant-a'::text)
-                          Filter: (agent_id = '20261112-b687ea8a1de90f68'::text)
+                          Filter: (agent_id = '20261112-197a87938e573b87'::text)
                           Heap Blocks: exact=1
                           Buffers: shared hit=2
                           ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.001..0.001 rows=2 loops=1)
@@ -358,102 +356,102 @@ Limit  (cost=28265.05..28265.05 rows=1 width=224) (actual time=16.779..16.783 ro
                                 Buffers: shared hit=1
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.149 ms
-Execution Time: 16.805 ms
+Planning Time: 0.163 ms
+Execution Time: 17.381 ms
 
 SPEC154 step2_path=bitmap idx_memories_body_tsv
-SPEC154 other_tenants rows=250000 global_or=200001 fetched=1 samples=25.598105ms,25.793098ms,24.42287ms,23.838941ms,26.456825ms median=25.598105ms max=26.456825ms path=bitmap-and
-2026/11/12 04:26:47 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_tenants rows=250000 global_or=200001 fetched=1 samples=25.899377ms,24.809447ms,24.027616ms,24.226902ms,26.721035ms median=24.809447ms max=26.721035ms path=bitmap-and
+2026/11/12 04:32:07 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_customer:
-Limit  (cost=20.09..20.09 rows=1 width=139) (actual time=0.032..0.033 rows=5 loops=1)
+Limit  (cost=27.25..27.25 rows=1 width=139) (actual time=0.016..0.017 rows=5 loops=1)
   Buffers: shared hit=8
-  ->  Sort  (cost=20.09..20.09 rows=1 width=139) (actual time=0.032..0.032 rows=5 loops=1)
+  ->  Sort  (cost=27.25..27.25 rows=1 width=139) (actual time=0.015..0.016 rows=5 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 26kB
         Buffers: shared hit=8
-        ->  Nested Loop  (cost=0.44..20.08 rows=1 width=139) (actual time=0.017..0.025 rows=5 loops=1)
+        ->  Nested Loop  (cost=0.44..27.24 rows=1 width=139) (actual time=0.006..0.012 rows=5 loops=1)
               Join Filter: (m.session_id = sess.id)
               Rows Removed by Join Filter: 5
               Buffers: shared hit=8
-              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.007..0.008 rows=2 loops=1)
+              ->  Index Scan using idx_sessions_tenant on sessions sess  (cost=0.15..8.17 rows=1 width=32) (actual time=0.002..0.003 rows=2 loops=1)
                     Index Cond: (tenant_id = 'tenant-a'::text)
-                    Filter: (agent_id = '20261112-b18ec5b8bea9147c'::text)
+                    Filter: (agent_id = '20261112-a41db8c2730ce43e'::text)
                     Buffers: shared hit=2
-              ->  Index Scan using idx_memories_customer on memories m  (cost=0.29..11.87 rows=3 width=139) (actual time=0.006..0.007 rows=5 loops=2)
+              ->  Index Scan using idx_memories_customer on memories m  (cost=0.29..18.98 rows=7 width=139) (actual time=0.002..0.003 rows=5 loops=2)
                     Index Cond: ((tenant_id = 'tenant-a'::text) AND (customer_key = 'zalo-personal:cust-a'::text))
-                    Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-2470ad098922af58'::text))
+                    Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-80f09ccfddfb9d56'::text))
                     Buffers: shared hit=6
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.157 ms
-Execution Time: 0.046 ms
+Planning Time: 0.090 ms
+Execution Time: 0.027 ms
 
-SPEC154 customer_few fetched=5 samples=2.599702ms,2.480915ms,2.260629ms,2.301869ms,2.451603ms median=2.451603ms max=2.599702ms path=customer-index
-2026/11/12 04:26:49 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 customer_few fetched=5 samples=1.67096ms,1.416387ms,1.025763ms,897.84µs,1.192865ms median=1.192865ms max=1.67096ms path=customer-index
+2026/11/12 04:32:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_agent:
-Limit  (cost=3988.18..3988.63 rows=179 width=120) (actual time=0.034..0.037 rows=16 loops=1)
+Limit  (cost=3985.73..3986.18 rows=179 width=120) (actual time=0.032..0.034 rows=16 loops=1)
   Buffers: shared hit=7
-  ->  Sort  (cost=3988.18..3988.63 rows=179 width=120) (actual time=0.034..0.035 rows=16 loops=1)
+  ->  Sort  (cost=3985.73..3986.18 rows=179 width=120) (actual time=0.031..0.032 rows=16 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: quicksort  Memory: 29kB
         Buffers: shared hit=7
-        ->  Subquery Scan on m  (cost=0.44..3981.48 rows=179 width=120) (actual time=0.014..0.025 rows=16 loops=1)
-              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-98265f47fd65ed36'::text) AND (m.tenant_id = 'tenant-a'::text))
+        ->  Subquery Scan on m  (cost=0.44..3979.03 rows=179 width=120) (actual time=0.013..0.023 rows=16 loops=1)
+              Filter: ((m.body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (m.kind = ANY ('{episodic,durable}'::text[])) AND (m.session_id <> '20261112-1cbb352819f2ff3d'::text) AND (m.tenant_id = 'tenant-a'::text))
               Buffers: shared hit=7
-              ->  Nested Loop  (cost=0.44..3977.90 rows=179 width=223) (actual time=0.012..0.019 rows=16 loops=1)
+              ->  Nested Loop  (cost=0.44..3975.45 rows=179 width=223) (actual time=0.010..0.017 rows=16 loops=1)
                     Buffers: shared hit=7
-                    ->  Index Scan using idx_sessions_tenant on sessions  (cost=0.15..8.17 rows=1 width=32) (actual time=0.007..0.008 rows=2 loops=1)
+                    ->  Index Scan using idx_sessions_tenant on sessions  (cost=0.15..8.17 rows=1 width=32) (actual time=0.006..0.007 rows=2 loops=1)
                           Index Cond: (tenant_id = 'tenant-a'::text)
-                          Filter: (agent_id = '20261112-815ff586d652bc8b'::text)
+                          Filter: (agent_id = '20261112-950557bbd7e00636'::text)
                           Rows Removed by Filter: 1
                           Buffers: shared hit=2
-                    ->  Index Scan using idx_memories_session on memories  (cost=0.29..3719.76 rows=24998 width=223) (actual time=0.003..0.004 rows=8 loops=2)
+                    ->  Index Scan using idx_memories_session on memories  (cost=0.29..3717.30 rows=24998 width=223) (actual time=0.003..0.003 rows=8 loops=2)
                           Index Cond: (session_id = sessions.id)
                           Buffers: shared hit=5
-Planning Time: 0.121 ms
-Execution Time: 0.050 ms
+Planning Time: 0.116 ms
+Execution Time: 0.046 ms
 
-SPEC154 other_agent fetched=16 samples=10.862554ms,10.981574ms,10.320217ms,10.599751ms,10.972934ms median=10.862554ms max=10.981574ms path=agent-nested-loop
-2026/11/12 04:26:50 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:50 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 other_agent fetched=16 samples=11.563326ms,11.955853ms,11.387644ms,11.474705ms,11.214966ms median=11.474705ms max=11.955853ms path=agent-nested-loop
+2026/11/12 04:32:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_agent_swamp:
-Limit  (cost=52536.34..52536.35 rows=1 width=224) (actual time=5.446..5.628 rows=2000 loops=1)
+Limit  (cost=52536.34..52536.35 rows=1 width=224) (actual time=5.267..5.452 rows=2000 loops=1)
   Buffers: shared hit=168
   CTE hits
-    ->  Nested Loop  (cost=286.20..52166.70 rows=179 width=118) (actual time=0.088..1.812 rows=5000 loops=1)
+    ->  Nested Loop  (cost=286.20..52166.70 rows=179 width=118) (actual time=0.088..1.801 rows=5000 loops=1)
           Buffers: shared hit=166
-          ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.008..0.010 rows=2 loops=1)
+          ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.010..0.011 rows=2 loops=1)
                 Recheck Cond: (tenant_id = 'tenant-a'::text)
-                Filter: (agent_id = '20261112-0660ac729ce6c361'::text)
+                Filter: (agent_id = '20261112-ddc2298a40d9a0c9'::text)
                 Rows Removed by Filter: 1
                 Heap Blocks: exact=1
                 Buffers: shared hit=2
                 ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.005..0.005 rows=3 loops=1)
                       Index Cond: (tenant_id = 'tenant-a'::text)
                       Buffers: shared hit=1
-          ->  Bitmap Heap Scan on memories  (cost=282.04..27157.54 rows=25000 width=118) (actual time=0.042..0.704 rows=2500 loops=2)
+          ->  Bitmap Heap Scan on memories  (cost=282.04..27157.54 rows=25000 width=118) (actual time=0.041..0.703 rows=2500 loops=2)
                 Recheck Cond: (session_id = sessions.id)
-                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-09896099ab608fb2'::text) AND (tenant_id = 'tenant-a'::text))
+                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-20a0bb1fd58db492'::text) AND (tenant_id = 'tenant-a'::text))
                 Heap Blocks: exact=157
                 Buffers: shared hit=164
-                ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..275.79 rows=25000 width=0) (actual time=0.032..0.032 rows=2500 loops=2)
+                ->  Bitmap Index Scan on idx_memories_session  (cost=0.00..275.79 rows=25000 width=0) (actual time=0.033..0.033 rows=2500 loops=2)
                       Index Cond: (session_id = sessions.id)
                       Buffers: shared hit=7
-  ->  Sort  (cost=369.64..369.65 rows=1 width=224) (actual time=5.446..5.512 rows=2000 loops=1)
+  ->  Sort  (cost=369.64..369.65 rows=1 width=224) (actual time=5.266..5.336 rows=2000 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: top-N heapsort  Memory: 612kB
         Buffers: shared hit=168
-        ->  Hash Join  (cost=10.16..369.63 rows=1 width=224) (actual time=0.098..4.363 rows=5000 loops=1)
+        ->  Hash Join  (cost=10.16..369.63 rows=1 width=224) (actual time=0.097..4.213 rows=5000 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=168
-              ->  CTE Scan on hits m  (cost=0.00..358.00 rows=179 width=224) (actual time=0.090..3.525 rows=5000 loops=1)
+              ->  CTE Scan on hits m  (cost=0.00..358.00 rows=179 width=224) (actual time=0.090..3.421 rows=5000 loops=1)
                     Buffers: shared hit=166
               ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.004..0.005 rows=2 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
-                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.002..0.003 rows=2 loops=1)
+                    ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.001..0.003 rows=2 loops=1)
                           Recheck Cond: (tenant_id = 'tenant-a'::text)
-                          Filter: (agent_id = '20261112-0660ac729ce6c361'::text)
+                          Filter: (agent_id = '20261112-ddc2298a40d9a0c9'::text)
                           Rows Removed by Filter: 1
                           Heap Blocks: exact=1
                           Buffers: shared hit=2
@@ -463,53 +461,51 @@ Limit  (cost=52536.34..52536.35 rows=1 width=224) (actual time=5.446..5.628 rows
 Planning:
   Buffers: shared hit=1
 Planning Time: 0.189 ms
-Execution Time: 5.749 ms
+Execution Time: 5.571 ms
 
-SPEC154 agent_swamp fetched=2000 samples=39.133005ms,37.839727ms,38.430824ms,36.498369ms,50.543198ms median=38.430824ms max=50.543198ms path=bitmap-and
---- FAIL: TestPostgresRecall50kAgentBitmapSwamp (1.74s)
-    postgres_tsvector_test.go:1032: agent swamp recall max 50.543198ms is not under 50ms (median 38.430824ms)
-2026/11/12 04:26:52 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+SPEC154 agent_swamp fetched=2000 samples=36.247095ms,37.911064ms,37.281273ms,38.015142ms,49.981935ms median=37.911064ms max=49.981935ms path=bitmap-and
+2026/11/12 04:32:13 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_customer_swamp:
-Limit  (cost=8607.07..8607.07 rows=1 width=224) (actual time=5.976..6.163 rows=2000 loops=1)
+Limit  (cost=8632.31..8632.32 rows=1 width=224) (actual time=5.638..5.822 rows=2000 loops=1)
   Buffers: shared hit=182
   CTE hits
-    ->  Hash Join  (cost=97.11..8560.85 rows=18 width=137) (actual time=0.108..2.203 rows=5000 loops=1)
+    ->  Hash Join  (cost=97.37..8586.09 rows=18 width=137) (actual time=0.087..2.028 rows=5000 loops=1)
           Hash Cond: (memories.session_id = sessions.id)
           Buffers: shared hit=180
-          ->  Bitmap Heap Scan on memories  (cost=86.95..8519.69 rows=4942 width=137) (actual time=0.085..1.453 rows=5000 loops=1)
+          ->  Bitmap Heap Scan on memories  (cost=87.21..8544.87 rows=4968 width=137) (actual time=0.071..1.356 rows=5000 loops=1)
                 Recheck Cond: ((tenant_id = 'tenant-a'::text) AND (customer_key = 'zalo-personal:cust-a'::text))
-                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-d364564e042795b3'::text))
+                Filter: ((body_tsv @@ '''mã'' | ''ma'' | ''walnut'' | ''77'' | ''làm'' | ''bằng'' | ''gỗ'' | ''gì'''::tsquery) AND (kind = ANY ('{episodic,durable}'::text[])) AND (session_id <> '20261112-1a794ef153a6df82'::text))
                 Heap Blocks: exact=173
                 Buffers: shared hit=178
-                ->  Bitmap Index Scan on idx_memories_customer  (cost=0.00..85.71 rows=4942 width=0) (actual time=0.069..0.069 rows=5000 loops=1)
+                ->  Bitmap Index Scan on idx_memories_customer  (cost=0.00..85.97 rows=4968 width=0) (actual time=0.057..0.057 rows=5000 loops=1)
                       Index Cond: ((tenant_id = 'tenant-a'::text) AND (customer_key = 'zalo-personal:cust-a'::text))
                       Buffers: shared hit=5
-          ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.013..0.014 rows=2 loops=1)
+          ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.012..0.013 rows=2 loops=1)
                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
                 Buffers: shared hit=2
-                ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.010..0.011 rows=2 loops=1)
+                ->  Bitmap Heap Scan on sessions  (cost=4.16..9.16 rows=1 width=32) (actual time=0.009..0.010 rows=2 loops=1)
                       Recheck Cond: (tenant_id = 'tenant-a'::text)
-                      Filter: (agent_id = '20261112-87db47f88e51302c'::text)
+                      Filter: (agent_id = '20261112-8a464932749e944c'::text)
                       Heap Blocks: exact=1
                       Buffers: shared hit=2
-                      ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.006..0.006 rows=2 loops=1)
+                      ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.005..0.005 rows=2 loops=1)
                             Index Cond: (tenant_id = 'tenant-a'::text)
                             Buffers: shared hit=1
-  ->  Sort  (cost=46.22..46.23 rows=1 width=224) (actual time=5.975..6.046 rows=2000 loops=1)
+  ->  Sort  (cost=46.22..46.23 rows=1 width=224) (actual time=5.638..5.705 rows=2000 loops=1)
         Sort Key: m.created_at DESC
         Sort Method: top-N heapsort  Memory: 612kB
         Buffers: shared hit=182
-        ->  Hash Join  (cost=10.16..46.21 rows=1 width=224) (actual time=0.115..4.811 rows=5000 loops=1)
+        ->  Hash Join  (cost=10.16..46.21 rows=1 width=224) (actual time=0.092..4.549 rows=5000 loops=1)
               Hash Cond: (m.session_id = sess.id)
               Buffers: shared hit=182
-              ->  CTE Scan on hits m  (cost=0.00..36.00 rows=18 width=224) (actual time=0.110..4.018 rows=5000 loops=1)
+              ->  CTE Scan on hits m  (cost=0.00..36.00 rows=18 width=224) (actual time=0.088..3.782 rows=5000 loops=1)
                     Buffers: shared hit=180
-              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.003..0.004 rows=2 loops=1)
+              ->  Hash  (cost=9.16..9.16 rows=1 width=32) (actual time=0.002..0.003 rows=2 loops=1)
                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
                     Buffers: shared hit=2
                     ->  Bitmap Heap Scan on sessions sess  (cost=4.16..9.16 rows=1 width=32) (actual time=0.001..0.002 rows=2 loops=1)
                           Recheck Cond: (tenant_id = 'tenant-a'::text)
-                          Filter: (agent_id = '20261112-87db47f88e51302c'::text)
+                          Filter: (agent_id = '20261112-8a464932749e944c'::text)
                           Heap Blocks: exact=1
                           Buffers: shared hit=2
                           ->  Bitmap Index Scan on idx_sessions_tenant  (cost=0.00..4.16 rows=1 width=0) (actual time=0.001..0.001 rows=2 loops=1)
@@ -517,50 +513,50 @@ Limit  (cost=8607.07..8607.07 rows=1 width=224) (actual time=5.976..6.163 rows=2
                                 Buffers: shared hit=1
 Planning:
   Buffers: shared hit=1
-Planning Time: 0.236 ms
-Execution Time: 6.297 ms
+Planning Time: 0.178 ms
+Execution Time: 5.939 ms
 
-SPEC154 customer_swamp fetched=2000 samples=39.693358ms,42.551912ms,38.076141ms,39.418323ms,61.765616ms median=39.693358ms max=61.765616ms path=bitmap-and
+SPEC154 customer_swamp fetched=2000 samples=35.347074ms,33.79055ms,35.010767ms,33.401527ms,51.86221ms median=35.010767ms max=51.86221ms path=bitmap-and
 --- FAIL: TestPostgresRecall50kCustomerBitmapSwamp (2.32s)
-    postgres_tsvector_test.go:1089: customer swamp recall max 61.765616ms is not under 50ms (median 39.693358ms)
-2026/11/12 04:26:55 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:56 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:56 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:26:58 goso contacts: bulk upsert count=1
-2026/11/12 04:26:58 goso contacts: bulk upsert count=1
-2026/11/12 04:26:59 goso contacts: bulk upsert count=205
-2026/11/12 04:26:59 goso contacts: bulk upsert count=2
-2026/11/12 04:27:00 goso contacts: bulk upsert count=205
-2026/11/12 04:27:00 goso contacts: bulk upsert count=2
-2026/11/12 04:27:00 goso contacts: bulk upsert count=1
-2026/11/12 04:27:00 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:00 goso contacts: bulk upsert count=3
-2026/11/12 04:27:00 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:00 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:01 goso contacts: bulk upsert count=1
-2026/11/12 04:27:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:01 goso contacts: bulk upsert count=205
-2026/11/12 04:27:01 goso contacts: bulk upsert count=2
-2026/11/12 04:27:01 goso contacts: bulk upsert count=205
-2026/11/12 04:27:01 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:01 goso contacts: bulk upsert count=2
-2026/11/12 04:27:01 goso contacts: bulk upsert count=1
-2026/11/12 04:27:08 goso contacts: bulk upsert count=1
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:09 goso contacts: bulk upsert count=1
-2026/11/12 04:27:09 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:10 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:10 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
-2026/11/12 04:27:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+    postgres_tsvector_test.go:1089: customer swamp recall max 51.86221ms is not under 50ms (median 35.010767ms)
+2026/11/12 04:32:15 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:17 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:17 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:19 goso contacts: bulk upsert count=1
+2026/11/12 04:32:19 goso contacts: bulk upsert count=1
+2026/11/12 04:32:20 goso contacts: bulk upsert count=205
+2026/11/12 04:32:20 goso contacts: bulk upsert count=2
+2026/11/12 04:32:21 goso contacts: bulk upsert count=205
+2026/11/12 04:32:21 goso contacts: bulk upsert count=2
+2026/11/12 04:32:21 goso contacts: bulk upsert count=1
+2026/11/12 04:32:21 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:21 goso contacts: bulk upsert count=3
+2026/11/12 04:32:21 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:21 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:22 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:22 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:22 goso contacts: bulk upsert count=1
+2026/11/12 04:32:22 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:22 goso contacts: bulk upsert count=205
+2026/11/12 04:32:22 goso contacts: bulk upsert count=2
+2026/11/12 04:32:22 goso contacts: bulk upsert count=205
+2026/11/12 04:32:22 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:22 goso contacts: bulk upsert count=2
+2026/11/12 04:32:22 goso contacts: bulk upsert count=1
+2026/11/12 04:32:29 goso contacts: bulk upsert count=1
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:30 goso contacts: bulk upsert count=1
+2026/11/12 04:32:30 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:31 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:31 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:32 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+2026/11/12 04:32:33 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 FAIL
-FAIL	github.com/mqglobal/goso/gateway/internal/store	51.935s
+FAIL	github.com/mqglobal/goso/gateway/internal/store	53.484s
 FAIL
 EXIT:1

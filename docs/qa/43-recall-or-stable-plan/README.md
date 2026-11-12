@@ -25,7 +25,7 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 
 The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all four plans and checks every returned row (tenant, customer when scoped, agent, kind, excluded session) against poison rows in another tenant, another customer, another agent, and the excluded session.
 
-`go test -race ./gateway/internal/store/` is in [go-test-race.txt](go-test-race.txt). It reports no data race. Three timing checks go over 50 ms under the detector (5% max 53.657734 ms, agent swamp max 50.543198 ms, customer swamp max 61.765616 ms). The same checks without the detector are the medians and maxes in the table.
+`go test -race ./gateway/internal/store/` is in [go-test-race.txt](go-test-race.txt). It reports no data race. The detector slows the process, so two wall-clock checks go over 50 ms there (5% max 57.153934 ms, customer swamp max 51.86221 ms). The same checks without the detector are the medians and maxes in the table.
 
 ## Selective (near 0)
 
@@ -96,4 +96,6 @@ One customer has 5,000 older matches. Other customers have 45,000 newer matches.
 
 `Bitmap Index Scan on idx_memories_customer`, index condition `tenant_id` and `customer_key`, 5,000 rows, execution 5.690 ms.
 
-Samples: 18.472576 ms, 17.839675 ms, 17.942906 ms, 17.992692 ms, 36.257238 ms. Median **17.992692 ms**. Max **36.257238 ms**.
+A large customer does not scan the newer rows of other customers first. The CTE uses the customer index.
+
+Samples: 15.885799 ms, 15.687607 ms, 15.284735 ms, 15.866209 ms, 32.725125 ms. Median **15.866209 ms**. Max **32.725125 ms**.

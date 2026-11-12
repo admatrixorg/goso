@@ -236,6 +236,29 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 		return nil, 0, "", nil
 	}
 	budget := orRecallProbeBudget(lim)
+	// Customer scope is decided before the tenant window. A small customer is
+	// the whole answer. A large one must not scan newer rows that belong to
+	// other customers; the bitmap CTE already filters customer_key.
+	if q.CustomerScoped {
+		nCust, err := s.recallORCount(recallORCustomerCountSQL(), tenant, q.CustomerKey, KindEpisodic, KindDurable, budget)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		if nCust < budget {
+			query, args := recallTSVORCustomerQuery(q, tenant, agent, match, lim)
+			hits, n, err := s.execRecallTSV(toks, query, args, recallORStableGUCs)
+			if err != nil {
+				return nil, n, "", err
+			}
+			return hits, n, recallPathCustomerIndex, nil
+		}
+		bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
+		hits, n, err := s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+		if err != nil {
+			return nil, n, "", err
+		}
+		return hits, n, recallPathBitmapAnd, nil
+	}
 	probeQ, probeArgs := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
 	hits, n, err := s.execRecallTSV(toks, probeQ, probeArgs, recallORStableGUCs)
 	if err != nil {
@@ -243,20 +266,6 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 	}
 	if n >= lim {
 		return hits, n, recallPathTenantWindow, nil
-	}
-	if q.CustomerScoped {
-		nCust, err := s.recallORCount(recallORCustomerCountSQL(), tenant, q.CustomerKey, KindEpisodic, KindDurable, budget)
-		if err != nil {
-			return nil, n, "", err
-		}
-		if nCust < budget {
-			query, args := recallTSVORCustomerQuery(q, tenant, agent, match, lim)
-			hits, n, err = s.execRecallTSV(toks, query, args, recallORStableGUCs)
-			if err != nil {
-				return nil, n, "", err
-			}
-			return hits, n, recallPathCustomerIndex, nil
-		}
 	}
 	if agent != "" {
 		nAgent, err := s.recallORCountGUCs(recallORAgentGUCs, recallORAgentCountSQL(), agent, tenant, budget)
