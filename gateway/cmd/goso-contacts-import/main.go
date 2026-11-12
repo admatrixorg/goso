@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/contactsimport"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -28,8 +29,9 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goso-contacts-import", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	exportPath := fs.String("export", "", "JSON file with a contacts array")
+	exportPath := fs.String("export", "", "JSON or JSONL export of channel_contacts")
 	tenant := fs.String("tenant", "", "goso tenant_id to write (required)")
+	source := fs.String("source-tenant", "", "optional channel_contacts.tenant_id to keep; other tenants are foreign-tenant")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	apply := fs.Bool("apply", false, "write contacts; omit to dry-run")
 	dry := fs.Bool("dry-run", true, "report counts and write nothing (default)")
@@ -75,6 +77,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "tenant is invalid")
 		return 2
 	}
+	if badToken(*source) {
+		fmt.Fprintln(stderr, "source tenant is invalid")
+		return 2
+	}
 	f, err := os.Open(*exportPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "open export failed")
@@ -97,8 +103,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closeDB()
 	rep, err := contactsimport.Import(st, ex, contactsimport.Options{
-		Tenant: *tenant,
-		DryRun: dryRun,
+		Tenant:       *tenant,
+		SourceTenant: *source,
+		DryRun:       dryRun,
 	})
 	if err != nil {
 		var cfg *contactsimport.ConfigError
@@ -118,7 +125,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-const usage = "usage: goso-contacts-import --export file.json --tenant id --db path [--apply]\ndry-run is the default; --apply writes. Do not pass --apply and --dry-run together."
+const usage = "usage: goso-contacts-import --export file.json --tenant id --db path [--source-tenant id] [--apply]\ndry-run is the default; --apply writes. Do not pass --apply and --dry-run together."
+
+func badToken(s string) bool {
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
+}
 
 func openDB(path string) (contactsimport.Store, func() error, error) {
 	path = strings.TrimSpace(path)

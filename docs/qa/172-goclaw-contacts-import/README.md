@@ -2,14 +2,15 @@
 
 Offline importer for one tenant into the durable `contacts` and `contact_identifiers` tables from #33. No UI change, so prototype screenshots do not apply and `qa:tabs` was not run. No customer data and no secret values. Env vars are named, not filled in.
 
-The GoClaw `contacts` / `channel_contacts` columns are not listed in this repo or in issues #26, #28, or #29. The JSON shape below is an assumption. It is goso's contact seed. Phone, email, notes, tokens, and message text are not fields. Unknown keys are dropped and are not stored.
+The source is `public.channel_contacts`. There is no `contacts` table. goso's tables and key are unchanged.
 
 ## Command
 
 | Flag | Meaning |
 |---|---|
-| `--export` | JSON file with a `contacts` array. Required |
-| `--tenant` | goso tenant id to write. Required. The only tenant this run can write |
+| `--export` | JSON `{"channel_contacts":[...]}` or JSONL of those objects. Required |
+| `--tenant` | goso tenant id written on every kept row. Required |
+| `--source-tenant` | Optional `channel_contacts.tenant_id` to keep. Any other id is `foreign-tenant` |
 | `--db` | Local SQLite file or loopback Postgres DSN. Required. `GOSO_DATABASE_URL` is ignored |
 | `--apply` | Write new and updated rows |
 | `--dry-run` | Report counts and write nothing. This is the default |
@@ -27,140 +28,108 @@ Add `--apply` to write. A non-local Postgres host is refused. Opening `--db` sti
 
 `GOSO_CONTACTS_DURABLE` is unchanged and still defaults off. The gateway serves these rows only when that flag is on. This command does not turn it on.
 
-## Input
+## Mapping
 
-Natural key: `(tenant_id, channel, dest)`.
+Source unique key: `(tenant_id, channel_type, sender_id, COALESCE(thread_id, ''))`.
 
-```json
-{
-  "contacts": [
-    {
-      "tenant_id": "minh-an",
-      "channel": "telegram",
-      "dest": "ext-minh-an-0000",
-      "display": "Minh An 0000",
-      "kind": "user",
-      "agent_id": "minh-an-sales",
-      "seen_count": 1,
-      "first_seen": "2026-01-15T08:00:00Z",
-      "last_seen": "2026-01-15T09:00:00Z"
-    }
-  ]
-}
+goso key: `(tenant_id, channel, dest)`.
+
+```text
+channel = channel_type
+dest    = "s" + len(sender_id) + ":" + sender_id + "t" + len(thread_id) + ":" + thread_id
 ```
 
-An empty `tenant_id` belongs to `--tenant`. Any other tenant id is `foreign-tenant` and is not written. `kind` accepts `user`, `direct`, `group`, or empty. `direct` is stored as `user`. Empty uses the directory rule (a dest that starts with `-` is `group`). `seen_count` omitted, null, or `0` is stored as 1. Both timestamps are required RFC3339. Channel over 64 bytes, dest over 128, or display or agent id over 256 is invalid. An empty display is stored as `channel:dest`.
+Lengths are bytes. `ext-minh-an-0000` with an empty thread and the same sender with `thread-minh-an-0000` are two contacts. A sender that contains the characters `t0:` does not collide with another pair, because both lengths are written in front of the values. `dest` over 128 bytes is `dest-length` and is not clipped.
 
-The checked-in sample is the generator `MinhAnFile` (210 contacts: 200 telegram users, 10 zalo-oa groups). Displays are `Minh An NNNN`. Dests are `ext-minh-an-NNNN` or `grp-minh-an-NNNN`. There are no phone numbers.
+| Source column | Where it goes |
+|---|---|
+| `channel_type` | `channel` |
+| `sender_id`, `thread_id` | `dest` |
+| `display_name`, else `username` | `display` |
+| `contact_type`, `peer_kind`, `thread_type` | `kind`: `group` if any of them is `group`; otherwise `contact_type` is `user`, `direct`, or empty |
+| `first_seen_at`, `last_seen_at` | `first_seen`, `last_seen` |
+| `merged_id` | Skip. The row is not inserted. goso does not copy the merge edge. `merged_id` equal to `id` is `merged-self` |
+| `user_id` | Not stored. It is not `agent_id` |
+| `channel_instance`, `avatar_url`, `metadata` | Not stored |
 
-`new + updated + skipped + invalid` equals the number of input rows. `reasons` sums to `invalid`.
+A new row stores count 1. An update keeps the stored count and `agent_id`. The file's timestamps are written on insert and on update.
+
+One run calls `ListContacts` once and `BulkUpsertContacts` once. A 3300-row file is one batch.
+
+The sample file has 211 rows: 200 direct, 10 threads, 1 merged. The written count is 210.
+
+## Counts
+
+`new + updated + skipped + invalid` equals the number of input rows. Reason codes other than `merged` sum to `invalid`. `merged` is a skipped row.
 
 | Code | When |
 |---|---|
-| `row` | the JSON value is not a contact object |
-| `control` | a field contains a control character |
-| `tenant` | `tenant_id` is non-empty and not a tenant id |
-| `foreign-tenant` | `tenant_id` is a different tenant |
-| `empty-channel` | channel is empty |
-| `empty-dest` | dest is empty |
-| `channel-length` | channel is over 64 bytes |
-| `dest-length` | dest is over 128 bytes |
-| `display-length` | display is over 256 bytes |
-| `agent-length` | agent id is over 256 bytes |
-| `kind` | kind is not user, direct, group, or empty |
-| `count` | seen_count is negative or not an integer |
+| `row` | the value is not a contact object |
+| `control` | a kept field contains a control character |
+| `tenant` | `tenant_id` is not a tenant id, and `--source-tenant` is unset |
+| `foreign-tenant` | the row's tenant is not the one this run keeps |
+| `merged` | `merged_id` is set. Counted in `skipped` |
+| `merged-self` | `merged_id` equals `id` |
+| `empty-channel` | `channel_type` is empty |
+| `empty-sender` | `sender_id` is empty |
+| `channel-length` | `channel_type` is over 64 bytes |
+| `sender-length` | `sender_id` is over 255 bytes |
+| `thread-length` | `thread_id` is over 100 bytes |
+| `dest-length` | the encoded dest is over 128 bytes |
+| `display-length` | the display is over 256 bytes |
+| `kind` | `contact_type` is not user, direct, group, or empty |
 | `time` | a timestamp is missing or not RFC3339 |
-| `duplicate` | the same channel and dest already appeared in this file |
+| `duplicate` | the same channel, sender, and thread already appeared in this file |
 
-A matching stored row is skipped. A difference in display, kind, agent, count, or timestamps updates that contact and keeps its id. On `--apply`, stderr may also show the existing store line `goso contacts: bulk upsert count=N`. That line is a count. Dry-run does not print it.
+## Why the earlier test wrote 215 rows
+
+The fixture file had 210 contacts. `TestImportMinhAnSQLite` did not import that file alone. It appended five valid rows that existed only in the test: an empty `tenant_id`, a row whose extra JSON keys were dropped, `seen_count` 0, a dest starting with `-` and an empty kind, and an empty display. 210 + 5 = 215, which is the `bulk upsert count=215` line. The fixture on disk stayed 210. The current fixture file has 211 rows. The apply writes 210 and skips the merged row. Those edge rows are a separate test.
 
 ## Dry-run sample
 
-Command above, no `--apply`. Stderr was empty. The new SQLite file had `contacts` count 0.
+Command above, no `--apply`. Stderr was empty. The SQLite `contacts` count stayed 0.
 
 ```json
 {
   "new": 210,
   "updated": 0,
-  "skipped": 0,
+  "skipped": 1,
   "invalid": 0,
-  "dry_run": true
-}
-```
-
-`--apply` on that file:
-
-```json
-{
-  "new": 210,
-  "updated": 0,
-  "skipped": 0,
-  "invalid": 0,
-  "dry_run": false
-}
-```
-
-The same `--apply` again, contact count still 210:
-
-```json
-{
-  "new": 0,
-  "updated": 0,
-  "skipped": 210,
-  "invalid": 0,
-  "dry_run": false
-}
-```
-
-A dry-run of one kept row, one row for another tenant, and one row with an empty dest:
-
-```json
-{
-  "new": 1,
-  "updated": 0,
-  "skipped": 0,
-  "invalid": 2,
   "dry_run": true,
   "reasons": [
     {
-      "code": "empty-dest",
-      "count": 1
-    },
-    {
-      "code": "foreign-tenant",
+      "code": "merged",
       "count": 1
     }
   ]
 }
 ```
+
+The skipped row is the sample contact whose `merged_id` is set.
 
 ## Tests
 
 Postgres 16.15 local. `GOSO_TEST_POSTGRES_DSN` was set. The value is not recorded. SQLite always runs. Postgres ran.
-
-`git status --porcelain` was empty before this run. The code under test is `0911233296e4c1ce3c581e19caaca1c5c6b3afe7`. Exit 0. The commit that adds these transcripts does not change the importer.
 
 ```bash
 go test -race ./gateway/internal/contactsimport ./gateway/cmd/goso-contacts-import -count=1 -timeout 180s
 ```
 
 ```text
-ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	2.456s
-ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.529s
+ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	12.197s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.549s
 ```
 
 ```bash
 go test ./... -count=1 -timeout 25m
 ```
 
-Exit 0. Every package with tests passed, including `gateway/internal/contactsimport`, `gateway/cmd/goso-contacts-import`, `gateway/internal/store`, `gateway/internal/vaultimport`, and `gateway/memorybench`. Log: [go-test.txt](go-test.txt). Race log: [go-test-race.txt](go-test-race.txt).
+Exit 0. `gateway/internal/contactsimport` 1.445s. `gateway/cmd/goso-contacts-import` 0.386s. Logs: [go-test.txt](go-test.txt), [go-test-race.txt](go-test-race.txt).
 
-`TestImportMinhAnSQLite` and `TestImportMinhAnPostgres` import 215 rows (the 210-contact fixture plus five valid extras), dry-run leaves the count at 0, a second apply keeps that count and the same ids, and a tenant seeded beforehand is unchanged. `TestCLIPostgresApply` does the same 210-row file through the command on Postgres. `OpenPostgres` logs `CREATE EXTENSION vector skipped` when the server has no pgvector. This PR does not install or use pgvector.
+`TestImportMinhAnSQLite` and `TestImportMinhAnPostgres` write 210 of the 211 fixture rows, leave the merged row out, keep the shared sender and its thread as two contacts, and keep a pre-seeded second tenant unchanged. `TestBatch3300SQLite` and `TestBatch3300Postgres` import 3300 rows with one `ListContacts` and one `BulkUpsertContacts`. A rerun does not call the upsert again.
+
+`OpenPostgres` logs `CREATE EXTENSION vector skipped` when the server has no pgvector. This PR does not install or use pgvector.
 
 ## qa:tabs
 
 No control-plane tab, route, or client state changed. `npm run qa:tabs` was not run.
-
-## Out of scope
-
-Real directories. Turning the durable-contacts flag on. MQ Capital. Memory changes. Channel credentials.

@@ -30,7 +30,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 		t.Fatalf("stderr %s", stderr.String())
 	}
 	rep := decodeReport(t, stdout.Bytes())
-	if !rep.DryRun || rep.New != contactsimport.FixtureCount || rep.Updated != 0 || rep.Skipped != 0 || rep.Invalid != 0 {
+	if !rep.DryRun || rep.New != contactsimport.FixtureLive || rep.Updated != 0 || rep.Skipped != contactsimport.FixtureMerged || rep.Invalid != 0 {
 		t.Fatalf("dry-run %+v", rep)
 	}
 	assertReportCountsOnly(t, stdout.String())
@@ -50,7 +50,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 		t.Fatalf("apply exit %d %s", code, stderr.String())
 	}
 	rep = decodeReport(t, stdout.Bytes())
-	if rep.DryRun || rep.New != contactsimport.FixtureCount || rep.Skipped != 0 {
+	if rep.DryRun || rep.New != contactsimport.FixtureLive || rep.Skipped != contactsimport.FixtureMerged {
 		t.Fatalf("apply %+v", rep)
 	}
 	assertReportCountsOnly(t, stdout.String())
@@ -59,7 +59,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err = st.CountContacts("minh-an")
-	if err != nil || n != contactsimport.FixtureCount {
+	if err != nil || n != contactsimport.FixtureLive {
 		t.Fatalf("apply count %d %v", n, err)
 	}
 	other, err := st.CountContacts("tenant-bee")
@@ -74,7 +74,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 		t.Fatalf("rerun exit %d %s", code, stderr.String())
 	}
 	rep = decodeReport(t, stdout.Bytes())
-	if rep.New != 0 || rep.Updated != 0 || rep.Skipped != contactsimport.FixtureCount || rep.Invalid != 0 || rep.DryRun {
+	if rep.New != 0 || rep.Updated != 0 || rep.Skipped != contactsimport.FixtureRows || rep.Invalid != 0 || rep.DryRun {
 		t.Fatalf("rerun %+v", rep)
 	}
 	st, err = store.OpenSQLite(dbPath)
@@ -83,7 +83,7 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 	}
 	defer st.Close()
 	n, err = st.CountContacts("minh-an")
-	if err != nil || n != contactsimport.FixtureCount {
+	if err != nil || n != contactsimport.FixtureLive {
 		t.Fatalf("rerun count %d %v", n, err)
 	}
 }
@@ -92,9 +92,9 @@ func TestCLITenantIsolation(t *testing.T) {
 	dir := t.TempDir()
 	exportPath := filepath.Join(dir, "export.json")
 	body := `{
-	  "contacts": [
-	    {"tenant_id":"minh-an","channel":"telegram","dest":"ext-minh-an-cli","display":"Minh An CLI","kind":"user","agent_id":"minh-an-sales","seen_count":1,"first_seen":"2026-01-15T08:00:00Z","last_seen":"2026-01-15T09:00:00Z"},
-	    {"tenant_id":"tenant-bee","channel":"telegram","dest":"ext-bee-cli","display":"Bee CLI","kind":"user","agent_id":"bee-agent","seen_count":4,"first_seen":"2026-01-15T08:00:00Z","last_seen":"2026-01-15T09:00:00Z"}
+	  "channel_contacts": [
+	    {"tenant_id":"minh-an","channel_type":"telegram","sender_id":"ext-minh-an-cli","display_name":"Minh An CLI","contact_type":"user","peer_kind":"user","first_seen_at":"2026-01-15T08:00:00Z","last_seen_at":"2026-01-15T09:00:00Z"},
+	    {"tenant_id":"tenant-bee","channel_type":"telegram","sender_id":"ext-bee-cli","display_name":"Bee CLI","contact_type":"user","peer_kind":"user","first_seen_at":"2026-01-15T08:00:00Z","last_seen_at":"2026-01-15T09:00:00Z"}
 	  ]
 	}`
 	if err := os.WriteFile(exportPath, []byte(body), 0o644); err != nil {
@@ -126,7 +126,7 @@ func TestCLITenantIsolation(t *testing.T) {
 		t.Fatalf("bee %d %v", n, err)
 	}
 	rows, err := st.ListContacts("minh-an", "", "", "")
-	if err != nil || len(rows) != 1 || rows[0].Dest != "ext-minh-an-cli" {
+	if err != nil || len(rows) != 1 || rows[0].Dest != "s15:ext-minh-an-clit0:" {
 		t.Fatalf("rows %#v %v", rows, err)
 	}
 	if _, err := st.GetContact(rows[0].ID, "tenant-bee"); err == nil {
@@ -225,7 +225,7 @@ func TestCLIPostgresApply(t *testing.T) {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
 	}
 	rep := decodeReport(t, stdout.Bytes())
-	if !rep.DryRun || rep.New != contactsimport.FixtureCount {
+	if !rep.DryRun || rep.New != contactsimport.FixtureLive || rep.Skipped != contactsimport.FixtureMerged {
 		t.Fatalf("dry-run %+v", rep)
 	}
 	pg, err := store.OpenPostgres(u.String())
@@ -241,7 +241,7 @@ func TestCLIPostgresApply(t *testing.T) {
 		t.Fatalf("apply exit %d %s", code, stderr.String())
 	}
 	rep = decodeReport(t, stdout.Bytes())
-	if rep.New != contactsimport.FixtureCount || rep.DryRun {
+	if rep.New != contactsimport.FixtureLive || rep.Skipped != contactsimport.FixtureMerged || rep.DryRun {
 		t.Fatalf("apply %+v", rep)
 	}
 	pg, err = store.OpenPostgres(u.String())
@@ -249,7 +249,7 @@ func TestCLIPostgresApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pg.Close()
-	if n, err := pg.CountContacts("minh-an"); err != nil || n != contactsimport.FixtureCount {
+	if n, err := pg.CountContacts("minh-an"); err != nil || n != contactsimport.FixtureLive {
 		t.Fatalf("count %d %v", n, err)
 	}
 	stdout.Reset()
@@ -257,7 +257,7 @@ func TestCLIPostgresApply(t *testing.T) {
 		t.Fatalf("rerun exit %d %s", code, stderr.String())
 	}
 	rep = decodeReport(t, stdout.Bytes())
-	if rep.Skipped != contactsimport.FixtureCount || rep.New != 0 || rep.Updated != 0 {
+	if rep.Skipped != contactsimport.FixtureRows || rep.New != 0 || rep.Updated != 0 {
 		t.Fatalf("rerun %+v", rep)
 	}
 }
