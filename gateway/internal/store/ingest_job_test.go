@@ -63,7 +63,8 @@ func TestIngestJobTableAdditive(t *testing.T) {
 			t.Skip("GOSO_TEST_POSTGRES_DSN unset")
 		}
 		s := openIngestPostgres(t, base, true)
-		assertColumns(t, s, true, "vault_docs", wantDocs)
+		// SPEC 154 adds generated body_tsv. The SPEC 170 columns above are unchanged.
+		assertColumns(t, s, true, "vault_docs", append(append([]string{}, wantDocs...), "body_tsv"))
 		assertColumns(t, s, true, "vault_ingest_jobs", wantJobs)
 		assertIngestRoundTrip(t, s)
 		if _, err := s.PutVaultDoc(VaultDoc{Title: "Minh An", Path: "sources/inbox/hop-dong.md", Body: "keep", SHA256: "aa", OwnerExplicit: true, TenantID: "minh-an"}); err != nil {
@@ -74,7 +75,7 @@ func TestIngestJobTableAdditive(t *testing.T) {
 		}
 		again := openIngestPostgres(t, base, false)
 		defer again.Close()
-		assertColumns(t, again, true, "vault_docs", wantDocs)
+		assertColumns(t, again, true, "vault_docs", append(append([]string{}, wantDocs...), "body_tsv"))
 		doc, err := again.FindVaultDocByPath("minh-an", "sources/inbox/hop-dong.md")
 		if err != nil || doc.Body != "keep" {
 			t.Fatalf("postgres vault_docs: %v %#v", err, doc)
