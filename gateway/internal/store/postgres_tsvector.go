@@ -143,10 +143,12 @@ var recallORAgentGUCs = []string{
 }
 
 const (
-	recallPathTenantWindow  = "tenant-window"
-	recallPathCustomerIndex = "customer-index"
-	recallPathAgentNested   = "agent-nested-loop"
-	recallPathBitmapAnd     = "bitmap-and"
+	recallPathTenantWindow      = "tenant-window"
+	recallPathCustomerIndex     = "customer-index"
+	recallPathCustomerWindow    = "customer-window"
+	recallPathAgentNested       = "agent-nested-loop"
+	recallPathBitmapAnd         = "bitmap-and"
+	recallPathBitmapAndCustomer = "bitmap-and-customer"
 )
 
 // recallTSV is the Postgres candidate set. It does not apply recallScanCap
@@ -245,8 +247,11 @@ func (s *SQLiteStore) recallTSVOR(q RecallQuery, tenant, agent string, toks []st
 }
 
 // recallTSVORPath is recallTSVOR plus the plan name (tenant-window,
-// customer-index, agent-nested-loop, bitmap-and). The name is a return value
-// so callers do not share mutable state.
+// customer-index, customer-window, agent-nested-loop, bitmap-and,
+// bitmap-and-customer). The name is a return value so callers do not share
+// mutable state. customer-window is the large-customer newest window.
+// bitmap-and-customer is that window falling through to the bitmap with
+// customer_key still applied.
 func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, string, error) {
 	if match == "" || lim <= 0 {
 		return nil, 0, "", nil
@@ -277,14 +282,14 @@ func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks 
 			return nil, n, "", err
 		}
 		if n >= lim {
-			return hits, n, recallPathBitmapAnd, nil
+			return hits, n, recallPathCustomerWindow, nil
 		}
 		bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
 		hits, n, err = s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
 		if err != nil {
 			return nil, n, "", err
 		}
-		return hits, n, recallPathBitmapAnd, nil
+		return hits, n, recallPathBitmapAndCustomer, nil
 	}
 	probeQ, probeArgs := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
 	hits, n, err := s.execRecallTSV(toks, probeQ, probeArgs, recallORStableGUCs)

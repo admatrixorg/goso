@@ -844,8 +844,10 @@ func TestPostgresRecallORScopeIsolation(t *testing.T) {
 	}{
 		{name: "tenant-window", wantPath: recallPathTenantWindow, lim: 4},
 		{name: "customer-index", wantPath: recallPathCustomerIndex, lim: 10, scoped: true},
+		{name: "customer-window", wantPath: recallPathCustomerWindow, lim: 4, scoped: true},
 		{name: "agent-nested-loop", wantPath: recallPathAgentNested, lim: 10},
 		{name: "bitmap-and", wantPath: recallPathBitmapAnd, lim: 4},
+		{name: "bitmap-and-customer", wantPath: recallPathBitmapAndCustomer, lim: 4, scoped: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -931,6 +933,37 @@ func TestPostgresRecallORScopeIsolation(t *testing.T) {
 				for i := 0; i < 24; i++ {
 					put(fmt.Sprintf("%s-newer-%d", tc.name, i), otherSess.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
 					poison[fmt.Sprintf("%s-newer-%d", tc.name, i)] = true
+				}
+			case "customer-window":
+				// lim 4, budget 8. Four newer rows of this customer fail the
+				// agent, session, or kind filter, and four good matches stay
+				// inside the window, so it fills. A different customer is newer
+				// than all of them.
+				for i := 0; i < 8; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
+				}
+				for i := 0; i < 2; i++ {
+					mark(fmt.Sprintf("%s-agent2-%d", tc.name, i), otherSess.ID, KindEpisodic, "2026-12-18T00:00:00Z", tenant, cust)
+				}
+				mark(tc.name+"-ask2", ask.ID, KindEpisodic, "2026-12-19T00:00:00Z", tenant, cust)
+				mark(tc.name+"-kind2", good.ID, "summary", "2026-12-20T00:00:00Z", tenant, cust)
+				for i := 0; i < 5; i++ {
+					mark(fmt.Sprintf("%s-cust-%d", tc.name, i), good.ID, KindEpisodic, "2026-12-25T00:00:00Z", tenant, otherCust)
+				}
+			case "bitmap-and-customer":
+				// The newest budget rows of this customer all fail a scope
+				// filter, so the window is short and step 2 uses the bitmap
+				// with customer_key. Older rows of this customer still match.
+				for i := 0; i < 6; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-01-02T00:00:00Z", tenant, cust)
+				}
+				for i := 0; i < 6; i++ {
+					mark(fmt.Sprintf("%s-agent2-%d", tc.name, i), otherSess.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
+				}
+				mark(tc.name+"-ask2", ask.ID, KindEpisodic, "2026-12-02T00:00:00Z", tenant, cust)
+				mark(tc.name+"-kind2", good.ID, "summary", "2026-12-03T00:00:00Z", tenant, cust)
+				for i := 0; i < 5; i++ {
+					mark(fmt.Sprintf("%s-cust-%d", tc.name, i), good.ID, KindEpisodic, "2026-12-25T00:00:00Z", tenant, otherCust)
 				}
 			}
 			if len(poison) == 0 {
@@ -1082,7 +1115,7 @@ func TestPostgresRecall50kCustomerBitmapSwamp(t *testing.T) {
 	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 customer_swamp fetched=%d samples=%s median=%s max=%s path=%s\n",
 		fetched, formatDurations(samples), med, max, path)
-	if path != recallPathBitmapAnd {
+	if path != recallPathCustomerWindow {
 		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {

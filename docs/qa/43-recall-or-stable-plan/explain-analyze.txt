@@ -1,3 +1,9 @@
+Path labels after the customer split: a large customer whose newest window
+fills the limit is customer-window. A short window is bitmap-and-customer.
+Logs below that print path=bitmap-and for the customer swamp were recorded
+before that split. The plan text for that shape is the customer-window
+index scan on idx_memories_customer_created.
+
 === RUN   TestPostgresRecall50kUnder50ms
 2026/11/12 04:25:02 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
 SPEC154 explain_or_probe budget=4000 limit=2000:

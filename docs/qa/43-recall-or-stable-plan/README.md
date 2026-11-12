@@ -21,11 +21,15 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 | Customer scope, 5 rows for the customer, 49,995 other customers all match | Customer index | `Index Scan using idx_memories_customer` | 1.692492 ms | 2.121189 ms |
 | Agent scope, 16 rows for the agent, 49,980 rows for another agent all match | Agent sessions | `Nested Loop` + `Index Scan using idx_memories_session` | 10.604821 ms | 11.270847 ms |
 | Agent A ~5,000 older matches, agent B ~45,000 newer matches (bitmap fallback) | Agent's sessions inside the CTE | `Bitmap Index Scan on idx_memories_session` (5,000 rows) | 18.275472 ms | 30.996716 ms |
-| Customer ~5,000 older matches, other customers ~45,000 newer matches | Newest customer rows | `Index Scan using idx_memories_customer_created` (stops at 2,000) | 11.194523 ms | 18.127638 ms |
+| Customer ~5,000 older matches, other customers ~45,000 newer matches | Newest customer rows (`customer-window`) | `Index Scan using idx_memories_customer_created` (stops at 2,000) | 11.029229 ms | 17.247745 ms |
 
-The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all four plans and checks every returned row (tenant, customer when scoped, agent, kind, excluded session) against poison rows in another tenant, another customer, another agent, and the excluded session.
+The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all six plans (tenant-window, customer-index, customer-window, agent-nested-loop, bitmap-and, bitmap-and-customer) and checks every returned row (tenant, customer when scoped, agent, kind, excluded session). The two customer-scoped large-customer cases include a different customer with newer rows, a different agent with the same customer, another tenant, the excluded session, and a wrong kind.
 
-`go test -race ./gateway/internal/store/` is in [go-test-race.txt](go-test-race.txt). It reports no data race. The detector slows the process, so two wall-clock checks go over 50 ms there (5% max 57.153934 ms, customer swamp max 51.86221 ms). The same checks without the detector are the medians and maxes in the table.
+The CI margin on the 50 ms cap is thin. Heads `2087a40`, `18a7e9d`, and `eaa6149` failed between 50.3 ms and 57.6 ms. If main fails one of these tests again, open an issue. Do not raise the threshold.
+
+`CREATE INDEX idx_memories_customer_created` is not `CONCURRENTLY`. It runs when the gateway opens Postgres, and the build locks writes on `memories` until it finishes. Deploy conditions are the same as #41: count rows per tenant, take a backup, pick an off-hours window, and deploy only with Dat's approval.
+
+`go test -race ./gateway/internal/store/` on this head is in [go-test-race.txt](go-test-race.txt). It exits 0 and reports no data race (54.082s). The detector can still push a sample over 50 ms; an earlier run did (5% max 57.153934 ms, customer swamp max 51.86221 ms). If that happens on main, open an issue. Do not raise the threshold. The medians and maxes in the table are without the detector.
 
 ## Selective (near 0)
 
@@ -90,8 +94,8 @@ Agent A has 5,000 older rows that match the OR. Agent B has 45,000 newer rows th
 
 Samples: 18.275472 ms, 26.432583 ms, 17.911093 ms, 17.92427 ms, 30.996716 ms. Median **18.275472 ms**. Max **30.996716 ms**.
 
-## Customer swamp (bitmap fallback)
+## Customer swamp (`customer-window`)
 
-One customer has 5,000 older matches. Other customers have 45,000 newer matches. The customer is larger than the budget, so the small-customer path does not run. `idx_memories_customer_created` is `(tenant_id, customer_key, created_at DESC)`. With bitmap scans disabled, the plan is `Index Scan using idx_memories_customer_created` and it stops at 2,000 rows. Execution 1.239 ms. Other customers are not read. Rollback drops this index.
+One customer has 5,000 older matches. Other customers have 45,000 newer matches. The customer is larger than the budget, so the small-customer path does not run, and the newest window already holds the limit, so the path is `customer-window` rather than `bitmap-and-customer`. `idx_memories_customer_created` is `(tenant_id, customer_key, created_at DESC)`. With bitmap scans disabled, the plan is `Index Scan using idx_memories_customer_created` and it stops at 2,000 rows. Execution 1.239 ms. Other customers are not read. Rollback drops this index. A short window (the newest budget rows of that customer do not hold the limit) falls through to `bitmap-and-customer`, which keeps `customer_key` inside the bitmap CTE. `TestPostgresRecallORScopeIsolation` covers that fallback.
 
-Samples: 10.879185 ms, 11.194523 ms, 11.041417 ms, 11.277042 ms, 18.127638 ms. Median **11.194523 ms**. Max **18.127638 ms**.
+Samples after the path was labeled `customer-window`: 10.704649 ms, 16.651903 ms, 10.817123 ms, 11.029229 ms, 17.247745 ms. Median **11.029229 ms**. Max **17.247745 ms**. The plan is unchanged from the run above.
