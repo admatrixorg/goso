@@ -64,7 +64,7 @@ These search queries already have a limit: memory search 50, vault search `Vault
 | 50,000 rows under 50 ms | `TestPostgresRecall50kUnder50ms` (store `RecallMemories`) and `TestRecallFor50kUnder50ms` (pipeline `RecallFor`) |
 | 50,000 rows that all match one query token stay inside `recallCandidateCap`, and the needle is still recalled | `TestPostgresRecall50kAllMatchWithinCap` |
 
-`TestPostgresRecall50kAllMatchWithinCap` also times that query. On Postgres 16.15 the five samples were 433.079415ms, 442.60386ms, 435.964422ms, 441.286896ms, and 432.130361ms. Median 435.964422ms. Max 442.60386ms. Fetched rows were 2000, the cap, and the older needle was in the result. That max is over 50 ms. The selective 50,000-row case (fillers that do not share a query token) stays under 50 ms. The all-match number is the measurement; it is not replaced with the selective number.
+`TestPostgresRecall50kAllMatchWithinCap` also times that query. On Postgres 16.15, commit `484042b`, the five samples were 436.450566ms, 455.045362ms, 459.285839ms, 463.110639ms, and 446.988949ms. Median 455.045362ms. Max 463.110639ms. Fetched rows were 2000, the cap, and the older needle was in the result. That max is over 50 ms. The selective 50,000-row case (fillers that do not share a query token) stays under 50 ms. The all-match number is the measurement; it is not replaced with the selective number. The same lines are in `docs/qa/154-postgres-tsvector-gin/`.
 | `Min` does not match `Minh` | `TestPostgresSearchMinDoesNotMatchMinh` |
 | Bench, Postgres not below SQLite | `gateway/memorybench` `TestBaseline9545d08` |
 | Rollback drops the index only | `TestPostgresTSVectorRollbackDropsIndexOnly` |

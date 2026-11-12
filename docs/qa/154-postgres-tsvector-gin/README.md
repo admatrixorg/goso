@@ -2,6 +2,30 @@
 
 Evidence for the additive `body_tsv` columns and GIN indexes. No control-plane change, so prototype screenshots do not apply. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
+## Candidate cap retest
+
+Tested commit: `484042b1dfe81de026dd7f9268002106059dc7d8`
+
+`git status --porcelain` was empty before `go test ./...` and `npm run qa:tabs`. The spec sentence that quotes these samples was added with the log, after the run. It does not change the query.
+
+[go-test-484042b1dfe81de026dd7f9268002106059dc7d8.txt](go-test-484042b1dfe81de026dd7f9268002106059dc7d8.txt)
+
+[qa-tabs-484042b1dfe81de026dd7f9268002106059dc7d8.log](qa-tabs-484042b1dfe81de026dd7f9268002106059dc7d8.log)
+
+`go test ./...` failed in one place: `TestPostgresRecall50kAllMatchWithinCap`. Every other package passed, including `gateway/memorybench`.
+
+That test inserts 50,000 Minh An rows. 49,999 fillers each contain one token of the query, plus one older needle that contains the rest. Fetched rows were **2000**, which is `recallCandidateCap`. The needle was recalled. It is not in the newest 500.
+
+Latency of `RecallMemories` on that set, five samples:
+
+`436.450566ms, 455.045362ms, 459.285839ms, 463.110639ms, 446.988949ms`
+
+Median **455.045362ms**. Max **463.110639ms**. That max is over 50 ms. The selective 50,000-row case, where fillers do not share a query token, is still under 50 ms (median 1.123026ms on the earlier run in this same file's history, and the selective test still passes inside this log). This paragraph is the worst-case number. It is not replaced with the selective number.
+
+`npm run qa:tabs` exited 0 (`flow chat`, then `qa:tabs ok`). Chrome **156.0.8078.47**. No tab changed. Gateway was restarted from this tree on a fresh SQLite file. `GOSO_VAULT_UPLOAD` was unset.
+
+Search queries that this spec added already had a limit before this retest: memory search 50, vault `VaultSearchLimit` 50, progressive L1 and L2 `progressivePerTier` 25. No extra limit was missing there.
+
 ## Merge retest
 
 `origin/main` at `d409b99` (SPEC 170) was merged in. `CHANGELOG.md` keeps the SPEC 154 entry and both SPEC 170 entries. `TestIngestJobTableAdditive` on Postgres now expects the extra generated `body_tsv` column; the SPEC 170 columns are still required, and SQLite's `vault_docs` column set is unchanged.
