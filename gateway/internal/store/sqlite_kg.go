@@ -227,6 +227,9 @@ func (s *SQLiteStore) searchProgressiveL1(q, tenant string) ([]KGSearchHit, erro
 			return hits, nil
 		}
 	}
+	if s.bodyTSV {
+		return s.searchProgressiveL1TSV(q, tenant)
+	}
 	rows, err := s.db.Query(`SELECT id, session_id, kind, body, tenant_id FROM (
 			SELECT id, session_id, kind, body, tenant_id FROM memories WHERE tenant_id=? AND instr(lower(body), lower(?)) > 0
 			UNION ALL
@@ -291,6 +294,9 @@ func (s *SQLiteStore) searchProgressiveL2(q, tenant string) ([]KGSearchHit, erro
 		if hits, err := s.searchProgressiveL2FTS(q, tenant); err == nil {
 			return hits, nil
 		}
+	}
+	if s.bodyTSV {
+		return s.searchProgressiveL2TSV(q, tenant)
 	}
 	rows, err := s.db.Query(`SELECT `+kgEntityCols+` FROM kg_entities
 		WHERE tenant_id=? AND (instr(lower(name), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0) LIMIT ?`, tenant, q, q, progressivePerTier)

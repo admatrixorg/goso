@@ -159,8 +159,9 @@ func (s *Store) PruneEpisodic(before time.Time) (int, error) {
 	return n, nil
 }
 
-// RecallMemories (SQL stores): bm25 over memory_fts when FTS5 is available,
-// otherwise a bounded scan scored by token overlap (Postgres path too).
+// RecallMemories (SQL stores): bm25 over memory_fts when FTS5 is available.
+// Postgres uses the body_tsv GIN index (SPEC 154) and does not stop at
+// recallScanCap. The bounded substring scan remains when that column is absent.
 func (s *SQLiteStore) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 	toks := RecallTokens(q.Query)
 	if len(toks) == 0 || (q.CustomerScoped && (q.CustomerKey == "" || strings.TrimSpace(q.AgentID) == "")) {
@@ -176,6 +177,9 @@ func (s *SQLiteStore) RecallMemories(q RecallQuery) ([]RecallHit, error) {
 		if hits, err := s.recallFTS(q, tenant, agent, toks, limit); err == nil {
 			return hits, nil
 		}
+	}
+	if s.bodyTSV {
+		return s.recallTSV(q, tenant, agent, toks, limit)
 	}
 	return s.recallScan(q, tenant, agent, toks, limit)
 }
