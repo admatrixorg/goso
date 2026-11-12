@@ -32,10 +32,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	exportPath := fs.String("export", "", "JSONL export of GoClaw sessions, one session per line")
 	tenant := fs.String("tenant", "", "goso tenant_id to write (required)")
-	source := fs.String("source-tenant", "", "optional sessions.tenant_id to keep; other tenants are not written")
+	source := fs.String("source-tenant", "", "export tenant_id to keep (required); other tenants are not written")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
-	apply := fs.Bool("apply", false, "write sessions and messages; omit to dry-run")
-	dry := fs.Bool("dry-run", true, "print per-tenant counts and write nothing (default)")
+	denyPath := fs.String("deny-tenants", "", "local denylist file, one tenant id per line; or set GOSO_IMPORT_DENY_TENANTS")
+	rollback := fs.Bool("rollback", false, "remove rows this importer recorded for --tenant; dry-run unless --apply")
+	apply := fs.Bool("apply", false, "write; omit to dry-run")
+	dry := fs.Bool("dry-run", true, "print counts and write nothing (default)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -70,7 +72,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" {
+	if strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	if !*rollback && (strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*source) == "") {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
@@ -78,9 +84,43 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "tenant is invalid")
 		return 2
 	}
-	if badToken(*source) {
+	if !*rollback && badToken(*source) {
 		fmt.Fprintln(stderr, "source tenant is invalid")
 		return 2
+	}
+	denyFile := strings.TrimSpace(*denyPath)
+	if denyFile == "" {
+		denyFile = strings.TrimSpace(os.Getenv("GOSO_IMPORT_DENY_TENANTS"))
+	}
+	gateSource := strings.TrimSpace(*source)
+	if *rollback {
+		gateSource = strings.TrimSpace(*tenant)
+	}
+	if rep, err := sessionimport.DenyGate(denyFile, *tenant, gateSource); err != nil {
+		writeReport(stdout, rep)
+		var cfg *sessionimport.ConfigError
+		if errors.As(err, &cfg) {
+			fmt.Fprintln(stderr, cfg.Error())
+		} else {
+			fmt.Fprintln(stderr, "import failed")
+		}
+		return 1
+	}
+	if *rollback {
+		st, closeDB, err := openDB(*dbPath)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer closeDB()
+		rep, err := sessionimport.Rollback(st, sessionimport.Options{Tenant: *tenant, DenyFile: denyFile, DryRun: dryRun})
+		if err != nil {
+			writeReport(stdout, rep)
+			fmt.Fprintln(stderr, "import failed")
+			return 1
+		}
+		writeReport(stdout, rep)
+		return 0
 	}
 	f, err := os.Open(*exportPath)
 	if err != nil {
@@ -97,9 +137,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	rep, err := sessionimport.Import(st, f, sessionimport.Options{
 		Tenant:       *tenant,
 		SourceTenant: *source,
+		DenyFile:     denyFile,
 		DryRun:       dryRun,
 	})
 	if err != nil {
+		writeReport(stdout, rep)
 		var cfg *sessionimport.ConfigError
 		if errors.As(err, &cfg) {
 			fmt.Fprintln(stderr, cfg.Error())
@@ -108,16 +150,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(rep); err != nil {
-		fmt.Fprintln(stderr, "write report failed")
-		return 1
-	}
+	writeReport(stdout, rep)
 	return 0
 }
 
-const usage = "usage: goso-sessions-import --export file.jsonl --tenant id --db path [--source-tenant id] [--apply]\ndry-run is the default; it prints per-tenant counts and writes nothing. --apply writes. Do not pass --apply and --dry-run together."
+func writeReport(w io.Writer, rep any) {
+	if rep == nil {
+		return
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(rep)
+}
+
+const usage = "usage: goso-sessions-import --export file.jsonl --tenant id --source-tenant id --db path --deny-tenants file [--apply]\n       goso-sessions-import --rollback --tenant id --db path --deny-tenants file [--apply]\ndry-run is the default and writes nothing. --apply writes. Do not pass --apply and --dry-run together.\nThe denylist file is required. A missing, empty, or malformed file stops before any write. A listed tenant is refused. Reports include a denied count and not the listed names."
 
 func badToken(s string) bool {
 	for _, r := range s {

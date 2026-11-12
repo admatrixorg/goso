@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -15,9 +16,10 @@ const (
 	stubCreated      = "2026-01-01T00:00:00.000000000Z"
 )
 
-const messageIndexTrigger = `CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-INSERT INTO memory_fts(id, session_id, kind, body) VALUES (new.id, new.session_id, 'message', new.content);
-END`
+// duringTx runs inside the import transaction after message rows are inserted
+// and their memory_fts copies are removed. Tests use it to prove the message
+// index trigger is still installed. Production leaves it nil.
+var duringTx func(tx *sql.Tx) error
 
 type writer struct {
 	db    *sql.DB
@@ -25,38 +27,6 @@ type writer struct {
 	dest  string
 	dry   bool
 	links bool
-}
-
-type triggerGuard struct {
-	w       *writer
-	dropped bool
-}
-
-func (g *triggerGuard) drop() error {
-	if g == nil || g.w == nil || g.w.pg {
-		return nil
-	}
-	var n int
-	if err := g.w.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='messages_ai'`).Scan(&n); err != nil {
-		return err
-	}
-	if n == 0 {
-		return nil
-	}
-	if _, err := g.w.db.Exec(`DROP TRIGGER messages_ai`); err != nil {
-		return err
-	}
-	g.dropped = true
-	return nil
-}
-
-func (g *triggerGuard) restore() error {
-	if g == nil || !g.dropped {
-		return nil
-	}
-	g.dropped = false
-	_, err := g.w.db.Exec(messageIndexTrigger)
-	return err
 }
 
 func (w *writer) q(query string) string {
@@ -130,10 +100,29 @@ func (w *writer) flush(rows []sessionRow, acc *accumulator) error {
 			return err
 		}
 	}
+	var existIDs []string
+	for _, row := range rows {
+		if _, ok := haveID[row.id]; ok {
+			existIDs = append(existIDs, row.id)
+		}
+	}
+	snaps, err := w.loadSnaps(existIDs)
+	if err != nil {
+		return err
+	}
 	fresh := make([]sessionRow, 0, len(rows))
 	for _, row := range rows {
 		if _, ok := haveID[row.id]; ok {
-			w.countSkip(acc, row)
+			s := snaps[row.id]
+			if s.ok && s.tenant != w.dest {
+				w.countCollision(acc, row)
+				continue
+			}
+			if s.matches(w.dest, row) {
+				w.countSkip(acc, row)
+			} else {
+				w.countNative(acc, row)
+			}
 			continue
 		}
 		if _, ok := haveKey[row.key]; ok {
@@ -183,6 +172,105 @@ func (w *writer) countSkip(acc *accumulator, row sessionRow) {
 	t.Skipped++
 }
 
+func (w *writer) countNative(acc *accumulator, row sessionRow) {
+	t := acc.tenant(row.bucket)
+	t.Sessions++
+	t.NativeExists++
+}
+
+func (w *writer) countCollision(acc *accumulator, row sessionRow) {
+	t := acc.tenant(row.bucket)
+	t.Sessions++
+	t.IDCollision++
+}
+
+type snapMsg struct {
+	role, content, agent, mention, model, provider string
+	at                                             time.Time
+}
+
+type snap struct {
+	ok                                    bool
+	tenant, agent, label, model, provider string
+	at                                    time.Time
+	msgs                                  []snapMsg
+}
+
+func (s snap) matches(dest string, row sessionRow) bool {
+	if !s.ok || s.tenant != dest {
+		return false
+	}
+	agent := row.agentID
+	if agent == "" {
+		agent = unresolvedAgentID(dest)
+	}
+	if s.agent != agent || s.label != row.label || s.model != row.model || s.provider != row.provider || !s.at.Equal(row.at.UTC()) {
+		return false
+	}
+	if len(s.msgs) != len(row.msgs) {
+		return false
+	}
+	for i := range s.msgs {
+		got, want := s.msgs[i], row.msgs[i]
+		if got.role != want.role || got.content != want.content || got.agent != want.agentID || got.mention != want.mentionID || got.model != want.model || got.provider != want.provider || !got.at.Equal(want.at.UTC()) {
+			return false
+		}
+	}
+	return true
+}
+
+func (w *writer) loadSnaps(ids []string) (map[string]snap, error) {
+	out := map[string]snap{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := `SELECT id, tenant_id, agent_id, COALESCE(label,''), COALESCE(model_override,''), COALESCE(provider_override,''), created_at FROM sessions WHERE id IN ` + placeholders(len(ids))
+	rows, err := w.db.Query(w.q(q), anys(ids)...)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id, tenant, agent, label, model, provider, at string
+		if err := rows.Scan(&id, &tenant, &agent, &label, &model, &provider, &at); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out[id] = snap{ok: true, tenant: tenant, agent: agent, label: label, model: model, provider: provider, at: parseStamp(at)}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	mq := `SELECT session_id, role, content, created_at, COALESCE(agent_id,''), COALESCE(mention_agent_id,''), COALESCE(model,''), COALESCE(provider,'') FROM messages WHERE session_id IN ` + placeholders(len(ids)) + ` ORDER BY session_id, created_at, id`
+	mrows, err := w.db.Query(w.q(mq), anys(ids)...)
+	if err != nil {
+		return nil, err
+	}
+	defer mrows.Close()
+	for mrows.Next() {
+		var sid, role, content, at, agent, mention, model, provider string
+		if err := mrows.Scan(&sid, &role, &content, &at, &agent, &mention, &model, &provider); err != nil {
+			return nil, err
+		}
+		s := out[sid]
+		s.msgs = append(s.msgs, snapMsg{role: role, content: content, agent: agent, mention: mention, model: model, provider: provider, at: parseStamp(at)})
+		out[sid] = s
+	}
+	return out, mrows.Err()
+}
+
+func parseStamp(s string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, s)
+		if err != nil {
+			return time.Time{}
+		}
+	}
+	return t.UTC()
+}
+
 func (w *writer) selectSet(query string, args []any) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
 	if len(args) == 0 {
@@ -225,19 +313,20 @@ func (w *writer) insertTx(rows []sessionRow) error {
 	var msgs [][]any
 	links := make([][]any, 0, len(rows))
 	stub := unresolvedAgentID(w.dest)
-	arch := w.archived()
+	var msgIDs []string
 	for _, row := range rows {
 		agentCol := row.agentID
 		if agentCol == "" {
 			agentCol = stub
 		}
 		sess = append(sess, []any{
-			row.id, agentCol, row.label, formatStamp(row.at), w.dest, "", row.model, row.provider, arch,
+			row.id, agentCol, row.label, formatStamp(row.at), w.dest, "", row.model, row.provider, w.archArg(row.agentID == ""),
 		})
 		for _, m := range row.msgs {
 			msgs = append(msgs, []any{
 				m.id, row.id, m.role, m.content, formatStamp(m.at), m.agentID, m.mentionID, m.model, m.provider,
 			})
+			msgIDs = append(msgIDs, m.id)
 		}
 		links = append(links, []any{
 			w.dest, row.id, row.key, row.id, row.agentSrc, row.agentID, row.userSrc, row.contactID,
@@ -253,6 +342,14 @@ func (w *writer) insertTx(rows []sessionRow) error {
 		msgs); err != nil {
 		return err
 	}
+	if err := w.dropImportedFTS(tx, msgIDs); err != nil {
+		return err
+	}
+	if duringTx != nil {
+		if err := duringTx(tx); err != nil {
+			return err
+		}
+	}
 	if err := insertChunks(tx, w.pg, `session_import_links`,
 		[]string{"tenant_id", "source_id", "source_key", "session_id", "source_agent_id", "agent_id", "source_user_id", "contact_id"},
 		links); err != nil {
@@ -264,15 +361,34 @@ func (w *writer) insertTx(rows []sessionRow) error {
 func (w *writer) insertStub(tx *sql.Tx) error {
 	id := unresolvedAgentID(w.dest)
 	stmt := `INSERT OR IGNORE INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id, enabled, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`
-	_, err := tx.Exec(pgMaybe(w.pg, stmt), id, id, stubDisplay, "", "", "", "", stubCreated, w.dest, 1, stubCreated)
+	if _, err := tx.Exec(pgMaybe(w.pg, stmt), id, id, stubDisplay, "", "", "", "", stubCreated, w.dest, 0, stubCreated); err != nil {
+		return err
+	}
+	_, err := tx.Exec(pgMaybe(w.pg, `UPDATE agents SET enabled=0 WHERE id=? AND agent_key=?`), id, id)
 	return err
 }
 
-func (w *writer) archived() any {
+func (w *writer) archArg(unmapped bool) any {
 	if w.pg {
-		return false
+		return unmapped
+	}
+	if unmapped {
+		return 1
 	}
 	return 0
+}
+
+func (w *writer) dropImportedFTS(tx *sql.Tx, ids []string) error {
+	if w.pg || len(ids) == 0 {
+		return nil
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_fts'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	q := `DELETE FROM memory_fts WHERE id IN ` + placeholders(len(ids))
+	_, err := tx.Exec(q, anys(ids)...)
+	return err
 }
 
 func unresolvedAgentID(tenant string) string {

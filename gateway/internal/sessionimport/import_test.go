@@ -3,12 +3,21 @@
 package sessionimport
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/eventstore"
+	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -75,6 +84,23 @@ func seedContact(t *testing.T, st *store.SQLiteStore, id, tenant, channel, dest 
 	}
 }
 
+func denyFile(t *testing.T, lines ...string) string {
+	t.Helper()
+	if len(lines) == 0 {
+		lines = []string{"held-shop"}
+	}
+	path := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func minhOpt(t *testing.T) Options {
+	t.Helper()
+	return Options{Tenant: "minh-an", SourceTenant: "minh-an", DenyFile: denyFile(t)}
+}
+
 func openFixture(t *testing.T) *os.File {
 	t.Helper()
 	f, err := os.Open("testdata/minh-an-sessions.jsonl")
@@ -106,7 +132,7 @@ func has(list []string, want string) bool {
 func TestDryRunWritesNothing(t *testing.T) {
 	st := openStore(t)
 	seedAgent(t, st, agentSrc, "minh-an-sales", "minh-an")
-	rep, err := Import(st, openFixture(t), Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(st, openFixture(t), func() Options { o := minhOpt(t); o.DryRun = true; return o }())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +143,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if got.New != 4 || got.Messages != 6 || got.Skipped != 2 || got.Invalid != 1 || got.Foreign != 0 {
 		t.Fatalf("minh-an %+v", got)
 	}
-	if got.New+got.Skipped+got.Invalid+got.Foreign != got.Sessions {
+	if got.New+got.Skipped+got.NativeExists+got.IDCollision+got.Invalid+got.Foreign != got.Sessions {
 		t.Fatalf("sum %+v", got)
 	}
 	other := tenant(rep, "ban-khac")
@@ -153,7 +179,7 @@ func TestImportMinhAnOrderAndRerun(t *testing.T) {
 	st := openStore(t)
 	seedAgent(t, st, agentSrc, "minh-an-sales", "minh-an")
 	seedContact(t, st, contactSrc, "minh-an", "telegram", "ext-minh-an")
-	rep, err := Import(st, openFixture(t), Options{Tenant: "minh-an"})
+	rep, err := Import(st, openFixture(t), minhOpt(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +278,7 @@ func TestImportMinhAnOrderAndRerun(t *testing.T) {
 	if _, err := db.Exec(`UPDATE agents SET display_name=? WHERE id=?`, "Da doi", unresolvedAgentID("minh-an")); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Import(st, openFixture(t), Options{Tenant: "minh-an"})
+	again, err := Import(st, openFixture(t), minhOpt(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,11 +318,11 @@ func TestTenantIsolation(t *testing.T) {
 	if _, err := st.PutMemory(store.Memory{SessionID: "s-minh-an-order", TenantID: "ban-khac", Body: "giu-memory"}); err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, openFixture(t), Options{Tenant: "minh-an"})
+	rep, err := Import(st, openFixture(t), minhOpt(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tenant(rep, "minh-an").New != 3 {
+	if tenant(rep, "minh-an").New != 3 || tenant(rep, "minh-an").IDCollision != 1 {
 		t.Fatalf("new %+v", tenant(rep, "minh-an"))
 	}
 	if text(t, st, `SELECT tenant_id FROM sessions WHERE id=?`, "s-minh-an-order") != "ban-khac" {
@@ -352,8 +378,12 @@ func TestAddOnlyLeavesExisting(t *testing.T) {
 	if _, err := st.PutMemory(store.Memory{SessionID: "s-minh-an-order", TenantID: "minh-an", Body: "keep-memory"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(st, openFixture(t), Options{Tenant: "minh-an"}); err != nil {
+	rep, err := Import(st, openFixture(t), minhOpt(t))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if tenant(rep, "minh-an").NativeExists < 1 {
+		t.Fatalf("native %+v", tenant(rep, "minh-an"))
 	}
 	if text(t, st, `SELECT label FROM sessions WHERE id=?`, "s-minh-an-order") != "keep-me" {
 		t.Fatal("existing session was overwritten")
@@ -375,7 +405,7 @@ func TestAgentKeyAndContactDest(t *testing.T) {
 	seedAgent(t, st, "ag-sales", "minh-an-sales", "minh-an")
 	seedContact(t, st, "ct-minh", "minh-an", "telegram", "ext-minh-an")
 	raw := strings.NewReader(`{"id":"s-by-key","tenant_id":"minh-an","session_key":"key-by-agent-key","agent_id":"minh-an-sales","user_id":"ext-minh-an","channel":"telegram","created_at":"2026-02-06T00:00:00Z","messages":[{"role":"user","content":"Theo khoa agent.","created_at":"2026-02-06T00:00:01Z"}]}` + "\n")
-	rep, err := Import(st, raw, Options{Tenant: "minh-an"})
+	rep, err := Import(st, raw, minhOpt(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +436,7 @@ func TestStreamBatchesAndLineLimit(t *testing.T) {
 		}
 		b.WriteString("]}\n")
 	}
-	rep, err := Import(st, strings.NewReader(b.String()), Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(st, strings.NewReader(b.String()), func() Options { o := minhOpt(t); o.DryRun = true; return o }())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +446,7 @@ func TestStreamBatchesAndLineLimit(t *testing.T) {
 	if count(t, st, `SELECT COUNT(*) FROM sessions`) != 0 {
 		t.Fatal("dry-run wrote")
 	}
-	rep, err = Import(st, strings.NewReader(b.String()), Options{Tenant: "minh-an"})
+	rep, err = Import(st, strings.NewReader(b.String()), minhOpt(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +468,7 @@ func TestStreamBatchesAndLineLimit(t *testing.T) {
 	}
 	long := strings.Repeat("x", 500)
 	raw := `{"id":"s-short","tenant_id":"minh-an","session_key":"k-short","created_at":"2026-04-01T00:00:00Z","messages":[{"role":"user","content":"nho","created_at":"2026-04-01T00:00:01Z"}]}` + "\n"
-	rep, err = Import(st, strings.NewReader(long+"\n"+raw), Options{Tenant: "minh-an", MaxLine: 400})
+	rep, err = Import(st, strings.NewReader(long+"\n"+raw), func() Options { o := minhOpt(t); o.MaxLine = 400; return o }())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +482,7 @@ func TestStreamBatchesAndLineLimit(t *testing.T) {
 
 func TestSourceTenantFilter(t *testing.T) {
 	st := openStore(t)
-	rep, err := Import(st, openFixture(t), Options{Tenant: "minh-an", SourceTenant: "ban-khac"})
+	rep, err := Import(st, openFixture(t), Options{Tenant: "minh-an", SourceTenant: "ban-khac", DenyFile: denyFile(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,5 +494,205 @@ func TestSourceTenantFilter(t *testing.T) {
 	}
 	if count(t, st, `SELECT COUNT(*) FROM sessions`) != 1 {
 		t.Fatal("other tenants were written")
+	}
+}
+
+func TestDenylistStops(t *testing.T) {
+	const phone = "09000000123"
+	const peer = "zalo-peer-88421"
+	raw := strings.NewReader(`{"id":"s-held","tenant_id":"held-shop","session_key":"k-held","user_id":"` + peer + `","created_at":"2026-05-01T00:00:00Z","messages":[{"role":"user","content":"call ` + phone + `","created_at":"2026-05-01T00:00:01Z"}]}` + "\n")
+	st := openStore(t)
+	rep, err := Import(st, raw, Options{Tenant: "held-shop", SourceTenant: "held-shop", DenyFile: denyFile(t, "held-shop")})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("err %v", err)
+	}
+	if rep == nil || rep.Denied != 1 || len(rep.Tenants) != 0 {
+		t.Fatalf("report %+v", rep)
+	}
+	blob, _ := json.Marshal(rep)
+	if strings.Contains(string(blob), "held-shop") || strings.Contains(err.Error(), "held-shop") || strings.Contains(string(blob), phone) || strings.Contains(string(blob), peer) {
+		t.Fatalf("name leaked %s %s", blob, err)
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sessions`) != 0 {
+		t.Fatal("denied tenant wrote a session")
+	}
+	for _, src := range []string{"", denyFile(t, "held-shop")} {
+		_, err = Import(st, strings.NewReader("{}\n"), Options{Tenant: "minh-an", SourceTenant: "held-shop", DenyFile: src})
+		if src == "" {
+			if err == nil || !strings.Contains(err.Error(), "missing") {
+				t.Fatalf("missing %v", err)
+			}
+		}
+	}
+	_, err = Import(st, strings.NewReader("{}\n"), Options{Tenant: "minh-an", SourceTenant: "held-shop", DenyFile: denyFile(t, "held-shop")})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("source %v", err)
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sessions`) != 0 {
+		t.Fatal("denied source wrote a session")
+	}
+	empty := filepath.Join(t.TempDir(), "empty.txt")
+	if err := os.WriteFile(empty, []byte("# comment\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Import(st, strings.NewReader("{}\n"), Options{Tenant: "minh-an", SourceTenant: "minh-an", DenyFile: empty})
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty %v", err)
+	}
+	bad := filepath.Join(t.TempDir(), "bad.txt")
+	if err := os.WriteFile(bad, []byte("not a token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Import(st, strings.NewReader("{}\n"), Options{Tenant: "minh-an", SourceTenant: "minh-an", DenyFile: bad})
+	if err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("malformed %v", err)
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sessions`) != 0 {
+		t.Fatal("bad denylist wrote a session")
+	}
+}
+
+func TestDeniedNameStaysOutOfReport(t *testing.T) {
+	const phone = "09000000123"
+	const peer = "zalo-peer-88421"
+	raw := `{"id":"s-ok","tenant_id":"minh-an","session_key":"k-ok","created_at":"2026-05-02T00:00:00Z","messages":[{"role":"user","content":"Minh An on.","created_at":"2026-05-02T00:00:01Z"}]}
+{"id":"s-held","tenant_id":"held-shop","session_key":"k-held","user_id":"` + peer + `","created_at":"2026-05-02T00:00:00Z","messages":[{"role":"user","content":"call ` + phone + `","created_at":"2026-05-02T00:00:02Z"}]}
+`
+	st := openStore(t)
+	rep, err := Import(st, strings.NewReader(raw), minhOpt(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Denied != 1 || tenant(rep, "minh-an").New != 1 {
+		t.Fatalf("%+v denied %d", rep.Tenants, rep.Denied)
+	}
+	blob, _ := json.Marshal(rep)
+	for _, secret := range []string{"held-shop", phone, peer} {
+		if strings.Contains(string(blob), secret) {
+			t.Fatalf("report contains %s: %s", secret, blob)
+		}
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sessions WHERE tenant_id=?`, "held-shop") != 0 {
+		t.Fatal("denied row written")
+	}
+}
+
+func TestUnresolvedSessionDoesNotCallModel(t *testing.T) {
+	st := openStore(t)
+	if _, err := Import(st, openFixture(t), minhOpt(t)); err != nil {
+		t.Fatal(err)
+	}
+	ag, err := st.GetAgent(unresolvedAgentID("minh-an"))
+	if err != nil || ag.Enabled {
+		t.Fatalf("placeholder %#v %v", ag, err)
+	}
+	sess, err := st.GetSession("s-minh-an-no-agent")
+	if err != nil || !sess.Archived {
+		t.Fatalf("session %#v %v", sess, err)
+	}
+	before, _ := st.ListMessages(sess.ID)
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "should-not-run"}}}
+	rt := agent.New(st, connector.NewRegistry(), approval.New(0), eventstore.New(8), scripted)
+	_, err = rt.Chat(context.Background(), sess.ID, "hello Minh An")
+	if !errors.Is(err, agent.ErrSessionArchived) && !errors.Is(err, agent.ErrAgentInactive) {
+		t.Fatalf("chat %v", err)
+	}
+	if len(scripted.Recorded) != 0 {
+		t.Fatal("model was called")
+	}
+	after, _ := st.ListMessages(sess.ID)
+	if len(after) != len(before) {
+		t.Fatalf("messages changed %d -> %d", len(before), len(after))
+	}
+}
+
+func TestTriggerStaysAndIndexesLiveMessage(t *testing.T) {
+	st := openStore(t)
+	duringTx = func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO messages(id, session_id, role, content, created_at, agent_id, mention_agent_id, model, provider) VALUES(?,?,?,?,?,?,?,?,?)`,
+			"live-during", "s-minh-an-no-agent", "user", "LIVE-DURING-FTS", "2026-02-03T09:00:02.000000000Z", "", "", "", "")
+		return err
+	}
+	t.Cleanup(func() { duringTx = nil })
+	if _, err := Import(st, openFixture(t), minhOpt(t)); err != nil {
+		t.Fatal(err)
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='messages_ai'`) != 1 {
+		t.Fatal("trigger missing after import")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM memory_fts WHERE id=?`, "live-during") != 1 {
+		t.Fatal("live message was not indexed")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM memory_fts WHERE session_id=?`, "s-minh-an-order") != 0 {
+		t.Fatal("imported text stayed in memory_fts")
+	}
+	duringTx = func(tx *sql.Tx) error { return errors.New("boom") }
+	before := count(t, st, `SELECT COUNT(*) FROM sessions`)
+	fail := `{"id":"s-fail","tenant_id":"other-shop","session_key":"k-fail","created_at":"2026-06-01T00:00:00Z","messages":[{"role":"user","content":"nope","created_at":"2026-06-01T00:00:01Z"}]}` + "\n"
+	if _, err := Import(st, strings.NewReader(fail), Options{Tenant: "other-shop", SourceTenant: "other-shop", DenyFile: denyFile(t)}); err == nil {
+		t.Fatal("expected failed import")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sessions`) != before {
+		t.Fatal("failed import wrote rows")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='messages_ai'`) != 1 {
+		t.Fatal("failed import dropped the trigger")
+	}
+}
+
+func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
+	st := openStore(t)
+	opt := minhOpt(t)
+	if _, err := Import(st, openFixture(t), opt); err != nil {
+		t.Fatal(err)
+	}
+	seedAgent(t, st, "ag-native", "minh-an-native", "minh-an")
+	native, err := st.CreateSession(store.Session{AgentID: "ag-native", TenantID: "minh-an", Label: "native-keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddMessage(store.Message{SessionID: native.ID, Role: "user", Content: "native-body"}); err != nil {
+		t.Fatal(err)
+	}
+	seedAgent(t, st, "ag-other", "other-shop-agent", "other-shop")
+	other, err := st.CreateSession(store.Session{AgentID: "ag-other", TenantID: "other-shop", Label: "other-keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, _ := st.SQL()
+	if _, err := db.Exec(`INSERT INTO session_import_links(tenant_id, source_id, source_key, session_id, source_agent_id, agent_id, source_user_id, contact_id) VALUES(?,?,?,?,?,?,?,?)`,
+		"other-shop", "src-other", "key-other", other.ID, "", "ag-other", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	dry, err := Rollback(st, Options{Tenant: "minh-an", DenyFile: opt.DenyFile, DryRun: true})
+	if err != nil || !dry.DryRun || dry.Links == 0 || dry.Sessions == 0 {
+		t.Fatalf("dry %+v %v", dry, err)
+	}
+	if _, err := st.GetSession("s-minh-an-order"); err != nil {
+		t.Fatal("dry-run removed an import")
+	}
+	applied, err := Rollback(st, Options{Tenant: "minh-an", DenyFile: opt.DenyFile})
+	if err != nil || applied.DryRun {
+		t.Fatalf("apply %+v %v", applied, err)
+	}
+	if _, err := st.GetSession("s-minh-an-order"); err == nil {
+		t.Fatal("imported session survived rollback")
+	}
+	got, err := st.GetSession(native.ID)
+	if err != nil || got.Label != "native-keep" {
+		t.Fatalf("native %#v %v", got, err)
+	}
+	msgs, err := st.ListMessages(native.ID)
+	if err != nil || len(msgs) != 1 || msgs[0].Content != "native-body" {
+		t.Fatalf("native messages %#v %v", msgs, err)
+	}
+	if text(t, st, `SELECT label FROM sessions WHERE id=?`, other.ID) != "other-keep" {
+		t.Fatal("other tenant session removed")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM session_import_links WHERE tenant_id=?`, "minh-an") != 0 {
+		t.Fatal("minh-an links remain")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM session_import_links WHERE tenant_id=?`, "other-shop") != 1 {
+		t.Fatal("other tenant link removed")
 	}
 }

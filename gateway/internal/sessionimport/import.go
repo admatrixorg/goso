@@ -66,9 +66,12 @@ type SQLDB interface {
 }
 
 // Options selects the destination tenant. DryRun writes nothing.
+// SourceTenant is required. DenyFile is a local denylist, one tenant id per
+// line. When --tenant or SourceTenant is listed, Import returns before any write.
 type Options struct {
 	Tenant       string
 	SourceTenant string
+	DenyFile     string
 	DryRun       bool
 	MaxLine      int
 }
@@ -78,6 +81,7 @@ type Report struct {
 	DryRun      bool          `json:"dry_run"`
 	Tenants     []TenantCount `json:"tenants"`
 	NotImported []string      `json:"not_imported"`
+	Denied      int           `json:"denied"`
 }
 
 // TenantCount is one source tenant_id in the file.
@@ -87,6 +91,8 @@ type TenantCount struct {
 	Messages          int    `json:"messages"`
 	New               int    `json:"new"`
 	Skipped           int    `json:"skipped"`
+	NativeExists      int    `json:"native_exists"`
+	IDCollision       int    `json:"id_collision"`
 	Invalid           int    `json:"invalid"`
 	InvalidMessages   int    `json:"invalid_messages"`
 	Foreign           int    `json:"foreign"`
@@ -125,9 +131,7 @@ type outMsg struct {
 }
 
 // Import streams r once. opt.Tenant is the goso tenant that receives rows.
-// opt.SourceTenant, when set, is the only export tenant_id that is eligible.
-// An empty export tenant_id is eligible only when SourceTenant is empty, and
-// those rows are counted under opt.Tenant.
+// opt.SourceTenant is required and is the only export tenant_id that is eligible.
 func Import(st SQLDB, r io.Reader, opt Options) (rep *Report, err error) {
 	if st == nil {
 		return nil, &ConfigError{Msg: "database is not open"}
@@ -141,8 +145,18 @@ func Import(st SQLDB, r io.Reader, opt Options) (rep *Report, err error) {
 	if !store.TenantOK(opt.Tenant) {
 		return nil, &ConfigError{Msg: "tenant is invalid"}
 	}
-	if opt.SourceTenant != "" && !sourceOK(opt.SourceTenant) {
+	if opt.SourceTenant == "" {
+		return nil, &ConfigError{Msg: "source tenant is required"}
+	}
+	if !sourceOK(opt.SourceTenant) {
 		return nil, &ConfigError{Msg: "source tenant is invalid"}
+	}
+	denyList, deniedRep, err := prepareDeny(opt.DenyFile, opt.Tenant, opt.SourceTenant)
+	if err != nil {
+		if deniedRep != nil {
+			deniedRep.DryRun = true
+		}
+		return deniedRep, err
 	}
 	if r == nil {
 		return nil, &ConfigError{Msg: "export is required"}
@@ -151,19 +165,10 @@ func Import(st SQLDB, r io.Reader, opt Options) (rep *Report, err error) {
 		opt.MaxLine = maxLineDefault
 	}
 	w := &writer{db: db, pg: pg, dest: opt.Tenant, dry: opt.DryRun}
-	guard := &triggerGuard{w: w}
 	if !opt.DryRun {
 		if err := w.ensureSchema(); err != nil {
 			return nil, err
 		}
-		if err := guard.drop(); err != nil {
-			return nil, err
-		}
-		defer func() {
-			if rerr := guard.restore(); rerr != nil && err == nil {
-				err = rerr
-			}
-		}()
 	}
 	links, err := w.hasLinks()
 	if err != nil {
@@ -175,7 +180,7 @@ func Import(st SQLDB, r io.Reader, opt Options) (rep *Report, err error) {
 		return nil, err
 	}
 	acc := newAcc()
-	if err := stream(r, opt, res, w, acc); err != nil {
+	if err := stream(r, opt, res, w, acc, denyList); err != nil {
 		return nil, err
 	}
 	return acc.report(opt.DryRun), nil
@@ -194,13 +199,17 @@ func sourceOK(s string) bool {
 }
 
 type accumulator struct {
-	m     map[string]*TenantCount
-	extra map[string]struct{}
+	m      map[string]*TenantCount
+	extra  map[string]struct{}
+	denied map[string]struct{}
 }
 
 func newAcc() *accumulator {
-	a := &accumulator{m: map[string]*TenantCount{}, extra: map[string]struct{}{}}
-	return a
+	return &accumulator{
+		m:      map[string]*TenantCount{},
+		extra:  map[string]struct{}{},
+		denied: map[string]struct{}{},
+	}
 }
 
 func (a *accumulator) tenant(id string) *TenantCount {
@@ -237,7 +246,15 @@ func (a *accumulator) report(dry bool) *Report {
 	}
 	sort.Strings(ni)
 	ni = uniqueStrings(ni)
-	return &Report{DryRun: dry, Tenants: tenants, NotImported: ni}
+	return &Report{DryRun: dry, Tenants: tenants, NotImported: ni, Denied: len(a.denied)}
+}
+
+func (a *accumulator) addDenied(id string) {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if id == "" {
+		return
+	}
+	a.denied[id] = struct{}{}
 }
 
 func uniqueStrings(in []string) []string {
@@ -253,7 +270,7 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-func stream(r io.Reader, opt Options, res resolver, w *writer, acc *accumulator) error {
+func stream(r io.Reader, opt Options, res resolver, w *writer, acc *accumulator, deny map[string]struct{}) error {
 	br := bufio.NewReaderSize(r, 64*1024)
 	seenID := map[string]struct{}{}
 	seenKey := map[string]struct{}{}
@@ -283,6 +300,10 @@ func stream(r io.Reader, opt Options, res resolver, w *writer, acc *accumulator)
 		if len(bytes.TrimSpace(line)) > 0 {
 			row, keys, invalid := parseLine(line, opt, res)
 			acc.addKeys(keys)
+			if denyListed(deny, row.bucket) {
+				acc.addDenied(row.bucket)
+				continue
+			}
 			if invalid {
 				acc.tenant(row.bucket).Invalid++
 				acc.tenant(row.bucket).Sessions++
@@ -379,11 +400,7 @@ func parseLine(line []byte, opt Options, res resolver) (sessionRow, []string, bo
 }
 
 func rowEligible(sourceTenant string, opt Options) bool {
-	sourceTenant = strings.TrimSpace(sourceTenant)
-	if opt.SourceTenant != "" {
-		return sourceTenant == opt.SourceTenant
-	}
-	return sourceTenant == "" || sourceTenant == opt.Tenant
+	return strings.TrimSpace(sourceTenant) == opt.SourceTenant
 }
 
 func bucketOf(sourceTenant string, opt Options, eligible bool) string {

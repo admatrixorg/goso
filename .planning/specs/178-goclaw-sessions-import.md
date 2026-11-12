@@ -10,7 +10,17 @@ GoClaw has no `messages` table. Messages are the `sessions.messages` jsonb array
 
 ## Mapping
 
-The written tenant is `--tenant`. `tenant_id` on a line only decides whether that line is eligible. `--source-tenant` keeps that export tenant id; every other id is counted and not written. With no `--source-tenant`, an empty `tenant_id` is eligible and is counted under `--tenant`. Any other id must equal `--tenant`.
+The written tenant is `--tenant`. `--source-tenant` is required and is the only export `tenant_id` that is eligible. Every other id is counted and not written.
+
+A local denylist file is required (`--deny-tenants` or `GOSO_IMPORT_DENY_TENANTS`), one tenant id per line. Blocking is the default. A missing, empty, or malformed file stops the process before any write, including a dry-run. If `--tenant` or `--source-tenant` is listed, the run stops the same way. The report has a `denied` count and does not print those names. The file is not committed.
+
+A session id that already exists in another tenant is `id_collision` and is left where it is. A session in the destination tenant that already exists and differs is `native_exists` and is not updated. An identical rerun is `skipped`.
+
+`--rollback` removes only the sessions, messages, and `session_import_links` rows recorded for that `--tenant`. Dry-run is the default. Native rows and other tenants stay.
+
+Sessions with no resolved agent are stored `archived` and the placeholder agent `import-unresolved.<tenant>` is `enabled=0`, so a later chat turn does not call a model. Re-mapping those sessions is a later change.
+
+The SQLite `messages_ai` trigger stays in place. Imported message ids are removed from `memory_fts` in the same transaction as the insert.
 
 | Source | goso |
 |---|---|
