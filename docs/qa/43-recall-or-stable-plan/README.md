@@ -14,14 +14,18 @@ Step 2 picks a plan from the scope, not from the planner's row estimate.
 
 | Shape | Candidates from | Plan | Median | Max |
 |---|---|---|---:|---:|
-| Selective, near 0 | GIN bitmap (probe returned 0) | `Bitmap Index Scan on idx_memories_body_tsv` | 10.301485 ms | 11.347417 ms |
-| About 5% (2,501 / 50,000) | GIN bitmap (probe returned 0) | `Bitmap Index Scan on idx_memories_body_tsv` | 20.724909 ms | 20.900803 ms |
-| All match | Ordered index (probe returned 1,999) | `Index Scan using idx_memories_tenant_created` | 14.619151 ms | 15.807246 ms |
-| Target tenant selective, 4 other tenants × 50,000 all match the OR | BitmapAnd (probe returned 0) | `BitmapAnd` of `idx_memories_customer` (`tenant_id`) and `idx_memories_body_tsv` | 24.811498 ms | 24.947209 ms |
-| Customer scope, 5 rows for the customer, 49,995 other customers all match | Customer index | `Index Scan using idx_memories_customer` | 2.32431 ms | 2.595676 ms |
-| Agent scope, 16 rows for the agent, 49,980 rows for another agent all match | Agent sessions | `Nested Loop` + `Index Scan using idx_memories_session` | 10.449826 ms | 10.884709 ms |
+| Selective, near 0 | GIN bitmap (probe returned 0) | `Bitmap Index Scan on idx_memories_body_tsv` | 5.153307 ms | 6.027071 ms |
+| About 5% (2,501 / 50,000) | GIN bitmap (probe returned 0) | `Bitmap Index Scan on idx_memories_body_tsv` | 21.534481 ms | 28.054659 ms |
+| All match | Ordered index (probe returned 1,999) | `Index Scan using idx_memories_tenant_created` | 14.972182 ms | 15.059902 ms |
+| Target tenant selective, 4 other tenants × 50,000 all match the OR | Target agent's sessions, tsquery as a filter | `BitmapAnd` of `idx_memories_customer` (`tenant_id`) and `idx_memories_session` | 23.666341 ms | 26.061083 ms |
+| Customer scope, 5 rows for the customer, 49,995 other customers all match | Customer index | `Index Scan using idx_memories_customer` | 1.692492 ms | 2.121189 ms |
+| Agent scope, 16 rows for the agent, 49,980 rows for another agent all match | Agent sessions | `Nested Loop` + `Index Scan using idx_memories_session` | 10.604821 ms | 11.270847 ms |
+| Agent A ~5,000 older matches, agent B ~45,000 newer matches (bitmap fallback) | Agent's sessions inside the CTE | `Bitmap Index Scan on idx_memories_session` (5,000 rows) | 18.275472 ms | 30.996716 ms |
+| Customer ~5,000 older matches, other customers ~45,000 newer matches (bitmap fallback) | Customer index inside the CTE | `Bitmap Index Scan on idx_memories_customer` (`tenant_id`, `customer_key`, 5,000 rows) | 17.992692 ms | 36.257238 ms |
 
-The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed in the same run.
+The 50 ms cap is unchanged. Five samples of `RecallMemories` per shape. `TestPostgresRecallOldestFullMatch` passed. `TestPostgresRecallORScopeIsolation` calls `recallTSVORPath` on all four plans and checks every returned row (tenant, customer when scoped, agent, kind, excluded session) against poison rows in another tenant, another customer, another agent, and the excluded session.
+
+`go test -race ./gateway/internal/store/` is in [go-test-race.txt](go-test-race.txt). It reports no data race. Three timing checks go over 50 ms under the detector (5% max 53.657734 ms, agent swamp max 50.543198 ms, customer swamp max 61.765616 ms). The same checks without the detector are the medians and maxes in the table.
 
 ## Selective (near 0)
 
@@ -76,4 +80,20 @@ The target agent has 16 rows, including the older needle. Another agent in the s
 
 `Nested Loop`: `Index Scan using idx_sessions_tenant` for the agent, then `Index Scan using idx_memories_session` with `Index Cond: (session_id = sessions.id)`, 16 rows. Execution 0.044 ms.
 
-Samples: 10.551416 ms, 10.884709 ms, 10.449826 ms, 10.134619 ms, 10.4017 ms. Median **10.449826 ms**. Max **10.884709 ms**.
+Samples: 10.604821 ms, 11.270847 ms, 10.26266 ms, 10.213572 ms, 10.611252 ms. Median **10.604821 ms**. Max **11.270847 ms**.
+
+## Agent swamp (bitmap fallback)
+
+Agent A has 5,000 older rows that match the OR. Agent B has 45,000 newer rows that match the OR. The probe window is agent B, so it returns nothing. Agent A is larger than the budget, so the small-agent path does not run. The CTE reads agent A's sessions only:
+
+`Bitmap Index Scan on idx_memories_session`, 5,000 rows, execution 7.548 ms. The other agent's 45,000 rows are not in that scan.
+
+Samples: 18.275472 ms, 26.432583 ms, 17.911093 ms, 17.92427 ms, 30.996716 ms. Median **18.275472 ms**. Max **30.996716 ms**.
+
+## Customer swamp (bitmap fallback)
+
+One customer has 5,000 older matches. Other customers have 45,000 newer matches. The customer is larger than the budget, so the small-customer path does not run. The CTE uses the customer index:
+
+`Bitmap Index Scan on idx_memories_customer`, index condition `tenant_id` and `customer_key`, 5,000 rows, execution 5.690 ms.
+
+Samples: 18.472576 ms, 17.839675 ms, 17.942906 ms, 17.992692 ms, 36.257238 ms. Median **17.992692 ms**. Max **36.257238 ms**.

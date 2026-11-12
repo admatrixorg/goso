@@ -126,9 +126,12 @@ var recallORAgentGUCs = []string{
 	`SET LOCAL max_parallel_workers_per_gather = 0`,
 }
 
-// recallORPath is the step-2 plan used by the latest recallTSVOR call.
-// Tests read it after RecallMemories. Production callers ignore it.
-var recallORPath string
+const (
+	recallPathTenantWindow  = "tenant-window"
+	recallPathCustomerIndex = "customer-index"
+	recallPathAgentNested   = "agent-nested-loop"
+	recallPathBitmapAnd     = "bitmap-and"
+)
 
 // recallTSV is the Postgres candidate set. It does not apply recallScanCap
 // and it does not rank in SQL. Step 1 is the AND of every safe token, newest
@@ -173,7 +176,7 @@ func (s *SQLiteStore) recallTSVFetch(q RecallQuery, tenant, agent string, toks [
 		seen[h.Memory.ID] = struct{}{}
 	}
 	remain := recallCandidateCap - fetched
-	step2, n2, err := s.recallTSVOR(q, tenant, agent, toks, orMatch, remain)
+	step2, n2, _, err := s.recallTSVORPath(q, tenant, agent, toks, orMatch, remain)
 	fetched += n2
 	if err != nil {
 		return nil, fetched, err
@@ -217,48 +220,64 @@ func orRecallProbeBudget(lim int) int {
 // its own index and returned whole, so a tenant full of other customers or
 // agents is not materialized. Otherwise a newest-first window on
 // idx_memories_tenant_created supplies the rows when it already holds lim
-// hits. The remaining case is a large sparse scope: BitmapAnd of the tenant
-// btree and idx_memories_body_tsv, capped by LIMIT. SQL does not call ts_rank.
+// hits. The remaining case is a BitmapAnd of the tenant btree and
+// idx_memories_body_tsv, with the agent and customer filters inside the CTE.
+// SQL does not call ts_rank.
 func (s *SQLiteStore) recallTSVOR(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, error) {
+	hits, n, _, err := s.recallTSVORPath(q, tenant, agent, toks, match, lim)
+	return hits, n, err
+}
+
+// recallTSVORPath is recallTSVOR plus the plan name (tenant-window,
+// customer-index, agent-nested-loop, bitmap-and). The name is a return value
+// so callers do not share mutable state.
+func (s *SQLiteStore) recallTSVORPath(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, string, error) {
 	if match == "" || lim <= 0 {
-		recallORPath = ""
-		return nil, 0, nil
+		return nil, 0, "", nil
 	}
 	budget := orRecallProbeBudget(lim)
 	probeQ, probeArgs := recallTSVORProbeQuery(q, tenant, agent, match, budget, lim)
 	hits, n, err := s.execRecallTSV(toks, probeQ, probeArgs, recallORStableGUCs)
 	if err != nil {
-		return nil, n, err
+		return nil, n, "", err
 	}
 	if n >= lim {
-		recallORPath = "tenant-window"
-		return hits, n, nil
+		return hits, n, recallPathTenantWindow, nil
 	}
 	if q.CustomerScoped {
 		nCust, err := s.recallORCount(recallORCustomerCountSQL(), tenant, q.CustomerKey, KindEpisodic, KindDurable, budget)
 		if err != nil {
-			return nil, n, err
+			return nil, n, "", err
 		}
 		if nCust < budget {
-			recallORPath = "customer-index"
 			query, args := recallTSVORCustomerQuery(q, tenant, agent, match, lim)
-			return s.execRecallTSV(toks, query, args, recallORStableGUCs)
+			hits, n, err = s.execRecallTSV(toks, query, args, recallORStableGUCs)
+			if err != nil {
+				return nil, n, "", err
+			}
+			return hits, n, recallPathCustomerIndex, nil
 		}
 	}
 	if agent != "" {
 		nAgent, err := s.recallORCountGUCs(recallORAgentGUCs, recallORAgentCountSQL(), agent, tenant, budget)
 		if err != nil {
-			return nil, n, err
+			return nil, n, "", err
 		}
 		if nAgent < budget {
-			recallORPath = "agent-nested-loop"
 			query, args := recallTSVORAgentQuery(q, tenant, agent, match, lim)
-			return s.execRecallTSV(toks, query, args, recallORAgentGUCs)
+			hits, n, err = s.execRecallTSV(toks, query, args, recallORAgentGUCs)
+			if err != nil {
+				return nil, n, "", err
+			}
+			return hits, n, recallPathAgentNested, nil
 		}
 	}
-	recallORPath = "bitmap-and"
 	bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
-	return s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+	hits, n, err = s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+	if err != nil {
+		return nil, n, "", err
+	}
+	return hits, n, recallPathBitmapAnd, nil
 }
 
 func (s *SQLiteStore) recallORCount(query string, args ...any) (int, error) {
@@ -390,10 +409,12 @@ func recallTSVORProbeQuery(q RecallQuery, tenant, agent, match string, budget, l
 }
 
 // recallTSVORBitmapQuery loads the newest lim OR hits for one tenant.
-// tenant_id = ? is an index condition. The statement is run with
-// recallORBitmapGUCs so the plan is BitmapAnd of that btree and
-// idx_memories_body_tsv, then a LIMIT. It does not walk every row of the
-// tenant and it does not heap-fetch other tenants' matches.
+// tenant_id = ? is an index condition. The agent filter is session_id IN
+// that agent's sessions, inside the CTE, so other agents' matches are not
+// materialized. customer_key is in the CTE when the recall is customer scoped.
+// The statement runs under recallORBitmapGUCs: sequential scans and plain
+// index scans are off, cpu_tuple_cost is 1, so the plan intersects the tenant
+// btree with idx_memories_body_tsv instead of heap-fetching every match.
 func recallTSVORBitmapQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
 	query := `WITH hits AS MATERIALIZED (
 			SELECT id, session_id, kind, body, created_at, tenant_id, customer_key
@@ -403,6 +424,10 @@ func recallTSVORBitmapQuery(q RecallQuery, tenant, agent, match string, lim int)
 			AND kind IN (?, ?)
 			AND session_id <> ?`
 	args := []any{tenant, match, KindEpisodic, KindDurable, q.ExcludeSession}
+	if agent != "" {
+		query += ` AND session_id IN (SELECT id FROM sessions WHERE agent_id = ? AND tenant_id = ?)`
+		args = append(args, agent, tenant)
+	}
 	if q.CustomerScoped {
 		query += ` AND customer_key = ?`
 		args = append(args, q.CustomerKey)

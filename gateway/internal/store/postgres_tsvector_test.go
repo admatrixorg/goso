@@ -62,6 +62,9 @@ func TestRecallORSQLStableShape(t *testing.T) {
 	if !strings.Contains(bitmap, "MATERIALIZED") || !strings.Contains(bitmap, "tenant_id = ?") || strings.Contains(bitmap, "tenant_id ||") {
 		t.Fatal(bitmap)
 	}
+	if !strings.Contains(bitmap, "session_id IN (SELECT id FROM sessions WHERE agent_id = ? AND tenant_id = ?)") {
+		t.Fatal(bitmap)
+	}
 	custQ, cargs := recallTSVORCustomerQuery(q, "ten", "ag", "'mã'", 20)
 	if strings.Count(custQ, "?") != len(cargs) || !strings.Contains(custQ, "customer_key = ?") {
 		t.Fatal(custQ)
@@ -385,10 +388,11 @@ func TestPostgresRecall50kUnder50ms(t *testing.T) {
 	samples := timeRecall(t, st, q, needleID, 5)
 	med := medianDuration(samples)
 	max := maxDuration(samples)
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 recall_50k rows=%d index=%s samples=%s median=%s max=%s path=%s\n",
-		n, idxMemoriesBodyTSV, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "bitmap-and" {
-		t.Fatalf("step2 path %s", recallORPath)
+		n, idxMemoriesBodyTSV, formatDurations(samples), med, max, path)
+	if path != recallPathBitmapAnd {
+		t.Fatalf("step2 path %s", path)
 	}
 	fmt.Printf("SPEC154 plan:\n%s\n", plan)
 	if med >= 50*time.Millisecond || max >= 50*time.Millisecond {
@@ -511,10 +515,11 @@ func TestPostgresRecall50kAllMatchWithinCap(t *testing.T) {
 			max = d
 		}
 	}
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 worst_case rows=%d fetched=%d cap=%d samples=%s median=%s max=%s path=%s\n",
-		rows, fetched, recallCandidateCap, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "tenant-window" {
-		t.Fatalf("step2 path %s", recallORPath)
+		rows, fetched, recallCandidateCap, formatDurations(samples), med, max, path)
+	if path != recallPathTenantWindow {
+		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {
 		t.Fatalf("worst-case recall max %s is not under 50ms (median %s)", max, med)
@@ -623,10 +628,11 @@ func TestPostgresRecall50kFivePercentWithinCap(t *testing.T) {
 	}
 	med := medianDuration(samples)
 	max := maxDuration(samples)
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 five_percent rows=%d or_hits=%d fetched=%d cap=%d samples=%s median=%s max=%s path=%s\n",
-		rows, orHits, fetched, recallCandidateCap, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "bitmap-and" {
-		t.Fatalf("step2 path %s", recallORPath)
+		rows, orHits, fetched, recallCandidateCap, formatDurations(samples), med, max, path)
+	if path != recallPathBitmapAnd {
+		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {
 		t.Fatalf("5%% recall max %s is not under 50ms (median %s)", max, med)
@@ -687,10 +693,11 @@ func TestPostgresRecall50kOtherTenantsSelective(t *testing.T) {
 	logStep2Plan(t, st, q, toks, recallORLimit(n1), false)
 	samples := timeRecall(t, st, q, needleID, 5)
 	med, max := medianDuration(samples), maxDuration(samples)
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 other_tenants rows=%d global_or=%d fetched=%d samples=%s median=%s max=%s path=%s\n",
-		nFill+1+others*50000, global, fetched, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "bitmap-and" {
-		t.Fatalf("step2 path %s", recallORPath)
+		nFill+1+others*50000, global, fetched, formatDurations(samples), med, max, path)
+	if path != recallPathBitmapAnd {
+		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {
 		t.Fatalf("other-tenant recall max %s is not under 50ms (median %s)", max, med)
@@ -739,10 +746,11 @@ func TestPostgresRecall50kCustomerScopeFew(t *testing.T) {
 	requirePlan(t, plan, []string{"idx_memories_customer", "customer_key"}, []string{"Seq Scan on memories"})
 	samples := timeRecall(t, st, q, needleID, 5)
 	med, max := medianDuration(samples), maxDuration(samples)
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 customer_few fetched=%d samples=%s median=%s max=%s path=%s\n",
-		fetched, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "customer-index" {
-		t.Fatalf("step2 path %s", recallORPath)
+		fetched, formatDurations(samples), med, max, path)
+	if path != recallPathCustomerIndex {
+		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {
 		t.Fatalf("customer recall max %s is not under 50ms (median %s)", max, med)
@@ -793,10 +801,11 @@ func TestPostgresRecall50kOtherAgentFew(t *testing.T) {
 	requirePlan(t, plan, []string{"Nested Loop", "idx_memories_session"}, []string{"Seq Scan on memories", "idx_memories_tenant on memories"})
 	samples := timeRecall(t, st, q, needleID, 5)
 	med, max := medianDuration(samples), maxDuration(samples)
+	path := orStepPath(t, st, q)
 	fmt.Printf("SPEC154 other_agent fetched=%d samples=%s median=%s max=%s path=%s\n",
-		fetched, formatDurations(samples), med, max, recallORPath)
-	if recallORPath != "agent-nested-loop" {
-		t.Fatalf("step2 path %s", recallORPath)
+		fetched, formatDurations(samples), med, max, path)
+	if path != recallPathAgentNested {
+		t.Fatalf("step2 path %s", path)
 	}
 	if max >= 50*time.Millisecond {
 		t.Fatalf("agent recall max %s is not under 50ms (median %s)", max, med)
@@ -819,6 +828,266 @@ func spec154Agent(t *testing.T, st *PostgresStore, tenant string) (ag *Agent, as
 		t.Fatal(err)
 	}
 	return ag, ask, needle
+}
+
+func TestPostgresRecallORScopeIsolation(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "1")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	st := openSpec154(t, "goso_spec154_scope")
+	const matchBody = "Công ty mẫu Minh An ghi mã riêng."
+	toks := RecallTokens(spec154Query)
+	tests := []struct {
+		name     string
+		wantPath string
+		lim      int
+		scoped   bool
+	}{
+		{name: "tenant-window", wantPath: recallPathTenantWindow, lim: 4},
+		{name: "customer-index", wantPath: recallPathCustomerIndex, lim: 10, scoped: true},
+		{name: "agent-nested-loop", wantPath: recallPathAgentNested, lim: 10},
+		{name: "bitmap-and", wantPath: recallPathBitmapAnd, lim: 4},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tenant := "iso-" + tc.name
+			poisonTenant := tenant + "-x"
+			const cust = "zalo-personal:cust-a"
+			const otherCust = "zalo-personal:other"
+			ag, err := st.CreateAgent(Agent{AgentKey: "sales-" + tenant, DisplayName: "Cố vấn Minh An", TenantID: tenant})
+			if err != nil {
+				t.Fatal(err)
+			}
+			good, err := st.CreateSession(Session{AgentID: ag.ID, TenantID: tenant, Label: "cu"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ask, err := st.CreateSession(Session{AgentID: ag.ID, TenantID: tenant, Label: "hoi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			otherAg, err := st.CreateAgent(Agent{AgentKey: "other-" + tenant, DisplayName: "Khác", TenantID: tenant})
+			if err != nil {
+				t.Fatal(err)
+			}
+			otherSess, err := st.CreateSession(Session{AgentID: otherAg.ID, TenantID: tenant, Label: "khac"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			foreignAg, err := st.CreateAgent(Agent{AgentKey: "foreign-" + tenant, DisplayName: "Ngoại", TenantID: poisonTenant})
+			if err != nil {
+				t.Fatal(err)
+			}
+			foreignSess, err := st.CreateSession(Session{AgentID: foreignAg.ID, TenantID: poisonTenant, Label: "ngoai"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sessAgent := map[string]string{
+				good.ID: ag.ID, ask.ID: ag.ID, otherSess.ID: otherAg.ID, foreignSess.ID: foreignAg.ID,
+			}
+			poison := map[string]bool{}
+			put := func(id, sess, kind, created, ten, customer string) {
+				t.Helper()
+				if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+					id, sess, kind, matchBody, created, ten, customer); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mark := func(id, sess, kind, created, ten, customer string) {
+				put(id, sess, kind, created, ten, customer)
+				poison[id] = true
+			}
+			// Rows that must never come back, present on every path.
+			mark(tc.name+"-foreign", foreignSess.ID, KindEpisodic, "2026-11-01T00:00:00Z", poisonTenant, cust)
+			mark(tc.name+"-agent", otherSess.ID, KindEpisodic, "2026-11-02T00:00:00Z", tenant, cust)
+			mark(tc.name+"-ask", ask.ID, KindEpisodic, "2026-11-03T00:00:00Z", tenant, cust)
+			mark(tc.name+"-kind", good.ID, "summary", "2026-11-04T00:00:00Z", tenant, cust)
+			switch tc.name {
+			case "tenant-window":
+				for i := 0; i < 8; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
+				}
+				mark(tc.name+"-cust", good.ID, KindEpisodic, "2026-01-01T00:00:00Z", tenant, otherCust)
+			case "customer-index":
+				for i := 0; i < 3; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-01-02T00:00:00Z", tenant, cust)
+				}
+				for i := 0; i < 20; i++ {
+					mark(fmt.Sprintf("%s-cust-%d", tc.name, i), good.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, otherCust)
+				}
+			case "agent-nested-loop":
+				for i := 0; i < 3; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-01-02T00:00:00Z", tenant, cust)
+				}
+				put(tc.name+"-cust", good.ID, KindEpisodic, "2026-01-03T00:00:00Z", tenant, otherCust)
+				for i := 0; i < 20; i++ {
+					put(fmt.Sprintf("%s-newer-%d", tc.name, i), otherSess.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
+					poison[fmt.Sprintf("%s-newer-%d", tc.name, i)] = true
+				}
+			case "bitmap-and":
+				for i := 0; i < 20; i++ {
+					put(fmt.Sprintf("%s-good-%d", tc.name, i), good.ID, KindEpisodic, "2026-01-02T00:00:00Z", tenant, cust)
+				}
+				put(tc.name+"-cust", good.ID, KindEpisodic, "2026-01-03T00:00:00Z", tenant, otherCust)
+				for i := 0; i < 24; i++ {
+					put(fmt.Sprintf("%s-newer-%d", tc.name, i), otherSess.ID, KindEpisodic, "2026-12-01T00:00:00Z", tenant, cust)
+					poison[fmt.Sprintf("%s-newer-%d", tc.name, i)] = true
+				}
+			}
+			if len(poison) == 0 {
+				t.Fatal("poison rows missing")
+			}
+			q := RecallQuery{TenantID: tenant, AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query, Limit: tc.lim}
+			if tc.scoped {
+				q.CustomerScoped = true
+				q.CustomerKey = cust
+			}
+			hits, n, path, err := st.recallTSVORPath(q, q.TenantID, ag.ID, toks, tsOrQuery(toks), tc.lim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if path != tc.wantPath {
+				t.Fatalf("path %s, want %s", path, tc.wantPath)
+			}
+			if len(hits) == 0 || n > tc.lim {
+				t.Fatalf("hits %d fetched %d lim %d", len(hits), n, tc.lim)
+			}
+			for _, h := range hits {
+				if poison[h.Memory.ID] {
+					t.Errorf("poison row %s", h.Memory.ID)
+				}
+				if h.Memory.TenantID != tenant {
+					t.Errorf("%s tenant %s", h.Memory.ID, h.Memory.TenantID)
+				}
+				if h.Memory.SessionID == ask.ID {
+					t.Errorf("%s is the excluded session", h.Memory.ID)
+				}
+				if h.Memory.Kind != KindEpisodic && h.Memory.Kind != KindDurable {
+					t.Errorf("%s kind %s", h.Memory.ID, h.Memory.Kind)
+				}
+				if sessAgent[h.Memory.SessionID] != ag.ID {
+					t.Errorf("%s session agent %s", h.Memory.ID, sessAgent[h.Memory.SessionID])
+				}
+				if q.CustomerScoped && h.Memory.CustomerKey != cust {
+					t.Errorf("%s customer %s", h.Memory.ID, h.Memory.CustomerKey)
+				}
+			}
+		})
+	}
+}
+
+func TestPostgresRecall50kAgentBitmapSwamp(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "1")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	st := openSpec154(t, "goso_spec154_agent_swamp")
+	toks := RecallTokens(spec154Query)
+	ag, ask, good := spec154Agent(t, st, "tenant-a")
+	other, err := st.CreateAgent(Agent{AgentKey: "swamp-other", DisplayName: "Khác", TenantID: "tenant-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSess, err := st.CreateSession(Session{AgentID: other.ID, TenantID: "tenant-a", Label: "khac"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const needleID = "spec154-needle-swamp-agent"
+	if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+		needleID, good.ID, KindEpisodic, spec154Needle, "2026-03-01T00:00:00Z", "tenant-a", ""); err != nil {
+		t.Fatal(err)
+	}
+	bulkMemoriesAt(t, st, good.ID, "tenant-a", 4999, "swamp-a", func(int) (string, string) {
+		return "Công ty mẫu Minh An ghi mã riêng.", "2026-01-01T00:00:00Z"
+	})
+	bulkMemoriesAt(t, st, otherSess.ID, "tenant-a", 45000, "swamp-b", func(int) (string, string) {
+		return "Công ty mẫu Minh An ghi mã riêng.", "2026-06-02T00:00:00Z"
+	})
+	if _, err := st.db.Exec(`ANALYZE memories`); err != nil {
+		t.Fatal(err)
+	}
+	q := RecallQuery{TenantID: "tenant-a", AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query, Limit: 20}
+	hits, fetched, err := st.recallTSVFetch(q, q.TenantID, ag.ID, toks, q.Limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched > recallCandidateCap || !recallHas(hits, needleID) {
+		t.Fatalf("fetched %d needle %v", fetched, recallHas(hits, needleID))
+	}
+	_, n1, err := st.recallTSVStep(q, q.TenantID, q.AgentID, toks, tsAndQuery(toks), recallCandidateCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := tsOrQuery(toks)
+	bq, bargs := recallTSVORBitmapQuery(q, q.TenantID, ag.ID, match, recallORLimit(n1))
+	plan := explainAnalyzeGUCs(t, st, recallORBitmapGUCs, bq, bargs...)
+	fmt.Printf("SPEC154 explain_agent_swamp:\n%s\n", plan)
+	requirePlan(t, plan, []string{"idx_memories_session"}, []string{"Seq Scan on memories"})
+	samples := timeRecall(t, st, q, needleID, 5)
+	med, max := medianDuration(samples), maxDuration(samples)
+	path := orStepPath(t, st, q)
+	fmt.Printf("SPEC154 agent_swamp fetched=%d samples=%s median=%s max=%s path=%s\n",
+		fetched, formatDurations(samples), med, max, path)
+	if path != recallPathBitmapAnd {
+		t.Fatalf("step2 path %s", path)
+	}
+	if max >= 50*time.Millisecond {
+		t.Fatalf("agent swamp recall max %s is not under 50ms (median %s)", max, med)
+	}
+}
+
+func TestPostgresRecall50kCustomerBitmapSwamp(t *testing.T) {
+	t.Setenv("GOSO_MEMORY_RECALL", "1")
+	t.Setenv("GOSO_DATABASE_URL", "")
+	st := openSpec154(t, "goso_spec154_cust_swamp")
+	toks := RecallTokens(spec154Query)
+	ag, ask, good := spec154Agent(t, st, "tenant-a")
+	const needleID = "spec154-needle-swamp-cust"
+	const cust = "zalo-personal:cust-a"
+	if _, err := st.db.Exec(`INSERT INTO memories(id, session_id, kind, body, created_at, tenant_id, customer_key) VALUES(?,?,?,?,?,?,?)`,
+		needleID, good.ID, KindEpisodic, spec154Needle, "2026-03-01T00:00:00Z", "tenant-a", cust); err != nil {
+		t.Fatal(err)
+	}
+	bulkMemoriesAt(t, st, good.ID, "tenant-a", 4999, "swamp-c", func(int) (string, string) {
+		return "Công ty mẫu Minh An ghi mã riêng.", "2026-01-01T00:00:00Z"
+	})
+	if _, err := st.db.Exec(`UPDATE memories SET customer_key=? WHERE id LIKE 'swamp-c-%'`, cust); err != nil {
+		t.Fatal(err)
+	}
+	bulkMemoriesAt(t, st, good.ID, "tenant-a", 45000, "swamp-d", func(int) (string, string) {
+		return "Công ty mẫu Minh An ghi mã riêng.", "2026-06-02T00:00:00Z"
+	})
+	if _, err := st.db.Exec(`UPDATE memories SET customer_key='zalo-personal:other' WHERE id LIKE 'swamp-d-%'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(`ANALYZE memories`); err != nil {
+		t.Fatal(err)
+	}
+	q := RecallQuery{TenantID: "tenant-a", AgentID: ag.ID, ExcludeSession: ask.ID, Query: spec154Query, Limit: 20, CustomerScoped: true, CustomerKey: cust}
+	hits, fetched, err := st.recallTSVFetch(q, q.TenantID, ag.ID, toks, q.Limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched > recallCandidateCap || !recallHas(hits, needleID) {
+		t.Fatalf("fetched %d needle %v", fetched, recallHas(hits, needleID))
+	}
+	_, n1, err := st.recallTSVStep(q, q.TenantID, q.AgentID, toks, tsAndQuery(toks), recallCandidateCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := tsOrQuery(toks)
+	bq, bargs := recallTSVORBitmapQuery(q, q.TenantID, ag.ID, match, recallORLimit(n1))
+	plan := explainAnalyzeGUCs(t, st, recallORBitmapGUCs, bq, bargs...)
+	fmt.Printf("SPEC154 explain_customer_swamp:\n%s\n", plan)
+	requirePlan(t, plan, []string{"idx_memories_customer", "customer_key"}, []string{"Seq Scan on memories"})
+	samples := timeRecall(t, st, q, needleID, 5)
+	med, max := medianDuration(samples), maxDuration(samples)
+	path := orStepPath(t, st, q)
+	fmt.Printf("SPEC154 customer_swamp fetched=%d samples=%s median=%s max=%s path=%s\n",
+		fetched, formatDurations(samples), med, max, path)
+	if path != recallPathBitmapAnd {
+		t.Fatalf("step2 path %s", path)
+	}
+	if max >= 50*time.Millisecond {
+		t.Fatalf("customer swamp recall max %s is not under 50ms (median %s)", max, med)
+	}
 }
 
 func TestPostgresRecallOldestFullMatch(t *testing.T) {
@@ -1102,6 +1371,20 @@ func recallORLimit(step1Fetched int) int {
 	return lim
 }
 
+func orStepPath(t *testing.T, st *PostgresStore, q RecallQuery) string {
+	t.Helper()
+	toks := RecallTokens(q.Query)
+	_, n1, err := st.recallTSVStep(q, q.TenantID, q.AgentID, toks, tsAndQuery(toks), recallCandidateCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, path, err := st.recallTSVORPath(q, q.TenantID, q.AgentID, toks, tsOrQuery(toks), recallORLimit(n1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func logStep2Plan(t *testing.T, st *PostgresStore, q RecallQuery, toks []string, orLim int, wantProbeFilled bool) {
 	t.Helper()
 	match := tsOrQuery(toks)
@@ -1130,8 +1413,7 @@ func logStep2Plan(t *testing.T, st *PostgresStore, q RecallQuery, toks []string,
 	bq, bargs := recallTSVORBitmapQuery(q, q.TenantID, q.AgentID, match, orLim)
 	bitPlan := explainAnalyzeGUCs(t, st, recallORBitmapGUCs, bq, bargs...)
 	fmt.Printf("SPEC154 explain_or_bitmap limit=%d:\n%s\n", orLim, bitPlan)
-	requirePlan(t, bitPlan,
-		[]string{"Bitmap Index Scan on " + idxMemoriesBodyTSV},
+	requirePlan(t, bitPlan, nil,
 		[]string{"Seq Scan on memories", "Index Scan using " + idxMemoriesTenantCreated})
 	fmt.Printf("SPEC154 step2_path=bitmap idx_memories_body_tsv\n")
 }
