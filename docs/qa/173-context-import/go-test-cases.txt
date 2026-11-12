@@ -1,0 +1,68 @@
+=== RUN   TestReadExportDropsUnknownFields
+--- PASS: TestReadExportDropsUnknownFields (0.00s)
+=== RUN   TestExportTooLarge
+--- PASS: TestExportTooLarge (0.00s)
+=== RUN   TestMinhAnFixture
+=== RUN   TestMinhAnFixture/postgres
+2026/11/12 10:20:28 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestMinhAnFixture/postgres/flag_off
+2026/11/12 10:20:28 goso memory: recall session=20261112-7d1545c88a9cc974 agent=20261112-d7c6a39d30f7c3be customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/postgres/flag_on_loads_the_imported_files
+2026/11/12 10:20:28 goso memory: recall session=20261112-7d1545c88a9cc974 agent=20261112-d7c6a39d30f7c3be customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/memory
+=== RUN   TestMinhAnFixture/memory/flag_off
+2026/11/12 10:20:28 goso memory: recall session=20261112-7 agent=20261112-1 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/memory/flag_on_loads_the_imported_files
+2026/11/12 10:20:28 goso memory: recall session=20261112-7 agent=20261112-1 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/sqlite
+=== RUN   TestMinhAnFixture/sqlite/flag_off
+2026/11/12 10:20:28 goso memory: recall session=20261112-7fd3815628079d74 agent=20261112-ce021c2c0fd0c1f8 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/sqlite/flag_on_loads_the_imported_files
+2026/11/12 10:20:28 goso memory: recall session=20261112-7fd3815628079d74 agent=20261112-ce021c2c0fd0c1f8 customer_scoped=false candidates=0 injected=0 runes=0
+--- PASS: TestMinhAnFixture (0.15s)
+    --- PASS: TestMinhAnFixture/postgres (0.12s)
+        --- PASS: TestMinhAnFixture/postgres/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/postgres/flag_on_loads_the_imported_files (0.00s)
+    --- PASS: TestMinhAnFixture/memory (0.00s)
+        --- PASS: TestMinhAnFixture/memory/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/memory/flag_on_loads_the_imported_files (0.00s)
+    --- PASS: TestMinhAnFixture/sqlite (0.03s)
+        --- PASS: TestMinhAnFixture/sqlite/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/sqlite/flag_on_loads_the_imported_files (0.00s)
+=== RUN   TestDuplicateLastWinsIsIdempotent
+=== RUN   TestDuplicateLastWinsIsIdempotent/memory
+=== RUN   TestDuplicateLastWinsIsIdempotent/sqlite
+=== RUN   TestDuplicateLastWinsIsIdempotent/postgres
+2026/11/12 10:20:29 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestDuplicateLastWinsIsIdempotent (0.13s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/memory (0.00s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/sqlite (0.03s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/postgres (0.10s)
+=== RUN   TestOwnerCapAndTooLarge
+=== RUN   TestOwnerCapAndTooLarge/memory
+=== RUN   TestOwnerCapAndTooLarge/sqlite
+=== RUN   TestOwnerCapAndTooLarge/postgres
+2026/11/12 10:20:29 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestOwnerCapAndTooLarge (0.15s)
+    --- PASS: TestOwnerCapAndTooLarge/memory (0.00s)
+    --- PASS: TestOwnerCapAndTooLarge/sqlite (0.03s)
+    --- PASS: TestOwnerCapAndTooLarge/postgres (0.12s)
+=== RUN   TestInvalidRowsWriteNothing
+=== RUN   TestInvalidRowsWriteNothing/memory
+=== RUN   TestInvalidRowsWriteNothing/sqlite
+=== RUN   TestInvalidRowsWriteNothing/postgres
+2026/11/12 10:20:29 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestInvalidRowsWriteNothing (0.14s)
+    --- PASS: TestInvalidRowsWriteNothing/memory (0.00s)
+    --- PASS: TestInvalidRowsWriteNothing/sqlite (0.03s)
+    --- PASS: TestInvalidRowsWriteNothing/postgres (0.11s)
+=== RUN   TestBadOptionsWriteNothing
+--- PASS: TestBadOptionsWriteNothing (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/contextimport	0.582s
+=== RUN   TestCLIDryRunIsDefaultAndRerunWritesNothing
+--- PASS: TestCLIDryRunIsDefaultAndRerunWritesNothing (0.05s)
+=== RUN   TestCLIRequiresTenantAndRefusesRemoteDB
+--- PASS: TestCLIRequiresTenantAndRefusesRemoteDB (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-context-import	0.050s

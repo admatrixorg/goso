@@ -1,0 +1,2 @@
+ok  	github.com/mqglobal/goso/gateway/internal/contextimport	2.893s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-context-import	1.539s
