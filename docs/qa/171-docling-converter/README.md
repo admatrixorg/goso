@@ -74,6 +74,18 @@ PYTHONPATH=sidecar/docling python3 -m unittest discover -s sidecar/docling/tests
 
 `go test` does not start Docling and does not download models.
 
+## Cổng trước khi bật cờ
+
+This is the gate before turning `GOSO_VAULT_DOCLING` on on any machine. It is not a gate for this PR. None of the seven proofs below has been done yet.
+
+1. A successful `docker build`, with the image digest.
+2. `docker run --network none` as uid 10001 converting Minh An fixtures: one text PDF, one docx, and one scanned image with diacritics. The diacritic phrase must appear in the markdown.
+3. The runtime log, with no download and no outbound HTTP lines.
+4. `pip list` inside the image showing no `easyocr`, and an explicit statement of whether `rapidocr` or `onnxruntime` is present.
+5. `id` output showing uid 10001.
+6. The real license files from inside the image: `/usr/share/doc/tesseract-ocr*/copyright` and the model licenses under `/opt/docling/models`, with `licenses.md` updated to match those files.
+7. Image size and peak RAM from `docker stats` while converting the fixtures.
+
 ## What this PR did not run
 
 - The Docling image was not built and was not started. A network-blocked container did not convert a fixture. The Dockerfile bakes models in the build stage, the runtime command is only `python -m goso_docling`, and `HF_HUB_OFFLINE=1` is set. The server returns `not_configured` when artifacts or `vie`/`eng` tessdata are missing. That is the code path. It is not an observation of a built image.
