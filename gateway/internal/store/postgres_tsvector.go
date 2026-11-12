@@ -90,12 +90,45 @@ func tsPhraseSQL(column string) string {
 	return column + " @@ phraseto_tsquery('" + postgresTextSearchConfig + "', ?)"
 }
 
-// recallORStableGUCs is applied to both step-2 statements. Sequential scans
-// are what flipped on CI for the same indexes and the same rows. The probe
-// still index-scans idx_memories_tenant_created because its subquery is
-// ORDER BY created_at DESC LIMIT. The bitmap statement's only indexable
-// predicate is body_tsv @@, so the plan that remains is the GIN bitmap.
-var recallORStableGUCs = []string{`SET LOCAL enable_seqscan = off`}
+// recallORStableGUCs keeps the newest-window probe on an index scan.
+// Sequential scans are what flipped on CI for the same indexes and the same rows.
+var recallORStableGUCs = []string{
+	`SET LOCAL enable_seqscan = off`,
+	`SET LOCAL jit = off`,
+	`SET LOCAL max_parallel_workers_per_gather = 0`,
+}
+
+// recallORBitmapGUCs forces BitmapAnd of the tenant btree and the GIN index.
+// Index scans are off so the plan cannot walk idx_memories_tenant_created.
+// Sequential scans are off so it cannot read the heap to filter body_tsv.
+// cpu_tuple_cost makes a heap filter of every tenant row more expensive than
+// intersecting the two bitmaps, which heap-fetches only the overlap.
+// tenant_id stays an index condition. The GIN posting lists are still global;
+// the heap fetch is not.
+var recallORBitmapGUCs = []string{
+	`SET LOCAL enable_seqscan = off`,
+	`SET LOCAL enable_indexscan = off`,
+	`SET LOCAL enable_indexonlyscan = off`,
+	`SET LOCAL cpu_tuple_cost = 1`,
+	`SET LOCAL jit = off`,
+	`SET LOCAL max_parallel_workers_per_gather = 0`,
+}
+
+// recallORAgentGUCs starts at the agent's sessions and nested-loops their
+// memories. Hash and merge joins are off so the planner cannot scan every
+// memory in the tenant and probe a tiny session hash.
+var recallORAgentGUCs = []string{
+	`SET LOCAL enable_seqscan = off`,
+	`SET LOCAL enable_bitmapscan = off`,
+	`SET LOCAL enable_hashjoin = off`,
+	`SET LOCAL enable_mergejoin = off`,
+	`SET LOCAL jit = off`,
+	`SET LOCAL max_parallel_workers_per_gather = 0`,
+}
+
+// recallORPath is the step-2 plan used by the latest recallTSVOR call.
+// Tests read it after RecallMemories. Production callers ignore it.
+var recallORPath string
 
 // recallTSV is the Postgres candidate set. It does not apply recallScanCap
 // and it does not rank in SQL. Step 1 is the AND of every safe token, newest
@@ -180,13 +213,15 @@ func orRecallProbeBudget(lim int) int {
 	return b
 }
 
-// recallTSVOR is step 2. The probe is an ordered index read with a hard row
-// budget. When that window holds lim hits, they are the newest lim hits,
-// because every row outside the window is older. When it does not, the probe
-// rows are discarded and the GIN bitmap returns the newest lim hits. Either
-// way the candidate count stays within lim, and SQL does not call ts_rank.
+// recallTSVOR is step 2. A small customer or a small agent is read through
+// its own index and returned whole, so a tenant full of other customers or
+// agents is not materialized. Otherwise a newest-first window on
+// idx_memories_tenant_created supplies the rows when it already holds lim
+// hits. The remaining case is a large sparse scope: BitmapAnd of the tenant
+// btree and idx_memories_body_tsv, capped by LIMIT. SQL does not call ts_rank.
 func (s *SQLiteStore) recallTSVOR(q RecallQuery, tenant, agent string, toks []string, match string, lim int) ([]RecallHit, int, error) {
 	if match == "" || lim <= 0 {
+		recallORPath = ""
 		return nil, 0, nil
 	}
 	budget := orRecallProbeBudget(lim)
@@ -196,10 +231,64 @@ func (s *SQLiteStore) recallTSVOR(q RecallQuery, tenant, agent string, toks []st
 		return nil, n, err
 	}
 	if n >= lim {
+		recallORPath = "tenant-window"
 		return hits, n, nil
 	}
+	if q.CustomerScoped {
+		nCust, err := s.recallORCount(recallORCustomerCountSQL(), tenant, q.CustomerKey, KindEpisodic, KindDurable, budget)
+		if err != nil {
+			return nil, n, err
+		}
+		if nCust < budget {
+			recallORPath = "customer-index"
+			query, args := recallTSVORCustomerQuery(q, tenant, agent, match, lim)
+			return s.execRecallTSV(toks, query, args, recallORStableGUCs)
+		}
+	}
+	if agent != "" {
+		nAgent, err := s.recallORCountGUCs(recallORAgentGUCs, recallORAgentCountSQL(), agent, tenant, budget)
+		if err != nil {
+			return nil, n, err
+		}
+		if nAgent < budget {
+			recallORPath = "agent-nested-loop"
+			query, args := recallTSVORAgentQuery(q, tenant, agent, match, lim)
+			return s.execRecallTSV(toks, query, args, recallORAgentGUCs)
+		}
+	}
+	recallORPath = "bitmap-and"
 	bitQ, bitArgs := recallTSVORBitmapQuery(q, tenant, agent, match, lim)
-	return s.execRecallTSV(toks, bitQ, bitArgs, recallORStableGUCs)
+	return s.execRecallTSV(toks, bitQ, bitArgs, recallORBitmapGUCs)
+}
+
+func (s *SQLiteStore) recallORCount(query string, args ...any) (int, error) {
+	var n int
+	err := s.db.QueryRow(query, args...).Scan(&n)
+	return n, err
+}
+
+func (s *SQLiteStore) recallORCountGUCs(gucs []string, query string, args ...any) (int, error) {
+	if len(gucs) == 0 {
+		return s.recallORCount(query, args...)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, g := range gucs {
+		if _, err := tx.Exec(g); err != nil {
+			return 0, err
+		}
+	}
+	var n int
+	if err := tx.QueryRow(query, args...).Scan(&n); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (s *SQLiteStore) execRecallTSV(toks []string, query string, args []any, gucs []string) ([]RecallHit, int, error) {
@@ -300,20 +389,20 @@ func recallTSVORProbeQuery(q RecallQuery, tenant, agent, match string, budget, l
 	return query, args
 }
 
-// recallTSVORBitmapQuery loads the newest lim OR hits through the GIN index.
-// tenant_id || ” is a filter, not an index condition, so idx_memories_tenant
-// and idx_memories_tenant_created cannot answer the statement. With sequential
-// scans disabled, the remaining plan is a bitmap index scan of
-// idx_memories_body_tsv.
+// recallTSVORBitmapQuery loads the newest lim OR hits for one tenant.
+// tenant_id = ? is an index condition. The statement is run with
+// recallORBitmapGUCs so the plan is BitmapAnd of that btree and
+// idx_memories_body_tsv, then a LIMIT. It does not walk every row of the
+// tenant and it does not heap-fetch other tenants' matches.
 func recallTSVORBitmapQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
 	query := `WITH hits AS MATERIALIZED (
 			SELECT id, session_id, kind, body, created_at, tenant_id, customer_key
 			FROM memories
-			WHERE body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
-			AND tenant_id || '' = ?
+			WHERE tenant_id = ?
+			AND body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
 			AND kind IN (?, ?)
 			AND session_id <> ?`
-	args := []any{match, tenant, KindEpisodic, KindDurable, q.ExcludeSession}
+	args := []any{tenant, match, KindEpisodic, KindDurable, q.ExcludeSession}
 	if q.CustomerScoped {
 		query += ` AND customer_key = ?`
 		args = append(args, q.CustomerKey)
@@ -327,6 +416,70 @@ func recallTSVORBitmapQuery(q RecallQuery, tenant, agent, match string, lim int)
 	if agent != "" {
 		query += ` AND sess.agent_id = ?`
 		args = append(args, agent)
+	}
+	query += ` ORDER BY m.created_at DESC LIMIT ?`
+	args = append(args, lim)
+	return query, args
+}
+
+func recallORCustomerCountSQL() string {
+	return `SELECT count(*) FROM (
+		SELECT 1 FROM memories
+		WHERE tenant_id = ? AND customer_key = ? AND kind IN (?, ?)
+		LIMIT ?
+	) AS w`
+}
+
+func recallTSVORCustomerQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+		FROM memories m
+		JOIN sessions sess ON sess.id = m.session_id
+		WHERE m.tenant_id = ? AND m.customer_key = ?
+		AND sess.tenant_id = ?
+		AND m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		AND m.kind IN (?, ?)
+		AND m.session_id <> ?`
+	args := []any{tenant, q.CustomerKey, tenant, match, KindEpisodic, KindDurable, q.ExcludeSession}
+	if agent != "" {
+		query += ` AND sess.agent_id = ?`
+		args = append(args, agent)
+	}
+	query += ` ORDER BY m.created_at DESC LIMIT ?`
+	args = append(args, lim)
+	return query, args
+}
+
+func recallORAgentCountSQL() string {
+	// session_id IN, with no tenant predicate on memories, so the nested
+	// loop uses idx_memories_session. A tenant predicate makes the planner
+	// scan every row of the tenant instead.
+	return `SELECT count(*) FROM (
+		SELECT 1 FROM memories
+		WHERE session_id IN (
+			SELECT id FROM sessions WHERE agent_id = ? AND tenant_id = ?
+		)
+		LIMIT ?
+	) AS w`
+}
+
+func recallTSVORAgentQuery(q RecallQuery, tenant, agent, match string, lim int) (string, []any) {
+	query := `SELECT m.id, m.session_id, m.kind, m.body, m.created_at, m.tenant_id, m.customer_key
+		FROM (
+			SELECT id, session_id, kind, body, created_at, tenant_id, customer_key, body_tsv
+			FROM memories
+			WHERE session_id IN (
+				SELECT id FROM sessions WHERE agent_id = ? AND tenant_id = ?
+			)
+			OFFSET 0
+		) m
+		WHERE m.tenant_id = ?
+		AND m.body_tsv @@ to_tsquery('` + postgresTextSearchConfig + `', ?)
+		AND m.kind IN (?, ?)
+		AND m.session_id <> ?`
+	args := []any{agent, tenant, tenant, match, KindEpisodic, KindDurable, q.ExcludeSession}
+	if q.CustomerScoped {
+		query += ` AND m.customer_key = ?`
+		args = append(args, q.CustomerKey)
 	}
 	query += ` ORDER BY m.created_at DESC LIMIT ?`
 	args = append(args, lim)
