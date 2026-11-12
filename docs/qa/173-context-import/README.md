@@ -1,6 +1,6 @@
 # SPEC 173 — context file import
 
-Offline importer for GoClaw `agent_context_files` and `user_context_files` into the SPEC 150 `context_files` table. The input is a JSON or JSONL export. This tool does not connect to GoClaw. No control-plane change, so prototype screenshots do not apply and `qa:tabs` was not run. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
+Offline importer for GoClaw `agent_context_files` and `user_context_files` into the SPEC 150 `context_files` table. The input is a JSON or JSONL export. This tool does not connect to GoClaw. No control-plane tab changed, so prototype screenshots do not apply. No customer data and no secret values. The Postgres DSN is the env var `GOSO_TEST_POSTGRES_DSN`. The value is not stored here.
 
 ## Column mapping
 
@@ -8,7 +8,7 @@ Offline importer for GoClaw `agent_context_files` and `user_context_files` into 
 |---|---|
 | `tenant_id` | Kept for `--source-tenant` only. Written as `--tenant`. |
 | `agent_id` + `file_name` | Agent file. `agent_id` selects an existing agent (`--agent-map`, or an agent whose id or `agent_key` equals it). Stored owner is that agent's id. Natural key `agent_id` + `file_name`. |
-| `agent_id` + `user_id` + `file_name` | User file. `user_id` is the per-customer `user_key`. The agent must be in `--tenant`. Goso has no per-agent user file, so two agents that disagree on the same user and name are `scope-conflict`. Natural key `agent_id` + `user_id` + `file_name`. |
+| `agent_id` + `user_id` + `file_name` | User file. The agent must be in `--tenant`. The stored owner is `<channel>:<sender_id>` from `--customer-map`, or `goclaw:<user_id>` when the id is absent. Two agents that disagree on the same customer and name are `scope-conflict`. Natural key `agent_id` + `user_id` + `file_name`. |
 | `content` | `body` |
 | `created_at`, `updated_at` | Stored on the row. A rerun with the same body and clocks does not write. |
 
@@ -58,4 +58,19 @@ Exit 0. The same DSN was set, so the race run includes the Postgres cases. `gate
 
 ## qa:tabs
 
-No control-plane tab, route, or copy changed. `npm run qa:tabs` was not run.
+Code under test: `ee251870f1292aab2646487d89919cf663507538`. The log is [qa-tabs-ee251870f1292aab2646487d89919cf663507538.log](../173/qa-tabs-ee251870f1292aab2646487d89919cf663507538.log).
+
+Chrome binary: `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set.
+
+From `control-plane/`:
+
+```bash
+GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
+  CHROME_PATH=/usr/local/bin/google-chrome npm run qa:tabs
+```
+
+Gateway was `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080` from that commit. Fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`, `GOSO_CONTEXT_FILES`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` development.
+
+Seed before the browser run: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
