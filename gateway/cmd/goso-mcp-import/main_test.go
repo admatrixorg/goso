@@ -20,9 +20,10 @@ import (
 
 func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 	exportPath := filepath.Join("..", "..", "internal", "mcpimport", "testdata", "minh-an.json")
-	dbPath := filepath.Join(t.TempDir(), "goso.db")
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "goso.db")
 	seed(t, dbPath)
-	args := []string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath}
+	args := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--deny-file", writeDeny(t, dir), "--db", dbPath}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
@@ -93,6 +94,69 @@ func TestCLIDryRunWritesNothingThenApplyIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCLIDenyFileStopsBeforeWrite(t *testing.T) {
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	if err := os.WriteFile(exportPath, []byte(`{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000a1","name":"notes","transport":"stdio","command":"minh-an-files","tenant_id":"minh-an"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_IMPORT_DENY_FILE", "")
+	dbPath := filepath.Join(dir, "missing.db")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	args := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--apply"}
+	if code := run(args, stdout, stderr); code == 0 {
+		t.Fatal("missing deny file exited 0")
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("db created without a deny file")
+	}
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("\n# comment only\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := run(append(args, "--deny-file", empty), stdout, stderr); code == 0 {
+		t.Fatal("empty deny file exited 0")
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("db created for an empty deny file")
+	}
+	bad := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(bad, []byte("not a tenant !!!\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--deny-file", bad), stdout, stderr); code == 0 {
+		t.Fatal("malformed deny file exited 0")
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("db created for a malformed deny file")
+	}
+	listed := filepath.Join(dir, "list.txt")
+	if err := os.WriteFile(listed, []byte("blocked-sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	deniedArgs := []string{"--export", exportPath, "--tenant", "blocked-sample", "--source-tenant", "blocked-sample", "--deny-file", listed, "--db", dbPath, "--apply"}
+	if code := run(deniedArgs, stdout, stderr); code == 0 {
+		t.Fatal("denied tenant exited 0")
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("denied tenant wrote a database")
+	}
+	if strings.Contains(stdout.String(), "blocked-sample") || strings.Contains(stderr.String(), "blocked-sample") {
+		t.Fatal("output names a denied tenant")
+	}
+	var rep mcpimport.Report
+	if err := json.Unmarshal(stdout.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
+	}
+}
+
 func TestCLIRefusesWriteWithoutApply(t *testing.T) {
 	dir := t.TempDir()
 	exportPath := filepath.Join(dir, "export.json")
@@ -119,9 +183,10 @@ func TestCLIRefusesWriteWithoutApply(t *testing.T) {
 		t.Fatalf("both flags exit %d %s", code, stderr.String())
 	}
 	const dsn = "postgres://importer:super-secret-dsn-pass@db.example:5432/goso?sslmode=disable"
+	deny := writeDeny(t, dir)
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--db", dsn, "--apply"}, stdout, stderr); code != 1 {
+	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--deny-file", deny, "--db", dsn, "--apply"}, stdout, stderr); code != 1 {
 		t.Fatalf("remote exit %d", code)
 	}
 	if !strings.Contains(stderr.String(), "refusing non-local database host") {
@@ -133,7 +198,7 @@ func TestCLIRefusesWriteWithoutApply(t *testing.T) {
 	t.Setenv("GOSO_DATABASE_URL", "postgres://goso@127.0.0.1/goso")
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--db", dbPath, "--apply"}, stdout, stderr); code != 1 {
+	if code := run([]string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--deny-file", deny, "--db", dbPath, "--apply"}, stdout, stderr); code != 1 {
 		t.Fatalf("env dsn exit %d %s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "refusing GOSO_DATABASE_URL") {
@@ -197,7 +262,7 @@ func TestCLIPostgresApply(t *testing.T) {
 
 	exportPath := filepath.Join("..", "..", "internal", "mcpimport", "testdata", "minh-an.json")
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	args := []string{"--export", exportPath, "--tenant", "minh-an", "--db", u.String()}
+	args := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--deny-file", writeDeny(t, t.TempDir()), "--db", u.String()}
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("dry-run exit %d %s", code, stderr.String())
 	}
@@ -241,6 +306,15 @@ func TestCLIPostgresApply(t *testing.T) {
 	if len(pg.ListConnectors()) != 3 {
 		t.Fatalf("count %d", len(pg.ListConnectors()))
 	}
+}
+
+func writeDeny(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(path, []byte("blocked-sample\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func seed(t *testing.T, dbPath string) {

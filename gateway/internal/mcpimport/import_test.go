@@ -29,7 +29,7 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs := &countStore{Store: base}
-	rep, err := Import(cs, ex, Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(cs, ex, minhOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,12 +70,12 @@ func TestNameTakenDoesNotOverwrite(t *testing.T) {
 	if _, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "tu-van-sales"}); err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, readFixture(t), Options{Tenant: "minh-an"})
+	rep, err := Import(st, readFixture(t), minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	minh := mustTenant(t, rep, "minh-an")
-	if minh.MCPServers.Inserted != 2 || minh.MCPServers.Rejected != 1 || reasonCount(minh.MCPServers, "name-taken") != 1 {
+	if minh.MCPServers.Inserted != 2 || minh.MCPServers.Skipped != 1 || reasonCount(minh.MCPServers, "native-exists") != 1 {
 		t.Fatalf("servers %+v", minh.MCPServers)
 	}
 	if minh.MCPAgentGrants.Inserted != 0 || reasonCount(minh.MCPAgentGrants, "server-not-owned") != 3 {
@@ -108,7 +108,7 @@ func TestSourceIDRenameDoesNotDuplicate(t *testing.T) {
 	st := store.New()
 	seedAgents(t, st)
 	ex := readFixture(t)
-	if _, err := Import(st, ex, Options{Tenant: "minh-an"}); err != nil {
+	if _, err := Import(st, ex, minhOpt(false)); err != nil {
 		t.Fatal(err)
 	}
 	before := findConn(st.ListConnectors(), "goclaw-minh-an-notes")
@@ -120,12 +120,12 @@ func TestSourceIDRenameDoesNotDuplicate(t *testing.T) {
 			ex.servers[i].Name = "notes-renamed"
 		}
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	minh := mustTenant(t, rep, "minh-an")
-	if minh.MCPServers.Inserted != 0 || reasonCount(minh.MCPServers, "unchanged") != 3 {
+	if minh.MCPServers.Inserted != 0 || reasonCount(minh.MCPServers, "unchanged") != 2 || reasonCount(minh.MCPServers, "native-exists") != 1 {
 		t.Fatalf("servers %+v", minh.MCPServers)
 	}
 	if findConn(st.ListConnectors(), "goclaw-minh-an-notes-renamed") != nil {
@@ -135,7 +135,7 @@ func TestSourceIDRenameDoesNotDuplicate(t *testing.T) {
 	if after == nil || after.Endpoint != before.Endpoint || after.Enabled != before.Enabled || !after.CreatedAt.Equal(before.CreatedAt) {
 		t.Fatalf("stored notes changed")
 	}
-	if len(rep.NeedsCredential) != 2 || rep.NeedsCredential[0].SourceName != "notes-renamed" {
+	if len(rep.NeedsCredential) != 1 || rep.NeedsCredential[0].SourceName != "search" {
 		t.Fatalf("needs %+v", rep.NeedsCredential)
 	}
 	assertNoSecret(t, mustJSON(t, rep))
@@ -152,13 +152,13 @@ func TestDisabledGrantDoesNotDeleteLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(st, ex, Options{Tenant: "minh-an"}); err != nil {
+	if _, err := Import(st, ex, minhOpt(false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.LinkAgentConnector(ag.ID, "goclaw-minh-an-files"); err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestUserinfoStrippedAndListed(t *testing.T) {
 	if strings.Contains(fmt.Sprintf("%#v", ex), "placeholder-minh-an") {
 		t.Fatal("userinfo retained on export")
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestInvalidTransportWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an", DryRun: true})
+	rep, err := Import(st, ex, minhOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,12 +227,12 @@ func TestSlugCollision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	minh := mustTenant(t, rep, "minh-an")
-	if minh.MCPServers.Inserted != 1 || reasonCount(minh.MCPServers, "name-taken") != 1 {
+	if minh.MCPServers.Inserted != 1 || reasonCount(minh.MCPServers, "native-exists") != 1 {
 		t.Fatalf("%+v", minh.MCPServers)
 	}
 	got := findConn(st.ListConnectors(), "goclaw-minh-an-notes")
@@ -261,7 +261,7 @@ func TestJSONL(t *testing.T) {
 	if strings.Contains(fmt.Sprintf("%#v", ex), "placeholder-minh-an") {
 		t.Fatal("jsonl retained a secret")
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,6 +286,198 @@ func TestExportTooLarge(t *testing.T) {
 	}
 }
 
+func TestSecretArgsAreNotImported(t *testing.T) {
+	const secret = "fakeargkey0123456789ABCDEFGH"
+	st := store.New()
+	body := []byte(`{"mcp_servers":[{
+	  "id":"00000000-0000-4000-8000-0000000000c1",
+	  "name":"shell",
+	  "transport":"stdio",
+	  "command":"minh-an-files",
+	  "args":["--token","` + secret + `"],
+	  "tenant_id":"minh-an"
+	}]}`)
+	ex, err := ReadExport(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", ex), secret) {
+		t.Fatal("decoded export retained the argument")
+	}
+	rep, err := Import(st, ex, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.ListConnectors()) != 0 {
+		t.Fatal("secret command was imported")
+	}
+	minh := mustTenant(t, rep, "minh-an")
+	if minh.MCPServers.Inserted != 0 || reasonCount(minh.MCPServers, "needs-credential") != 1 || len(rep.NeedsCredential) != 1 {
+		t.Fatalf("servers %+v needs %+v", minh.MCPServers, rep.NeedsCredential)
+	}
+	blob := mustJSON(t, rep)
+	if strings.Contains(blob, secret) || strings.Contains(blob, "--token") {
+		t.Fatal("report contains the argument")
+	}
+}
+
+func TestSecretPathIsNotImported(t *testing.T) {
+	const secret = "fakepathkey0123456789ABCDEF"
+	st := store.New()
+	body := []byte(`{"mcp_servers":[{
+	  "id":"00000000-0000-4000-8000-0000000000c2",
+	  "name":"bridge",
+	  "transport":"sse",
+	  "url":"http://127.0.0.1:9/s/` + secret + `/mcp",
+	  "tenant_id":"minh-an"
+	}]}`)
+	ex, err := ReadExport(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", ex), secret) {
+		t.Fatal("decoded export retained the path")
+	}
+	rep, err := Import(st, ex, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.ListConnectors()) != 0 {
+		t.Fatal("secret path was imported")
+	}
+	if len(rep.NeedsCredential) != 1 || strings.Contains(mustJSON(t, rep), secret) {
+		t.Fatal("report contains the path token")
+	}
+}
+
+func TestDeniedTenantWritesNothing(t *testing.T) {
+	st := store.New()
+	body := []byte(`{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000a1","name":"notes","transport":"stdio","command":"minh-an-files","tenant_id":"blocked-sample"}]}`)
+	ex, err := ReadExport(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := minhOpt(false)
+	opt.Tenant = "blocked-sample"
+	opt.SourceTenant = "blocked-sample"
+	rep, err := Import(st, ex, opt)
+	if err == nil || rep.DeniedTenants != 1 {
+		t.Fatalf("err %v denied %d", err, rep.DeniedTenants)
+	}
+	if len(st.ListConnectors()) != 0 {
+		t.Fatal("denied tenant wrote a connector")
+	}
+	if strings.Contains(mustJSON(t, rep), "blocked-sample") {
+		t.Fatal("report names a denied tenant")
+	}
+}
+
+func TestDeniedRowIsCountedNotNamed(t *testing.T) {
+	st := store.New()
+	body := []byte(`{"mcp_servers":[
+	  {"id":"00000000-0000-4000-8000-0000000000a1","name":"notes","transport":"stdio","command":"minh-an-files","tenant_id":"minh-an"},
+	  {"id":"00000000-0000-4000-8000-0000000000b1","name":"ledger","transport":"stdio","command":"other","tenant_id":"blocked-sample"}
+	]}`)
+	ex, err := ReadExport(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Import(st, ex, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 || len(st.ListConnectors()) != 1 {
+		t.Fatalf("denied %d connectors %d", rep.DeniedTenants, len(st.ListConnectors()))
+	}
+	if strings.Contains(mustJSON(t, rep), "blocked-sample") {
+		t.Fatal("report names a denied tenant")
+	}
+}
+
+func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
+	st := store.New()
+	sales, other := seedAgents(t, st)
+	if _, err := Import(st, readFixture(t), minhOpt(false)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateConnector(store.ConnectorRecord{
+		Name: "zalocrm", Transport: "http", Endpoint: "http://127.0.0.1:8089", Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.LinkAgentConnector(sales.ID, "zalocrm"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateConnector(store.ConnectorRecord{
+		Name: "goclaw-other-shop-ledger", Transport: "mcp-http", Endpoint: "http://127.0.0.1:9/keep",
+		SchemaVersion: sourceMarker("other-shop", "00000000-0000-4000-8000-0000000000b1"), Enabled: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.LinkAgentConnector(other.ID, "goclaw-other-shop-ledger"); err != nil {
+		t.Fatal(err)
+	}
+	before := len(st.ListConnectors())
+	dry, err := Rollback(st, minhOpt(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dry.DryRun || dry.Connectors != 3 || len(st.ListConnectors()) != before {
+		t.Fatalf("dry %+v count %d", dry, len(st.ListConnectors()))
+	}
+	rep, err := Rollback(st, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DryRun || rep.Connectors != 3 {
+		t.Fatalf("%+v", rep)
+	}
+	if findConn(st.ListConnectors(), "goclaw-minh-an-notes") != nil || findConn(st.ListConnectors(), "goclaw-minh-an-files") != nil || findConn(st.ListConnectors(), "goclaw-minh-an-search") != nil {
+		t.Fatal("import-map rows survived rollback")
+	}
+	kept, err := st.GetConnector("zalocrm")
+	if err != nil || !kept.Enabled || kept.Endpoint != "http://127.0.0.1:8089" {
+		t.Fatalf("native %+v %v", kept, err)
+	}
+	otherRow := findConn(st.ListConnectors(), "goclaw-other-shop-ledger")
+	if otherRow == nil || otherRow.Endpoint != "http://127.0.0.1:9/keep" {
+		t.Fatal("other tenant row was removed")
+	}
+	salesLinks, err := st.ListAgentConnectors(sales.ID)
+	if err != nil || len(salesLinks) != 1 || salesLinks[0] != "zalocrm" {
+		t.Fatalf("sales links %v %v", salesLinks, err)
+	}
+	otherLinks, err := st.ListAgentConnectors(other.ID)
+	if err != nil || len(otherLinks) != 1 || otherLinks[0] != "goclaw-other-shop-ledger" {
+		t.Fatalf("other links %v %v", otherLinks, err)
+	}
+}
+
+func TestReportMasksCustomerIdentifiers(t *testing.T) {
+	const phone = "84901234567"
+	const zalo = "zalo:998877665544"
+	st := store.New()
+	body := []byte(`{"mcp_servers":[{
+	  "id":"00000000-0000-4000-8000-0000000000a9",
+	  "name":"` + phone + `",
+	  "transport":"stdio",
+	  "command":"minh-an-files",
+	  "tenant_id":"minh-an"
+	}],"mcp_user_grants":[{"server_id":"00000000-0000-4000-8000-0000000000a9","user_id":"` + zalo + `","tenant_id":"minh-an"}]}`)
+	ex, err := ReadExport(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Import(st, ex, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := mustJSON(t, rep)
+	if strings.Contains(blob, phone) || strings.Contains(blob, zalo) || strings.Contains(blob, "998877665544") {
+		t.Fatal("report contains a customer identifier")
+	}
+}
+
 func TestSourceTenantRejectsEmpty(t *testing.T) {
 	st := store.New()
 	body := []byte(`{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000a1","name":"notes","transport":"stdio","command":"minh-an-files","tenant_id":"","api_key":"placeholder-minh-an-api-key"}]}`)
@@ -293,7 +485,7 @@ func TestSourceTenantRejectsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(st, ex, Options{Tenant: "minh-an", SourceTenant: "minh-an", DryRun: true})
+	rep, err := Import(st, ex, minhOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +534,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, dbPath string) {
 	sales, other := seedAgents(t, st)
 	ex := readFixture(t)
 
-	dry, err := Import(st, ex, Options{Tenant: "minh-an", DryRun: true})
+	dry, err := Import(st, ex, minhOpt(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +549,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, dbPath string) {
 		t.Fatalf("dry-run links %v %v", names, err)
 	}
 
-	rep, err := Import(st, ex, Options{Tenant: "minh-an"})
+	rep, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +567,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, dbPath string) {
 	if notes.Enabled || notes.Transport != "mcp-http" || notes.Endpoint != "http://127.0.0.1:9/minh-an-notes" || notes.CredentialRef != "" || notes.TimeoutMS != 60000 || notes.SchemaVersion != sourceMarker("minh-an", notesID) || len(notes.ManifestJSON) != 0 {
 		t.Fatalf("notes %+v", notes)
 	}
-	if files.Enabled || files.Transport != "mcp-stdio" || files.Endpoint != "minh-an-files" || strings.Contains(files.Endpoint, "--root") || files.CredentialRef != "" || files.TimeoutMS != 30000 {
+	if files.Enabled || files.Transport != "mcp-stdio" || files.Endpoint != "minh-an-files --root minh-an" || files.CredentialRef != "" || files.TimeoutMS != 30000 {
 		t.Fatalf("files %+v", files)
 	}
 	if search.Enabled || search.Transport != "mcp-http" || search.Endpoint != "http://127.0.0.1:9/minh-an-search" || search.CredentialRef != "" || search.TimeoutMS != 15000 {
@@ -410,7 +602,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, dbPath string) {
 	}
 	created := notes.CreatedAt
 
-	again, err := Import(st, ex, Options{Tenant: "minh-an"})
+	again, err := Import(st, ex, minhOpt(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,6 +682,15 @@ func assertMinhAnCounts(t *testing.T, rep Report, first bool) {
 	headers := decision(rep, "mcp_servers", "headers")
 	if headers.Reason != "needs-decision" {
 		t.Fatalf("headers decision %+v", headers)
+	}
+}
+
+func minhOpt(dry bool) Options {
+	return Options{
+		Tenant:       "minh-an",
+		SourceTenant: "minh-an",
+		DryRun:       dry,
+		Deny:         map[string]struct{}{"blocked-sample": {}},
 	}
 }
 

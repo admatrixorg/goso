@@ -7,6 +7,7 @@ import "net/url"
 type cleanedURL struct {
 	endpoint string
 	needs    bool
+	hold     bool
 }
 
 func urlParse(raw string) (cleanedURL, error) {
@@ -22,6 +23,10 @@ func urlParse(raw string) (cleanedURL, error) {
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		needs = true
+	}
+	if pathHasKey(u.Path) {
+		// Drop the URL. A path segment that looks like a key must not be stored.
+		return cleanedURL{needs: true, hold: true}, nil
 	}
 	u.RawQuery = ""
 	u.Fragment = ""

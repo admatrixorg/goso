@@ -41,6 +41,7 @@ type serverInput struct {
 	EnabledBad      bool
 	TimeoutBad      bool
 	EndpointReason  string
+	SecretHold      bool
 	NeedsCredential bool
 	HadDisplayName  bool
 	HadArgs         bool
@@ -283,7 +284,7 @@ func parseServer(raw json.RawMessage) serverInput {
 		Transport:       strings.TrimSpace(row.Transport.Value),
 		TenantID:        strings.TrimSpace(row.TenantID.Value),
 		HadDisplayName:  row.DisplayName.Set,
-		HadArgs:         row.Args.Set,
+		HadArgs:         false,
 		HadHeaders:      row.Headers.Set,
 		HadEnv:          row.Env.Set,
 		HadAPIKey:       row.APIKey.Set,
@@ -306,11 +307,32 @@ func parseServer(raw json.RawMessage) serverInput {
 	}
 	switch mapTransport(in.Transport) {
 	case transportStdio:
+		joined, hold, badArgs := classifyArgs(row.Args)
+		if badArgs {
+			in.Bad = true
+			return in
+		}
+		if hold {
+			in.SecretHold = true
+			in.NeedsCredential = true
+			return in
+		}
 		ep, reason := cleanCommand(row.Command.Value)
-		in.Endpoint = ep
 		in.EndpointReason = reason
+		if reason != "" {
+			return in
+		}
+		if joined != "" {
+			ep = ep + " " + joined
+		}
+		in.Endpoint = ep
 	case transportHTTP:
-		ep, needs, reason := cleanHTTP(row.URL.Value)
+		ep, needs, hold, reason := cleanHTTP(row.URL.Value)
+		if hold {
+			in.SecretHold = true
+			in.NeedsCredential = true
+			return in
+		}
 		in.Endpoint = ep
 		in.EndpointReason = reason
 		if needs {
@@ -379,16 +401,19 @@ func cleanCommand(raw string) (string, string) {
 	return s, ""
 }
 
-func cleanHTTP(raw string) (string, bool, string) {
+func cleanHTTP(raw string) (string, bool, bool, string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || hasControl(raw) || len(raw) > 2048 {
-		return "", false, "invalid-endpoint"
+		return "", false, false, "invalid-endpoint"
 	}
 	u, err := urlParse(raw)
 	if err != nil {
-		return "", false, "invalid-endpoint"
+		return "", false, false, "invalid-endpoint"
 	}
-	return u.endpoint, u.needs, ""
+	if u.hold {
+		return "", true, true, ""
+	}
+	return u.endpoint, u.needs, false, ""
 }
 
 func hasControl(s string) bool {
@@ -401,24 +426,24 @@ func hasControl(s string) bool {
 }
 
 type serverRow struct {
-	ID          flexString  `json:"id"`
-	Name        flexString  `json:"name"`
-	DisplayName present     `json:"display_name"`
-	Transport   flexString  `json:"transport"`
-	Command     flexString  `json:"command"`
-	Args        present     `json:"args"`
-	URL         flexString  `json:"url"`
-	Headers     present     `json:"headers"`
-	Env         present     `json:"env"`
-	APIKey      present     `json:"api_key"`
-	ToolPrefix  present     `json:"tool_prefix"`
-	Timeout     flexTimeout `json:"timeout_sec"`
-	Settings    present     `json:"settings"`
-	Enabled     flexBool    `json:"enabled"`
-	CreatedBy   present     `json:"created_by"`
-	CreatedAt   present     `json:"created_at"`
-	UpdatedAt   present     `json:"updated_at"`
-	TenantID    flexString  `json:"tenant_id"`
+	ID          flexString      `json:"id"`
+	Name        flexString      `json:"name"`
+	DisplayName present         `json:"display_name"`
+	Transport   flexString      `json:"transport"`
+	Command     flexString      `json:"command"`
+	Args        json.RawMessage `json:"args"`
+	URL         flexString      `json:"url"`
+	Headers     present         `json:"headers"`
+	Env         present         `json:"env"`
+	APIKey      present         `json:"api_key"`
+	ToolPrefix  present         `json:"tool_prefix"`
+	Timeout     flexTimeout     `json:"timeout_sec"`
+	Settings    present         `json:"settings"`
+	Enabled     flexBool        `json:"enabled"`
+	CreatedBy   present         `json:"created_by"`
+	CreatedAt   present         `json:"created_at"`
+	UpdatedAt   present         `json:"updated_at"`
+	TenantID    flexString      `json:"tenant_id"`
 }
 
 func (r serverRow) bad() bool {

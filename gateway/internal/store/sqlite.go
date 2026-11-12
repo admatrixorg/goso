@@ -1274,6 +1274,30 @@ func (s *SQLiteStore) LinkAgentConnector(agentID, connectorName string) error {
 	return err
 }
 
+func (s *SQLiteStore) DeleteConnector(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name is required")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM agent_connectors WHERE connector_name=?`, name); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`DELETE FROM connectors WHERE name=?`, name)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
+}
+
 func (s *SQLiteStore) ListAgentConnectors(agentID string) ([]string, error) {
 	var cnt int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE id=?`, agentID).Scan(&cnt); err != nil {

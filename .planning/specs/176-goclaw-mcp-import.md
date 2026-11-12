@@ -45,8 +45,8 @@ The connector name this importer inserts is `goclaw-<tenant>-<slug(name)>`. The 
 | `mcp_servers.tenant_id` | name prefix and the marker | `--tenant` is the goso tenant written into the name and the marker. `--source-tenant`, when set, keeps only that export tenant. Any other tenant is `foreign-tenant` and is not written. |
 | `mcp_servers.name` | `connectors.name` | Slug of the goso tenant plus the slug of `name`. |
 | `mcp_servers.transport` | `connectors.transport` | `stdio` → `mcp-stdio`. `sse`, `http`, `mcp`, `streamable-http` → `mcp-http`. Anything else is `invalid-transport`. |
-| `mcp_servers.command` | `connectors.endpoint` | Stdio only. The command string. Args are not appended. |
-| `mcp_servers.url` | `connectors.endpoint` | HTTP/SSE only, after userinfo, query, and fragment are removed. |
+| `mcp_servers.command` and safe `args` | `connectors.endpoint` | Stdio command and arguments, joined verbatim. Secret arguments are not copied. |
+| `mcp_servers.url` | `connectors.endpoint` | HTTP/SSE only, after userinfo, query, and fragment are removed. A path segment that looks like a key is not stored. |
 | `mcp_servers.timeout_sec` | `connectors.timeout_ms` | Seconds times 1000. Null is 0. Negative or over 86400 is `invalid-timeout`. |
 | `mcp_servers.enabled` | `connectors.enabled` | Not copied. The inserted row is `false`. |
 | `mcp_servers.api_key` | not stored | Presence is a bool. The value is dropped. See secrets. |
@@ -78,7 +78,7 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 | Source | Why it has no home |
 |---|---|
 | `mcp_servers.display_name` | `connectors` has no display name. |
-| `mcp_servers.args` | Stdio endpoint is the command only. Args are not a column, and they can carry secrets, so they are not appended. |
+| `mcp_servers.args` | Safe arguments are part of the stdio endpoint. An argument that is `--token`, `--api-key`, `--key`, `--secret`, `--password`, a `KEY=VALUE` pair, or a key-like token of 24 or more characters is not stored. The server is not imported and is listed under `needs_credential`. |
 | `mcp_servers.headers` | No header column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.env` | No env column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.tool_prefix` | No prefix column. |
@@ -96,12 +96,12 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 
 ## Behavior
 
-1. `goso-mcp-import` takes `--export`, `--tenant`, and `--db`. `--tenant` is required and is not defaulted. `--source-tenant` is optional.
+1. `goso-mcp-import` takes `--export`, `--tenant`, `--source-tenant`, `--deny-file`, and `--db`. `--source-tenant` is required. `--deny-file` or `GOSO_IMPORT_DENY_FILE` is required. A missing, empty, or malformed deny file stops the command before the database is opened, including a dry-run. The report field `denied_tenants` is a count. Denied tenant ids are not printed.
 2. Dry-run is the default. It prints the same per-tenant counts and does not call `CreateConnector` or `LinkAgentConnector`. `--apply` writes. `--apply` together with `--dry-run` is an error. `--dry-run=false` without `--apply` writes nothing and does not open the database.
 3. `--db` is the only database. A Postgres host other than `localhost`, `127.0.0.1`, or `::1` is refused. `GOSO_DATABASE_URL` is not opened. Opening `--db` still runs the existing migrations.
 4. A second run of the same source id does not insert another connector and does not change the stored name, endpoint, enabled flag, credential, or `created_at`. A different source name in a later file does not create a second row.
-5. If the computed name already belongs to a connector this importer did not mark, the row is `name-taken`. That connector is not updated. Grants for that source id are `server-not-owned` and are not linked.
-6. Two source rows in one file that slug to the same name: the first is inserted, the second is `name-taken`.
+5. If the computed name already belongs to a connector and the stored row differs, the reason is `native-exists`. That connector is not updated. Grants for that source id are `server-not-owned` and are not linked.
+6. Two source rows in one file that slug to the same name: the first is inserted, the second is `native-exists`.
 7. An agent id that exists only in another tenant is `agent-other-tenant` and is not linked. A missing agent is `agent-missing`. The importer does not create agents.
 8. For each tenant section, `input = inserted + skipped + rejected + not_imported`. The importer returns an error if a tally does not balance. Logs and the report do not contain secret values.
 
@@ -112,8 +112,9 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 | `unchanged` | the source id is already mapped, or the agent link already exists |
 | `duplicate` | a later row repeats a source id or a server/agent pair in this file |
 | `foreign-tenant` | `tenant_id` is not the selected source tenant |
-| `name-taken` | the goso name exists on a connector this source id does not own |
-| `server-not-owned` | the grant's server was `name-taken` |
+| `native-exists` | a connector already occupies the target and differs from this export; it is not updated |
+| `needs-credential` | the server was not stored because an argument or URL path looks like a credential, or an accepted server still needs a credential re-entered |
+| `server-not-owned` | the grant's server was `native-exists` and was not accepted |
 | `server-missing` | the grant's server was not accepted |
 | `agent-missing` | no agent in `--tenant` has that id or agent key |
 | `agent-other-tenant` | that id or agent key belongs to another tenant |
@@ -126,7 +127,6 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 | `invalid-timeout` | `timeout_sec` is not an integer from 0 to 86400 |
 | `control` | a kept field contains a control character |
 | `needs-decision` | the table or column has no goso home |
-| `needs-credential` | the server was accepted and a secret was left empty |
 | `dropped-secret` | `api_key` was present and was not stored |
 | `credential-table` | `mcp_user_credentials` or `mcp_context_credentials` |
 

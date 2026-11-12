@@ -5,9 +5,13 @@
 // agent links only. Dry-run is the default. --apply writes. It does not open
 // GOSO_DATABASE_URL, and it refuses a non-local Postgres host.
 //
-// Secrets in mcp_servers.api_key, headers, env, and URL userinfo or query
-// strings are not copied. Imported servers are stored disabled. The report
-// lists servers that need a credential re-entered, without the secret.
+// A local deny file is required. If that file is missing, empty, or
+// malformed, the command stops before it opens the database. The report
+// counts denied tenants and does not name them.
+//
+// Secrets in mcp_servers.api_key, headers, env, URL userinfo, query strings,
+// key-like path segments, and secret stdio arguments are not copied.
+// Imported servers are stored disabled.
 package main
 
 import (
@@ -34,10 +38,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	exportPath := fs.String("export", "", "JSON or JSONL export of GoClaw MCP and tool tables")
 	tenant := fs.String("tenant", "", "goso tenant_id to write (required)")
-	source := fs.String("source-tenant", "", "optional export tenant_id to keep; other tenants are foreign-tenant")
+	source := fs.String("source-tenant", "", "export tenant_id to keep (required for import)")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
-	apply := fs.Bool("apply", false, "write connectors and links; omit to dry-run")
-	dry := fs.Bool("dry-run", true, "report per-tenant counts and write nothing (default)")
+	denyFile := fs.String("deny-file", "", "local file of tenant ids to refuse; else GOSO_IMPORT_DENY_FILE")
+	rollback := fs.Bool("rollback", false, "delete import-map rows for --tenant; dry-run unless --apply")
+	apply := fs.Bool("apply", false, "write; omit to dry-run")
+	dry := fs.Bool("dry-run", true, "report counts and write nothing (default)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -72,17 +78,69 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" {
+	dest := strings.TrimSpace(*tenant)
+	src := strings.TrimSpace(*source)
+	if dest == "" || strings.TrimSpace(*dbPath) == "" {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	if !store.TenantOK(strings.TrimSpace(*tenant)) {
+	if !*rollback && (strings.TrimSpace(*exportPath) == "" || src == "") {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	if *rollback && strings.TrimSpace(*exportPath) != "" {
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	if !store.TenantOK(dest) {
 		fmt.Fprintln(stderr, "tenant is invalid")
 		return 2
 	}
-	if s := strings.TrimSpace(*source); s != "" && !store.TenantOK(s) {
+	if !*rollback && !store.TenantOK(src) {
 		fmt.Fprintln(stderr, "source tenant is invalid")
 		return 2
+	}
+	denyPath := strings.TrimSpace(*denyFile)
+	if denyPath == "" {
+		denyPath = strings.TrimSpace(os.Getenv("GOSO_IMPORT_DENY_FILE"))
+	}
+	if denyPath == "" {
+		fmt.Fprintln(stderr, "deny file")
+		return 2
+	}
+	deny, err := mcpimport.LoadDenyFile(denyPath)
+	if err != nil {
+		fmt.Fprintln(stderr, "deny file")
+		return 2
+	}
+	if *rollback {
+		if n := deniedCount(deny, dest); n > 0 {
+			writeReport(stdout, stderr, mcpimport.RollbackReport{Rollback: true, DryRun: true, DeniedTenants: n})
+			fmt.Fprintln(stderr, "tenant is denied")
+			return 1
+		}
+		st, closeDB, err := openDB(*dbPath)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer closeDB()
+		rep, err := mcpimport.Rollback(st, mcpimport.Options{Tenant: dest, DryRun: dryRun, Deny: deny})
+		if err != nil {
+			return fail(stderr, err)
+		}
+		return writeReport(stdout, stderr, rep)
+	}
+	if n := deniedCount(deny, dest, src); n > 0 {
+		writeReport(stdout, stderr, mcpimport.Report{
+			DryRun:          true,
+			Tenants:         []mcpimport.TenantReport{},
+			NeedsCredential: []mcpimport.CredentialNeed{},
+			NotImported:     []mcpimport.Decision{},
+			DeniedTenants:   n,
+		})
+		fmt.Fprintln(stderr, "tenant is denied")
+		return 1
 	}
 	f, err := os.Open(*exportPath)
 	if err != nil {
@@ -106,31 +164,57 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer closeDB()
 	rep, err := mcpimport.Import(st, ex, mcpimport.Options{
-		Tenant:       strings.TrimSpace(*tenant),
-		SourceTenant: strings.TrimSpace(*source),
+		Tenant:       dest,
+		SourceTenant: src,
 		DryRun:       dryRun,
+		Deny:         deny,
 	})
 	if err != nil {
-		var cfg *mcpimport.ConfigError
-		if errors.As(err, &cfg) {
-			fmt.Fprintln(stderr, cfg.Error())
-		} else {
-			fmt.Fprintln(stderr, "import failed")
+		if rep.DeniedTenants > 0 {
+			writeReport(stdout, stderr, rep)
+			fmt.Fprintln(stderr, "tenant is denied")
+			return 1
 		}
-		return 1
+		return fail(stderr, err)
 	}
+	return writeReport(stdout, stderr, rep)
+}
+
+const usage = "usage: goso-mcp-import --export file.json --tenant id --source-tenant id --deny-file path --db path [--apply]\n       goso-mcp-import --rollback --tenant id --deny-file path --db path [--apply]\ndry-run is the default; --apply writes. Do not pass --apply and --dry-run together.\nGOSO_IMPORT_DENY_FILE is used when --deny-file is omitted. A missing, empty, or malformed deny file stops the command."
+
+func deniedCount(list map[string]struct{}, ids ...string) int {
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		if mcpimport.Denied(list, id) {
+			seen[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
+		}
+	}
+	return len(seen)
+}
+
+func fail(stderr io.Writer, err error) int {
+	var cfg *mcpimport.ConfigError
+	if errors.As(err, &cfg) {
+		fmt.Fprintln(stderr, cfg.Error())
+	} else {
+		fmt.Fprintln(stderr, "import failed")
+	}
+	return 1
+}
+
+func writeReport(stdout, stderr io.Writer, v any) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(rep); err != nil {
+	if err := enc.Encode(v); err != nil {
 		fmt.Fprintln(stderr, "write report failed")
 		return 1
 	}
 	return 0
 }
 
-const usage = "usage: goso-mcp-import --export file.json --tenant id --db path [--source-tenant id] [--apply]\ndry-run is the default; --apply writes. Do not pass --apply and --dry-run together."
-
-func openDB(path string) (mcpimport.Store, func() error, error) {
+func openDB(path string) (interface {
+	mcpimport.Deleter
+}, func() error, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return nil, nil, errors.New("--db is required")
