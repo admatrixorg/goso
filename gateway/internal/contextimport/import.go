@@ -3,28 +3,33 @@
 // Package contextimport loads one tenant from an offline context-file export
 // into the context_files table from SPEC 150.
 //
-// The GoClaw export columns for agent_context_files and user_context_files
-// are not listed in this repo or in goso#26, goso#28, or goso#29. The JSON
-// shape below is an assumption. It carries only what context_files stores:
-// a tenant id, an owner, a file name, and a body. Scope is which array the
-// row sits in. agent_key is not a context_files column. It names an agent
-// that already exists in the destination tenant; the stored owner is that
-// agent's id. user_key is stored as the owner. The importer does not create
-// agents, users, memories, vault rows, or a version table.
+// The export mirrors the GoClaw tables agent_context_files and
+// user_context_files. Column names are tenant_id, agent_id, file_name,
+// content, created_at, updated_at, and, for a user row, user_id. The GoClaw
+// uuid primary key is not stored. Goso keeps its own id. Upsert uses the
+// GoClaw natural key: (agent_id, file_name) or (agent_id, user_id, file_name).
+//
+// agent_id selects an agent that already exists in the destination tenant
+// (see Options.AgentMap). The stored agent owner is that agent's id.
+// user_id is stored as the per-customer user_key. Goso user files are not
+// per agent, so two agents that disagree on the same user_id and file_name
+// are scope-conflict and neither body is written. The importer does not
+// create agents, users, memories, or vault rows, and it does not open a
+// database other than the one the caller passes.
 //
 // Unknown JSON fields are ignored. A later run writes nothing when the
-// stored body is already the body this run would store. A changed body
-// replaces that same row. Rows that share a destination key collapse to the
-// last valid row, so a repeated export does not oscillate.
+// stored body and the source clocks already match.
 package contextimport
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -41,6 +46,7 @@ const (
 	reasonAgentOtherTenant = "agent-other-tenant"
 	reasonInvalid          = "invalid"
 	reasonTooLarge         = "too-large"
+	reasonScopeConflict    = "scope-conflict"
 )
 
 // Options selects the single destination tenant for this run.
@@ -54,6 +60,10 @@ type Options struct {
 	// Apply writes. The zero value is a dry-run, which reports the same
 	// counts and does not call PutContextFile.
 	Apply bool
+	// AgentMap binds a GoClaw agent_id to a goso agent_key in DestTenant.
+	// When an id is absent, an agent whose id or agent_key equals that
+	// agent_id is used. The map does not create agents.
+	AgentMap map[string]string
 	// Log receives rejection lines. Nil discards them. Arguments are names,
 	// owner keys, and reason codes, never file bodies.
 	Log Logger
@@ -64,27 +74,35 @@ type Logger interface {
 	Printf(format string, args ...any)
 }
 
-// Export is the assumed offline dump. Embedding and other unknown fields are
-// not represented, so the decoder drops them.
+// Export is an offline dump of the two GoClaw tables. The uuid primary key
+// and any other column are not represented, so the decoder drops them.
 type Export struct {
 	Agents []AgentFile `json:"agent_context_files"`
 	Users  []UserFile  `json:"user_context_files"`
 }
 
-// AgentFile is one assumed agent_context_files row.
+// AgentFile is one agent_context_files row.
+// Natural key: agent_id + file_name.
 type AgentFile struct {
-	TenantID string `json:"tenant_id"`
-	AgentKey string `json:"agent_key"`
-	Name     string `json:"name"`
-	Body     string `json:"body"`
+	TenantID  string `json:"tenant_id"`
+	AgentID   string `json:"agent_id"`
+	FileName  string `json:"file_name"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
-// UserFile is one assumed user_context_files row.
+// UserFile is one user_context_files row.
+// Natural key: agent_id + user_id + file_name.
+// user_id is stored as the per-customer user_key.
 type UserFile struct {
-	TenantID string `json:"tenant_id"`
-	UserKey  string `json:"user_key"`
-	Name     string `json:"name"`
-	Body     string `json:"body"`
+	TenantID  string `json:"tenant_id"`
+	AgentID   string `json:"agent_id"`
+	UserID    string `json:"user_id"`
+	FileName  string `json:"file_name"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ConfigError is a bad option. The text names the option, not a file body.
@@ -114,7 +132,43 @@ func readExport(r io.Reader, max int64) (*Export, error) {
 	if int64(len(buf)) > max {
 		return nil, errors.New("export too large")
 	}
+	buf = bytes.TrimSpace(buf)
+	if len(buf) == 0 {
+		return &Export{}, nil
+	}
 	dec := json.NewDecoder(bytes.NewReader(buf))
+	dec.UseNumber()
+	var first json.RawMessage
+	if err := dec.Decode(&first); err != nil {
+		return nil, fmt.Errorf("read export: %w", err)
+	}
+	if dec.More() {
+		return parseJSONL(buf)
+	}
+	first = bytes.TrimSpace(first)
+	if len(first) > 0 && first[0] == '[' {
+		return parseRowArray(first)
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(first, &probe); err != nil {
+		return nil, fmt.Errorf("read export: %w", err)
+	}
+	if _, ok := probe["agent_context_files"]; ok {
+		return decodeEnvelope(first)
+	}
+	if _, ok := probe["user_context_files"]; ok {
+		return decodeEnvelope(first)
+	}
+	if _, ok := probe["agent_id"]; !ok {
+		if _, ok := probe["file_name"]; !ok {
+			return decodeEnvelope(first)
+		}
+	}
+	return oneRow(first)
+}
+
+func decodeEnvelope(raw []byte) (*Export, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var ex Export
 	if err := dec.Decode(&ex); err != nil {
@@ -123,14 +177,113 @@ func readExport(r io.Reader, max int64) (*Export, error) {
 	return &ex, nil
 }
 
+func parseJSONL(buf []byte) (*Export, error) {
+	sc := bufio.NewScanner(bytes.NewReader(buf))
+	sc.Buffer(make([]byte, 64*1024), len(buf)+1)
+	var ex Export
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		if err := appendRow(&ex, line); err != nil {
+			return nil, err
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("read export: %w", err)
+	}
+	return &ex, nil
+}
+
+func parseRowArray(raw []byte) (*Export, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var rows []json.RawMessage
+	if err := dec.Decode(&rows); err != nil {
+		return nil, fmt.Errorf("read export: %w", err)
+	}
+	var ex Export
+	for _, row := range rows {
+		if err := appendRow(&ex, row); err != nil {
+			return nil, err
+		}
+	}
+	return &ex, nil
+}
+
+func oneRow(raw []byte) (*Export, error) {
+	var ex Export
+	if err := appendRow(&ex, raw); err != nil {
+		return nil, err
+	}
+	return &ex, nil
+}
+
+func appendRow(ex *Export, raw []byte) error {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return fmt.Errorf("read export: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if _, ok := keys["user_id"]; ok {
+		var row UserFile
+		if err := dec.Decode(&row); err != nil {
+			return fmt.Errorf("read export: %w", err)
+		}
+		ex.Users = append(ex.Users, row)
+		return nil
+	}
+	var row AgentFile
+	if err := dec.Decode(&row); err != nil {
+		return fmt.Errorf("read export: %w", err)
+	}
+	ex.Agents = append(ex.Agents, row)
+	return nil
+}
+
+// ReadAgentMap decodes a JSON object of GoClaw agent_id to goso agent_key.
+func ReadAgentMap(r io.Reader) (map[string]string, error) {
+	if r == nil {
+		return nil, errors.New("read agent map")
+	}
+	buf, err := io.ReadAll(io.LimitReader(r, 1<<20+1))
+	if err != nil {
+		return nil, fmt.Errorf("read agent map: %w", err)
+	}
+	if len(buf) > 1<<20 {
+		return nil, errors.New("agent map too large")
+	}
+	dec := json.NewDecoder(bytes.NewReader(buf))
+	dec.UseNumber()
+	var raw map[string]string
+	if err := dec.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("read agent map: %w", err)
+	}
+	out := make(map[string]string, len(raw))
+	for id, key := range raw {
+		id = strings.TrimSpace(id)
+		key = strings.TrimSpace(key)
+		if id == "" || key == "" || strings.ContainsAny(id, "\r\n\x00") || strings.ContainsAny(key, "\r\n\x00") {
+			return nil, errors.New("read agent map")
+		}
+		out[id] = key
+	}
+	return out, nil
+}
+
 type item struct {
 	kind     string
 	scope    string
 	tenant   string
 	ownerKey string
 	ownerID  string
+	natural  string
 	name     string
 	body     string
+	created  time.Time
+	updated  time.Time
 	reason   string
 	keep     bool
 }
@@ -156,12 +309,13 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	tally := &tally{log: opt.Log}
 	items := make([]item, 0, len(ex.Agents)+len(ex.Users))
 	for _, row := range ex.Agents {
-		items = append(items, classifyAgent(st, dest, source, row))
+		items = append(items, classifyAgent(st, dest, source, opt.AgentMap, row))
 	}
 	for _, row := range ex.Users {
-		items = append(items, classifyUser(source, row))
+		items = append(items, classifyUser(st, dest, source, opt.AgentMap, row))
 	}
-	markDuplicates(items)
+	markNatural(items)
+	markDest(items)
 	owners := map[string]*ownerFiles{}
 	for i := range items {
 		it := &items[i]
@@ -183,7 +337,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			}
 			owners[key] = state
 		}
-		if prev, ok := state.files[it.name]; ok && prev == it.body {
+		if prev, ok := state.files[it.name]; ok && prev.body == it.body && clockMatches(prev.created, it.created) && clockMatches(prev.updated, it.updated) {
 			tally.skip(it.kind, it.tenant, it.name, it.ownerKey, reasonUnchanged)
 			continue
 		}
@@ -193,11 +347,13 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 		if opt.Apply {
 			if _, err := st.PutContextFile(store.ContextFile{
-				TenantID: dest,
-				Scope:    it.scope,
-				OwnerID:  it.ownerID,
-				Name:     it.name,
-				Body:     it.body,
+				TenantID:  dest,
+				Scope:     it.scope,
+				OwnerID:   it.ownerID,
+				Name:      it.name,
+				Body:      it.body,
+				CreatedAt: it.created,
+				UpdatedAt: it.updated,
 			}); err != nil {
 				if reason, ok := putReason(err); ok {
 					tally.reject(it.kind, it.tenant, it.name, it.ownerKey, reason)
@@ -207,7 +363,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			}
 		}
 		_, existed := state.files[it.name]
-		state.files[it.name] = it.body
+		state.files[it.name] = keptFile{body: it.body, created: it.created, updated: it.updated}
 		if existed {
 			tally.add(it.kind, it.tenant, "updated", "", it.name, it.ownerKey)
 			continue
@@ -217,64 +373,106 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	return tally.finish(!opt.Apply, len(ex.Agents), len(ex.Users))
 }
 
-func classifyAgent(st store.StoreIface, dest, source string, row AgentFile) item {
+func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string]string, row AgentFile) item {
 	it := item{
 		kind:     "agent",
 		scope:    store.ContextScopeAgent,
 		tenant:   clipTenant(row.TenantID),
-		ownerKey: clipOwner(row.AgentKey),
-		name:     strings.TrimSpace(row.Name),
-		body:     strings.TrimSpace(row.Body),
+		ownerKey: clipOwner(row.AgentID),
+		name:     strings.TrimSpace(row.FileName),
+		body:     strings.TrimSpace(row.Content),
 	}
 	if !sameSource(row.TenantID, source) {
 		it.reason = tenantReason(row.TenantID)
 		return it
 	}
 	it.tenant = strings.TrimSpace(row.TenantID)
-	if !nameOK(it.name) || it.body == "" {
+	created, updated, ok := rowClocks(row.CreatedAt, row.UpdatedAt)
+	if !ok || !nameOK(it.name) || it.body == "" {
 		it.reason = reasonInvalid
 		return it
 	}
+	it.created = created
+	it.updated = updated
 	if len(it.body) > store.MaxContextFileBytes {
 		it.reason = reasonTooLarge
 		return it
 	}
-	id, reason := resolveAgent(st, dest, row.AgentKey)
+	id, reason := resolveAgent(st, dest, agentMap, row.AgentID)
 	if reason != "" {
 		it.reason = reason
 		return it
 	}
 	it.ownerID = id
+	it.natural = "agent\x00" + strings.TrimSpace(row.AgentID) + "\x00" + it.name
 	it.keep = true
 	return it
 }
 
-func classifyUser(source string, row UserFile) item {
+func classifyUser(st store.StoreIface, dest, source string, agentMap map[string]string, row UserFile) item {
 	it := item{
 		kind:     "user",
 		scope:    store.ContextScopeUser,
 		tenant:   clipTenant(row.TenantID),
-		ownerKey: clipOwner(row.UserKey),
-		name:     strings.TrimSpace(row.Name),
-		body:     strings.TrimSpace(row.Body),
+		ownerKey: clipOwner(row.UserID),
+		name:     strings.TrimSpace(row.FileName),
+		body:     strings.TrimSpace(row.Content),
 	}
 	if !sameSource(row.TenantID, source) {
 		it.reason = tenantReason(row.TenantID)
 		return it
 	}
 	it.tenant = strings.TrimSpace(row.TenantID)
-	if !nameOK(it.name) || it.body == "" || !store.UserKeyOK(strings.TrimSpace(row.UserKey)) {
+	userID := strings.TrimSpace(row.UserID)
+	created, updated, ok := rowClocks(row.CreatedAt, row.UpdatedAt)
+	if !ok || !nameOK(it.name) || it.body == "" || !store.UserKeyOK(userID) {
 		it.reason = reasonInvalid
 		return it
 	}
+	it.created = created
+	it.updated = updated
 	if len(it.body) > store.MaxContextFileBytes {
 		it.reason = reasonTooLarge
 		return it
 	}
-	it.ownerID = strings.TrimSpace(row.UserKey)
-	it.ownerKey = it.ownerID
+	if _, reason := resolveAgent(st, dest, agentMap, row.AgentID); reason != "" {
+		it.reason = reason
+		return it
+	}
+	it.ownerID = userID
+	it.ownerKey = userID
+	it.natural = "user\x00" + strings.TrimSpace(row.AgentID) + "\x00" + userID + "\x00" + it.name
 	it.keep = true
 	return it
+}
+
+func rowClocks(created, updated string) (time.Time, time.Time, bool) {
+	c, okC := parseStamp(created)
+	u, okU := parseStamp(updated)
+	if !okC || !okU {
+		return time.Time{}, time.Time{}, false
+	}
+	return c, u, true
+}
+
+func parseStamp(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, true
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func clockMatches(stored, want time.Time) bool {
+	if want.IsZero() {
+		return true
+	}
+	return stored.UTC().Equal(want.UTC())
 }
 
 func tenantReason(tenant string) string {
@@ -328,14 +526,25 @@ func nameOK(name string) bool {
 	return true
 }
 
-func resolveAgent(st store.StoreIface, dest, key string) (string, string) {
-	key = strings.TrimSpace(key)
-	if key == "" || len(key) > 128 || strings.ContainsAny(key, "\r\n\x00") {
+func resolveAgent(st store.StoreIface, dest string, agentMap map[string]string, agentID string) (string, string) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" || len(agentID) > 128 || strings.ContainsAny(agentID, "\r\n\x00") {
 		return "", reasonInvalid
+	}
+	wantKey := ""
+	if agentMap != nil {
+		wantKey = strings.TrimSpace(agentMap[agentID])
 	}
 	other := false
 	for _, a := range st.ListAgents() {
-		if a == nil || strings.TrimSpace(a.AgentKey) != key {
+		if a == nil {
+			continue
+		}
+		match := strings.TrimSpace(a.ID) == agentID || strings.TrimSpace(a.AgentKey) == agentID
+		if wantKey != "" {
+			match = strings.TrimSpace(a.AgentKey) == wantKey
+		}
+		if !match {
 			continue
 		}
 		if store.SameTenant(a.TenantID, dest) {
@@ -349,23 +558,65 @@ func resolveAgent(st store.StoreIface, dest, key string) (string, string) {
 	return "", reasonAgentMissing
 }
 
-func markDuplicates(items []item) {
+func markNatural(items []item) {
 	last := map[string]int{}
 	for i := range items {
 		if !items[i].keep {
 			continue
 		}
-		k := items[i].scope + "\x00" + items[i].ownerID + "\x00" + items[i].name
-		if prev, ok := last[k]; ok {
+		if prev, ok := last[items[i].natural]; ok {
 			items[prev].keep = false
 			items[prev].reason = reasonDuplicate
 		}
-		last[k] = i
+		last[items[i].natural] = i
 	}
 }
 
+func markDest(items []item) {
+	groups := map[string][]int{}
+	var order []string
+	for i := range items {
+		if !items[i].keep {
+			continue
+		}
+		k := items[i].scope + "\x00" + items[i].ownerID + "\x00" + items[i].name
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
+		}
+		groups[k] = append(groups[k], i)
+	}
+	for _, k := range order {
+		idxs := groups[k]
+		body := items[idxs[0]].body
+		same := true
+		for _, i := range idxs[1:] {
+			if items[i].body != body {
+				same = false
+				break
+			}
+		}
+		if !same {
+			for _, i := range idxs {
+				items[i].keep = false
+				items[i].reason = reasonScopeConflict
+			}
+			continue
+		}
+		for _, i := range idxs[:len(idxs)-1] {
+			items[i].keep = false
+			items[i].reason = reasonDuplicate
+		}
+	}
+}
+
+type keptFile struct {
+	body    string
+	created time.Time
+	updated time.Time
+}
+
 type ownerFiles struct {
-	files map[string]string
+	files map[string]keptFile
 }
 
 func loadOwner(st store.StoreIface, tenant, scope, owner string) (*ownerFiles, error) {
@@ -373,12 +624,12 @@ func loadOwner(st store.StoreIface, tenant, scope, owner string) (*ownerFiles, e
 	if err != nil {
 		return nil, err
 	}
-	files := map[string]string{}
+	files := map[string]keptFile{}
 	for _, f := range listed {
 		if f == nil {
 			continue
 		}
-		files[f.Name] = f.Body
+		files[f.Name] = keptFile{body: f.Body, created: f.CreatedAt, updated: f.UpdatedAt}
 	}
 	return &ownerFiles{files: files}, nil
 }
@@ -386,7 +637,8 @@ func loadOwner(st store.StoreIface, tenant, scope, owner string) (*ownerFiles, e
 func (o *ownerFiles) fits(name, body string) bool {
 	next := make([]*store.ContextFile, 0, len(o.files)+1)
 	seen := false
-	for n, b := range o.files {
+	for n, f := range o.files {
+		b := f.body
 		if n == name {
 			seen = true
 			b = body

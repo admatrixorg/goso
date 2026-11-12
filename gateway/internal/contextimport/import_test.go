@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -43,6 +44,13 @@ const (
 	memoryBody   = "Minh An ghi nhớ báo giá ngắn cho đại lý mẫu."
 	legalKept    = "Pháp chế giữ nguyên."
 	legalUser    = "Lan bên pháp chế giữ nguyên."
+	lanNotes     = "Lan giữ điều khoản mẫu của pháp chế."
+
+	salesAgentID   = "11111111-1111-4111-8111-111111111101"
+	phapAgentID    = "11111111-1111-4111-8111-111111111102"
+	branchAgentID  = "11111111-1111-4111-8111-111111111103"
+	missingAgentID = "11111111-1111-4111-8111-111111111104"
+	exportRowID    = "99999999-9999-4999-8999-999999999999"
 )
 
 func TestReadExportDropsUnknownFields(t *testing.T) {
@@ -57,8 +65,14 @@ func TestReadExportDropsUnknownFields(t *testing.T) {
 	if strings.Contains(string(raw), "EMBEDMARKERvector") {
 		t.Fatalf("embedding kept: %s", raw)
 	}
-	if len(ex.Agents) != 6 || len(ex.Users) != 3 {
+	if strings.Contains(string(raw), exportRowID) {
+		t.Fatalf("goclaw id kept: %s", raw)
+	}
+	if len(ex.Agents) != 6 || len(ex.Users) != 6 {
 		t.Fatalf("rows agents=%d users=%d", len(ex.Agents), len(ex.Users))
+	}
+	if ex.Agents[0].AgentID != salesAgentID || ex.Agents[0].FileName != "AGENTS.md" || ex.Users[0].UserID != "lan" {
+		t.Fatalf("columns %+v %+v", ex.Agents[0], ex.Users[0])
 	}
 }
 
@@ -79,15 +93,11 @@ func TestMinhAnFixture(t *testing.T) {
 			puts.n = 0
 			log := &bytes.Buffer{}
 
-			dry, err := Import(puts, ex, Options{
-				SourceTenant: sourceTenant,
-				DestTenant:   destTenant,
-				Log:          printfLog{log},
-			})
+			dry, err := Import(puts, ex, minhAnOpt(false, printfLog{log}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !dry.DryRun || dry.Inserted != 5 || dry.Updated != 0 || dry.Skipped != 0 || dry.Rejected != 4 {
+			if !dry.DryRun || dry.Inserted != 6 || dry.Updated != 0 || dry.Skipped != 0 || dry.Rejected != 6 {
 				t.Fatalf("dry-run %+v", dry)
 			}
 			if puts.n != 0 {
@@ -100,19 +110,15 @@ func TestMinhAnFixture(t *testing.T) {
 			}
 
 			log.Reset()
-			got, err := Import(puts, ex, Options{
-				SourceTenant: sourceTenant,
-				DestTenant:   destTenant,
-				Apply:        true,
-				Log:          printfLog{log},
-			})
+			opt := minhAnOpt(true, printfLog{log})
+			got, err := Import(puts, ex, opt)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.DryRun || got.Inserted != 5 || got.Updated != 0 || got.Skipped != 0 || got.Rejected != 4 {
+			if got.DryRun || got.Inserted != 6 || got.Updated != 0 || got.Skipped != 0 || got.Rejected != 6 {
 				t.Fatalf("apply %+v", got)
 			}
-			if puts.n != 5 {
+			if puts.n != 6 {
 				t.Fatalf("apply puts %d", puts.n)
 			}
 			assertLogHidesBodies(t, log.String())
@@ -121,15 +127,11 @@ func TestMinhAnFixture(t *testing.T) {
 
 			before := snapshot(t, st, seed)
 			puts.n = 0
-			again, err := Import(puts, ex, Options{
-				SourceTenant: sourceTenant,
-				DestTenant:   destTenant,
-				Apply:        true,
-			})
+			again, err := Import(puts, ex, minhAnOpt(true, nil))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 5 || again.Rejected != 4 {
+			if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 6 || again.Rejected != 6 {
 				t.Fatalf("rerun %+v", again)
 			}
 			if puts.n != 0 {
@@ -156,8 +158,8 @@ func TestMinhAnFixture(t *testing.T) {
 
 func TestDuplicateLastWinsIsIdempotent(t *testing.T) {
 	ex := &Export{Agents: []AgentFile{
-		{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "AGENTS.md", Body: "ban mot"},
-		{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "AGENTS.md", Body: "ban hai"},
+		{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "ban mot"},
+		{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "ban hai"},
 	}}
 	for name, open := range backends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -206,7 +208,7 @@ func TestDuplicateLastWinsIsIdempotent(t *testing.T) {
 			}
 
 			changed := &Export{Agents: []AgentFile{
-				{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "AGENTS.md", Body: "ban ba"},
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "ban ba", UpdatedAt: "2026-05-03T06:07:08Z"},
 			}}
 			puts.n = 0
 			third, err := Import(puts, changed, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})
@@ -217,7 +219,8 @@ func TestDuplicateLastWinsIsIdempotent(t *testing.T) {
 				t.Fatalf("update %+v puts %d", third, puts.n)
 			}
 			updated, err := st.GetContextFile(destTenant, store.ContextScopeAgent, sales.ID, "AGENTS.md")
-			if err != nil || updated.ID != got.ID || updated.Body != "ban ba" {
+			wantUpdated := time.Date(2026, 5, 3, 6, 7, 8, 0, time.UTC)
+			if err != nil || updated.ID != got.ID || updated.Body != "ban ba" || !updated.UpdatedAt.Equal(wantUpdated) || !updated.CreatedAt.Equal(got.CreatedAt) {
 				t.Fatalf("replaced row %+v %v", updated, err)
 			}
 			listed, err = st.ListContextFiles(destTenant, store.ContextScopeAgent, sales.ID)
@@ -242,14 +245,14 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 			for i := 1; i <= 17; i++ {
 				files = append(files, AgentFile{
 					TenantID: sourceTenant,
-					AgentKey: "tu-van-sales",
-					Name:     fmt.Sprintf("n%02d.md", i),
-					Body:     fmt.Sprintf("ghi chu %02d", i),
+					AgentID:  "tu-van-sales",
+					FileName: fmt.Sprintf("n%02d.md", i),
+					Content:  fmt.Sprintf("ghi chu %02d", i),
 				})
 			}
 			files = append(files, AgentFile{
-				TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "big.md",
-				Body: strings.Repeat("x", store.MaxContextFileBytes+1),
+				TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "big.md",
+				Content: strings.Repeat("x", store.MaxContextFileBytes+1),
 			})
 			rep, err := Import(st, &Export{Agents: files}, Options{
 				SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
@@ -282,9 +285,9 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 			}
 
 			wide := &Export{Agents: []AgentFile{
-				{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "a.md", Body: strings.Repeat("a", store.MaxContextFileBytes)},
-				{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "b.md", Body: strings.Repeat("b", store.MaxContextFileBytes)},
-				{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "c.md", Body: "c"},
+				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "a.md", Content: strings.Repeat("a", store.MaxContextFileBytes)},
+				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "b.md", Content: strings.Repeat("b", store.MaxContextFileBytes)},
+				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "c.md", Content: "c"},
 			}}
 			// The 16 short files already fill the file-count cap, so replace
 			// that owner with a fresh agent for the byte cap.
@@ -293,9 +296,6 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 			})
 			if err != nil {
 				t.Fatal(err)
-			}
-			for i := range wide.Agents {
-				wide.Agents[i].AgentKey = "tu-van-bytes"
 			}
 			byteRep, err := Import(st, wide, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})
 			if err != nil {
@@ -318,15 +318,17 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 func TestInvalidRowsWriteNothing(t *testing.T) {
 	ex := &Export{
 		Agents: []AgentFile{
-			{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "../AGENTS.md", Body: "no"},
-			{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "a/b.md", Body: "no"},
-			{TenantID: sourceTenant, AgentKey: "", Name: "AGENTS.md", Body: "no"},
-			{TenantID: sourceTenant, AgentKey: "tu-van-sales", Name: "AGENTS.md", Body: "   "},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "../AGENTS.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "a/b.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "", FileName: "AGENTS.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "   "},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "no", CreatedAt: "not-a-time"},
 		},
 		Users: []UserFile{
-			{TenantID: sourceTenant, UserKey: "lan nguyen", Name: "USER.md", Body: "no"},
-			{TenantID: sourceTenant, UserKey: "lan@minh-an.test", Name: "USER.md", Body: "no"},
-			{TenantID: sourceTenant, UserKey: "lan", Name: "USER.md", Body: ""},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan nguyen", FileName: "USER.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan@minh-an.test", FileName: "USER.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: ""},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: strings.Repeat("a", 65), FileName: "USER.md", Content: "no"},
 		},
 	}
 	for name, open := range backends(t) {
@@ -342,7 +344,7 @@ func TestInvalidRowsWriteNothing(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if rep.Inserted != 0 || rep.Updated != 0 || rep.Rejected != 7 || puts.n != 0 {
+			if rep.Inserted != 0 || rep.Updated != 0 || rep.Rejected != 9 || puts.n != 0 {
 				t.Fatalf("invalid %+v puts %d", rep, puts.n)
 			}
 			for _, row := range rep.Rejections {
@@ -352,6 +354,108 @@ func TestInvalidRowsWriteNothing(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserFileConflictDoesNotOverwrite(t *testing.T) {
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st := open(t)
+			if _, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.CreateAgent(store.Agent{AgentKey: "phap-che", DisplayName: "Pháp chế Minh An", TenantID: destTenant}); err != nil {
+				t.Fatal(err)
+			}
+			kept, err := st.PutContextFile(store.ContextFile{
+				TenantID: destTenant, Scope: store.ContextScopeUser, UserKey: "lan",
+				Name: "USER.md", Body: "giu nguyen",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ex := &Export{Users: []UserFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: "ban mot"},
+				{TenantID: sourceTenant, AgentID: "phap-che", UserID: "lan", FileName: "USER.md", Content: "ban hai"},
+			}}
+			puts := &putCount{StoreIface: st}
+			rep, err := Import(puts, ex, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Inserted != 0 || rep.Updated != 0 || rep.Rejected != 2 || puts.n != 0 {
+				t.Fatalf("conflict %+v puts %d", rep, puts.n)
+			}
+			for _, row := range rep.Rejections {
+				if row.Reason != reasonScopeConflict {
+					t.Fatalf("reason %+v", row)
+				}
+			}
+			got, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md")
+			if err != nil || got.Body != "giu nguyen" || got.ID != kept.ID {
+				t.Fatalf("stored %+v %v", got, err)
+			}
+			same := &Export{Users: []UserFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
+				{TenantID: sourceTenant, AgentID: "phap-che", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
+			}}
+			puts.n = 0
+			once, err := Import(puts, same, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if once.Inserted != 1 || once.Skipped != 1 || puts.n != 1 {
+				t.Fatalf("same body %+v puts %d", once, puts.n)
+			}
+			puts.n = 0
+			twice, err := Import(puts, same, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if twice.Inserted != 0 || twice.Updated != 0 || twice.Skipped != 2 || puts.n != 0 {
+				t.Fatalf("rerun %+v puts %d", twice, puts.n)
+			}
+		})
+	}
+}
+
+func TestJSONLUsesTheSameColumns(t *testing.T) {
+	raw := strings.Join([]string{
+		`{"tenant_id":"11111111-1111-4111-8111-111111111111","agent_id":"tu-van-sales","file_name":"AGENTS.md","content":"tu jsonl","created_at":"2026-03-01T04:05:06Z","updated_at":"2026-04-02T05:06:07Z"}`,
+		`{"tenant_id":"11111111-1111-4111-8111-111111111111","agent_id":"tu-van-sales","user_id":"lan","file_name":"USER.md","content":"lan jsonl","created_at":"2026-03-01T04:05:06Z","updated_at":"2026-04-02T05:06:07Z"}`,
+	}, "\n")
+	ex, err := ReadExport(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ex.Agents) != 1 || len(ex.Users) != 1 || ex.Users[0].UserID != "lan" || ex.Agents[0].FileName != "AGENTS.md" {
+		t.Fatalf("jsonl %+v", ex)
+	}
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(st, ex, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	ag, err := st.ListContextFiles(destTenant, store.ContextScopeAgent, mustAgent(t, st, "tu-van-sales"))
+	if err != nil || len(ag) != 1 || ag[0].Body != "tu jsonl" || !ag[0].CreatedAt.Equal(time.Date(2026, 3, 1, 4, 5, 6, 0, time.UTC)) {
+		t.Fatalf("agent %+v %v", ag, err)
+	}
+	lan, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md")
+	if err != nil || lan.Body != "lan jsonl" {
+		t.Fatalf("user %+v %v", lan, err)
+	}
+}
+
+func mustAgent(t *testing.T, st store.StoreIface, key string) string {
+	t.Helper()
+	for _, a := range st.ListAgents() {
+		if a != nil && a.AgentKey == key {
+			return a.ID
+		}
+	}
+	t.Fatal("missing agent")
+	return ""
 }
 
 func TestBadOptionsWriteNothing(t *testing.T) {
@@ -438,6 +542,7 @@ func assertAbsent(t *testing.T, st store.StoreIface, seed seed) {
 		{store.ContextScopeAgent, seed.sales.ID, "SOUL.md"},
 		{store.ContextScopeAgent, seed.phap.ID, "AGENTS.md"},
 		{store.ContextScopeUser, "lan", "USER.md"},
+		{store.ContextScopeUser, "lan", "NOTES.md"},
 		{store.ContextScopeUser, "hoa", "USER.md"},
 	} {
 		if _, err := st.GetContextFile(destTenant, owner.scope, owner.id, owner.name); !errors.Is(err, store.ErrNotFound) {
@@ -471,6 +576,19 @@ func assertImported(t *testing.T, st store.StoreIface, seed seed) {
 	if err != nil || lan.Body != lanNote || lan.UserKey != "lan" || lan.AgentID != "" || lan.TenantID != destTenant {
 		t.Fatalf("lan %+v %v", lan, err)
 	}
+	if lan.ID == exportRowID {
+		t.Fatal("stored the goclaw uuid")
+	}
+	created := time.Date(2026, 3, 1, 4, 5, 6, 0, time.UTC)
+	updated := time.Date(2026, 4, 2, 5, 6, 7, 0, time.UTC)
+	salesFile, err := st.GetContextFile(destTenant, store.ContextScopeAgent, seed.sales.ID, "AGENTS.md")
+	if err != nil || !salesFile.CreatedAt.Equal(created) || !salesFile.UpdatedAt.Equal(updated) {
+		t.Fatalf("clock %+v %v", salesFile, err)
+	}
+	notes, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "NOTES.md")
+	if err != nil || notes.Body != lanNotes || notes.UserKey != "lan" || notes.AgentID != "" {
+		t.Fatalf("lan notes %+v %v", notes, err)
+	}
 	hoa, err := st.GetContextFile(destTenant, store.ContextScopeUser, "hoa", "USER.md")
 	if err != nil || hoa.Body != hoaNote || hoa.UserKey != "hoa" {
 		t.Fatalf("hoa %+v %v", hoa, err)
@@ -503,8 +621,8 @@ func assertImported(t *testing.T, st store.StoreIface, seed seed) {
 func assertReasons(t *testing.T, rep *Report) {
 	t.Helper()
 	want := map[string]int{
-		reasonAgentOtherTenant: 1,
-		reasonAgentMissing:     1,
+		reasonAgentOtherTenant: 2,
+		reasonAgentMissing:     2,
 		reasonTenantMismatch:   2,
 	}
 	got := map[string]int{}
@@ -536,7 +654,7 @@ func assertReasons(t *testing.T, rep *Report) {
 	if agents.Input != 5 || agents.Inserted != 3 || agents.Rejected != 2 || !agents.balanced() {
 		t.Fatalf("agent section %+v", agents)
 	}
-	if users.Input != 2 || users.Inserted != 2 || users.Rejected != 0 || !users.balanced() {
+	if users.Input != 5 || users.Inserted != 3 || users.Rejected != 2 || !users.balanced() {
 		t.Fatalf("user section %+v", users)
 	}
 }
@@ -599,7 +717,7 @@ func assertPrompt(t *testing.T, st store.StoreIface, seed seed) {
 
 func assertLogHidesBodies(t *testing.T, log string) {
 	t.Helper()
-	for _, marker := range []string{salesRule, soulText, legalRule, lanNote, hoaNote, "FOREIGNAGENTMARKER", "FOREIGNUSERMARKER", "OTHERAGENTMARKER", "MISSINGAGENTMARKER"} {
+	for _, marker := range []string{salesRule, soulText, legalRule, lanNote, lanNotes, hoaNote, "FOREIGNAGENTMARKER", "FOREIGNUSERMARKER", "OTHERAGENTMARKER", "OTHERUSERMARKER", "MISSINGAGENTMARKER", "MISSINGUSERMARKER"} {
 		if strings.Contains(log, marker) {
 			t.Fatalf("log contains %q: %s", marker, log)
 		}
@@ -621,6 +739,7 @@ func snapshot(t *testing.T, st store.StoreIface, seed seed) string {
 	write(store.ContextScopeAgent, seed.sales.ID, "SOUL.md")
 	write(store.ContextScopeAgent, seed.phap.ID, "AGENTS.md")
 	write(store.ContextScopeUser, "lan", "USER.md")
+	write(store.ContextScopeUser, "lan", "NOTES.md")
 	write(store.ContextScopeUser, "hoa", "USER.md")
 	kept, err := st.GetContextFile(otherDest, store.ContextScopeAgent, seed.legal.ID, "AGENTS.md")
 	if err != nil {
@@ -628,6 +747,20 @@ func snapshot(t *testing.T, st store.StoreIface, seed seed) string {
 	}
 	fmt.Fprintf(&b, "legal|%s|%s\n", kept.ID, kept.Body)
 	return b.String()
+}
+
+func minhAnOpt(apply bool, log Logger) Options {
+	return Options{
+		SourceTenant: sourceTenant,
+		DestTenant:   destTenant,
+		Apply:        apply,
+		Log:          log,
+		AgentMap: map[string]string{
+			salesAgentID:  "tu-van-sales",
+			phapAgentID:   "phap-che",
+			branchAgentID: "chi-nhanh",
+		},
+	}
 }
 
 func mustFixture(t *testing.T) *Export {

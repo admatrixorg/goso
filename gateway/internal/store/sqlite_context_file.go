@@ -67,14 +67,35 @@ func (s *SQLiteStore) PutContextFile(in ContextFile) (*ContextFile, error) {
 	if err := contextOwnerFits(existing, f.Name, f.Body); err != nil {
 		return nil, err
 	}
+	exists := false
+	for _, row := range existing {
+		if row.Name == f.Name {
+			exists = true
+			break
+		}
+	}
 	now := time.Now().UTC()
+	updated := now
+	if !f.UpdatedAt.IsZero() {
+		updated = f.UpdatedAt.UTC()
+	}
+	// An empty created_at on conflict keeps the stored clock. A new row
+	// still needs a value. The HTTP handler leaves CreatedAt zero; the
+	// importer sets the source clock.
+	created := ""
+	if !f.CreatedAt.IsZero() {
+		created = formatTime(f.CreatedAt.UTC())
+	} else if !exists {
+		created = formatTime(now)
+	}
 	id := newID()
 	if _, err := tx.Exec(`INSERT INTO context_files(id, tenant_id, scope, owner_id, name, body, created_at, updated_at)
 		VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(tenant_id, scope, owner_id, name) DO UPDATE SET
 			body=excluded.body,
-			updated_at=excluded.updated_at`,
-		id, f.TenantID, f.Scope, f.OwnerID, f.Name, f.Body, formatTime(now), formatTime(now)); err != nil {
+			updated_at=excluded.updated_at,
+			created_at=CASE WHEN excluded.created_at = '' THEN context_files.created_at ELSE excluded.created_at END`,
+		id, f.TenantID, f.Scope, f.OwnerID, f.Name, f.Body, created, formatTime(updated)); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

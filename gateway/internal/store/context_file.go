@@ -215,14 +215,26 @@ func (s *Store) PutContextFile(in ContextFile) (*ContextFile, error) {
 	}
 	key := contextFileKey(f.TenantID, f.Scope, f.OwnerID, f.Name)
 	now := time.Now().UTC()
+	updated := now
+	if !f.UpdatedAt.IsZero() {
+		updated = f.UpdatedAt.UTC()
+	}
 	if cur := s.contextFiles[key]; cur != nil {
 		cur.Body = f.Body
-		cur.UpdatedAt = now
+		cur.UpdatedAt = updated
+		// A zero CreatedAt keeps the original row. The importer passes the
+		// source clock; the HTTP handler leaves it zero.
+		if !f.CreatedAt.IsZero() {
+			cur.CreatedAt = f.CreatedAt.UTC()
+		}
 		return presentContext(cur), nil
 	}
 	f.ID = s.nextID()
 	f.CreatedAt = now
-	f.UpdatedAt = now
+	if !in.CreatedAt.IsZero() {
+		f.CreatedAt = in.CreatedAt.UTC()
+	}
+	f.UpdatedAt = updated
 	stored := f
 	s.contextFiles[key] = &stored
 	return presentContext(&stored), nil

@@ -17,14 +17,18 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 	exportPath := filepath.Join(dir, "export.json")
 	body := []byte(`{
 	  "agent_context_files": [
-	    {"tenant_id":"11111111-1111-4111-8111-111111111111","agent_key":"tu-van-sales","name":"AGENTS.md","body":"Chiết khấu tối đa của Minh An là 9 phần trăm.","embedding":"EMBEDMARKERvector"},
-	    {"tenant_id":"22222222-2222-4222-8222-222222222222","agent_key":"tu-van-sales","name":"AGENTS.md","body":"FOREIGNAGENTMARKER"}
+	    {"tenant_id":"11111111-1111-4111-8111-111111111111","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","file_name":"AGENTS.md","content":"Chiết khấu tối đa của Minh An là 9 phần trăm.","created_at":"2026-03-01T04:05:06Z","updated_at":"2026-04-02T05:06:07Z","embedding":"EMBEDMARKERvector"},
+	    {"tenant_id":"22222222-2222-4222-8222-222222222222","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","file_name":"AGENTS.md","content":"FOREIGNAGENTMARKER"}
 	  ],
 	  "user_context_files": [
-	    {"tenant_id":"11111111-1111-4111-8111-111111111111","user_key":"lan","name":"USER.md","body":"Lan chỉ nhận báo giá một dòng."}
+	    {"tenant_id":"11111111-1111-4111-8111-111111111111","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","user_id":"lan","file_name":"USER.md","content":"Lan chỉ nhận báo giá một dòng.","created_at":"2026-03-01T04:05:06Z","updated_at":"2026-04-02T05:06:07Z"}
 	  ]
 	}`)
 	if err := os.WriteFile(exportPath, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mapPath := filepath.Join(dir, "agents.json")
+	if err := os.WriteFile(mapPath, []byte(`{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"tu-van-sales"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(dir, "goso.db")
@@ -44,6 +48,7 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 		"--source-tenant", "11111111-1111-4111-8111-111111111111",
 		"--tenant", "minh-an",
 		"--db", dbPath,
+		"--agent-map", mapPath,
 	}
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	if code := run(args, stdout, stderr); code != 0 {

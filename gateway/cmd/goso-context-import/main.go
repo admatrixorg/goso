@@ -29,13 +29,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("goso-context-import", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: goso-context-import --export file.json --source-tenant id --tenant id --db path [--apply]")
+		fmt.Fprintln(stderr, "usage: goso-context-import --export file.json --source-tenant id --tenant id --db path [--agent-map file.json] [--apply]")
+		fmt.Fprintln(stderr, "export is JSON or JSONL with the GoClaw columns agent_id, file_name, content, and user_id for a user row. There is no database connection.")
 		fmt.Fprintln(stderr, "default: dry-run, writes nothing. --apply writes. --apply together with --dry-run is an error.")
 	}
-	exportPath := fs.String("export", "", "JSON export with agent_context_files and user_context_files")
+	exportPath := fs.String("export", "", "JSON or JSONL export of agent_context_files and user_context_files")
 	source := fs.String("source-tenant", "", "export tenant_id to keep; other tenants are rejected")
 	dest := fs.String("tenant", "", "goso tenant_id to write")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
+	agentMapPath := fs.String("agent-map", "", "JSON object of GoClaw agent_id to goso agent_key")
 	apply := fs.Bool("apply", false, "write context files")
 	dry := fs.Bool("dry-run", false, "report only; this is the default when --apply is absent")
 	if err := fs.Parse(args); err != nil {
@@ -73,6 +75,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "read export failed")
 		return 1
 	}
+	var agentMap map[string]string
+	if strings.TrimSpace(*agentMapPath) != "" {
+		mf, err := os.Open(*agentMapPath)
+		if err != nil {
+			fmt.Fprintln(stderr, "open agent map failed")
+			return 1
+		}
+		agentMap, err = contextimport.ReadAgentMap(mf)
+		mf.Close()
+		if err != nil {
+			fmt.Fprintln(stderr, "read agent map failed")
+			return 1
+		}
+	}
 	st, closeDB, err := openDB(*dbPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -83,6 +99,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		SourceTenant: *source,
 		DestTenant:   *dest,
 		Apply:        *apply,
+		AgentMap:     agentMap,
 		Log:          stderrLog{w: stderr},
 	})
 	if err != nil {
