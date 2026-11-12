@@ -38,10 +38,10 @@ The migration in `gateway/internal/store/postgres_tsvector.go` adds, and does no
 | `kg_entities` | `body_tsv` | same | `idx_kg_entities_body_tsv` GIN |
 | `memories` | (no new column) | existing `tenant_id`, `created_at` | `idx_memories_tenant_created` btree `(tenant_id, created_at DESC)` |
 
-Recall does not use `ts_rank` or `ts_rank_cd`. Scoring stays in Go (`lexicalScore`). Postgres loads candidates in two steps, each `ORDER BY m.created_at DESC`, and never more than `recallCandidateCap` (2000) rows together:
+Recall does not use `ts_rank` or `ts_rank_cd`. Scoring stays in Go (`lexicalScore`). Postgres loads candidates in two steps, each `ORDER BY created_at DESC`, and never more than `recallCandidateCap` (2000) rows together:
 
 1. `body_tsv @@ to_tsquery('simple', 't1 & t2 & …')` with tokens kept only by `safeTSToken`. Same tenant, agent, and customer scope as before. `LIMIT recallCandidateCap`.
-2. Run only when step 1 returned fewer than the caller's `limit`. `body_tsv @@ to_tsquery('simple', 't1 | t2 | …')`, same scope, `ORDER BY m.created_at DESC`, `LIMIT` the unused part of the cap. Rows already returned by step 1 are dropped.
+2. Run only when step 1 returned fewer than the caller's `limit`. Same OR tokens, same scope, same order, `LIMIT` the unused part of the cap. Rows already returned by step 1 are dropped. Step 2 does not leave the plan to the row estimate. It reads at most twice that limit of the newest rows through `idx_memories_tenant_created` (`SET LOCAL enable_seqscan = off` so the read cannot become a sequential scan). If that window already holds enough matches, those are the candidates. If it does not, the window is discarded and a second statement loads the newest matches with a GIN bitmap on `idx_memories_body_tsv`. That statement filters `tenant_id || ''` so the tenant btree cannot answer it, and it also disables sequential scans. A full backward walk of `idx_memories_tenant_created` is not used: it is fast only when almost every row matches.
 
 `idx_memories_tenant` is only `(tenant_id)`. `idx_memories_session` is `(session_id, created_at)`. `idx_memories_customer` is `(tenant_id, customer_key)`. None of those is `(tenant_id, created_at)`, which is the pair this query always filters and sorts. Agent and customer filters stay in the WHERE because they are optional. SQLite still uses FTS5. `unaccent` is not installed.
 
@@ -62,6 +62,7 @@ These search queries already have a limit: memory search 50, vault search `Vault
 | Negative: note older than `recallScanCap` | `TestRecallOlderThanScanCap` (store) and `TestRecallForOlderThanScanCap` (pipeline) |
 | 50,000 rows under 50 ms | `TestPostgresRecall50kUnder50ms` (store `RecallMemories`) and `TestRecallFor50kUnder50ms` (pipeline `RecallFor`) |
 | 50,000 rows that all match one query token stay inside `recallCandidateCap`, and the needle is still recalled, in under 50 ms | `TestPostgresRecall50kAllMatchWithinCap` |
+| 50,000 rows, about 5% matching the OR, stay under 50 ms | `TestPostgresRecall50kFivePercentWithinCap` |
 | Oldest note that contains every query token is recalled when 50,000 newer rows share only one token | `TestPostgresRecallOldestFullMatch` |
 | `Min` does not match `Minh` | `TestPostgresSearchMinDoesNotMatchMinh` |
 | Bench, Postgres not below SQLite | `gateway/memorybench` `TestBaseline9545d08` |
