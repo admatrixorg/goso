@@ -236,6 +236,9 @@ func TestKGCustomerKey_PostgresColumnWithoutIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pre-182 shape: agent_id and provenance already exist. customer_key does not.
+	// postgresSchema creates idx_kg_entities_agent before the later ALTERs, so a
+	// table older than agent_id cannot open. SPEC 182 upgrades the current table.
 	if _, err := db.Exec(`CREATE TABLE kg_entities (
 		id TEXT PRIMARY KEY,
 		tenant_id TEXT NOT NULL DEFAULT 'default',
@@ -244,7 +247,9 @@ func TestKGCustomerKey_PostgresColumnWithoutIndex(t *testing.T) {
 		body TEXT,
 		valid_from TEXT NOT NULL,
 		valid_until TEXT,
-		created_at TEXT NOT NULL
+		created_at TEXT NOT NULL,
+		agent_id TEXT NOT NULL DEFAULT '',
+		provenance TEXT NOT NULL DEFAULT ''
 	)`); err != nil {
 		t.Fatal(err)
 	}
@@ -256,16 +261,17 @@ func TestKGCustomerKey_PostgresColumnWithoutIndex(t *testing.T) {
 		rel TEXT NOT NULL,
 		body TEXT,
 		valid_from TEXT NOT NULL,
-		valid_until TEXT
+		valid_until TEXT,
+		provenance TEXT NOT NULL DEFAULT ''
 	)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, created_at)
-		VALUES('e-minh','default','Kho Minh An','place','giu-nguyen','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, created_at, agent_id, provenance)
+		VALUES('e-minh','default','Kho Minh An','place','giu-nguyen','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','','')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO kg_relations(id, tenant_id, from_id, to_id, rel, body, valid_from)
-		VALUES('r-minh','default','e-minh','e-minh','same','giu-nguyen','2026-01-01T00:00:00Z')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO kg_relations(id, tenant_id, from_id, to_id, rel, body, valid_from, provenance)
+		VALUES('r-minh','default','e-minh','e-minh','same','giu-nguyen','2026-01-01T00:00:00Z','')`); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.Close()
