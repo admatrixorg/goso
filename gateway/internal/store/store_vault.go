@@ -142,7 +142,11 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		s.reResolveVaultLocked()
 		return copyVaultDoc(existing), nil
 	}
-	d.ID = s.nextID()
+	if strings.TrimSpace(d.ID) == "" {
+		d.ID = s.nextID()
+	} else {
+		d.ID = strings.TrimSpace(d.ID)
+	}
 	cp := d
 	s.vaultDocs[cp.ID] = &cp
 	s.reResolveVaultLocked()
