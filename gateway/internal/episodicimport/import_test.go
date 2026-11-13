@@ -115,6 +115,42 @@ func TestMappingFiles(t *testing.T) {
 	}
 }
 
+func TestLoadCustomersTSVMatchesWriteCustomerMap(t *testing.T) {
+	// Exact columns written by the contacts importer: channel, sender, user, key.
+	const file = "zalo-personal\tsender-minh-an-01\tuser-minh-an-01\tzalo-personal:sender-minh-an-01\n" +
+		"feishu\tou-minh-an\tuser-minh-an-02\tfeishu:ou-minh-an\n" +
+		"zalo_personal\tsender-minh-an-03\tuser-minh-an-03\tzalo_personal:sender-minh-an-03\n" +
+		"lark\tou-minh-an-4\tuser-minh-an-04\tlark:ou-minh-an-4\n"
+	got, err := LoadCustomers(strings.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"user-minh-an-01": "zalo-personal:sender-minh-an-01",
+		"user-minh-an-02": "feishu:ou-minh-an",
+		"user-minh-an-03": "zalo-personal:sender-minh-an-03",
+		"user-minh-an-04": "feishu:ou-minh-an-4",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len %d", len(got))
+	}
+	for user, key := range want {
+		if got[user] != key {
+			t.Fatalf("%s key %q", user, got[user])
+		}
+	}
+	same, err := LoadCustomers(strings.NewReader(file + "zalo-personal\tsender-minh-an-01\tuser-minh-an-01\tzalo-personal:sender-minh-an-01\n"))
+	if err != nil || same["user-minh-an-01"] != want["user-minh-an-01"] {
+		t.Fatal(err)
+	}
+	if _, err := LoadCustomers(strings.NewReader("zalo-personal\tsender-minh-an-01\tuser-minh-an-01\n")); err == nil {
+		t.Fatal("three columns")
+	}
+	if _, err := LoadCustomers(strings.NewReader("zalo-personal\ta\tuser-minh-an-01\tzalo-personal:a\nzalo-personal\tb\tuser-minh-an-01\tzalo-personal:b\n")); err == nil {
+		t.Fatal("two keys")
+	}
+}
+
 func TestMinhAnEpisodic(t *testing.T) {
 	rows := readFixture(t)
 	for name, open := range backends(t) {

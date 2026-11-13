@@ -165,6 +165,9 @@ func LoadCustomers(r io.Reader) (map[string]string, error) {
 		}
 		return out, nil
 	}
+	if customerMapIsTSV(raw) {
+		return loadCustomerTSV(raw)
+	}
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
 	line := 0
@@ -193,6 +196,71 @@ type customerRow struct {
 	CustomerKey string `json:"customer_key"`
 	Channel     string `json:"channel"`
 	SenderID    string `json:"sender_id"`
+}
+
+// customerMapIsTSV reports the 4-column file written by the contacts
+// importer: channel, sender, user, key, separated by tabs.
+func customerMapIsTSV(raw []byte) bool {
+	for _, line := range bytes.Split(raw, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		return bytes.Contains(line, []byte{'\t'}) && line[0] != '{'
+	}
+	return false
+}
+
+// loadCustomerTSV reads channel, sender, user, key. Column 3 is the GoClaw
+// user id and column 4 is the customer key. zalo_personal and lark in the
+// key's channel are normalized. The same user with two different keys is an
+// error. The error text does not include the user id.
+func loadCustomerTSV(raw []byte) (map[string]string, error) {
+	out := map[string]string{}
+	sc := bufio.NewScanner(bytes.NewReader(raw))
+	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	lineNo := 0
+	for sc.Scan() {
+		lineNo++
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		cols := strings.Split(line, "\t")
+		if len(cols) != 4 {
+			return nil, configf("customer map line %d has the wrong column count", lineNo)
+		}
+		user := strings.TrimSpace(cols[2])
+		key := normalizeCustomerKey(cols[3])
+		if user == "" || key == "" || strings.ContainsRune(key, 0) || strings.ContainsAny(key, "\r\n") {
+			return nil, configf("customer map line %d needs a user and a key", lineNo)
+		}
+		if prev, ok := out[user]; ok && prev != key {
+			return nil, config("customer user maps to two keys")
+		}
+		out[user] = key
+	}
+	if err := sc.Err(); err != nil {
+		return nil, config("customer map read failed")
+	}
+	return out, nil
+}
+
+// normalizeCustomerKey rewrites a channel prefix the contacts importer accepts
+// under more than one spelling. The sender id after the colon is unchanged.
+func normalizeCustomerKey(key string) string {
+	key = strings.TrimSpace(key)
+	ch, rest, ok := strings.Cut(key, ":")
+	if !ok {
+		return key
+	}
+	switch strings.ToLower(strings.TrimSpace(ch)) {
+	case "zalo_personal":
+		ch = "zalo-personal"
+	case "lark":
+		ch = "feishu"
+	}
+	return ch + ":" + rest
 }
 
 func addCustomers(dst map[string]string, rows []customerRow) error {
