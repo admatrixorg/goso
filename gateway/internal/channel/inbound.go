@@ -66,10 +66,6 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		return
 	}
 	sess := ensureLabeledSession(d.Store, agent.ID, agentKey+":"+dest)
-	if inboundBlocked(agent, sess) {
-		writeOK(w)
-		return
-	}
 
 	reply := answerTurn(r.Context(), d.Store, agent, sess, d.LLM, d.Meter, text)
 
@@ -82,30 +78,14 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 	writeOK(w)
 }
 
-// inboundBlocked reports that this turn must not call a model. Imported
-// sessions with no real agent are archived, and their placeholder agent is
-// disabled. Either condition stops the reply.
-func inboundBlocked(agent *store.Agent, sess *store.Session) bool {
-	if sess != nil && sess.Archived {
-		return true
-	}
-	if agent == nil || !agent.Enabled {
-		return true
-	}
-	return false
-}
-
 // answerTurn records one inbound channel message, asks the agent's LLM and
 // records the reply. The prompt is one optional system message
 // (pipeline.ChannelSystem: agent instructions, this customer's memory,
 // bootstrap) followed by the whole thread. Memory never blocks the reply: a
 // recall failure only drops the note. LLM errors become the reply text, as
-// before. An archived session or a disabled agent returns an empty reply and
-// writes nothing.
+// before. The user message is stored before the model is called. An archived
+// session or a disabled agent does not skip that store.
 func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) string {
-	if inboundBlocked(agent, sess) {
-		return ""
-	}
 	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
 	provider := resolveInboundLLM(st, agent, fallback)

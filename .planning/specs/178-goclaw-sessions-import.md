@@ -66,7 +66,7 @@ These columns have no home on `sessions` or `messages`. They are not written. `s
 
 The file is streamed. Sessions are written in batches. One session is not held with the rest of the file. A line over 16MiB is invalid and does not stop the file.
 
-The SQLite `messages_ai` trigger stays in place during `--apply`. Imported message ids are removed from `memory_fts` in the same transaction as the insert. The import does not call `PutMemory`, `SaveSummary`, or the chat pipeline. An archived session, and a session whose agent is disabled, does not get a chat or channel reply.
+The SQLite `messages_ai` trigger stays in place during `--apply`. Imported message ids are removed from `memory_fts` in the same transaction as the insert. The import does not call `PutMemory`, `SaveSummary`, or the chat pipeline. `POST /api/chat` on an archived session, or on a session whose agent is disabled, returns 409 and does not call a model. Channel webhooks are unchanged: they still store the incoming customer message. Channel handlers select `telegram` and `zalo` agents, not `import-unresolved.*`.
 
 ## Out of scope
 
