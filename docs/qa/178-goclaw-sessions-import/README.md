@@ -15,4 +15,4 @@ Message order follows the `messages` array. A repeated timestamp is stored one n
 
 Columns with no home are listed in the report `not_imported` and in `.planning/specs/178-goclaw-sessions-import.md`.
 
-`qa:tabs` for code `629dd8ce0c82d56d029e1f7de4b459035aa7c2b2` is `docs/qa/178/qa-tabs-629dd8ce0c82d56d029e1f7de4b459035aa7c2b2.log`. Exit 0.
+`qa:tabs` for code `ec929e8d7008783158f9474d3ad6a15dc3c1404d` is `docs/qa/178/qa-tabs-ec929e8d7008783158f9474d3ad6a15dc3c1404d.log`. Exit 0.
