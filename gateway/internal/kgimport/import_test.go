@@ -94,7 +94,7 @@ func TestDenyFileAndDeniedTenant(t *testing.T) {
 	if err == nil || rep == nil || rep.DeniedTenants != 1 {
 		t.Fatalf("source deny %+v %v", rep, err)
 	}
-	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != store.ErrNotFound {
+	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != store.ErrNotFound {
 		t.Fatal("denied source wrote a row")
 	}
 	raw, _ := json.Marshal(rep)
@@ -108,7 +108,7 @@ func TestDenyFileAndDeniedTenant(t *testing.T) {
 	if err == nil || rep == nil || rep.DeniedTenants < 1 {
 		t.Fatalf("dest deny %+v %v", rep, err)
 	}
-	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != store.ErrNotFound {
+	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != store.ErrNotFound {
 		t.Fatal("denied dest wrote a row")
 	}
 }
@@ -145,7 +145,7 @@ func runMinhAn(t *testing.T, st testStore) {
 		t.Fatal(err)
 	}
 	assertFirstCounts(t, dry)
-	if hit, _ := st.SearchProgressive("KEEPMARKER", "minh-an"); len(hit) != 0 {
+	if hit, _ := st.SearchProgressive("KEEPMARKER", "minh-an", store.KGScope{}); len(hit) != 0 {
 		t.Fatal("dry-run wrote a row")
 	}
 
@@ -182,7 +182,7 @@ func runMinhAn(t *testing.T, st testStore) {
 	if dryRemove.Entities != 3 || dryRemove.Relations != 1 || !dryRemove.DryRun {
 		t.Fatalf("dry remove %+v", dryRemove)
 	}
-	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != nil {
+	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != nil {
 		t.Fatal("dry remove deleted a row")
 	}
 	removed, err := Remove(st, "minh-an", opt.Deny, false)
@@ -192,19 +192,19 @@ func runMinhAn(t *testing.T, st testStore) {
 	if removed.Entities != 3 || removed.Relations != 1 {
 		t.Fatalf("remove %+v", removed)
 	}
-	if _, err := st.GetKGEntity("gc-kg:" + idPlace); err != store.ErrNotFound {
+	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != store.ErrNotFound {
 		t.Fatal("imported entity remains")
 	}
-	if _, err := st.GetKGEntity("gc-kg:" + idPhap); err != nil {
+	if _, err := st.GetKGEntity("gc-kg:"+idPhap, store.KGScope{}); err != nil {
 		t.Fatal("other tenant imported row was deleted")
 	}
-	if _, err := st.GetKGEntity(live.ID); err != nil {
+	if _, err := st.GetKGEntity(live.ID, store.KGScope{}); err != nil {
 		t.Fatal("live entity was deleted")
 	}
-	if _, err := st.GetKGEntity(other.ID); err != nil {
+	if _, err := st.GetKGEntity(other.ID, store.KGScope{}); err != nil {
 		t.Fatal("live peer was deleted")
 	}
-	rels, err := st.ListKGRelations(live.ID)
+	rels, err := st.ListKGRelations(live.ID, store.KGScope{})
 	if err != nil || len(rels) != 1 || rels[0].ID != liveRel.ID || rels[0].ValidUntil != nil {
 		t.Fatalf("live relation %+v %v", rels, err)
 	}
@@ -243,7 +243,7 @@ func TestConflictDoesNotOverwrite(t *testing.T) {
 			if sec.WillWrite != 2 || sec.Skipped[reasonNativeExists] != 1 || sec.Skipped[reasonExists] != 0 {
 				t.Fatalf("conflict counts %+v", sec)
 			}
-			got, err := st.GetKGEntity("gc-kg:" + idPlace)
+			got, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{})
 			if err != nil || got.Name != "LIVEBODY" || got.Body != "LIVEBODY" {
 				t.Fatalf("seed overwritten: %+v %v", got, err)
 			}
@@ -310,7 +310,7 @@ func assertSecondCounts(t *testing.T, rep *Report) {
 
 func assertStored(t *testing.T, st testStore, agentID string) {
 	t.Helper()
-	place, err := st.GetKGEntity("gc-kg:" + idPlace)
+	place, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func assertStored(t *testing.T, st testStore, agentID string) {
 	if err != nil || prov != "goclaw:"+idPlace {
 		t.Fatalf("provenance %q %v", prov, err)
 	}
-	org, err := st.GetKGEntity("gc-kg:" + idOrg)
+	org, err := st.GetKGEntity("gc-kg:"+idOrg, store.KGScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,11 +341,11 @@ func assertStored(t *testing.T, st testStore, agentID string) {
 	if org.Body != "" || org.Kind != "org" {
 		t.Fatalf("org %+v", org)
 	}
-	embed, err := st.GetKGEntity("gc-kg:" + idEmbed)
+	embed, err := st.GetKGEntity("gc-kg:"+idEmbed, store.KGScope{})
 	if err != nil || embed.Body != "Bang gia mau\n{\"sku\":\"MA-1\"}" || strings.Contains(embed.Body, "EMBEDMARKER") {
 		t.Fatalf("embed %+v %v", embed, err)
 	}
-	rels, err := st.ListKGRelations(place.ID)
+	rels, err := st.ListKGRelations(place.ID, store.KGScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func assertStored(t *testing.T, st testStore, agentID string) {
 		t.Fatalf("rel provenance %q %v", rprov, err)
 	}
 	for _, id := range []string{idPrivate, idTeam, idScope, idNoAgent, idMQ, idUnknown, idCross, idWrongMap} {
-		if _, err := st.GetKGEntity("gc-kg:" + id); err != store.ErrNotFound {
+		if _, err := st.GetKGEntity("gc-kg:"+id, store.KGScope{}); err != store.ErrNotFound {
 			t.Fatalf("skipped entity stored %s", id)
 		}
 	}
@@ -395,13 +395,13 @@ func assertIsolation(t *testing.T, st testStore) {
 			t.Fatal("phap graph has minh")
 		}
 	}
-	if hit, _ := st.SearchProgressive("Điều khoản", "minh-an"); len(hit) != 0 {
+	if hit, _ := st.SearchProgressive("Điều khoản", "minh-an", store.KGScope{}); len(hit) != 0 {
 		t.Fatal("minh search returned phap")
 	}
-	if hit, _ := st.SearchProgressive("KEEPMARKER", "phap-che"); len(hit) != 0 {
+	if hit, _ := st.SearchProgressive("KEEPMARKER", "phap-che", store.KGScope{}); len(hit) != 0 {
 		t.Fatal("phap search returned minh")
 	}
-	if hit, _ := st.SearchProgressive("KEEPMARKER", "minh-an"); len(hit) != 1 {
+	if hit, _ := st.SearchProgressive("KEEPMARKER", "minh-an", store.KGScope{}); len(hit) != 1 {
 		t.Fatalf("minh search %d", len(hit))
 	}
 }
@@ -410,7 +410,7 @@ func assertNoLeak(t *testing.T, st testStore) {
 	t.Helper()
 	for _, marker := range []string{"PRIVMARKER", "TEAMMARKER", "SCOPEMARKER", "DENIEDMARKER", "EMBEDMARKER", "TSVMARKER", "UNMAPPEDMARKER", "BADMARKER", "0900000111"} {
 		for _, tenant := range []string{"minh-an", "phap-che", "default"} {
-			hit, err := st.SearchProgressive(marker, tenant)
+			hit, err := st.SearchProgressive(marker, tenant, store.KGScope{})
 			if err != nil || len(hit) != 0 {
 				t.Fatalf("leaked %s into %s (%d, %v)", marker, tenant, len(hit), err)
 			}
@@ -420,25 +420,25 @@ func assertNoLeak(t *testing.T, st testStore) {
 
 func assertNoCustomerKey(t *testing.T, st testStore) {
 	t.Helper()
+	// SPEC 182 added the column. Imported tenant-wide rows leave it empty.
+	place, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{})
+	if err != nil || place.CustomerKey != "" {
+		t.Fatalf("imported customer_key %q %v", place.CustomerKey, err)
+	}
 	db, ok := st.(interface{ SQL() (*sql.DB, bool) })
 	if !ok {
 		return
 	}
 	raw, pg := db.SQL()
 	var n int
-	var err error
+	var err2 error
 	if pg {
-		err = raw.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name IN ('kg_entities','kg_relations') AND column_name='customer_key'`).Scan(&n)
+		err2 = raw.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name IN ('kg_entities','kg_relations') AND column_name='customer_key'`).Scan(&n)
 	} else {
-		err = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_entities') WHERE name='customer_key'`).Scan(&n)
-		if err == nil && n == 0 {
-			var rel int
-			err = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_relations') WHERE name='customer_key'`).Scan(&rel)
-			n += rel
-		}
+		err2 = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_entities') WHERE name='customer_key'`).Scan(&n)
 	}
-	if err != nil || n != 0 {
-		t.Fatalf("customer_key columns %d %v", n, err)
+	if err2 != nil || n != 1 {
+		t.Fatalf("customer_key column %d %v", n, err2)
 	}
 }
 
@@ -450,10 +450,10 @@ type testStore interface {
 	GetMemory(string) (*store.Memory, error)
 	PutKGEntity(store.KGEntity) (*store.KGEntity, error)
 	PutKGRelation(store.KGRelation) (*store.KGRelation, error)
-	GetKGEntity(string) (*store.KGEntity, error)
-	ListKGRelations(string) ([]*store.KGRelation, error)
+	GetKGEntity(string, store.KGScope) (*store.KGEntity, error)
+	ListKGRelations(string, store.KGScope) ([]*store.KGRelation, error)
 	ListKGGraph(store.KGGraphQuery) (*store.KGGraph, error)
-	SearchProgressive(string, string) ([]store.KGSearchHit, error)
+	SearchProgressive(string, string, store.KGScope) ([]store.KGSearchHit, error)
 	KGProvenance(string, string) (string, error)
 }
 
@@ -543,7 +543,7 @@ func assertPrefixRows(t *testing.T, st testStore) {
 
 func assertLiveMemory(t *testing.T, st testStore) {
 	t.Helper()
-	mems, err := st.SearchProgressive("MEMLIVE", "minh-an")
+	mems, err := st.SearchProgressive("MEMLIVE", "minh-an", store.KGScope{})
 	if err != nil || len(mems) == 0 {
 		t.Fatal("live memory missing")
 	}

@@ -32,7 +32,7 @@ Not copied: `embedding`, `tsv`, `confidence`, `external_id`, `source_id`, `updat
 {"agents":[{"goclaw_agent_id":"<uuid>","goso_agent_id":"<goso id>","source_tenant":"<goclaw tenant uuid>"}]}
 ```
 
-5. A non-empty `user_id` is resolved with `--customer-map`, the PR #46 file of `{channel, sender_id, user_id}`. The key is `<channel>:<id>` (`id` defaults to `sender_id`). With no row, the key is `goclaw:<user_id>`. It is never empty for a non-empty `user_id`. The key is not printed and is not stored: there is still no `customer_key` column. An entity is written only when `admit` returns empty. `admit` is the only user/team/scope decision:
+5. A non-empty `user_id` is resolved by `ResolveCustomerKey` to `<channel>:<id>` from the PR #46 map shape, or `goclaw:<user_id>` when the map has no row. The key is never empty for that user and is not printed. The CLI does not take a customer-map flag, because the key is not written. Imported rows leave the SPEC 182 `customer_key` column at its default `''`. An entity is written only when `admit` returns empty. `admit` is the only user/team/scope decision:
    - non-empty `team_id`, or a non-empty `custom_scope` if a line carries one, is `team/scope` and is not written;
    - otherwise a non-empty `user_id` is `customer-private` and is not written;
    - JSON `null` `user_id` is empty, matching the column default `''`.

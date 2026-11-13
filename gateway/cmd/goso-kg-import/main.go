@@ -31,7 +31,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	exportPath := fs.String("export", "", "JSONL file of kg_entities and kg_relations rows (not a database)")
 	tenantMapPath := fs.String("tenant-map", "", "SPEC 152 file: source_tenant, dest_tenant, slug")
 	agentMapPath := fs.String("agent-map", "", "SPEC 174 file: goclaw_agent_id, goso_agent_id, source_tenant")
-	customerMapPath := fs.String("customer-map", "", "PR 46 file: channel, sender_id, user_id. Optional. Fallback is goclaw:<user_id>")
 	denyPath := fs.String("deny-file", "", "local denylist of tenant ids. Required. Also read from GOSO_TENANT_DENY_FILE")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	source := fs.String("source-tenant", "", "GoClaw tenant id for this run")
@@ -54,7 +53,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, err)
 	}
 	if strings.TrimSpace(*dbPath) == "" {
-		fmt.Fprintln(stderr, "usage: goso-kg-import --export file.jsonl --tenant-map tenants.json --agent-map agents.json --source-tenant id --tenant id --deny-file path --db path [--customer-map file.json] [--dry-run]")
+		fmt.Fprintln(stderr, "usage: goso-kg-import --export file.jsonl --tenant-map tenants.json --agent-map agents.json --source-tenant id --tenant id --deny-file path --db path [--dry-run]")
 		fmt.Fprintln(stderr, "       goso-kg-import --remove --tenant id --deny-file path --db path [--dry-run]")
 		return 2
 	}
@@ -96,7 +95,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return writeJSON(stdout, stderr, rep)
 	}
 	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenantMapPath) == "" || strings.TrimSpace(*agentMapPath) == "" || strings.TrimSpace(*source) == "" {
-		fmt.Fprintln(stderr, "usage: goso-kg-import --export file.jsonl --tenant-map tenants.json --agent-map agents.json --source-tenant id --tenant id --deny-file path --db path [--customer-map file.json] [--dry-run]")
+		fmt.Fprintln(stderr, "usage: goso-kg-import --export file.jsonl --tenant-map tenants.json --agent-map agents.json --source-tenant id --tenant id --deny-file path --db path [--dry-run]")
 		return 2
 	}
 	if store.IsPostgresDSN(*exportPath) {
@@ -116,19 +115,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	var customers kgimport.CustomerMap
-	if strings.TrimSpace(*customerMapPath) != "" {
-		customers, err = readCustomerMap(*customerMapPath)
-		if err != nil {
-			return fail(stderr, err)
-		}
-	}
 	rep, err := kgimport.Import(st, ex, kgimport.Options{
 		SourceTenant: *source,
 		DestTenant:   dest,
 		Tenants:      tenants,
 		Agents:       agents,
-		Customers:    customers,
 		Deny:         deny,
 		DryRun:       *dry,
 	})
@@ -153,15 +144,6 @@ func readDeny(path string) (kgimport.DenyList, error) {
 	}
 	defer f.Close()
 	return kgimport.ReadDenyFile(f)
-}
-
-func readCustomerMap(path string) (kgimport.CustomerMap, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return kgimport.CustomerMap{}, errConfigOpen("customer map")
-	}
-	defer f.Close()
-	return kgimport.ReadCustomerMap(f)
 }
 
 func readExport(path string) (*kgimport.Export, error) {

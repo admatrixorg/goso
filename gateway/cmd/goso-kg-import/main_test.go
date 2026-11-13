@@ -70,7 +70,7 @@ func TestCLIDryRunThenSecondRunThenRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetKGEntity("gc-kg:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"); err == nil {
+	if _, err := st.GetKGEntity("gc-kg:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1", store.KGScope{}); err == nil {
 		t.Fatal("dry-run wrote")
 	}
 	_ = st.Close()
@@ -107,7 +107,7 @@ func TestCLIDryRunThenSecondRunThenRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if _, err := st.GetKGEntity("gc-kg:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"); err != store.ErrNotFound {
+	if _, err := st.GetKGEntity("gc-kg:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1", store.KGScope{}); err != store.ErrNotFound {
 		t.Fatal("removed row remains")
 	}
 }

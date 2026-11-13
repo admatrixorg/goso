@@ -12,7 +12,7 @@ The tool never opens a GoClaw database. `--export` is JSONL. `--db` is a local S
 | `--source-tenant` | GoClaw tenant for this run. Required |
 | `--tenant` | Goso tenant to write. Required |
 | `--tenant-map` | SPEC 152 pairs. `source_tenant`, `dest_tenant`, `slug`. The run writes only `--source-tenant` into `--tenant` |
-| `--customer-map` | Optional PR #46 file. `{channel, sender_id, user_id}` becomes `<channel>:<id>`, else `goclaw:<user_id>` |
+| customer key | The package still resolves a non-empty `user_id` to `<channel>:<id>` or `goclaw:<user_id>`. The CLI has no `--customer-map` flag: that key is not written. Imported rows leave SPEC 182 `customer_key` at `''` |
 | `--deny-file` | Required local denylist. `GOSO_TENANT_DENY_FILE` is the fallback. Missing, empty, or malformed stops before any work. A listed source or dest stops before any write. The report field `denied_tenants` is a count |
 | `--agent-map` | SPEC 174 pairs. `goclaw_agent_id`, `goso_agent_id`, optional `source_tenant`. The Goso agent must already exist in the destination tenant |
 | `--db` | Local SQLite file or loopback Postgres DSN. `GOSO_DATABASE_URL` is not opened |

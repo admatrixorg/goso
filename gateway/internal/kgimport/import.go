@@ -417,7 +417,7 @@ func sameEntity(cur, want *store.KGEntity) bool {
 	if cur == nil || want == nil {
 		return false
 	}
-	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.Name != want.Name || cur.Kind != want.Kind || cur.Body != want.Body || cur.AgentID != want.AgentID || cur.Source != want.Source {
+	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.Name != want.Name || cur.Kind != want.Kind || cur.Body != want.Body || cur.AgentID != want.AgentID || cur.Source != want.Source || cur.CustomerKey != want.CustomerKey {
 		return false
 	}
 	if !cur.ValidFrom.Equal(want.ValidFrom) || !cur.CreatedAt.Equal(want.CreatedAt) || !sameUntil(cur.ValidUntil, want.ValidUntil) {
@@ -430,7 +430,7 @@ func sameRelation(cur, want *store.KGRelation) bool {
 	if cur == nil || want == nil {
 		return false
 	}
-	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.FromID != want.FromID || cur.ToID != want.ToID || cur.Rel != want.Rel || cur.Body != want.Body || cur.Source != want.Source {
+	if !store.SameTenant(cur.TenantID, want.TenantID) || cur.FromID != want.FromID || cur.ToID != want.ToID || cur.Rel != want.Rel || cur.Body != want.Body || cur.Source != want.Source || cur.CustomerKey != want.CustomerKey {
 		return false
 	}
 	if !cur.ValidFrom.Equal(want.ValidFrom) || !sameUntil(cur.ValidUntil, want.ValidUntil) {

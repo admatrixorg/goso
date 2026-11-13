@@ -43,7 +43,7 @@ func TestInsertImportedKGDoesNotOverwrite(t *testing.T) {
 	if err != nil || ok {
 		t.Fatalf("second insert %v %v", ok, err)
 	}
-	got, err := s.GetKGEntity(first.ID)
+	got, err := s.GetKGEntity(first.ID, KGScope{})
 	if err != nil || got.Name != "LIVEBODY" || got.Body != "LIVEBODY" || got.ValidUntil != nil {
 		t.Fatalf("row changed: %+v %v", got, err)
 	}
@@ -128,8 +128,12 @@ func TestDeleteImportedKGLeavesLiveRows(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_entities') WHERE name='customer_key'`).Scan(&customerKeyCols); err != nil {
 		t.Fatal(err)
 	}
-	if customerKeyCols != 0 {
-		t.Fatal("customer_key was added")
+	if customerKeyCols != 1 {
+		t.Fatalf("customer_key columns %d", customerKeyCols)
+	}
+	var importedKey string
+	if err := db.QueryRow(`SELECT customer_key FROM kg_entities WHERE id=?`, imported.ID).Scan(&importedKey); err != nil || importedKey != "" {
+		t.Fatalf("imported customer_key %q %v", importedKey, err)
 	}
 
 	ent, rel, err := s.DeleteImportedKG("minh-an")
@@ -139,19 +143,19 @@ func TestDeleteImportedKGLeavesLiveRows(t *testing.T) {
 	if ent != 1 || rel != 0 {
 		t.Fatalf("deleted entities=%d relations=%d", ent, rel)
 	}
-	if _, err := s.GetKGEntity(imported.ID); err != ErrNotFound {
+	if _, err := s.GetKGEntity(imported.ID, KGScope{}); err != ErrNotFound {
 		t.Fatal("imported row still present")
 	}
-	if _, err := s.GetKGEntity(otherTenant.ID); err != nil {
+	if _, err := s.GetKGEntity(otherTenant.ID, KGScope{}); err != nil {
 		t.Fatal("other tenant gc row was deleted")
 	}
-	if _, err := s.GetKGEntity(live.ID); err != nil {
+	if _, err := s.GetKGEntity(live.ID, KGScope{}); err != nil {
 		t.Fatal("live entity was deleted")
 	}
-	if _, err := s.GetKGEntity("GC-kept"); err != nil {
+	if _, err := s.GetKGEntity("GC-kept", KGScope{}); err != nil {
 		t.Fatal("case-different id was deleted")
 	}
-	gotRel, err := s.ListKGRelations(live.ID)
+	gotRel, err := s.ListKGRelations(live.ID, KGScope{})
 	if err != nil || len(gotRel) != 1 || gotRel[0].ID != liveRel.ID || gotRel[0].ValidUntil != nil {
 		t.Fatalf("live relation %+v %v", gotRel, err)
 	}
