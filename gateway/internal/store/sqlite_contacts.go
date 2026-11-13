@@ -103,6 +103,17 @@ type ContactBulkResult struct {
 	Applied int
 }
 
+// ErrContactRollbackConfirm is returned when mapped contacts were used or
+// merged after import and confirm is false. The text has no contact fields.
+var ErrContactRollbackConfirm = errors.New("rollback needs confirm")
+
+// ContactRollback is a count-only result. It does not name contacts.
+type ContactRollback struct {
+	Candidates int
+	Active     int
+	Deleted    int
+}
+
 type contactHead struct {
 	ContactRow
 	Merged     bool
@@ -252,59 +263,90 @@ func (s *SQLiteStore) PutContactImport(tenant, contactID, channel, dest string) 
 }
 
 // RollbackContactImport deletes contacts this importer inserted for one tenant.
-// Contacts that are not in the map stay. The count is the number of contact rows removed.
-func (s *SQLiteStore) RollbackContactImport(tenant string) (int, error) {
+// Contacts that are not in the map stay. Active counts mapped contacts that
+// were observed again (seen_count > 1) or merged after import. When active
+// is greater than zero and confirm is false, nothing is deleted.
+// apply false reports the counts and does not delete.
+func (s *SQLiteStore) RollbackContactImport(tenant string, apply, confirm bool) (ContactRollback, error) {
+	var out ContactRollback
 	if s == nil || s.db == nil {
-		return 0, errors.New("contact store unavailable")
+		return out, errors.New("contact store unavailable")
 	}
 	tenant = NormalizeTenant(tenant)
 	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, opaqueContactErr("upsert")
+		return out, opaqueContactErr("upsert")
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.Query(`SELECT contact_id FROM contact_import_map WHERE tenant_id=?`, tenant)
 	if err != nil {
-		return 0, opaqueContactErr("lookup")
+		return out, opaqueContactErr("lookup")
 	}
 	ids := []string{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return 0, opaqueContactErr("lookup")
+			return out, opaqueContactErr("lookup")
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return 0, opaqueContactErr("lookup")
+		return out, opaqueContactErr("lookup")
 	}
 	rows.Close()
-	n := 0
 	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if _, ok := seen[id]; ok {
 			continue
 		}
 		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	out.Candidates = len(unique)
+	for _, id := range unique {
+		var seenCount, merged int
+		err := tx.QueryRow(`SELECT seen_count, merged FROM contacts WHERE tenant_id=? AND id=?`, tenant, id).Scan(&seenCount, &merged)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return out, opaqueContactErr("lookup")
+		}
+		var merges int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM contact_merges WHERE tenant_id=? AND (source_id=? OR target_id=?)`, tenant, id, id).Scan(&merges); err != nil {
+			return out, opaqueContactErr("lookup")
+		}
+		if seenCount > 1 || merged != 0 || merges > 0 {
+			out.Active++
+		}
+	}
+	if !apply {
+		return out, nil
+	}
+	if out.Active > 0 && !confirm {
+		return out, ErrContactRollbackConfirm
+	}
+	for _, id := range unique {
 		if _, err := tx.Exec(`DELETE FROM contact_identifiers WHERE tenant_id=? AND contact_id=?`, tenant, id); err != nil {
-			return 0, opaqueContactErr("upsert")
+			return out, opaqueContactErr("upsert")
 		}
 		res, err := tx.Exec(`DELETE FROM contacts WHERE tenant_id=? AND id=?`, tenant, id)
 		if err != nil {
-			return 0, opaqueContactErr("upsert")
+			return out, opaqueContactErr("upsert")
 		}
 		aff, _ := res.RowsAffected()
-		n += int(aff)
+		out.Deleted += int(aff)
 	}
 	if _, err := tx.Exec(`DELETE FROM contact_import_map WHERE tenant_id=?`, tenant); err != nil {
-		return 0, opaqueContactErr("upsert")
+		return out, opaqueContactErr("upsert")
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, opaqueContactErr("upsert")
+		return out, opaqueContactErr("upsert")
 	}
-	return n, nil
+	return out, nil
 }
 
 func upsertContactTx(tx contactQuery, seed ContactSeed) (bool, error) {

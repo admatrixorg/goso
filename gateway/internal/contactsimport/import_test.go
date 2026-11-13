@@ -54,8 +54,12 @@ func denySet() map[string]struct{} {
 	return map[string]struct{}{"blocked-tenant": {}}
 }
 
-func minhOpts(dry bool) Options {
-	return Options{Tenant: "minh-an", SourceTenant: "minh-an", Deny: denySet(), DryRun: dry}
+func minhOpts(t *testing.T, dry bool) Options {
+	t.Helper()
+	return Options{
+		Tenant: "minh-an", SourceTenant: "minh-an", Deny: denySet(), DryRun: dry,
+		CustomerMap: filepath.Join(t.TempDir(), "customers.tsv"),
+	}
 }
 
 func TestFixtureFileMatchesGenerator(t *testing.T) {
@@ -178,7 +182,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	spy := &spyStore{SQLiteStore: s}
-	rep, err := Import(spy, ex, minhOpts(true))
+	rep, err := Import(spy, ex, minhOpts(t, true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +198,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatalf("dry-run wrote %d", n)
 	}
 
-	rep, err = Import(spy, ex, minhOpts(false))
+	rep, err = Import(spy, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +262,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	}
 	assertSideTables(t, s)
 
-	rep, err = Import(spy, ex, minhOpts(false))
+	rep, err = Import(spy, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +283,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	calls := spy.calls
-	rep, err = Import(spy, ex, minhOpts(false))
+	rep, err = Import(spy, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +314,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err = Import(spy, one, minhOpts(true))
+	rep, err = Import(spy, one, minhOpts(t, true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +323,7 @@ func exerciseMinhAn(t *testing.T, s *store.SQLiteStore) {
 	}
 	assertReasons(t, rep, map[string]int{"native-exists": 1})
 	assertNoLeak(t, rep)
-	rep, err = Import(spy, one, minhOpts(false))
+	rep, err = Import(spy, one, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +440,7 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(false))
+	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +517,10 @@ func exerciseEdges(t *testing.T, s *store.SQLiteStore) {
 		t.Fatal(err)
 	}
 	before := mustCount(t, s, "minh-an")
-	rep, err = Import(&spyStore{SQLiteStore: s}, ex, Options{Tenant: "minh-an", SourceTenant: src, Deny: denySet()})
+	rep, err = Import(&spyStore{SQLiteStore: s}, ex, Options{
+		Tenant: "minh-an", SourceTenant: src, Deny: denySet(),
+		CustomerMap: filepath.Join(t.TempDir(), "customers.tsv"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +550,7 @@ func TestObserveImportedSender(t *testing.T) {
 		t.Fatal(err)
 	}
 	mapPath := filepath.Join(t.TempDir(), "customers.tsv")
-	opt := minhOpts(false)
+	opt := minhOpts(t, false)
 	opt.CustomerMap = mapPath
 	if _, err := Import(&spyStore{SQLiteStore: s}, ex, opt); err != nil {
 		t.Fatal(err)
@@ -580,6 +587,9 @@ func TestObserveImportedSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if info, err := os.Stat(mapPath); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("map mode %v %v", info, err)
+	}
 	if !bytes.Equal(first, second) {
 		t.Fatalf("map changed %q %q", first, second)
 	}
@@ -612,7 +622,7 @@ func TestNativeSkipAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(false))
+	rep, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,13 +639,127 @@ func TestNativeSkipAndRollback(t *testing.T) {
 			t.Fatalf("real changed %#v", row)
 		}
 	}
-	n, err := s.RollbackContactImport("minh-an")
-	if err != nil || n != 1 {
-		t.Fatalf("rollback %d %v", n, err)
+	rolled, err := s.RollbackContactImport("minh-an", true, true)
+	if err != nil || rolled.Deleted != 1 || rolled.Active != 0 {
+		t.Fatalf("rollback %+v %v", rolled, err)
 	}
 	left, err := s.ListContacts("minh-an", "", "", "")
 	if err != nil || len(left) != 1 || left[0].Dest != "real-minh-an" || left[0].Display != "Minh An Real" {
 		t.Fatalf("after rollback %#v %v", left, err)
+	}
+}
+
+func TestRollbackActivitySQLite(t *testing.T) {
+	s := openSQLite(t)
+	exerciseRollback(t, s)
+}
+
+func TestRollbackActivityPostgres(t *testing.T) {
+	s := openImportPostgres(t, "contactsimport172r")
+	if s == nil {
+		return
+	}
+	exerciseRollback(t, s)
+}
+
+func exerciseRollback(t *testing.T, s *store.SQLiteStore) {
+	t.Helper()
+	at := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	quiet := person("quiet-minh-an", "", "Minh An Quiet", "user", "user", "", at)
+	active := person("active-minh-an", "", "Minh An Active", "user", "user", "", at)
+	ex, err := ReadExport(bytes.NewReader(mustExport(t, File{Contacts: []Contact{quiet, active}})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(&spyStore{SQLiteStore: s}, ex, minhOpts(t, false)); err != nil {
+		t.Fatal(err)
+	}
+	bee := person("bee-keep", "", "Bee Keep", "user", "user", "", at)
+	bee.TenantID = "tenant-bee"
+	beeEx, err := ReadExport(bytes.NewReader(mustExport(t, File{Contacts: []Contact{bee}})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	beeOpt := Options{
+		Tenant: "tenant-bee", SourceTenant: "tenant-bee", Deny: denySet(),
+		CustomerMap: filepath.Join(t.TempDir(), "bee.tsv"),
+	}
+	if _, err := Import(&spyStore{SQLiteStore: s}, beeEx, beeOpt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ObserveContact(store.ContactSighting{
+		Channel: "telegram", Dest: "active-minh-an", Kind: "user", TenantID: "minh-an",
+		At: at.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := s.RollbackContactImport("minh-an", false, false)
+	if err != nil || preview.Deleted != 0 || preview.Candidates != 2 || preview.Active != 1 {
+		t.Fatalf("preview %+v %v", preview, err)
+	}
+	if mustCount(t, s, "minh-an") != 2 || mustCount(t, s, "tenant-bee") != 1 {
+		t.Fatal("preview wrote")
+	}
+	refused, err := s.RollbackContactImport("minh-an", true, false)
+	if !errors.Is(err, store.ErrContactRollbackConfirm) || refused.Deleted != 0 || refused.Active != 1 {
+		t.Fatalf("refused %+v %v", refused, err)
+	}
+	if strings.Contains(err.Error(), "active-minh-an") || strings.Contains(err.Error(), "Minh An") {
+		t.Fatal("rollback error leaked a contact")
+	}
+	if mustCount(t, s, "minh-an") != 2 || mustCount(t, s, "tenant-bee") != 1 {
+		t.Fatal("refused rollback deleted a row")
+	}
+	done, err := s.RollbackContactImport("minh-an", true, true)
+	if err != nil || done.Deleted != 2 {
+		t.Fatalf("confirm %+v %v", done, err)
+	}
+	if mustCount(t, s, "minh-an") != 0 || mustCount(t, s, "tenant-bee") != 1 {
+		t.Fatal("rollback crossed tenants")
+	}
+	left, err := s.ListContacts("tenant-bee", "", "", "")
+	if err != nil || len(left) != 1 || left[0].Dest != "bee-keep" || left[0].Display != "Bee Keep" {
+		t.Fatalf("bee %#v %v", left, err)
+	}
+	pair := []Contact{
+		person("merge-a", "", "Minh An A", "user", "user", "", at),
+		person("merge-b", "", "Minh An B", "user", "user", "", at),
+	}
+	mergeEx, err := ReadExport(bytes.NewReader(mustExport(t, File{Contacts: pair})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(&spyStore{SQLiteStore: s}, mergeEx, minhOpts(t, false)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.ListContacts("minh-an", "", "", "")
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("merge setup %#v %v", rows, err)
+	}
+	var target, source store.ContactRow
+	for _, row := range rows {
+		if row.Dest == "merge-a" {
+			target = row
+		}
+		if row.Dest == "merge-b" {
+			source = row
+		}
+	}
+	if _, err := s.MergeContacts(target.ID, source.ID, "minh-an", source.ID); err != nil {
+		t.Fatal(err)
+	}
+	refused, err = s.RollbackContactImport("minh-an", true, false)
+	if !errors.Is(err, store.ErrContactRollbackConfirm) || refused.Deleted != 0 || refused.Active < 1 {
+		t.Fatalf("merge refused %+v %v", refused, err)
+	}
+	if n := mustCount(t, s, "tenant-bee"); n != 1 {
+		t.Fatalf("bee after merge rollback %d", n)
+	}
+	if _, err := s.RollbackContactImport("minh-an", true, true); err != nil {
+		t.Fatal(err)
+	}
+	if mustCount(t, s, "minh-an") != 0 || mustCount(t, s, "tenant-bee") != 1 {
+		t.Fatal("merge rollback crossed tenants")
 	}
 }
 
@@ -651,7 +775,7 @@ func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 		t.Fatal(err)
 	}
 	spy := &spyStore{SQLiteStore: s}
-	rep, err := Import(spy, ex, minhOpts(true))
+	rep, err := Import(spy, ex, minhOpts(t, true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,7 +785,7 @@ func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 	if mustCount(t, s, "minh-an") != 0 {
 		t.Fatal("dry-run wrote")
 	}
-	rep, err = Import(spy, ex, minhOpts(false))
+	rep, err = Import(spy, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +795,7 @@ func exerciseBatch(t *testing.T, s *store.SQLiteStore, n int) {
 	if mustCount(t, s, "minh-an") != n {
 		t.Fatalf("count %d", mustCount(t, s, "minh-an"))
 	}
-	rep, err = Import(spy, ex, minhOpts(false))
+	rep, err = Import(spy, ex, minhOpts(t, false))
 	if err != nil {
 		t.Fatal(err)
 	}

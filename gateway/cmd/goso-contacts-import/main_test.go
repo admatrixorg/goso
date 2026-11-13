@@ -269,7 +269,7 @@ func importArgs(t *testing.T, exportPath, dbPath string) []string {
 	if err := os.WriteFile(deny, []byte("blocked-tenant\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--deny-file", deny}
+	return []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--deny-file", deny, "--customer-map", filepath.Join(t.TempDir(), "customers.tsv")}
 }
 
 func TestCLIDenyFile(t *testing.T) {
@@ -376,5 +376,100 @@ func assertReportCountsOnly(t *testing.T, s string) {
 		if strings.Contains(s, m) {
 			t.Fatalf("report contains %q", m)
 		}
+	}
+}
+
+func TestCLIApplyMapModeAndRollbackConfirm(t *testing.T) {
+	t.Setenv("GOSO_CONTACTS_DENY_FILE", "")
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	body := `{"channel_contacts":[{"tenant_id":"minh-an","channel_type":"telegram","sender_id":"ext-minh-an-map","display_name":"Minh An Map","contact_type":"user","user_id":"user-map","first_seen_at":"2026-01-15T08:00:00Z","last_seen_at":"2026-01-15T09:00:00Z"}]}`
+	if err := os.WriteFile(exportPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deny := filepath.Join(dir, "deny.txt")
+	if err := os.WriteFile(deny, []byte("blocked-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "goso.db")
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	missing := []string{"--export", exportPath, "--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--deny-file", deny, "--apply"}
+	if code := run(missing, stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "customer map is required") {
+		t.Fatalf("missing map %d %s", code, stderr.String())
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatal("apply without a customer map created a database")
+	}
+	mapPath := filepath.Join(dir, "customers.tsv")
+	args := append(missing, "--customer-map", mapPath)
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(args, stdout, stderr); code != 0 {
+		t.Fatalf("apply %d %s", code, stderr.String())
+	}
+	info, err := os.Stat(mapPath)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v %v", info, err)
+	}
+	raw, err := os.ReadFile(mapPath)
+	if err != nil || string(raw) != "telegram\text-minh-an-map\tuser-map\ttelegram:ext-minh-an-map\n" {
+		t.Fatalf("map %q %v", raw, err)
+	}
+	st, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ObserveContact(store.ContactSighting{Channel: "telegram", Dest: "ext-minh-an-map", Kind: "user", TenantID: "minh-an"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	roll := []string{"--tenant", "minh-an", "--source-tenant", "minh-an", "--db", dbPath, "--deny-file", deny, "--rollback"}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(roll, stdout, stderr); code != 0 {
+		t.Fatalf("rollback dry-run %d %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "dry_run=true") || !strings.Contains(stdout.String(), "delete=0") || !strings.Contains(stdout.String(), "active=1") {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	if strings.Contains(stdout.String()+stderr.String(), "ext-minh-an-map") || strings.Contains(stdout.String()+stderr.String(), "Minh An") {
+		t.Fatal("rollback printed a contact")
+	}
+	st, err = store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := st.CountContacts("minh-an"); err != nil || n != 1 {
+		t.Fatalf("dry-run rollback count %d %v", n, err)
+	}
+	_ = st.Close()
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(roll, "--apply"), stdout, stderr); code == 0 || !strings.Contains(stderr.String(), "rollback needs confirm") {
+		t.Fatalf("confirm missing %d %s %s", code, stdout.String(), stderr.String())
+	}
+	st, err = store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := st.CountContacts("minh-an"); err != nil || n != 1 {
+		t.Fatalf("refused rollback count %d %v", n, err)
+	}
+	_ = st.Close()
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(roll, "--apply", "--confirm-rollback"), stdout, stderr); code != 0 {
+		t.Fatalf("confirm %d %s %s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "dry_run=false") || !strings.Contains(stdout.String(), "delete=1") {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	st, err = store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if n, err := st.CountContacts("minh-an"); err != nil || n != 0 {
+		t.Fatalf("after confirm %d %v", n, err)
 	}
 }

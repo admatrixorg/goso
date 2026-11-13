@@ -34,9 +34,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	source := fs.String("source-tenant", "", "channel_contacts.tenant_id to keep (required)")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	denyPath := fs.String("deny-file", "", "local denylist, one tenant id per line (or GOSO_CONTACTS_DENY_FILE)")
-	mapPath := fs.String("customer-map", "", "local customer-key file written on --apply")
-	rollback := fs.Bool("rollback", false, "delete only contacts this importer inserted for --tenant")
-	apply := fs.Bool("apply", false, "write contacts; omit to dry-run")
+	mapPath := fs.String("customer-map", "", "local customer-key file; required with --apply")
+	rollback := fs.Bool("rollback", false, "plan or delete only contacts this importer inserted for --tenant")
+	confirmRollback := fs.Bool("confirm-rollback", false, "delete imported contacts that were messaged or merged after import")
+	apply := fs.Bool("apply", false, "write contacts or, with --rollback, delete mapped rows")
 	dry := fs.Bool("dry-run", true, "report counts and write nothing (default)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -116,13 +117,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer closeDB()
-		n, err := st.RollbackContactImport(strings.TrimSpace(*tenant))
+		rep, err := st.RollbackContactImport(strings.TrimSpace(*tenant), !dryRun, *confirmRollback)
+		fmt.Fprintf(stdout, "rollback dry_run=%t delete=%d active=%d\n", dryRun, rep.Deleted, rep.Active)
+		if errors.Is(err, store.ErrContactRollbackConfirm) {
+			fmt.Fprintln(stderr, "rollback needs confirm")
+			return 1
+		}
 		if err != nil {
 			fmt.Fprintln(stderr, "rollback failed")
 			return 1
 		}
-		fmt.Fprintf(stdout, "rollback count=%d\n", n)
 		return 0
+	}
+	if !dryRun && strings.TrimSpace(*mapPath) == "" {
+		fmt.Fprintln(stderr, "customer map is required")
+		return 2
 	}
 	f, err := os.Open(*exportPath)
 	if err != nil {
@@ -170,7 +179,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-const usage = "usage: goso-contacts-import --export file.json --tenant id --source-tenant id --db path --deny-file path [--customer-map path] [--apply]\ndry-run is the default; --apply writes. --rollback deletes only imported rows for --tenant. Do not pass --apply and --dry-run together."
+const usage = "usage: goso-contacts-import --export file.json --tenant id --source-tenant id --db path --deny-file path [--customer-map path] [--apply]\n--customer-map is required with --apply. dry-run is the default.\n--rollback is a dry-run unless --apply is set. --confirm-rollback is required when a mapped contact was messaged or merged after import.\nDo not pass --apply and --dry-run together."
 
 func badToken(s string) bool {
 	for _, r := range s {

@@ -75,7 +75,7 @@ type Store interface {
 	ListContacts(tenant, q, channel, kind string) ([]store.ContactRow, error)
 	BulkUpsertContacts(seeds []store.ContactSeed) (store.ContactBulkResult, error)
 	PutContactImport(tenant, contactID, channel, dest string) error
-	RollbackContactImport(tenant string) (int, error)
+	RollbackContactImport(tenant string, apply, confirm bool) (store.ContactRollback, error)
 	ObserveContact(in store.ContactSighting) (store.ContactRow, error)
 }
 
@@ -272,6 +272,9 @@ func Import(db Store, ex *Export, opt Options) (Report, error) {
 	}
 	if hasControl(source) {
 		return Report{}, errConfig("source tenant is invalid")
+	}
+	if !opt.DryRun && strings.TrimSpace(opt.CustomerMap) == "" {
+		return Report{}, errConfig("customer map is required")
 	}
 	if len(opt.Deny) == 0 {
 		return Report{}, errConfig("deny file is empty")
@@ -585,7 +588,16 @@ func writeCustomerMap(path string, lines []mapLine) error {
 		b.WriteString(line.key)
 		b.WriteByte('\n')
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return errors.New("write customer map failed")
+	}
+	_, werr := f.Write([]byte(b.String()))
+	cerr := f.Close()
+	if chmodErr := os.Chmod(path, 0o600); chmodErr != nil && werr == nil {
+		werr = chmodErr
+	}
+	if werr != nil || cerr != nil {
 		return errors.New("write customer map failed")
 	}
 	return nil

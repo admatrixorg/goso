@@ -31,7 +31,7 @@ goso's key stays `(tenant_id, channel, dest)` on `contact_identifiers`. No sourc
 
 `dest` is the raw sender id, plus the raw thread id when that id is different. A later observe of that sender returns the imported row. `dest` over 128 bytes is invalid and is not clipped.
 
-A new row stores `seen_count` 1. An existing contact is `native-exists` and is not changed. Inserted ids are stored in `contact_import_map`. `--rollback` deletes only those rows.
+A new row stores `seen_count` 1. An existing contact is `native-exists` and is not changed. Inserted ids are stored in `contact_import_map`. `--customer-map` is required with `--apply`. The file is mode `0600` and the line is `channel`, `sender_id`, `user_id`, `customer_key` separated by tabs. `--rollback` is a dry-run unless `--apply` is also set. It deletes only mapped rows for that tenant. A mapped contact with `seen_count` above 1, `merged` set, or a merge row is active. Active contacts are not deleted unless `--confirm-rollback` is also set. The rollback line is counts only.
 
 `--deny-file` or `GOSO_CONTACTS_DENY_FILE` is required. A missing, empty, or malformed file stops before any work. A listed tenant stops before any write. The report field `denied` is a count and never a name.
 

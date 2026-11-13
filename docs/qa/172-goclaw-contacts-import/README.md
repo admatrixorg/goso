@@ -12,10 +12,11 @@ The source is `public.channel_contacts`. There is no `contacts` table. goso's ta
 | `--tenant` | goso tenant id written on every kept row. Required |
 | `--source-tenant` | Required `channel_contacts.tenant_id` to keep. Any other id is `foreign-tenant` |
 | `--deny-file` | Required local denylist, or `GOSO_CONTACTS_DENY_FILE`. One id per line |
-| `--customer-map` | Local TSV written on `--apply` |
-| `--rollback` | Delete only rows this importer inserted for `--tenant` |
+| `--customer-map` | Local TSV. Required with `--apply`. Written as mode `0600` |
+| `--rollback` | Count mapped rows for `--tenant`. Deletes them only with `--apply` |
+| `--confirm-rollback` | Allow delete when a mapped contact was observed again or merged |
 | `--db` | Local SQLite file or loopback Postgres DSN. Required. `GOSO_DATABASE_URL` is ignored |
-| `--apply` | Write new and updated rows |
+| `--apply` | Write new rows, or delete mapped rows when `--rollback` is set |
 | `--dry-run` | Report counts and write nothing. This is the default |
 
 Do not pass `--apply` and `--dry-run` together. `--dry-run=false` without `--apply` does not write.
@@ -58,7 +59,7 @@ dest    = sender_id, and also thread_id when that id is different
 | `user_id` | Local `--customer-map` only. Key `<channel>:<sender_id>`, or `goclaw:<user_id>` when the sender is empty |
 | `channel_instance`, `avatar_url`, `metadata` | Not stored |
 
-An existing contact is `native-exists` and is not changed. New rows are listed in `contact_import_map`. `--rollback` deletes only those rows.
+An existing contact is `native-exists` and is not changed. New rows are listed in `contact_import_map`. `--customer-map` is required with `--apply` and the file mode is `0600`. The TSV columns are `channel`, `sender_id`, `user_id`, and `customer_key`. `--rollback` without `--apply` prints `dry_run`, `delete`, and `active` and writes nothing. `--apply` deletes only mapped rows for that tenant. `active` counts mapped contacts whose `seen_count` is above 1, whose `merged` flag is set, or that appear in `contact_merges`. Those rows stay unless `--confirm-rollback` is also set. The error text is `rollback needs confirm` and names no contact. Another tenant's rows stay.
 
 `--source-tenant` and a denylist file are required. A missing, empty, or malformed denylist stops before any work. A listed `--tenant` or source tenant stops before any write. `denied` in the report is a count.
 
