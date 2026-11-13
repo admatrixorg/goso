@@ -435,10 +435,15 @@ func assertNoCustomerKey(t *testing.T, st testStore) {
 	if pg {
 		err2 = raw.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name IN ('kg_entities','kg_relations') AND column_name='customer_key'`).Scan(&n)
 	} else {
-		err2 = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_entities') WHERE name='customer_key'`).Scan(&n)
+		var ent, rel int
+		err2 = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_entities') WHERE name='customer_key'`).Scan(&ent)
+		if err2 == nil {
+			err2 = raw.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('kg_relations') WHERE name='customer_key'`).Scan(&rel)
+		}
+		n = ent + rel
 	}
-	if err2 != nil || n != 1 {
-		t.Fatalf("customer_key column %d %v", n, err2)
+	if err2 != nil || n != 2 {
+		t.Fatalf("customer_key columns %d %v", n, err2)
 	}
 }
 
