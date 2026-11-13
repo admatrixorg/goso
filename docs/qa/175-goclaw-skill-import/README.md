@@ -25,4 +25,4 @@ go test ./... -count=1 -timeout 25m
 
 Both exited 0 on this branch. `GOSO_TEST_POSTGRES_DSN` was unset, so existing Postgres cases skipped.
 
-The all-tabs log is [qa-tabs-1db17d6f8ce8f9589f3fe7a573e0b081513fd60a.log](../175/qa-tabs-1db17d6f8ce8f9589f3fe7a573e0b081513fd60a.log). The browser ran against code commit `1db17d6f8ce8f9589f3fe7a573e0b081513fd60a`. Gateway and control plane were local. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+The all-tabs log is [qa-tabs-aad1cd834f8a90010cff9a5a4d92940a505815e6.log](../175/qa-tabs-aad1cd834f8a90010cff9a5a4d92940a505815e6.log). The browser ran against code commit `aad1cd834f8a90010cff9a5a4d92940a505815e6`. Gateway and control plane were local. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
