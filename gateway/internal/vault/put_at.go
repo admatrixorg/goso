@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -21,6 +22,18 @@ import (
 // is deleted, and the temp file is removed. A link refresh error after the
 // file and row are both published is logged and is not a write failure.
 func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc, error) {
+	return s.putTenantAt(tenant, path, "", body)
+}
+
+// PutTenantAtID is PutTenantAt with a caller-chosen registry id.
+// An empty id keeps the usual assignment. The id is used only when the path
+// is new; an existing path keeps its row id. SPEC 180 passes a gc-vdoc id so
+// a later run can see the row and leave it unchanged.
+func (s *Service) PutTenantAtID(tenant, path, id string, body []byte) (*store.VaultDoc, error) {
+	return s.putTenantAt(tenant, path, strings.TrimSpace(id), body)
+}
+
+func (s *Service) putTenantAt(tenant, path, id string, body []byte) (*store.VaultDoc, error) {
 	if body == nil {
 		body = []byte{}
 	}
@@ -79,6 +92,8 @@ func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc
 			return nil, store.ErrConflict
 		}
 		doc.ID = existing.ID
+	} else {
+		doc.ID = id
 	}
 	saved, err := s.Store.PutVaultDoc(doc)
 	if err != nil {

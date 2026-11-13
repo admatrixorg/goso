@@ -72,6 +72,15 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''`)
+	// SPEC 183: add-only tenant_id. Existing rows stay 'default' via the
+	// default. No UPDATE and no DELETE. The tenant and session indexes are
+	// NOT created here: they are CREATE INDEX CONCURRENTLY in
+	// docs/qa/183-cron-per-tenant/migration.sql and wait for Dat's approval.
+	// Do not Exec cronTenantRolloutStmts from startup. SQLite backfills in
+	// migrateCronTenant; this method must not call that.
+	if _, err := s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`); err != nil {
+		return fmt.Errorf("postgres migrate cron_jobs.tenant_id: %w", err)
+	}
 	_, _ = s.db.db.Exec(`ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
@@ -301,7 +310,8 @@ var postgresSchema = []string{
 		message TEXT NOT NULL,
 		enabled INTEGER NOT NULL DEFAULT 1,
 		last_run TEXT,
-		last_error TEXT NOT NULL DEFAULT ''
+		last_error TEXT NOT NULL DEFAULT '',
+		tenant_id TEXT NOT NULL DEFAULT 'default'
 	)`,
 	`CREATE TABLE IF NOT EXISTS llm_providers (
 		name TEXT PRIMARY KEY,
