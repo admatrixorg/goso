@@ -45,7 +45,7 @@ The connector name this importer inserts is `goclaw-<tenant>-<slug(name)>`. The 
 | `mcp_servers.tenant_id` | name prefix and the marker | `--tenant` is the goso tenant written into the name and the marker. `--source-tenant`, when set, keeps only that export tenant. Any other tenant is `foreign-tenant` and is not written. |
 | `mcp_servers.name` | `connectors.name` | Slug of the goso tenant plus the slug of `name`. |
 | `mcp_servers.transport` | `connectors.transport` | `stdio` → `mcp-stdio`. `sse`, `http`, `mcp`, `streamable-http` → `mcp-http`. Anything else is `invalid-transport`. |
-| `mcp_servers.command` and safe `args` | `connectors.endpoint` | Stdio command and arguments, joined verbatim. Secret arguments are not copied. |
+| `mcp_servers.command` and safe `args` | `connectors.endpoint` | Stdio command and arguments, joined verbatim. The command string is scanned too. A credential in either is not copied. |
 | `mcp_servers.url` | `connectors.endpoint` | HTTP/SSE only, after userinfo, query, and fragment are removed. A path segment that looks like a key is not stored. |
 | `mcp_servers.timeout_sec` | `connectors.timeout_ms` | Seconds times 1000. Null is 0. Negative or over 86400 is `invalid-timeout`. |
 | `mcp_servers.enabled` | `connectors.enabled` | Not copied. The inserted row is `false`. |
@@ -78,7 +78,7 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 | Source | Why it has no home |
 |---|---|
 | `mcp_servers.display_name` | `connectors` has no display name. |
-| `mcp_servers.args` | Safe arguments are part of the stdio endpoint. An argument that is `--token`, `--api-key`, `--key`, `--secret`, `--password`, a `KEY=VALUE` pair, or a key-like token of 24 or more characters is not stored. The server is not imported and is listed under `needs_credential`. |
+| `mcp_servers.command`, `args` | Safe text is part of the stdio endpoint. `--token`, `--api-key`, `--access-token`, `--auth`, `--key`, `--secret`, `--password`, a `KEY=VALUE` pair, a standalone token of 24 or more characters, a JWT (dots), or a Telegram-style token (colon) is not stored. The same shapes in a URL path, including `/s/<jwt>/mcp`, are not stored. The server is listed under `needs_credential`. |
 | `mcp_servers.headers` | No header column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.env` | No env column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.tool_prefix` | No prefix column. |

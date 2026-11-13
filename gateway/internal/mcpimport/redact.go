@@ -22,6 +22,12 @@ func redactText(s string) string {
 	if s == "" || uuidRe.MatchString(s) {
 		return s
 	}
+	s = jwtRe.ReplaceAllStringFunc(s, func(m string) string {
+		return "id:" + shortHash(m)
+	})
+	s = telegramRe.ReplaceAllStringFunc(s, func(m string) string {
+		return "id:" + shortHash(m)
+	})
 	s = zaloID.ReplaceAllStringFunc(s, func(m string) string {
 		return "id:" + shortHash(m)
 	})

@@ -10,14 +10,29 @@ import (
 )
 
 // secretFlags are argv switches whose presence means the command carries a
-// credential. The value is not kept.
-var secretFlags = []string{"--token", "--api-key", "--key", "--secret", "--password"}
+// credential. The value is not kept. Longer names are listed before shorter
+// ones so a scan of a whole command can match --access-token before --token.
+var secretFlags = []string{
+	"--access-token",
+	"--api-key",
+	"--token",
+	"--secret",
+	"--password",
+	"--auth",
+	"--key",
+}
 
 // kvPair is KEY=VALUE. The value is not kept.
 var kvPair = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=.+`)
 
+// jwtRe matches a three-segment JWT, including the dots.
+var jwtRe = regexp.MustCompile(`[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
+
+// telegramRe matches a numeric bot id, a colon, and a token.
+var telegramRe = regexp.MustCompile(`\d{5,}:[A-Za-z0-9_-]{20,}`)
+
 // looksLikeKey reports a single token that is long enough to be a credential.
-// Paths and ordinary words are shorter or contain characters outside this set.
+// Dots and colons are included so a JWT or a Telegram token is not stored.
 func looksLikeKey(s string) bool {
 	if len(s) < 24 {
 		return false
@@ -25,7 +40,7 @@ func looksLikeKey(s string) bool {
 	for _, r := range s {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '_' || r == '-' || r == '+' || r == '/' || r == '=':
+		case r == '_' || r == '-' || r == '+' || r == '/' || r == '=' || r == '.' || r == ':':
 		default:
 			return false
 		}
@@ -38,16 +53,27 @@ func argSecret(s string) bool {
 	if t == "" {
 		return false
 	}
+	if jwtRe.MatchString(t) || telegramRe.MatchString(t) {
+		return true
+	}
 	low := strings.ToLower(t)
 	for _, flag := range secretFlags {
-		if low == flag || strings.HasPrefix(low, flag+"=") {
+		if low == flag || strings.HasPrefix(low, flag+"=") || strings.Contains(low, " "+flag) || strings.Contains(low, " "+flag+"=") {
 			return true
 		}
 	}
-	if kvPair.MatchString(t) || looksLikeKey(t) {
-		return true
+	for _, field := range strings.Fields(t) {
+		flow := strings.ToLower(field)
+		for _, flag := range secretFlags {
+			if flow == flag || strings.HasPrefix(flow, flag+"=") {
+				return true
+			}
+		}
+		if kvPair.MatchString(field) || looksLikeKey(field) {
+			return true
+		}
 	}
-	return false
+	return looksLikeKey(t)
 }
 
 // classifyArgs returns the joined safe arguments. A secret argument returns
@@ -76,8 +102,11 @@ func classifyArgs(raw json.RawMessage) (joined string, hold bool, bad bool) {
 }
 
 func pathHasKey(path string) bool {
+	if jwtRe.MatchString(path) || telegramRe.MatchString(path) {
+		return true
+	}
 	for _, seg := range strings.Split(path, "/") {
-		if looksLikeKey(seg) {
+		if argSecret(seg) {
 			return true
 		}
 	}

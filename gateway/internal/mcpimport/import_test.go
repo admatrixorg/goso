@@ -286,6 +286,145 @@ func TestExportTooLarge(t *testing.T) {
 	}
 }
 
+func TestCredentialShapesNotStored(t *testing.T) {
+	const (
+		kv         = "API_KEY=not-a-real-minh-an-value"
+		apiKeyEq   = "--api-key=fake-minh-an-api-key"
+		standalone = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+		jwt        = "eyJhbGciOiJub25lIn0.eyJtaW5oIjoiYW4ifQ.ZmFrZVNpZ25hdHVyZU1pbmg"
+		telegram   = "1000000001:AAFakeMinhAnTokenValueXXXX"
+		access     = "--access-token=fake-access-minh-an"
+		authEq     = "--auth=fake-auth-minh-an"
+	)
+	cases := []struct {
+		name   string
+		secret string
+		body   string
+	}{
+		{
+			name:   "key-value",
+			secret: kv,
+			body:   stdioBody("c10", "shell", "minh-an-files", `["`+kv+`"]`),
+		},
+		{
+			name:   "api-key-equals",
+			secret: apiKeyEq,
+			body:   stdioBody("c11", "shell", "minh-an-files", `["`+apiKeyEq+`"]`),
+		},
+		{
+			name:   "standalone-token",
+			secret: standalone,
+			body:   stdioBody("c12", "shell", "minh-an-files", `["`+standalone+`"]`),
+		},
+		{
+			name:   "jwt-arg",
+			secret: jwt,
+			body:   stdioBody("c13", "shell", "minh-an-files", `["`+jwt+`"]`),
+		},
+		{
+			name:   "telegram-arg",
+			secret: telegram,
+			body:   stdioBody("c14", "shell", "minh-an-files", `["`+telegram+`"]`),
+		},
+		{
+			name:   "jwt-path",
+			secret: jwt,
+			body:   `{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000c15","name":"bridge","transport":"sse","url":"http://127.0.0.1:9/s/` + jwt + `/mcp","tenant_id":"minh-an"}]}`,
+		},
+		{
+			name:   "command-jwt",
+			secret: jwt,
+			body:   stdioBody("c16", "shell", "minh-an-files "+jwt, `[]`),
+		},
+		{
+			name:   "command-telegram",
+			secret: telegram,
+			body:   stdioBody("c17", "shell", "minh-an-files "+telegram, `[]`),
+		},
+		{
+			name:   "access-token",
+			secret: access,
+			body:   stdioBody("c18", "shell", "minh-an-files", `["`+access+`"]`),
+		},
+		{
+			name:   "auth-equals",
+			secret: authEq,
+			body:   stdioBody("c19", "shell", "minh-an-files", `["`+authEq+`"]`),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("memory", func(t *testing.T) {
+				assertSecretHeld(t, store.New(), nil, tc.body, tc.secret)
+			})
+			t.Run("sqlite", func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "goso.db")
+				st, err := store.OpenSQLite(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertSecretHeld(t, st, []string{path, path + "-wal", path + "-shm"}, tc.body, tc.secret)
+				if err := st.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertFileHasNoSecret(t, path)
+				for _, extra := range []string{path + "-wal", path + "-shm"} {
+					b, err := os.ReadFile(extra)
+					if err != nil {
+						continue
+					}
+					if bytes.Contains(b, []byte(tc.secret)) {
+						t.Fatalf("database file contains %s", tc.name)
+					}
+				}
+			})
+		})
+	}
+}
+
+func stdioBody(id, name, command, args string) string {
+	return `{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000` + id + `","name":"` + name + `","transport":"stdio","command":"` + command + `","args":` + args + `,"tenant_id":"minh-an"}]}`
+}
+
+func assertSecretHeld(t *testing.T, st store.StoreIface, files []string, body, secret string) {
+	t.Helper()
+	ex, err := ReadExport(bytes.NewReader([]byte(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", ex), secret) {
+		t.Fatal("decoded export retained the credential")
+	}
+	rep, err := Import(st, ex, minhOpt(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(st.ListConnectors()); n != 0 {
+		t.Fatalf("imported %d connectors", n)
+	}
+	for _, c := range st.ListConnectors() {
+		if c != nil && (strings.Contains(c.Endpoint, secret) || strings.Contains(c.Name, secret)) {
+			t.Fatal("connector stored the credential")
+		}
+	}
+	blob := mustJSON(t, rep)
+	if strings.Contains(blob, secret) {
+		t.Fatal("report contains the credential")
+	}
+	if len(rep.NeedsCredential) != 1 || reasonCount(mustTenant(t, rep, "minh-an").MCPServers, "needs-credential") != 1 {
+		t.Fatalf("needs %+v servers %+v", rep.NeedsCredential, mustTenant(t, rep, "minh-an").MCPServers)
+	}
+	for _, path := range files {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if bytes.Contains(b, []byte(secret)) {
+			t.Fatal("database contains the credential")
+		}
+	}
+}
+
 func TestSecretArgsAreNotImported(t *testing.T) {
 	const secret = "fakeargkey0123456789ABCDEFGH"
 	st := store.New()

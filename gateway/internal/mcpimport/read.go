@@ -318,6 +318,11 @@ func parseServer(raw json.RawMessage) serverInput {
 			return in
 		}
 		ep, reason := cleanCommand(row.Command.Value)
+		if reason == "secret" {
+			in.SecretHold = true
+			in.NeedsCredential = true
+			return in
+		}
 		in.EndpointReason = reason
 		if reason != "" {
 			return in
@@ -397,6 +402,10 @@ func cleanCommand(raw string) (string, string) {
 	s := strings.TrimSpace(raw)
 	if s == "" || hasControl(s) || len(s) > 1024 {
 		return "", "invalid-endpoint"
+	}
+	if argSecret(s) {
+		// The command itself holds a credential. Do not return it.
+		return "", "secret"
 	}
 	return s, ""
 }
