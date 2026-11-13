@@ -933,14 +933,21 @@ func (s *SQLiteStore) searchProgressiveL1TSV(q, tenant string) ([]KGSearchHit, e
 	return out, nil
 }
 
-func (s *SQLiteStore) searchProgressiveL2TSV(q, tenant string) ([]KGSearchHit, error) {
+func (s *SQLiteStore) searchProgressiveL2TSV(q, tenant string, sc KGScope) ([]KGSearchHit, error) {
+	pred, pargs := kgCustomerPredicate("customer_key", sc)
+	args := make([]any, 0, 6)
+	args = append(args, tenant, q)
+	args = append(args, pargs...)
+	args = append(args, tenant, q)
+	args = append(args, pargs...)
+	args = append(args, progressivePerTier)
 	rows, err := s.db.Query(`SELECT `+kgEntityCols+` FROM (
 			SELECT `+kgEntityCols+` FROM kg_entities
-			WHERE tenant_id=? AND `+tsPhraseSQL("body_tsv")+`
+			WHERE tenant_id=? AND `+tsPhraseSQL("body_tsv")+pred+`
 			UNION
 			SELECT `+kgEntityCols+` FROM kg_entities
-			WHERE tenant_id=? AND instr(lower(name), lower(?)) > 0
-		) AS hits LIMIT ?`, tenant, q, tenant, q, progressivePerTier)
+			WHERE tenant_id=? AND instr(lower(name), lower(?)) > 0`+pred+`
+		) AS hits LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -948,7 +955,7 @@ func (s *SQLiteStore) searchProgressiveL2TSV(q, tenant string) ([]KGSearchHit, e
 	var out []KGSearchHit
 	for rows.Next() {
 		e, err := scanKGEntity(rows)
-		if err != nil || e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) {
+		if err != nil || e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) || !sc.Allows(e.CustomerKey) {
 			continue
 		}
 		out = append(out, KGSearchHit{

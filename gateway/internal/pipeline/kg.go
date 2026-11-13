@@ -45,22 +45,12 @@ func DispatchMemoryTool(st store.StoreIface, tenant, callerSessionID string, cal
 		if q == "" {
 			return `{"error":"q is required"}`, errors.New("q is required")
 		}
-		hits, err := st.SearchProgressive(q, tenant)
+		sc := scopeForCaller(st, callerSessionID)
+		hits, err := st.SearchProgressive(q, tenant, sc.kgRead())
 		if err != nil {
 			return `{"error":` + jsonQuote(err.Error()) + `}`, err
 		}
-		if sc := scopeForCaller(st, callerSessionID); sc.channel {
-			kept := hits[:0]
-			for _, h := range hits {
-				if sc.hitVisible(st, h) {
-					kept = append(kept, h)
-				}
-			}
-			hits = kept
-		}
-		if hits == nil {
-			hits = []store.KGSearchHit{}
-		}
+		hits = VisibleSearchHits(st, callerSessionID, hits)
 		b, err := json.Marshal(hits)
 		if err != nil {
 			return `{"error":"encode"}`, err
@@ -71,16 +61,17 @@ func DispatchMemoryTool(st store.StoreIface, tenant, callerSessionID string, cal
 		if id == "" {
 			return `{"error":"id is required"}`, errors.New("id is required")
 		}
-		exp, err := st.ExpandKG(id)
+		sc := scopeForCaller(st, callerSessionID)
+		exp, err := st.ExpandKG(id, sc.kgRead())
 		if err != nil {
 			return `{"error":` + jsonQuote(err.Error()) + `}`, err
 		}
 		if exp == nil || exp.Entity == nil || !store.SameTenant(exp.Entity.TenantID, tenant) {
 			return `{"error":"not found"}`, store.ErrNotFound
 		}
-		// Extracted entities carry no customer scope; channel callers only
-		// expand curated ones.
-		if sc := scopeForCaller(st, callerSessionID); sc.channel && exp.Entity.Source == store.KGSourceExtracted {
+		// Channel callers still do not expand extracted entities, including
+		// their own. Customer scope is applied by ExpandKG.
+		if sc.channel && exp.Entity.Source == store.KGSourceExtracted {
 			return `{"error":"not found"}`, store.ErrNotFound
 		}
 		// Agents never read a superseded fact as current (SPEC 132).
@@ -186,12 +177,33 @@ func extractKG(st store.StoreIface, sessionID, reply string) {
 	}
 	for _, name := range names {
 		_, _ = st.PutKGEntity(store.KGEntity{
-			TenantID: tid,
-			AgentID:  agentID,
-			Name:     name,
-			Kind:     "extracted",
-			Body:     name,
-			Source:   store.KGSourceExtracted,
+			TenantID:  tid,
+			AgentID:   agentID,
+			Name:      name,
+			Kind:      "extracted",
+			Body:      name,
+			Source:    store.KGSourceExtracted,
+			SessionID: sessionID,
 		})
 	}
+}
+
+// VisibleSearchHits applies the caller's customer scope. Web and calls with
+// no session see the whole tenant. Channel callers drop another customer's
+// notes and extracted entities; shared and own curated entities stay.
+func VisibleSearchHits(st store.StoreIface, callerSessionID string, hits []store.KGSearchHit) []store.KGSearchHit {
+	sc := scopeForCaller(st, callerSessionID)
+	if !sc.channel {
+		if hits == nil {
+			return []store.KGSearchHit{}
+		}
+		return hits
+	}
+	kept := make([]store.KGSearchHit, 0, len(hits))
+	for _, h := range hits {
+		if sc.hitVisible(st, h) {
+			kept = append(kept, h)
+		}
+	}
+	return kept
 }
