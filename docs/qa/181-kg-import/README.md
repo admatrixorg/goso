@@ -68,6 +68,8 @@ Exit 0. Memory and SQLite ran `TestMinhAnFixture`, `TestConflictDoesNotOverwrite
 
 ## qa:tabs
 
+Log for merge commit `546702383702066001d72dc4a54e76bf71e7a5e7` (`origin/main` SPEC 180): [qa-tabs-546702383702066001d72dc4a54e76bf71e7a5e7.log](../181/qa-tabs-546702383702066001d72dc4a54e76bf71e7a5e7.log).
+
 Log for code commit `8fe64acae7883107055b23dd69dd581c9bc2fb38` (customer_key column count on both KG tables): [qa-tabs-8fe64acae7883107055b23dd69dd581c9bc2fb38.log](../181/qa-tabs-8fe64acae7883107055b23dd69dd581c9bc2fb38.log).
 
 Earlier log for `d0d5ce845fc1d098f77743919516d4be4646f166` (after merging SPEC 182): [qa-tabs-d0d5ce845fc1d098f77743919516d4be4646f166.log](../181/qa-tabs-d0d5ce845fc1d098f77743919516d4be4646f166.log).
