@@ -24,7 +24,11 @@ go run ./gateway/cmd/goso-cron-channel-import \
 - Rows whose `tenant_id` is `other-co` are not written when `--source-tenant` is `minh-an`.
 - The fixture secret string is absent from the report, the log, and the SQLite file.
 
-Code under the browser check after merging `origin/main`: `f937fdaa412307cb25acf779e7460ae9a3396739`. The log is [qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log](../177/qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. `go test -count=1 ./...` and `go test -race` on `gateway/internal/scheduleimport` and `gateway/internal/store` exited 0 on that commit.
+Code under the browser check: `ecd6bb756a013ec3caf3d9d636ac9a2baa19a58d`. The log is [qa-tabs-ecd6bb756a013ec3caf3d9d636ac9a2baa19a58d.log](../177/qa-tabs-ecd6bb756a013ec3caf3d9d636ac9a2baa19a58d.log). That commit is the rollback-safety fix merged with `origin/main`. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. `go test -count=1 ./...` and `go test -race` on `gateway/internal/scheduleimport` and `gateway/internal/store` exited 0 on that commit.
+
+The rollback-safety commit before that merge, `b067cc7a1d6cc08e42e160bd162b64346e326867`, is [qa-tabs-b067cc7a1d6cc08e42e160bd162b64346e326867.log](../177/qa-tabs-b067cc7a1d6cc08e42e160bd162b64346e326867.log).
+
+An earlier check after merging `origin/main`, `f937fdaa412307cb25acf779e7460ae9a3396739`, is [qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log](../177/qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log).
 
 An earlier check of `151a150f2009331f02738943a89013dcf1476f43` is [qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log](../177/qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log).
 
