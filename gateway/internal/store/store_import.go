@@ -59,13 +59,14 @@ func (s *Store) PutImportSource(tenant, kind, sourceID, gosoID string) error {
 	return nil
 }
 
-// ListImportSources returns mappings for this exact tenant id.
-func (s *Store) ListImportSources(tenant string) ([]ImportSource, error) {
+// ListImportSources returns mappings for this exact tenant id and kind.
+func (s *Store) ListImportSources(tenant, kind string) ([]ImportSource, error) {
 	tenant = strings.TrimSpace(tenant)
-	if tenant == "" {
+	kind = strings.TrimSpace(kind)
+	if tenant == "" || kind == "" {
 		return nil, ErrNotFound
 	}
-	prefix := tenant + "\x00"
+	prefix := importSourceKey(tenant, kind, "")
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []ImportSource
@@ -73,23 +74,20 @@ func (s *Store) ListImportSources(tenant string) ([]ImportSource, error) {
 		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
-		rest := strings.TrimPrefix(key, prefix)
-		kind, sourceID, ok := strings.Cut(rest, "\x00")
-		if !ok {
-			continue
-		}
+		sourceID := strings.TrimPrefix(key, prefix)
 		out = append(out, ImportSource{TenantID: tenant, Kind: kind, SourceID: sourceID, GosoID: gosoID})
 	}
 	return out, nil
 }
 
-// DeleteImportSources removes mappings for this exact tenant id.
-func (s *Store) DeleteImportSources(tenant string) (int, error) {
+// DeleteImportSources removes mappings for this exact tenant id and kind.
+func (s *Store) DeleteImportSources(tenant, kind string) (int, error) {
 	tenant = strings.TrimSpace(tenant)
-	if tenant == "" {
+	kind = strings.TrimSpace(kind)
+	if tenant == "" || kind == "" {
 		return 0, ErrNotFound
 	}
-	prefix := tenant + "\x00"
+	prefix := importSourceKey(tenant, kind, "")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := 0

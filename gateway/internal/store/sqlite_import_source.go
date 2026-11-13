@@ -73,14 +73,15 @@ func (s *SQLiteStore) PutImportSource(tenant, kind, sourceID, gosoID string) err
 	return tx.Commit()
 }
 
-func (s *SQLiteStore) ListImportSources(tenant string) ([]ImportSource, error) {
+func (s *SQLiteStore) ListImportSources(tenant, kind string) ([]ImportSource, error) {
 	tenant = strings.TrimSpace(tenant)
-	if tenant == "" {
+	kind = strings.TrimSpace(kind)
+	if tenant == "" || kind == "" {
 		return nil, ErrNotFound
 	}
 	rows, err := s.db.Query(
-		`SELECT kind, source_id, goso_id FROM import_source_ids WHERE tenant_id=? ORDER BY kind, source_id`,
-		tenant,
+		`SELECT kind, source_id, goso_id FROM import_source_ids WHERE tenant_id=? AND kind=? ORDER BY source_id`,
+		tenant, kind,
 	)
 	if err != nil {
 		return nil, err
@@ -104,12 +105,13 @@ func (s *SQLiteStore) ListImportSources(tenant string) ([]ImportSource, error) {
 	return out, nil
 }
 
-func (s *SQLiteStore) DeleteImportSources(tenant string) (int, error) {
+func (s *SQLiteStore) DeleteImportSources(tenant, kind string) (int, error) {
 	tenant = strings.TrimSpace(tenant)
-	if tenant == "" {
+	kind = strings.TrimSpace(kind)
+	if tenant == "" || kind == "" {
 		return 0, ErrNotFound
 	}
-	res, err := s.db.Exec(`DELETE FROM import_source_ids WHERE tenant_id=?`, tenant)
+	res, err := s.db.Exec(`DELETE FROM import_source_ids WHERE tenant_id=? AND kind=?`, tenant, kind)
 	if err != nil {
 		return 0, err
 	}

@@ -295,7 +295,10 @@ func TestCLIRollbackKeepsOtherTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 1 {
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
+		t.Fatal("dry-run removed the imported channel")
+	}
+	if rows, err := st.ListImportSources("minh-an", "channel_instance"); err != nil || len(rows) != 1 {
 		t.Fatalf("dry-run removed mappings %v %v", rows, err)
 	}
 	_ = st.Close()
@@ -307,11 +310,14 @@ func TestCLIRollbackKeepsOtherTenant(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 0 {
+	if rows, err := st.ListImportSources("minh-an", "channel_instance"); err != nil || len(rows) != 0 {
 		t.Fatalf("minh-an mappings %v %v", rows, err)
 	}
-	if rows, err := st.ListImportSources("other-co"); err != nil || len(rows) != 1 {
+	if rows, err := st.ListImportSources("other-co", "channel_instance"); err != nil || len(rows) != 1 {
 		t.Fatalf("other mappings %v %v", rows, err)
+	}
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err == nil {
+		t.Fatal("imported channel survived rollback")
 	}
 	cfg, err := st.GetChannelConfig("telegram")
 	if err != nil || !cfg.Enabled || cfg.DMPolicy != "open" {

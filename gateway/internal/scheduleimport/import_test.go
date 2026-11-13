@@ -534,25 +534,34 @@ func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
 	if err != nil || !dry.DryRun || dry.Mappings != 1 {
 		t.Fatalf("dry %+v %v", dry, err)
 	}
-	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 1 {
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
+		t.Fatal("dry-run removed the imported channel")
+	}
+	if err := st.PutImportSource("minh-an", "other-kind", "keep-me", "not-a-channel"); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := st.ListImportSources("minh-an", kindChannel); err != nil || len(rows) != 1 {
 		t.Fatalf("dry deleted mappings %v %v", rows, err)
 	}
 	applied, err := Rollback(st, "minh-an", testDeny(), false)
-	if err != nil || applied.DryRun || applied.Mappings != 1 {
+	if err != nil || applied.DryRun || applied.Mappings != 1 || applied.Channels != 1 {
 		t.Fatalf("apply %+v %v", applied, err)
 	}
-	if rows, err := st.ListImportSources("minh-an"); err != nil || len(rows) != 0 {
+	if rows, err := st.ListImportSources("minh-an", kindChannel); err != nil || len(rows) != 0 {
 		t.Fatalf("minh-an mappings %v %v", rows, err)
 	}
-	if rows, err := st.ListImportSources("other-co"); err != nil || len(rows) != 1 {
+	if rows, err := st.ListImportSources("minh-an", "other-kind"); err != nil || len(rows) != 1 {
+		t.Fatalf("other kind removed %v %v", rows, err)
+	}
+	if rows, err := st.ListImportSources("other-co", kindChannel); err != nil || len(rows) != 1 {
 		t.Fatalf("other mappings %v %v", rows, err)
 	}
 	got, err := st.GetChannelConfig("telegram")
 	if err != nil || !got.Enabled || got.AgentID != w.other.ID || got.DMPolicy != "open" {
 		t.Fatalf("native changed %+v %v", got, err)
 	}
-	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); err != nil {
-		t.Fatal("rollback deleted a channel row")
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-telegram"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("imported channel still present: %v", err)
 	}
 	if _, err := st.GetChannelConfig("other-co/zalo-personal/other-telegram"); err != nil {
 		t.Fatal("rollback deleted the other tenant channel")

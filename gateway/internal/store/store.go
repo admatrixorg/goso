@@ -567,11 +567,11 @@ type StoreIface interface {
 	// returns ErrExists.
 	GetImportSource(tenant, kind, sourceID string) (gosoID string, ok bool, err error)
 	PutImportSource(tenant, kind, sourceID, gosoID string) error
-	// ListImportSources returns mappings stored for this exact tenant id.
-	ListImportSources(tenant string) ([]ImportSource, error)
-	// DeleteImportSources removes mappings for this exact tenant id and returns
-	// how many rows were removed. Other tenants are left in place.
-	DeleteImportSources(tenant string) (int, error)
+	// ListImportSources returns mappings stored for this exact tenant id and kind.
+	ListImportSources(tenant, kind string) ([]ImportSource, error)
+	// DeleteImportSources removes mappings for this exact tenant id and kind
+	// and returns how many rows were removed. Other tenants and other kinds stay.
+	DeleteImportSources(tenant, kind string) (int, error)
 	// DeleteChannelConfig removes one channel_config row by name. The cron and
 	// channel importer uses it only to roll back a row that same call inserted
 	// when the source-id map cannot be saved.

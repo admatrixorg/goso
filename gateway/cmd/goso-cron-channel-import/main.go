@@ -36,7 +36,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	denyPath := fs.String("deny-file", "", "local denylist, one tenant id per line (or GOSO_IMPORT_DENY_FILE)")
 	apply := fs.Bool("apply", false, "write disabled channel rows; without this flag the run only prints counts")
 	dry := fs.Bool("dry-run", false, "print per-tenant counts and write nothing")
-	rollback := fs.Bool("rollback", false, "delete import_source_ids rows for --tenant only")
+	rollback := fs.Bool("rollback", false, "delete this tenant's imported channel rows and their source-id mappings")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

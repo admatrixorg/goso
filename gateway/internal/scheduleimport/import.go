@@ -21,12 +21,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"unicode"
 
-	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -520,97 +518,6 @@ func catalogOf(channelType string) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func cronSpec(row CronRow) (string, string) {
-	kind := strings.ToLower(strings.TrimSpace(row.ScheduleKind))
-	switch kind {
-	case "cron":
-		spec := strings.TrimSpace(row.CronExpression)
-		if _, err := cron.ParseSpec(spec); err != nil {
-			return "", "schedule-unsupported"
-		}
-		return spec, ""
-	case "every", "interval":
-		if row.IntervalMS == nil {
-			return "", "schedule-unsupported"
-		}
-		return intervalSpec(*row.IntervalMS)
-	default:
-		return "", "schedule-unsupported"
-	}
-}
-
-func intervalSpec(ms int64) (string, string) {
-	if ms <= 0 {
-		return "", "schedule-unsupported"
-	}
-	if ms%3_600_000 == 0 {
-		h := ms / 3_600_000
-		if h >= 1 {
-			return fmt.Sprintf("every:%dh", h), ""
-		}
-	}
-	if ms%60_000 == 0 {
-		m := ms / 60_000
-		if m >= 1 {
-			return fmt.Sprintf("every:%dm", m), ""
-		}
-	}
-	return "", "schedule-unsupported"
-}
-
-func messageFrom(payload json.RawMessage) (string, []string) {
-	raw := bytes.TrimSpace(payload)
-	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-		return "", nil
-	}
-	if raw[0] == '"' {
-		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
-			return "", nil
-		}
-		s = strings.TrimSpace(s)
-		if s == "" {
-			return "", nil
-		}
-		return s, nil
-	}
-	if raw[0] != '{' {
-		return "", nil
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return "", nil
-	}
-	var message string
-	used := ""
-	for _, key := range []string{"message", "text", "prompt", "content", "body"} {
-		v, ok := obj[key]
-		if !ok {
-			continue
-		}
-		var s string
-		if err := json.Unmarshal(v, &s); err != nil {
-			continue
-		}
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		message = s
-		used = key
-		break
-	}
-	var extra []string
-	for k := range obj {
-		if k == used {
-			continue
-		}
-		extra = append(extra, k)
-	}
-	sort.Strings(extra)
-	return message, extra
 }
 
 func policyFrom(raw json.RawMessage, blobs []string) (store.ChannelConfig, []string) {

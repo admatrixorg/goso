@@ -13,7 +13,7 @@ go run ./gateway/cmd/goso-cron-channel-import \
   --db /tmp/minh-an-schedule.db
 ```
 
-`--deny-file` is required (or `GOSO_IMPORT_DENY_FILE`). A missing, empty, or malformed file exits non-zero before the database is opened. The dry-run opens the database read-only and does not migrate. Add `--apply` to insert channel rows. `--rollback` without `--apply` only counts `import_source_ids` for `--tenant`. `--rollback --apply` deletes those mapping rows and leaves channel rows and other tenants in place.
+`--deny-file` is required (or `GOSO_IMPORT_DENY_FILE`). A missing, empty, or malformed file exits non-zero before the database is opened. The dry-run opens the database read-only and does not migrate. Add `--apply` to insert channel rows. `--rollback` without `--apply` only counts channel mappings for `--tenant`. `--rollback --apply` deletes those mappings and the imported `channel_config` rows they name. A native catalog row and another tenant's rows stay.
 
 ## Checks
 
