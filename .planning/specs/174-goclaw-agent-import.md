@@ -28,7 +28,7 @@ go run ./gateway/cmd/goso-agent-import \
 
 The default is a dry-run. It prints counts and writes nothing. `--apply` writes. `--apply` together with `--dry-run` is an error. `--dry-run=false` without `--apply` still writes nothing.
 
-`--denylist` (or `GOSO_IMPORT_DENYLIST`) is required. The file is one tenant id per line and is not stored in this repo. A missing, empty, or malformed file stops before the database is opened, including on a dry-run. If `--tenant` or `--source-tenant` is on the list, the command writes nothing. The report field `denied_tenants` is the count of ids in the file. Names from the file are not printed.
+`--denylist` (or `GOSO_IMPORT_DENYLIST`) is required. The file is one tenant id per line and is not stored in this repo. A missing, empty, or malformed file stops before the database is opened, including on a dry-run. If `--tenant` or `--source-tenant` is on the list, the command writes nothing. The report field `denied_tenants` counts distinct denied ids seen on `--tenant`, `--source-tenant`, or an export row. Those ids are not printed, including not as `source_tenant` on a section.
 
 `--db` is the only database. A non-local Postgres host is refused. `GOSO_DATABASE_URL` is not opened. Opening `--db` still runs the existing store migrations. The dry-run does not create `goclaw_agent_import_map`.
 
@@ -48,7 +48,7 @@ Only rows whose `tenant_id` equals `--source-tenant` are eligible. Every other t
 
 A source id that is already in the map for that destination tenant is `unchanged`. The stored display name, instructions, model, provider, enabled flag, team name, member role, and links are not updated. A rerun does not insert a second row.
 
-`agents.agent_key` is unique across all goso tenants. If any existing agent already has that key, the row is `agent-key-taken`. That agent is not modified and is not adopted into the map, so a later rollback cannot delete it.
+`agents.agent_key` is unique across all goso tenants. If any existing agent already has that key, the row is `native-exists`. That agent is not modified and is not adopted into the map, so a later rollback cannot delete it. A membership whose role would change, a second lead, and a link that already exists are also `native-exists`.
 
 A team, member, or link is created only when both ends are agents this import owns. A pre-existing agent is not given a new team membership or a new link.
 
@@ -118,7 +118,7 @@ Not imported from `agents`, because goso has no column and the value is not copi
 | `status` | not stored | Empty or `active` is imported. Any other status is `inactive` and is not written. |
 | `description`, `max_concurrent`, `settings`, `created_by`, `created_at`, `updated_at`, `team_id` | not stored | A goso link is only the two agent ids. `team_id` is not kept. |
 
-An edge that already exists and is not in the map is `link-exists`. It is not added to the map, so rollback does not remove it. `DeleteAgent` still drops every link that touches an agent rollback deletes. That is the store's delete, and it includes a link an operator added later.
+An edge that already exists and is not in the map is `native-exists`. It is not added to the map, so rollback does not remove it. `DeleteAgent` still drops every link that touches an agent rollback deletes. That is the store's delete, and it includes a link an operator added later.
 
 ## Not imported, needs decision
 

@@ -64,6 +64,19 @@ func denied(list map[string]struct{}, tenant string) bool {
 	return ok
 }
 
+// CountDenied is the number of distinct non-empty ids that are on the list.
+func CountDenied(list map[string]struct{}, ids ...string) int {
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id == "" || !denied(list, id) {
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return len(seen)
+}
+
 func denyReady(list map[string]struct{}) error {
 	if len(list) == 0 {
 		return &ConfigError{Msg: "denylist is empty"}

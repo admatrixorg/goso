@@ -200,7 +200,7 @@ func runMinhAn(t *testing.T, st store.StoreIface, ex *Export) {
 		t.Fatal("dry-run flag")
 	}
 	expectFirst(t, dry)
-	if dry.DeniedTenants != 1 {
+	if dry.DeniedTenants != 0 {
 		t.Fatalf("denied count %d", dry.DeniedTenants)
 	}
 	if mapRowCount(t, st, destTenant) != 0 {
@@ -373,7 +373,7 @@ func expectFirst(t *testing.T, rep *Report) {
 	t.Helper()
 	agents := findSection(t, rep.Agents, srcTenant)
 	requireSection(t, agents, 10, 4, 3, 3, map[string]int{
-		reasonDeleted: 1, reasonAgentKeyTaken: 1, reasonDuplicate: 1,
+		reasonDeleted: 1, reasonNativeExists: 1, reasonDuplicate: 1,
 		reasonAgentKeyInvalid: 1, reasonIDMissing: 1, reasonStatusUnknown: 1,
 	})
 	if agents.Statuses["active"] != 3 || agents.Statuses["inactive"] != 1 || len(agents.Statuses) != 2 {
@@ -385,7 +385,7 @@ func expectFirst(t *testing.T, rep *Report) {
 	})
 	requireSection(t, findSection(t, rep.Teams, otherSrc), 1, 0, 1, 0, map[string]int{reasonTenantMismatch: 1})
 	requireSection(t, findSection(t, rep.TeamMembers, srcTenant), 9, 3, 5, 1, map[string]int{
-		reasonTeamMissing: 1, reasonAgentNotImported: 1, reasonRoleDiffers: 1, reasonLeadDiffers: 1, reasonDuplicate: 1, reasonRoleUnsupported: 1,
+		reasonTeamMissing: 1, reasonAgentNotImported: 1, reasonNativeExists: 2, reasonDuplicate: 1, reasonRoleUnsupported: 1,
 	})
 	requireSection(t, findSection(t, rep.TeamMembers, otherSrc), 1, 0, 1, 0, map[string]int{reasonTenantMismatch: 1})
 	requireSection(t, findSection(t, rep.AgentLinks, srcTenant), 8, 3, 3, 2, map[string]int{
@@ -407,14 +407,14 @@ func expectRerun(t *testing.T, rep *Report) {
 		t.Fatalf("rerun statuses %+v", agents.Statuses)
 	}
 	requireSection(t, agents, 10, 0, 7, 3, map[string]int{
-		reasonUnchanged: 4, reasonDeleted: 1, reasonAgentKeyTaken: 1, reasonDuplicate: 1,
+		reasonUnchanged: 4, reasonDeleted: 1, reasonNativeExists: 1, reasonDuplicate: 1,
 		reasonAgentKeyInvalid: 1, reasonIDMissing: 1, reasonStatusUnknown: 1,
 	})
 	requireSection(t, findSection(t, rep.Teams, srcTenant), 5, 0, 4, 1, map[string]int{
 		reasonUnchanged: 1, reasonInactive: 1, reasonLeadMissing: 1, reasonDuplicate: 1, reasonNameMissing: 1,
 	})
 	requireSection(t, findSection(t, rep.TeamMembers, srcTenant), 9, 0, 8, 1, map[string]int{
-		reasonUnchanged: 3, reasonTeamMissing: 1, reasonAgentNotImported: 1, reasonRoleDiffers: 1, reasonLeadDiffers: 1, reasonDuplicate: 1, reasonRoleUnsupported: 1,
+		reasonUnchanged: 3, reasonTeamMissing: 1, reasonAgentNotImported: 1, reasonNativeExists: 2, reasonDuplicate: 1, reasonRoleUnsupported: 1,
 	})
 	requireSection(t, findSection(t, rep.AgentLinks, srcTenant), 8, 0, 6, 2, map[string]int{
 		reasonUnchanged: 3, reasonEndpointMissing: 1, reasonInactive: 1, reasonDuplicate: 1, reasonSelfLink: 1, reasonDirectionUnknown: 1,
@@ -494,7 +494,7 @@ func TestAgentKeyTakenDoesNotTouchOtherTenant(t *testing.T) {
 				t.Fatal(err)
 			}
 			sec := findSection(t, rep.Agents, srcTenant)
-			if sec.Inserted != 0 || sec.Reasons[reasonAgentKeyTaken] != 1 {
+			if sec.Inserted != 0 || sec.Reasons[reasonNativeExists] != 1 {
 				t.Fatalf("report %+v", sec)
 			}
 			if agentByKey(t, b.st, "minh-an-gap-key").ID != seed.ID {
@@ -718,7 +718,7 @@ func TestLinkAlreadyThereIsNotClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	sec := findSection(t, rep.AgentLinks, srcTenant)
-	if sec.Inserted != 0 || sec.Reasons[reasonLinkExists] != 1 {
+	if sec.Inserted != 0 || sec.Reasons[reasonNativeExists] != 1 {
 		t.Fatalf("report %+v", sec)
 	}
 	var mapped int
@@ -726,7 +726,7 @@ func TestLinkAlreadyThereIsNotClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mapped != 0 {
-		t.Fatal("link-exists adopted the edge into the map")
+		t.Fatal("native-exists adopted the edge into the map")
 	}
 	a := agentByKey(t, st, "minh-an-link-a")
 	b := agentByKey(t, st, "minh-an-link-b")
@@ -875,6 +875,80 @@ func mapRowCount(t *testing.T, st store.StoreIface, dest string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func TestDeniedExportTenantIsCountedNotNamed(t *testing.T) {
+	const blocked = "blocked-tenant"
+	body := `{
+	  "agents": [
+	    {
+	      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00a1",
+	      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+	      "agent_key": "minh-an-allowed",
+	      "display_name": "Duoc Minh An",
+	      "status": "active",
+	      "frontmatter": "Mau."
+	    },
+	    {
+	      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00a2",
+	      "tenant_id": "blocked-tenant",
+	      "agent_key": "minh-an-bi-chan",
+	      "display_name": "Khong ghi",
+	      "status": "active"
+	    }
+	  ],
+	  "agent_shares": [
+	    {
+	      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00a3",
+	      "tenant_id": "blocked-tenant",
+	      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00a2",
+	      "user_id": "user-lan",
+	      "role": "user",
+	      "granted_by": "user-hoa"
+	    }
+	  ]
+	}`
+	ex, err := ReadExport(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.New()
+	rep, err := Import(st, ex, Options{
+		SourceTenant: srcTenant,
+		DestTenant:   destTenant,
+		Apply:        true,
+		Deny:         map[string]struct{}{blocked: {}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
+	}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), blocked) {
+		t.Fatalf("report named a denied tenant: %s", raw)
+	}
+	if agentByKey(t, st, "minh-an-bi-chan") != nil {
+		t.Fatal("denied row was written")
+	}
+	got := agentByKey(t, st, "minh-an-allowed")
+	if got == nil || got.Enabled || got.TenantID != destTenant {
+		t.Fatalf("allowed %+v", got)
+	}
+	for _, sec := range append(append(append([]Section{}, rep.Agents...), rep.Teams...), append(rep.TeamMembers, rep.AgentLinks...)...) {
+		if strings.EqualFold(sec.SourceTenant, blocked) {
+			t.Fatalf("section %+v", sec)
+		}
+	}
+	for _, h := range rep.NotImported {
+		if strings.EqualFold(h.SourceTenant, blocked) {
+			t.Fatalf("held %+v", h)
+		}
+	}
 }
 
 func TestConfigErrorIsError(t *testing.T) {

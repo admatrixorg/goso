@@ -49,19 +49,20 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 			return err
 		}
 		im := &importer{
-			st:       st,
-			opt:      opt,
-			exp:      exp,
-			maps:     maps,
-			agentID:  map[string]string{},
-			agentKey: map[string]string{},
-			teamID:   map[string]string{},
-			teamLead: map[string]string{},
-			members:  map[string]string{},
-			claimMem: map[string]string{},
-			links:    map[string]struct{}{},
-			seen:     map[string]map[string]bool{},
-			keysNow:  map[string]struct{}{},
+			st:         st,
+			opt:        opt,
+			exp:        exp,
+			maps:       maps,
+			agentID:    map[string]string{},
+			agentKey:   map[string]string{},
+			teamID:     map[string]string{},
+			teamLead:   map[string]string{},
+			members:    map[string]string{},
+			claimMem:   map[string]string{},
+			links:      map[string]struct{}{},
+			seen:       map[string]map[string]bool{},
+			keysNow:    map[string]struct{}{},
+			deniedSeen: map[string]struct{}{},
 		}
 		for _, a := range st.ListAgents() {
 			if a != nil && a.AgentKey != "" {
@@ -89,7 +90,7 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 			DryRun:        !opt.Apply,
 			SourceTenant:  opt.SourceTenant,
 			DestTenant:    opt.DestTenant,
-			DeniedTenants: len(opt.Deny),
+			DeniedTenants: len(im.deniedSeen),
 		})
 		return buildErr
 	})
@@ -100,20 +101,21 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 }
 
 type importer struct {
-	st       store.StoreIface
-	opt      Options
-	exp      *Export
-	maps     mapper
-	tally    tally
-	agentID  map[string]string
-	agentKey map[string]string
-	teamID   map[string]string
-	teamLead map[string]string
-	members  map[string]string
-	claimMem map[string]string
-	links    map[string]struct{}
-	seen     map[string]map[string]bool
-	keysNow  map[string]struct{}
+	st         store.StoreIface
+	opt        Options
+	exp        *Export
+	maps       mapper
+	tally      tally
+	agentID    map[string]string
+	agentKey   map[string]string
+	teamID     map[string]string
+	teamLead   map[string]string
+	members    map[string]string
+	claimMem   map[string]string
+	links      map[string]struct{}
+	seen       map[string]map[string]bool
+	keysNow    map[string]struct{}
+	deniedSeen map[string]struct{}
 }
 
 func (im *importer) skip(table, tenant, reason string) {
@@ -186,11 +188,11 @@ func (im *importer) applyAgent(row rawRow) error {
 		return nil
 	}
 	if _, taken := im.keysNow[key]; taken {
-		im.skip(tableAgents, tenant, reasonAgentKeyTaken)
+		im.skip(tableAgents, tenant, reasonNativeExists)
 		return nil
 	}
 	if _, taken := im.agentKey[key]; taken {
-		im.skip(tableAgents, tenant, reasonAgentKeyTaken)
+		im.skip(tableAgents, tenant, reasonNativeExists)
 		return nil
 	}
 	deleted, bad := isDeleted(row)
@@ -272,7 +274,7 @@ func (im *importer) applyAgent(row rawRow) error {
 		return &ConfigError{Msg: "lite cap exceeded"}
 	}
 	if errors.Is(err, store.ErrExists) {
-		im.skip(tableAgents, tenant, reasonAgentKeyTaken)
+		im.skip(tableAgents, tenant, reasonNativeExists)
 		return nil
 	}
 	if err != nil {
@@ -478,12 +480,12 @@ func (im *importer) applyMember(row rawRow) error {
 			if have == role {
 				im.skip(tableMembers, tenant, reasonUnchanged)
 			} else {
-				im.skip(tableMembers, tenant, reasonRoleDiffers)
+				im.skip(tableMembers, tenant, reasonNativeExists)
 			}
 			return nil
 		}
 		if have != role {
-			im.skip(tableMembers, tenant, reasonRoleDiffers)
+			im.skip(tableMembers, tenant, reasonNativeExists)
 			return nil
 		}
 		im.claimMem[memKey] = id
@@ -502,7 +504,7 @@ func (im *importer) applyMember(row rawRow) error {
 		return nil
 	}
 	if role == "lead" && im.teamLead[teamSrc] != "" && im.teamLead[teamSrc] != gosoAgent {
-		im.skip(tableMembers, tenant, reasonLeadDiffers)
+		im.skip(tableMembers, tenant, reasonNativeExists)
 		return nil
 	}
 	if !im.opt.Apply {
@@ -625,7 +627,7 @@ func (im *importer) applyLink(row rawRow) error {
 		missing = append(missing, p)
 	}
 	if len(missing) == 0 {
-		im.skip(tableLinks, tenant, reasonLinkExists)
+		im.skip(tableLinks, tenant, reasonNativeExists)
 		return nil
 	}
 	if !im.opt.Apply {
@@ -672,6 +674,10 @@ func (im *importer) countHeld() {
 		if bad {
 			tenant = ""
 		}
+		if tenant != "" && denied(im.opt.Deny, tenant) {
+			im.noteDenied(tenant)
+			continue
+		}
 		reason := reasonNotThisSpec
 		switch row.table {
 		case tablePermissions, tableOverrides, tableProfiles, tableShares:
@@ -689,6 +695,10 @@ func (im *importer) rowTenant(row rawRow, table string) (string, bool) {
 	}
 	if !present || tenant == "" {
 		im.reject(table, "", reasonTenantMissing)
+		return "", false
+	}
+	if denied(im.opt.Deny, tenant) {
+		im.noteDenied(tenant)
 		return "", false
 	}
 	if tenant != im.opt.SourceTenant {
@@ -757,6 +767,17 @@ func (im *importer) ownedTeam(id string) (*store.Team, bool) {
 		return nil, false
 	}
 	return tm, true
+}
+
+func (im *importer) noteDenied(tenant string) {
+	tenant = strings.ToLower(strings.TrimSpace(tenant))
+	if tenant == "" {
+		return
+	}
+	if im.deniedSeen == nil {
+		im.deniedSeen = map[string]struct{}{}
+	}
+	im.deniedSeen[tenant] = struct{}{}
 }
 
 func (im *importer) noteMember(teamID, agentID, role string) {

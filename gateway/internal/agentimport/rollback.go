@@ -58,7 +58,7 @@ func Rollback(st store.StoreIface, dest string, opt RollbackOptions) (*Report, e
 		removed := &Removed{}
 		base := Report{
 			DryRun: !opt.Apply, Rollback: true, DestTenant: dest,
-			PostImport: &post, DeniedTenants: len(opt.Deny),
+			PostImport: &post, DeniedTenants: 0,
 		}
 		if !opt.Apply {
 			base.Removed = countLive(st, dest, rows)

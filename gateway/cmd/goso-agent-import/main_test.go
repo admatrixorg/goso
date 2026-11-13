@@ -43,7 +43,7 @@ func TestCLIDryRunApplyRollback(t *testing.T) {
 	if strings.Contains(stdout.String(), "SECRETMARKER") || strings.Contains(stderr.String(), "SECRETMARKER") || strings.Contains(stdout.String(), "EMBEDMARKER") || strings.Contains(stdout.String(), "blocked-sample") {
 		t.Fatal("cli leaked a dropped column")
 	}
-	if !strings.Contains(stdout.String(), `"denied_tenants": 1`) {
+	if !strings.Contains(stdout.String(), `"denied_tenants": 0`) {
 		t.Fatalf("missing denied count %s", stdout.String())
 	}
 	st, err := store.OpenSQLite(dbPath)

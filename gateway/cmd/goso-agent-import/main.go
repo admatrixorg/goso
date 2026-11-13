@@ -87,7 +87,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(struct {
 			DeniedTenants int `json:"denied_tenants"`
-		}{DeniedTenants: len(deny)})
+		}{DeniedTenants: agentimport.CountDenied(deny, *dest, *source)})
 		fmt.Fprintln(stderr, "tenant is denied")
 		return 1
 	}
