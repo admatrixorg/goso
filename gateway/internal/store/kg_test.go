@@ -30,7 +30,7 @@ func TestStore_KGSearchAndExpand(t *testing.T) {
 		t.Fatalf("rel %v", err)
 	}
 
-	hits, err := s.SearchProgressive("Acme", DefaultTenant)
+	hits, err := s.SearchProgressive("Acme", DefaultTenant, KGScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,16 +40,16 @@ func TestStore_KGSearchAndExpand(t *testing.T) {
 	if hasKGHit(hits, other.ID, TierL2) {
 		t.Fatalf("unrelated entity hit %#v", hits)
 	}
-	l1, err := s.SearchProgressive("billing", DefaultTenant)
+	l1, err := s.SearchProgressive("billing", DefaultTenant, KGScope{})
 	if err != nil || !hasKGHit(l1, alpha.ID, TierL2) {
 		t.Fatalf("l2 billing %v %#v", err, l1)
 	}
-	none, err := s.SearchProgressive("zzzz-absent", DefaultTenant)
+	none, err := s.SearchProgressive("zzzz-absent", DefaultTenant, KGScope{})
 	if err != nil || len(none) != 0 {
 		t.Fatalf("empty %v %#v", err, none)
 	}
 
-	exp, err := s.ExpandKG(alpha.ID)
+	exp, err := s.ExpandKG(alpha.ID, KGScope{})
 	if err != nil || exp == nil || exp.Entity == nil || exp.Entity.ID != alpha.ID {
 		t.Fatalf("expand %v %#v", err, exp)
 	}
@@ -83,18 +83,18 @@ func TestSQLiteStore_KGFTSAndExpand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.SearchProgressive("Pineapple", DefaultTenant)
+	hits, err := s.SearchProgressive("Pineapple", DefaultTenant, KGScope{})
 	if err != nil || !hasKGHit(hits, named.ID, TierL2) {
 		t.Fatalf("named %v %#v fts=%v", err, hits, s.kgFTS)
 	}
 	if hasKGHit(hits, other.ID, TierL2) {
 		t.Fatalf("unrelated %#v", hits)
 	}
-	none, err := s.SearchProgressive("zzzz-absent", DefaultTenant)
+	none, err := s.SearchProgressive("zzzz-absent", DefaultTenant, KGScope{})
 	if err != nil || len(none) != 0 {
 		t.Fatalf("empty %v %#v", err, none)
 	}
-	exp, err := s.ExpandKG(named.ID)
+	exp, err := s.ExpandKG(named.ID, KGScope{})
 	if err != nil || len(exp.Relations) != 1 || exp.Relations[0].ToName != "Mango LLC" {
 		t.Fatalf("expand %v %#v", err, exp)
 	}
@@ -114,7 +114,7 @@ func TestStore_ProgressiveKeepsL2WhenL1Full(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.SearchProgressive("shared", DefaultTenant)
+	hits, err := s.SearchProgressive("shared", DefaultTenant, KGScope{})
 	if err != nil || !hasKGHit(hits, ent.ID, TierL2) {
 		t.Fatalf("l2 dropped under l1 load %v %#v", err, hits)
 	}
@@ -141,14 +141,14 @@ func TestSQLiteStore_ProgressiveKeepsL2AndTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.SearchProgressive("shared", DefaultTenant)
+	hits, err := s.SearchProgressive("shared", DefaultTenant, KGScope{})
 	if err != nil || !hasKGHit(hits, ent.ID, TierL2) {
 		t.Fatalf("l2 dropped %v %#v", err, hits)
 	}
 	if hasKGHit(hits, hidden.ID, TierL2) {
 		t.Fatalf("cross-tenant l2 %#v", hits)
 	}
-	other, err := s.SearchProgressive("shared", "acme")
+	other, err := s.SearchProgressive("shared", "acme", KGScope{})
 	if err != nil || !hasKGHit(other, hidden.ID, TierL2) || hasKGHit(other, ent.ID, TierL2) {
 		t.Fatalf("acme search %v %#v", err, other)
 	}
@@ -274,7 +274,7 @@ func TestSQLiteStore_KGGraph(t *testing.T) {
 	if err != nil || g.TotalNodes != 2 || g.TotalEdges != 1 {
 		t.Fatalf("sqlite graph %v %#v", err, g)
 	}
-	got, err := s.GetKGEntity(n2.ID)
+	got, err := s.GetKGEntity(n2.ID, KGScope{})
 	if err != nil || got.Source != KGSourceExtracted || got.AgentID != a.ID {
 		t.Fatalf("roundtrip %#v %v", got, err)
 	}
@@ -319,11 +319,21 @@ func TestSQLiteStore_MigrateKGAgentID(t *testing.T) {
 		t.Fatalf("migrate old kg_entities: %v", err)
 	}
 	defer s.Close()
-	e, err := s.GetKGEntity("e1")
+	e, err := s.GetKGEntity("e1", KGScope{})
 	if err != nil || e == nil || e.Name != "Acme" {
 		t.Fatalf("get after migrate %v %+v", err, e)
 	}
 	if e.AgentID != "" {
 		t.Fatalf("agent_id default %q", e.AgentID)
+	}
+	if e.CustomerKey != "" || e.Body != "x" || e.Name != "Acme" {
+		t.Fatalf("add-only migrate changed the row: %+v", e)
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM kg_entities`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("row count %d %v", n, err)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_kg_entities_customer'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("sqlite customer index %d %v", n, err)
 	}
 }

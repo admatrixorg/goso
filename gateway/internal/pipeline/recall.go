@@ -147,7 +147,8 @@ func (r *Runner) recall(st *State, userText string) (string, int) {
 // is the current session, q.Query the latest user text. It is shared by the
 // agent runner, the channel handlers and the Omni bridge so every path admits
 // and logs the same way. It never fails the turn: a store error is logged and
-// yields no note.
+// yields no note. Recall reads L1 notes only. Knowledge-graph customer scope
+// is applied on search, neighbour expand, and the KG tools, not here.
 func RecallFor(s store.StoreIface, q store.RecallQuery) (string, int) {
 	if s == nil || !RecallEnabled() {
 		return "", 0
