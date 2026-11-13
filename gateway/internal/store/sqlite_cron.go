@@ -22,15 +22,18 @@ func (s *SQLiteStore) CreateCronJob(j CronJob) (*CronJob, error) {
 	if j.Message == "" {
 		return nil, errors.New("message is required")
 	}
-	var nSess int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id=?`, j.SessionID).Scan(&nSess); err != nil {
-		return nil, err
-	}
-	if nSess == 0 {
+	var sessTenant string
+	err := s.db.QueryRow(`SELECT tenant_id FROM sessions WHERE id=?`, j.SessionID).Scan(&sessTenant)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("session not found")
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Session tenant wins. A caller-supplied TenantID is not stored.
+	j.TenantID = NormalizeTenant(sessTenant)
 	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM cron_jobs`).Scan(&n); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM cron_jobs WHERE tenant_id=?`, j.TenantID).Scan(&n); err != nil {
 		return nil, err
 	}
 	if n >= CronJobCap {
@@ -43,9 +46,9 @@ func (s *SQLiteStore) CreateCronJob(j CronJob) (*CronJob, error) {
 	if j.Enabled {
 		enabled = 1
 	}
-	_, err := s.db.Exec(
-		`INSERT INTO cron_jobs(id, spec, session_id, message, enabled, last_run, last_error) VALUES(?,?,?,?,?,?,?)`,
-		j.ID, j.Spec, j.SessionID, j.Message, enabled, "", "",
+	_, err = s.db.Exec(
+		`INSERT INTO cron_jobs(id, spec, session_id, message, enabled, last_run, last_error, tenant_id) VALUES(?,?,?,?,?,?,?,?)`,
+		j.ID, j.Spec, j.SessionID, j.Message, enabled, "", "", j.TenantID,
 	)
 	if err != nil {
 		return nil, err
@@ -54,8 +57,21 @@ func (s *SQLiteStore) CreateCronJob(j CronJob) (*CronJob, error) {
 	return cloneCronJob(&cp), nil
 }
 
+const cronJobSelect = `id, spec, session_id, message, enabled, last_run, last_error, tenant_id`
+
 func (s *SQLiteStore) ListCronJobs() []*CronJob {
-	rows, err := s.db.Query(`SELECT id, spec, session_id, message, enabled, last_run, last_error FROM cron_jobs ORDER BY id`)
+	return s.listCronJobsQuery(`SELECT ` + cronJobSelect + ` FROM cron_jobs ORDER BY id`)
+}
+
+func (s *SQLiteStore) ListCronJobsTenant(tid string) []*CronJob {
+	return s.listCronJobsQuery(
+		`SELECT `+cronJobSelect+` FROM cron_jobs WHERE tenant_id=? ORDER BY id`,
+		NormalizeTenant(tid),
+	)
+}
+
+func (s *SQLiteStore) listCronJobsQuery(q string, args ...any) []*CronJob {
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return []*CronJob{}
 	}
@@ -72,7 +88,7 @@ func (s *SQLiteStore) ListCronJobs() []*CronJob {
 }
 
 func (s *SQLiteStore) GetCronJob(id string) (*CronJob, error) {
-	row := s.db.QueryRow(`SELECT id, spec, session_id, message, enabled, last_run, last_error FROM cron_jobs WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT `+cronJobSelect+` FROM cron_jobs WHERE id=?`, id)
 	j, err := scanCronJob(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -138,13 +154,15 @@ func (s *SQLiteStore) MarkCronError(id, msg string) error {
 func scanCronJob(sc scanner) (*CronJob, error) {
 	var j CronJob
 	var enabled int
-	var last string
-	if err := sc.Scan(&j.ID, &j.Spec, &j.SessionID, &j.Message, &enabled, &last, &j.LastError); err != nil {
+	var last sql.NullString
+	var tenant string
+	if err := sc.Scan(&j.ID, &j.Spec, &j.SessionID, &j.Message, &enabled, &last, &j.LastError, &tenant); err != nil {
 		return nil, err
 	}
+	j.TenantID = NormalizeTenant(tenant)
 	j.Enabled = enabled != 0
-	if strings.TrimSpace(last) != "" {
-		t := parseTime(last)
+	if last.Valid && strings.TrimSpace(last.String) != "" {
+		t := parseTime(last.String)
 		if !t.IsZero() {
 			j.LastRun = &t
 		}

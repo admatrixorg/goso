@@ -1,0 +1,271 @@
+{
+  "skills": [
+    {
+      "id": "minh-an-skill-bao-gia",
+      "tenant_id": "minh-an",
+      "name": "Bao Gia Minh An",
+      "slug": "Bao_Gia_Minh_An",
+      "description": "MOTA-KHONG-GHI",
+      "owner_id": "OWNERMARKERlan",
+      "visibility": "internal",
+      "version": 3,
+      "status": "active",
+      "frontmatter": {"note": "not-copied"},
+      "file_path": "skills/bao-gia/SKILL.md",
+      "file_size": 1,
+      "file_hash": "hash-not-stored",
+      "embedding": "EMBEDMARKERvector",
+      "tags": ["mau"],
+      "created_at": "2026-01-15T08:00:00Z",
+      "updated_at": "2026-03-01T08:00:00Z",
+      "is_system": false,
+      "deps": {},
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-tu-van",
+      "tenant_id": "minh-an",
+      "name": "Tư vấn + Hóa đơn",
+      "slug": "",
+      "description": "MOTA-KHONG-GHI",
+      "owner_id": "OWNERMARKERlan",
+      "visibility": "private",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/tu-van/SKILL.md",
+      "embedding": "EMBEDMARKERvector",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-don-a",
+      "tenant_id": "minh-an",
+      "name": "Don Hang A",
+      "slug": "Don Hang",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/don-a/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-don-b",
+      "tenant_id": "minh-an",
+      "name": "Don Hang B",
+      "slug": "don-hang",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/don-b/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-system",
+      "tenant_id": "minh-an",
+      "name": "He thong",
+      "slug": "minh-an-he-thong",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/system/SKILL.md",
+      "is_system": true,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-off",
+      "tenant_id": "minh-an",
+      "name": "Tam tat",
+      "slug": "tam-tat",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/off/SKILL.md",
+      "is_system": false,
+      "enabled": false
+    },
+    {
+      "id": "minh-an-skill-old",
+      "tenant_id": "minh-an",
+      "name": "Luu tru",
+      "slug": "luu-tru",
+      "version": 1,
+      "status": "archived",
+      "file_path": "skills/old/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-cfg",
+      "tenant_id": "minh-an",
+      "name": "Cfg tat",
+      "slug": "cfg-tat",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/cfg/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-lich",
+      "tenant_id": "minh-an",
+      "name": "Lich goi",
+      "slug": "lich-goi",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/lich-goi",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-escape",
+      "tenant_id": "minh-an",
+      "name": "Thoat",
+      "slug": "thoat",
+      "version": 1,
+      "status": "active",
+      "file_path": "../outside/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-empty",
+      "tenant_id": "minh-an",
+      "name": "Rong",
+      "slug": "rong",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/empty/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "minh-an-skill-san",
+      "tenant_id": "minh-an",
+      "name": "San co",
+      "slug": "san-co",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/san/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "khac-skill-don",
+      "tenant_id": "khac",
+      "name": "Khac Don",
+      "slug": "Khac Don",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/khac/SKILL.md",
+      "embedding": "EMBEDMARKERvector",
+      "is_system": false,
+      "enabled": true
+    },
+    {
+      "id": "khac-skill-collide",
+      "tenant_id": "khac",
+      "name": "Khac collide",
+      "slug": "bao-gia-minh-an",
+      "version": 1,
+      "status": "active",
+      "file_path": "skills/khac-collide/SKILL.md",
+      "is_system": false,
+      "enabled": true
+    }
+  ],
+  "skill_versions": [
+    {
+      "id": "ver-1",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-bao-gia",
+      "version": 1,
+      "content_hash": "old-1",
+      "changed_files": ["SKILL.md", "OLD-VERSION-BODY"],
+      "created_by_actor_type": "user",
+      "created_by_actor_id": "OWNERMARKERlan",
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "ver-2",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-bao-gia",
+      "version": 2,
+      "content_hash": "old-2",
+      "changed_files": ["OLD-VERSION-BODY"],
+      "created_at": "2026-02-01T00:00:00Z"
+    },
+    {
+      "id": "ver-3",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-bao-gia",
+      "version": 3,
+      "content_hash": "latest",
+      "changed_files": ["SKILL.md"],
+      "created_at": "2026-03-01T00:00:00Z"
+    },
+    {
+      "id": "ver-khac",
+      "tenant_id": "khac",
+      "skill_id": "khac-skill-don",
+      "version": 1,
+      "content_hash": "khac",
+      "changed_files": ["OLD-VERSION-BODY"],
+      "created_at": "2026-03-01T00:00:00Z"
+    }
+  ],
+  "skill_agent_grants": [
+    {
+      "id": "g-agent-bao",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-bao-gia",
+      "agent_id": "AGENTMARKERno",
+      "pinned_version": 1,
+      "granted_by": "token-should-not-leak",
+      "can_manage": false
+    },
+    {
+      "id": "g-agent-system",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-system",
+      "agent_id": "AGENTMARKERno",
+      "pinned_version": 1,
+      "granted_by": "token-should-not-leak",
+      "can_manage": true
+    },
+    {
+      "id": "g-agent-khac",
+      "tenant_id": "khac",
+      "skill_id": "khac-skill-don",
+      "agent_id": "AGENTMARKERno",
+      "pinned_version": 2,
+      "granted_by": "token-should-not-leak",
+      "can_manage": false
+    }
+  ],
+  "skill_user_grants": [
+    {
+      "id": "g-user-bao",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-bao-gia",
+      "user_id": "USERMARKERno",
+      "granted_by": "token-should-not-leak"
+    },
+    {
+      "id": "g-user-cfg",
+      "tenant_id": "minh-an",
+      "skill_id": "minh-an-skill-cfg",
+      "user_id": "USERMARKERno",
+      "granted_by": "token-should-not-leak"
+    }
+  ],
+  "skill_tenant_configs": [
+    {
+      "skill_id": "minh-an-skill-cfg",
+      "tenant_id": "minh-an",
+      "enabled": false
+    },
+    {
+      "skill_id": "minh-an-skill-tu-van",
+      "tenant_id": "minh-an",
+      "enabled": true
+    }
+  ]
+}

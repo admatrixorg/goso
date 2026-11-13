@@ -103,6 +103,17 @@ type ContactBulkResult struct {
 	Applied int
 }
 
+// ErrContactRollbackConfirm is returned when mapped contacts were used or
+// merged after import and confirm is false. The text has no contact fields.
+var ErrContactRollbackConfirm = errors.New("rollback needs confirm")
+
+// ContactRollback is a count-only result. It does not name contacts.
+type ContactRollback struct {
+	Candidates int
+	Active     int
+	Deleted    int
+}
+
 type contactHead struct {
 	ContactRow
 	Merged     bool
@@ -186,6 +197,13 @@ func (s *SQLiteStore) migrateContacts() error {
 			undone INTEGER NOT NULL DEFAULT 0
 		)`},
 		{"idx_contact_merges_target", `CREATE INDEX IF NOT EXISTS idx_contact_merges_target ON contact_merges(tenant_id, target_id)`},
+		{"contact_import_map", `CREATE TABLE IF NOT EXISTS contact_import_map (
+			tenant_id TEXT NOT NULL,
+			contact_id TEXT NOT NULL,
+			channel TEXT NOT NULL,
+			dest TEXT NOT NULL,
+			PRIMARY KEY (tenant_id, channel, dest)
+		)`},
 	}
 	for _, step := range steps {
 		if _, err := tx.Exec(step.sql); err != nil {
@@ -228,6 +246,107 @@ func (s *SQLiteStore) BulkUpsertContacts(seeds []ContactSeed) (ContactBulkResult
 	}
 	contactLogf("goso contacts: bulk upsert count=%d", applied)
 	return ContactBulkResult{Applied: applied}, nil
+}
+
+// PutContactImport records one contact this importer inserted.
+// RollbackContactImport deletes only those rows for the tenant.
+func (s *SQLiteStore) PutContactImport(tenant, contactID, channel, dest string) error {
+	if s == nil || s.db == nil {
+		return errors.New("contact store unavailable")
+	}
+	tenant = NormalizeTenant(tenant)
+	if _, err := s.db.Exec(`INSERT INTO contact_import_map(tenant_id, contact_id, channel, dest) VALUES(?,?,?,?)
+		ON CONFLICT(tenant_id, channel, dest) DO NOTHING`, tenant, contactID, channel, dest); err != nil {
+		return opaqueContactErr("upsert")
+	}
+	return nil
+}
+
+// RollbackContactImport deletes contacts this importer inserted for one tenant.
+// Contacts that are not in the map stay. Active counts mapped contacts that
+// were observed again (seen_count > 1) or merged after import. When active
+// is greater than zero and confirm is false, nothing is deleted.
+// apply false reports the counts and does not delete.
+func (s *SQLiteStore) RollbackContactImport(tenant string, apply, confirm bool) (ContactRollback, error) {
+	var out ContactRollback
+	if s == nil || s.db == nil {
+		return out, errors.New("contact store unavailable")
+	}
+	tenant = NormalizeTenant(tenant)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return out, opaqueContactErr("upsert")
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.Query(`SELECT contact_id FROM contact_import_map WHERE tenant_id=?`, tenant)
+	if err != nil {
+		return out, opaqueContactErr("lookup")
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return out, opaqueContactErr("lookup")
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return out, opaqueContactErr("lookup")
+	}
+	rows.Close()
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	out.Candidates = len(unique)
+	for _, id := range unique {
+		var seenCount, merged int
+		err := tx.QueryRow(`SELECT seen_count, merged FROM contacts WHERE tenant_id=? AND id=?`, tenant, id).Scan(&seenCount, &merged)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return out, opaqueContactErr("lookup")
+		}
+		var merges int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM contact_merges WHERE tenant_id=? AND (source_id=? OR target_id=?)`, tenant, id, id).Scan(&merges); err != nil {
+			return out, opaqueContactErr("lookup")
+		}
+		if seenCount > 1 || merged != 0 || merges > 0 {
+			out.Active++
+		}
+	}
+	if !apply {
+		return out, nil
+	}
+	if out.Active > 0 && !confirm {
+		return out, ErrContactRollbackConfirm
+	}
+	for _, id := range unique {
+		if _, err := tx.Exec(`DELETE FROM contact_identifiers WHERE tenant_id=? AND contact_id=?`, tenant, id); err != nil {
+			return out, opaqueContactErr("upsert")
+		}
+		res, err := tx.Exec(`DELETE FROM contacts WHERE tenant_id=? AND id=?`, tenant, id)
+		if err != nil {
+			return out, opaqueContactErr("upsert")
+		}
+		aff, _ := res.RowsAffected()
+		out.Deleted += int(aff)
+	}
+	if _, err := tx.Exec(`DELETE FROM contact_import_map WHERE tenant_id=?`, tenant); err != nil {
+		return out, opaqueContactErr("upsert")
+	}
+	if err := tx.Commit(); err != nil {
+		return out, opaqueContactErr("upsert")
+	}
+	return out, nil
 }
 
 func upsertContactTx(tx contactQuery, seed ContactSeed) (bool, error) {
