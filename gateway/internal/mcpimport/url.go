@@ -24,8 +24,8 @@ func urlParse(raw string) (cleanedURL, error) {
 	if u.RawQuery != "" || u.Fragment != "" {
 		needs = true
 	}
-	if pathHasKey(u.Path) {
-		// Drop the URL. A path segment that looks like a key must not be stored.
+	if pathHasKey(u.Path) || pathHasKey(u.RawPath) || pathHasKey(raw) {
+		// Drop the URL. /s/<segment>/ and any key-like segment are not stored.
 		return cleanedURL{needs: true, hold: true}, nil
 	}
 	u.RawQuery = ""

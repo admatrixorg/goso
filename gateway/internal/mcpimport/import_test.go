@@ -351,6 +351,61 @@ func TestCredentialShapesNotStored(t *testing.T) {
 			secret: authEq,
 			body:   stdioBody("c19", "shell", "minh-an-files", `["`+authEq+`"]`),
 		},
+		{
+			name:   "header-bearer",
+			secret: "fake-bearer-minh-an",
+			body:   stdioBody("c20", "shell", "minh-an-files", `["--header=Authorization: Bearer fake-bearer-minh-an"]`),
+		},
+		{
+			name:   "authorization-bearer",
+			secret: "fake-bearer-minh-an-2",
+			body:   stdioBody("c21", "shell", "minh-an-files", `["Authorization: Bearer fake-bearer-minh-an-2"]`),
+		},
+		{
+			name:   "client-secret",
+			secret: "fake-client-secret-minh",
+			body:   stdioBody("c22", "shell", "minh-an-files", `["--client-secret","fake-client-secret-minh"]`),
+		},
+		{
+			name:   "apikey-equals",
+			secret: "fake-apikey-minh-an",
+			body:   stdioBody("c23", "shell", "minh-an-files", `["--apikey=fake-apikey-minh-an"]`),
+		},
+		{
+			name:   "api-key-underscore",
+			secret: "fake-api-key-minh-an",
+			body:   stdioBody("c24", "shell", "minh-an-files", `["--api_key=fake-api-key-minh-an"]`),
+		},
+		{
+			name:   "access-token-underscore",
+			secret: "fake-access-token-minh",
+			body:   stdioBody("c25", "shell", "minh-an-files", `["--access_token=fake-access-token-minh"]`),
+		},
+		{
+			name:   "bearer-equals",
+			secret: "fake-bearer-flag-minh",
+			body:   stdioBody("c26", "shell", "minh-an-files", `["--bearer=fake-bearer-flag-minh"]`),
+		},
+		{
+			name:   "short-t",
+			secret: "zzfake",
+			body:   stdioBody("c27", "shell", "minh-an-files", `["-t","zzfake"]`),
+		},
+		{
+			name:   "short-t-equals",
+			secret: "zzfakeeq",
+			body:   stdioBody("c28", "shell", "minh-an-files", `["-t=zzfakeeq"]`),
+		},
+		{
+			name:   "token-in-command",
+			secret: "fake-token-in-command",
+			body:   stdioBody("c29", "shell", "minh-an-files --token=fake-token-in-command", `[]`),
+		},
+		{
+			name:   "short-s-path",
+			secret: "sk-proj-abc_def",
+			body:   `{"mcp_servers":[{"id":"00000000-0000-4000-8000-0000000000c30","name":"bridge","transport":"sse","url":"http://127.0.0.1:9/s/sk-proj-abc_def/mcp","tenant_id":"minh-an"}]}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -422,6 +477,25 @@ func assertSecretHeld(t *testing.T, st store.StoreIface, files []string, body, s
 		if bytes.Contains(b, []byte(secret)) {
 			t.Fatal("database contains the credential")
 		}
+	}
+}
+
+func TestArgSecretLeavesOrdinaryFlags(t *testing.T) {
+	for _, ok := range []string{"--root", "--root=minh-an", "-n", "-n=1", "minh-an-files"} {
+		if argSecret(ok) {
+			t.Fatalf("ordinary value treated as a credential: %s", ok)
+		}
+	}
+	for _, bad := range []string{"-t", "-t=abc", "--apikey=x", "--api_key=x", "--access_token=x", "--bearer=x", "--client-secret", "--header=Authorization: Bearer x", "Authorization: Bearer x"} {
+		if !argSecret(bad) {
+			t.Fatalf("credential not detected: %s", bad)
+		}
+	}
+	if !pathHasKey("/s/sk-proj-abc_def/mcp") {
+		t.Fatal("short /s/ segment was not detected")
+	}
+	if pathHasKey("/minh-an-notes") || pathHasKey("/sessions/minh-an") {
+		t.Fatal("ordinary path treated as /s/<segment>/")
 	}
 }
 

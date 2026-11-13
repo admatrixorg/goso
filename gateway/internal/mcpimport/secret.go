@@ -9,17 +9,24 @@ import (
 	"strings"
 )
 
-// secretFlags are argv switches whose presence means the command carries a
-// credential. The value is not kept. Longer names are listed before shorter
-// ones so a scan of a whole command can match --access-token before --token.
-var secretFlags = []string{
-	"--access-token",
-	"--api-key",
-	"--token",
-	"--secret",
-	"--password",
-	"--auth",
-	"--key",
+// secretNameParts are matched against a flag name after the leading dashes
+// are removed and '-' and '_' are stripped. "--api_key" and "--apikey" both
+// become "apikey".
+var secretNameParts = []string{
+	"credential",
+	"bearer",
+	"token",
+	"secret",
+	"passw",
+	"auth",
+	"key",
+	"pat",
+}
+
+// shortSecretFlags are single-letter switches that carry a credential.
+// Other short flags, such as -n, stay usable.
+var shortSecretFlags = map[string]struct{}{
+	"t": {},
 }
 
 // kvPair is KEY=VALUE. The value is not kept.
@@ -57,23 +64,61 @@ func argSecret(s string) bool {
 		return true
 	}
 	low := strings.ToLower(t)
-	for _, flag := range secretFlags {
-		if low == flag || strings.HasPrefix(low, flag+"=") || strings.Contains(low, " "+flag) || strings.Contains(low, " "+flag+"=") {
-			return true
-		}
+	if strings.Contains(low, "authorization") || strings.Contains(low, "bearer ") {
+		return true
 	}
 	for _, field := range strings.Fields(t) {
-		flow := strings.ToLower(field)
-		for _, flag := range secretFlags {
-			if flow == flag || strings.HasPrefix(flow, flag+"=") {
-				return true
-			}
-		}
-		if kvPair.MatchString(field) || looksLikeKey(field) {
+		if fieldSecret(field) {
 			return true
 		}
 	}
-	return looksLikeKey(t)
+	return fieldSecret(t)
+}
+
+func fieldSecret(field string) bool {
+	if jwtRe.MatchString(field) || telegramRe.MatchString(field) || looksLikeKey(field) || kvPair.MatchString(field) {
+		return true
+	}
+	low := strings.ToLower(field)
+	if strings.Contains(low, "authorization") || strings.Contains(low, "bearer ") {
+		return true
+	}
+	name, ok := flagName(field)
+	if !ok {
+		return false
+	}
+	if _, short := shortSecretFlags[name]; short {
+		return true
+	}
+	for _, part := range secretNameParts {
+		if strings.Contains(name, part) {
+			return true
+		}
+	}
+	return false
+}
+
+// flagName returns the switch name with one leading dash group removed and
+// with '-' and '_' stripped. "-t=abc" and "--api_key=abc" yield "t" and "apikey".
+func flagName(field string) (string, bool) {
+	f := strings.TrimSpace(field)
+	if strings.HasPrefix(f, "--") {
+		f = f[2:]
+	} else if strings.HasPrefix(f, "-") && len(f) > 1 {
+		f = f[1:]
+	} else {
+		return "", false
+	}
+	if i := strings.IndexByte(f, '='); i >= 0 {
+		f = f[:i]
+	}
+	f = strings.ToLower(f)
+	f = strings.ReplaceAll(f, "-", "")
+	f = strings.ReplaceAll(f, "_", "")
+	if f == "" {
+		return "", false
+	}
+	return f, true
 }
 
 // classifyArgs returns the joined safe arguments. A secret argument returns
@@ -101,12 +146,16 @@ func classifyArgs(raw json.RawMessage) (joined string, hold bool, bad bool) {
 	return strings.Join(parts, " "), false, false
 }
 
+// sTokenPath matches /s/<segment>/ at any length. A short token in that
+// position is still a credential and must not be stored.
+var sTokenPath = regexp.MustCompile(`(?i)(?:^|/)s/[^/]+/`)
+
 func pathHasKey(path string) bool {
-	if jwtRe.MatchString(path) || telegramRe.MatchString(path) {
+	if sTokenPath.MatchString(path) || jwtRe.MatchString(path) || telegramRe.MatchString(path) {
 		return true
 	}
 	for _, seg := range strings.Split(path, "/") {
-		if argSecret(seg) {
+		if seg != "" && argSecret(seg) {
 			return true
 		}
 	}

@@ -78,7 +78,7 @@ These have no field on the goso connector, the agent link, or a per-tenant tool 
 | Source | Why it has no home |
 |---|---|
 | `mcp_servers.display_name` | `connectors` has no display name. |
-| `mcp_servers.command`, `args` | Safe text is part of the stdio endpoint. `--token`, `--api-key`, `--access-token`, `--auth`, `--key`, `--secret`, `--password`, a `KEY=VALUE` pair, a standalone token of 24 or more characters, a JWT (dots), or a Telegram-style token (colon) is not stored. The same shapes in a URL path, including `/s/<jwt>/mcp`, are not stored. The server is listed under `needs_credential`. |
+| `mcp_servers.command`, `args` | Safe text is part of the stdio endpoint. A flag whose name contains token, secret, key, auth, passw, bearer, credential, or pat, the short flag `-t`, `Authorization` or `Bearer `, a `KEY=VALUE` pair, a 24-character token, a JWT, or a Telegram-style token is not stored. Any URL path `/s/<segment>/` is not stored, including a short segment. The server is listed under `needs_credential`. |
 | `mcp_servers.headers` | No header column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.env` | No env column. Values are dropped. A non-empty object also lists the server under `needs_credential`. |
 | `mcp_servers.tool_prefix` | No prefix column. |
