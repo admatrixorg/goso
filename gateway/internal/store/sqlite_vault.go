@@ -111,7 +111,11 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		cp := d
 		return &cp, nil
 	}
-	d.ID = newID()
+	if strings.TrimSpace(d.ID) == "" {
+		d.ID = newID()
+	} else {
+		d.ID = strings.TrimSpace(d.ID)
+	}
 	d.TenantID = NormalizeTenant(d.TenantID)
 	explicit := 0
 	if d.OwnerExplicit {
