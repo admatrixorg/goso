@@ -25,4 +25,4 @@ go test ./... -count=1 -timeout 25m
 
 Both exited 0 on this branch. `GOSO_TEST_POSTGRES_DSN` was unset, so existing Postgres cases skipped.
 
-The all-tabs log after merging `origin/main` (`d000fa8`, SPEC 182) is [qa-tabs-9b1e5146bffb187cf2a7655b433498d4e9e20fa7.log](../175/qa-tabs-9b1e5146bffb187cf2a7655b433498d4e9e20fa7.log). The browser ran against that merge commit. Gateway and control plane were local. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. The earlier log for `aad1cd8` remains in the same directory.
+The all-tabs log after merging `origin/main` (`9243bc5`, SPEC 180) is [qa-tabs-22972d66104743ca742b27c540c27654cae4920d.log](../175/qa-tabs-22972d66104743ca742b27c540c27654cae4920d.log). The browser ran against that merge commit. Gateway and control plane were local. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Earlier logs remain in `docs/qa/175/`.
