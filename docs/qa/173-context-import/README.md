@@ -58,7 +58,7 @@ Exit 0. The same DSN was set, so the race run includes the Postgres cases. `gate
 
 ## qa:tabs
 
-Code under test: `8820bb1a473e311f63437ea272b58418ec92d9f2`. The log is [qa-tabs-8820bb1a473e311f63437ea272b58418ec92d9f2.log](../173/qa-tabs-8820bb1a473e311f63437ea272b58418ec92d9f2.log).
+Code under test: `db01bf264563ec5f336a4b8c232145823b830329`. The log is [qa-tabs-db01bf264563ec5f336a4b8c232145823b830329.log](../173/qa-tabs-db01bf264563ec5f336a4b8c232145823b830329.log).
 
 Chrome binary: `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set.
 
