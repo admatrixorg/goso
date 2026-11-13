@@ -297,7 +297,7 @@ func TestChat_KGExtractDefaultOff(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("chat %d %s", w.Code, w.Body.String())
 	}
-	hits, err := st.SearchProgressive("ShouldNotInsert", store.DefaultTenant)
+	hits, err := st.SearchProgressive("ShouldNotInsert", store.DefaultTenant, store.KGScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestChat_KGExtractOn(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("chat %d %s", w.Code, w.Body.String())
 	}
-	hits, err := st.SearchProgressive("Extracted", store.DefaultTenant)
+	hits, err := st.SearchProgressive("Extracted", store.DefaultTenant, store.KGScope{})
 	if err != nil || !hasTier(hits, store.TierL2) {
 		t.Fatalf("extract on %v %#v", err, hits)
 	}
@@ -424,6 +424,103 @@ func TestKGAPI_GraphRequiresAgentAndNeverLeaksSecrets(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/index", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"embedding":"not_configured"`) {
 		t.Fatalf("index %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestKGAPI_CustomerScope(t *testing.T) {
+	st := store.New()
+	h := Router(st, "0.1.0")
+	ag, err := st.CreateAgent(store.Agent{AgentKey: "kg-http-cust"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sx, err := st.CreateSession(store.Session{AgentID: ag.ID, Label: "zalo-personal:minh-an-x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sy, err := st.CreateSession(store.Session{AgentID: ag.ID, Label: "zalo-personal:minh-an-y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(body string) store.KGEntity {
+		t.Helper()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/kg/entities", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(w, req)
+		if w.Code != 201 {
+			t.Fatalf("POST %d %s", w.Code, w.Body.String())
+		}
+		var e store.KGEntity
+		if err := json.Unmarshal(w.Body.Bytes(), &e); err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	shared := post(`{"name":"Kho Minh An","kind":"place","agent_id":"` + ag.ID + `","customer_key":"zalo-personal:minh-an-y"}`)
+	if shared.CustomerKey != "" {
+		t.Fatalf("API must ignore caller customer_key: %+v", shared)
+	}
+	ownX := post(`{"name":"Don MA-WALNUT-X","kind":"order","agent_id":"` + ag.ID + `","session_id":"` + sx.ID + `"}`)
+	if ownX.CustomerKey != "zalo-personal:minh-an-x" {
+		t.Fatalf("X stamp %+v", ownX)
+	}
+	ownY := post(`{"name":"Don MA-WALNUT-Y","kind":"order","agent_id":"` + ag.ID + `","session_id":"` + sy.ID + `"}`)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/kg/relations", bytes.NewBufferString(`{"from_id":"`+ownX.ID+`","to_id":"`+shared.ID+`","rel":"orders","session_id":"`+sx.ID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), `"customer_key":"zalo-personal:minh-an-x"`) {
+		t.Fatalf("relation %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/kg/relations", bytes.NewBufferString(`{"from_id":"`+ownX.ID+`","to_id":"`+ownY.ID+`","rel":"sees","session_id":"`+sx.ID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code == 201 {
+		t.Fatalf("X linked Y: %s", w.Body.String())
+	}
+
+	search := func(raw string) string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", raw, nil))
+		if w.Code != 200 {
+			t.Fatalf("search %s %d %s", raw, w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	xBody := search("/api/kg/search?q=MA-WALNUT&session_id=" + sx.ID)
+	if !strings.Contains(xBody, ownX.ID) || strings.Contains(xBody, ownY.ID) {
+		t.Fatalf("X search %s", xBody)
+	}
+	webBody := search("/api/kg/search?q=MA-WALNUT")
+	if !strings.Contains(webBody, ownX.ID) || !strings.Contains(webBody, ownY.ID) {
+		t.Fatalf("web search %s", webBody)
+	}
+	sharedBody := search("/api/kg/search?q=Kho+Minh+An&session_id=" + sy.ID)
+	if !strings.Contains(sharedBody, shared.ID) {
+		t.Fatalf("shared %s", sharedBody)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/entities/"+ownY.ID+"?session_id="+sx.ID, nil))
+	if w.Code != 404 {
+		t.Fatalf("X expand Y %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/entities/"+ownX.ID+"?session_id="+sx.ID, nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), shared.ID) {
+		t.Fatalf("X expand neighbours %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph?agent_id="+ag.ID+"&session_id="+sx.ID, nil))
+	if w.Code != 200 || strings.Contains(w.Body.String(), ownY.ID) || !strings.Contains(w.Body.String(), shared.ID) {
+		t.Fatalf("X graph %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/kg/graph?agent_id="+ag.ID, nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), ownY.ID) {
+		t.Fatalf("web graph %d %s", w.Code, w.Body.String())
 	}
 }
 
