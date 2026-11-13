@@ -36,10 +36,13 @@ func (s *Store) CreateCronJob(j CronJob) (*CronJob, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[j.SessionID]; !ok {
+	sess, ok := s.sessions[j.SessionID]
+	if !ok || sess == nil {
 		return nil, errors.New("session not found")
 	}
-	if len(s.cronJobs) >= CronJobCap {
+	// Session tenant wins. A caller-supplied TenantID is not stored.
+	j.TenantID = NormalizeTenant(sess.TenantID)
+	if s.cronCountTenantLocked(j.TenantID) >= CronJobCap {
 		return nil, ErrCronCap
 	}
 	j.ID = s.nextID()
@@ -50,6 +53,24 @@ func (s *Store) CreateCronJob(j CronJob) (*CronJob, error) {
 	return cloneCronJob(&cp), nil
 }
 
+func (s *Store) cronCountTenantLocked(tid string) int {
+	n := 0
+	for _, j := range s.cronJobs {
+		if j != nil && SameTenant(j.TenantID, tid) {
+			n++
+		}
+	}
+	return n
+}
+
+func (s *Store) deleteSessionCronLocked(sessionID string) {
+	for id, j := range s.cronJobs {
+		if j != nil && j.SessionID == sessionID {
+			delete(s.cronJobs, id)
+		}
+	}
+}
+
 func (s *Store) ListCronJobs() []*CronJob {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -58,6 +79,18 @@ func (s *Store) ListCronJobs() []*CronJob {
 		out = append(out, cloneCronJob(v))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// ListCronJobsTenant is the HTTP listing. ListCronJobs stays global for cron.Tick.
+func (s *Store) ListCronJobsTenant(tid string) []*CronJob {
+	all := s.ListCronJobs()
+	out := make([]*CronJob, 0)
+	for _, j := range all {
+		if j != nil && SameTenant(j.TenantID, tid) {
+			out = append(out, j)
+		}
+	}
 	return out
 }
 

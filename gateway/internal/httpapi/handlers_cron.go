@@ -30,7 +30,7 @@ func handleListCron(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		list := []*store.CronJob{}
 		if st != nil {
-			if got := st.ListCronJobs(); got != nil {
+			if got := st.ListCronJobsTenant(requestTenant(r)); got != nil {
 				list = got
 			}
 		}
@@ -48,6 +48,7 @@ func handleCreateCron(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, "store required")
 			return
 		}
+		// tenant_id is not a field. encoding/json drops it. The session row is the source.
 		var body struct {
 			Spec      string `json:"spec"`
 			SessionID string `json:"session_id"`
@@ -58,8 +59,20 @@ func handleCreateCron(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
+		if strings.TrimSpace(body.SessionID) == "" {
+			writeErr(w, http.StatusBadRequest, "session_id is required")
+			return
+		}
 		if _, err := cron.ParseSpec(body.Spec); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid spec")
+			return
+		}
+		if _, err := sessionVisible(st, body.SessionID, requestTenant(r)); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "session not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		enabled := true
@@ -74,7 +87,7 @@ func handleCreateCron(st store.StoreIface) http.HandlerFunc {
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrCronCap) {
-				writeErr(w, http.StatusBadRequest, "cron cap: max 20 jobs")
+				writeErr(w, http.StatusBadRequest, "cron cap: max 20 jobs per tenant")
 				return
 			}
 			if strings.Contains(err.Error(), "session not found") {
@@ -110,6 +123,14 @@ func handlePatchCron(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "enabled is required")
 			return
 		}
+		if _, err := cronJobVisible(st, id, requestTenant(r)); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := st.SetCronEnabled(id, *body.Enabled); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -138,6 +159,14 @@ func handleDeleteCron(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
+		if _, err := cronJobVisible(st, id, requestTenant(r)); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		if err := st.DeleteCronJob(id); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -156,6 +185,7 @@ func publicCron(j *store.CronJob) map[string]any {
 	}
 	out := map[string]any{
 		"id":         j.ID,
+		"tenant_id":  store.NormalizeTenant(j.TenantID),
 		"spec":       j.Spec,
 		"session_id": j.SessionID,
 		"message":    j.Message,
@@ -168,6 +198,22 @@ func publicCron(j *store.CronJob) map[string]any {
 		out["last_error"] = redactConnectorError(errMsg, "")
 	}
 	return out
+}
+
+// cronJobVisible is the PATCH/DELETE gate. The job tenant and the session
+// tenant must both match the request. A cross-tenant id is ErrNotFound (404).
+func cronJobVisible(st store.StoreIface, id, tid string) (*store.CronJob, error) {
+	job, err := st.GetCronJob(id)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil || !store.SameTenant(job.TenantID, tid) {
+		return nil, store.ErrNotFound
+	}
+	if _, err := sessionVisible(st, job.SessionID, tid); err != nil {
+		return nil, store.ErrNotFound
+	}
+	return job, nil
 }
 
 // FireSessionChat is the POST /api/chat equivalent used by the in-process ticker.
