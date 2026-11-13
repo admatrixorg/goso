@@ -24,7 +24,9 @@ go run ./gateway/cmd/goso-cron-channel-import \
 - Rows whose `tenant_id` is `other-co` are not written when `--source-tenant` is `minh-an`.
 - The fixture secret string is absent from the report, the log, and the SQLite file.
 
-Code under the browser check: `151a150f2009331f02738943a89013dcf1476f43`. The log is [qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log](../177/qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+Code under the browser check after merging `origin/main`: `f937fdaa412307cb25acf779e7460ae9a3396739`. The log is [qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log](../177/qa-tabs-f937fdaa412307cb25acf779e7460ae9a3396739.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. `go test -count=1 ./...` and `go test -race` on `gateway/internal/scheduleimport` and `gateway/internal/store` exited 0 on that commit.
+
+An earlier check of `151a150f2009331f02738943a89013dcf1476f43` is [qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log](../177/qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log).
 
 An earlier check of `4bfc382ba3dfb4d31a45a11c279d2a0a15043c21` is [qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log](../177/qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log).
 
