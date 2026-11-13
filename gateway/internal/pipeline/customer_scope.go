@@ -11,7 +11,8 @@ import (
 // toolScope is the memory/session visibility of the session that called a
 // memory_* or sessions_* tool. Web/API callers (and calls with no session)
 // see the whole tenant, as before. Channel callers see only sessions and notes
-// of their own agent + customer key, plus curated (non-extracted) KG entities.
+// of their own agent + customer key, plus curated KG entities that are shared
+// (customer_key ”) or stamped with that same key.
 type toolScope struct {
 	channel  bool
 	agentID  string
@@ -28,6 +29,14 @@ func scopeForCaller(st store.StoreIface, callerSessionID string) toolScope {
 		return toolScope{}
 	}
 	return toolScope{channel: true, agentID: sess.AgentID, customer: CustomerKey(sess)}
+}
+
+// kgRead is the store filter for this caller. Web stays unscoped.
+func (sc toolScope) kgRead() store.KGScope {
+	if !sc.channel {
+		return store.KGScope{}
+	}
+	return store.KGScope{Scoped: true, CustomerKey: sc.customer}
 }
 
 // sessionVisible reports whether a channel caller may read session sess.
@@ -50,7 +59,7 @@ func (sc toolScope) hitVisible(st store.StoreIface, h store.KGSearchHit) bool {
 		return false
 	}
 	if h.Tier == store.TierL2 {
-		e, err := st.GetKGEntity(h.ID)
+		e, err := st.GetKGEntity(h.ID, sc.kgRead())
 		return err == nil && e != nil && e.Source != store.KGSourceExtracted
 	}
 	sess, err := st.GetSession(h.SessionID)
