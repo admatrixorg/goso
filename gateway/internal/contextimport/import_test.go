@@ -589,6 +589,72 @@ func TestEditedImportIsNotOverwritten(t *testing.T) {
 			if err != nil || got.Body != "hand edit" {
 				t.Fatalf("edit lost %+v %v", got, err)
 			}
+			rolled, err := Rollback(st, destTenant, testDeny(t), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rolled.Kept != 1 || rolled.Deleted != 0 {
+				t.Fatalf("rollback %+v", rolled)
+			}
+			got, err = st.GetContextFile(destTenant, store.ContextScopeAgent, ag.ID, "AGENTS.md")
+			if err != nil || got.Body != "hand edit" {
+				t.Fatalf("edit lost after rollback %+v %v", got, err)
+			}
+		})
+	}
+}
+
+func TestRollbackKeepsOtherTenant(t *testing.T) {
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st := open(t)
+			sales, err := st.CreateAgent(store.Agent{
+				AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			legal, err := st.CreateAgent(store.Agent{
+				AgentKey: "tu-van-legal", DisplayName: "Pháp chế Minh An", TenantID: otherDest,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			deny := testDeny(t)
+			salesEx := &Export{Agents: []AgentFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "sales body"},
+			}}
+			legalEx := &Export{Agents: []AgentFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-legal", FileName: "AGENTS.md", Content: "legal body"},
+			}}
+			if _, err := Import(st, salesEx, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true, DenyFile: deny}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Import(st, legalEx, Options{SourceTenant: sourceTenant, DestTenant: otherDest, Apply: true, DenyFile: deny}); err != nil {
+				t.Fatal(err)
+			}
+			salesFile, err := st.GetContextFile(destTenant, store.ContextScopeAgent, sales.ID, "AGENTS.md")
+			if err != nil || salesFile.Body != "sales body" {
+				t.Fatalf("sales import %+v %v", salesFile, err)
+			}
+			legalFile, err := st.GetContextFile(otherDest, store.ContextScopeAgent, legal.ID, "AGENTS.md")
+			if err != nil || legalFile.Body != "legal body" {
+				t.Fatalf("legal import %+v %v", legalFile, err)
+			}
+			rolled, err := Rollback(st, destTenant, deny, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rolled.Deleted != 1 || rolled.Kept != 0 {
+				t.Fatalf("rollback %+v", rolled)
+			}
+			if _, err := st.GetContextFile(destTenant, store.ContextScopeAgent, sales.ID, "AGENTS.md"); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("sales file remained: %v", err)
+			}
+			kept, err := st.GetContextFile(otherDest, store.ContextScopeAgent, legal.ID, "AGENTS.md")
+			if err != nil || kept.ID != legalFile.ID || kept.Body != "legal body" || kept.TenantID != otherDest {
+				t.Fatalf("other tenant changed %+v %v", kept, err)
+			}
 		})
 	}
 }
