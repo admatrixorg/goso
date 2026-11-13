@@ -1,0 +1,9 @@
+# go test -race
+# SHA ef51fba81b219123a887df5380b489cf88f16030
+# date 2026-11-12
+# command: go test -race ./gateway/internal/contactsimport ./gateway/cmd/goso-contacts-import -count=1 -timeout 180s
+# env names: GOSO_TEST_POSTGRES_DSN (set, value not recorded). Postgres 16.15 local.
+# git status --porcelain was empty. exit 0
+
+ok  	github.com/mqglobal/goso/gateway/internal/contactsimport	11.993s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-contacts-import	2.612s

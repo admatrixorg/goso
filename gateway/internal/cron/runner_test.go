@@ -109,6 +109,51 @@ func TestLoop_StopsOnCancel(t *testing.T) {
 	}
 }
 
+func TestTick_MultiTenantJobsFire(t *testing.T) {
+	st := store.New()
+	sales := cronMinhAnSession(t, st, "minh-an-sales", "co-van-sales")
+	home := cronMinhAnSession(t, st, "default", "co-van-home")
+	for _, sess := range []*store.Session{sales, home} {
+		if _, err := st.CreateCronJob(store.CronJob{
+			Spec: "every:1m", SessionID: sess.ID, Message: "nhắc lịch tư vấn", Enabled: true,
+			TenantID: "default",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(st.ListCronJobs()) != 2 {
+		t.Fatal("ticker source must stay global")
+	}
+	if len(st.ListCronJobsTenant("minh-an-sales")) != 1 || len(st.ListCronJobsTenant("default")) != 1 {
+		t.Fatal("tenant list leaked or dropped a job")
+	}
+	got := map[string]int{}
+	now := time.Now().UTC().Add(time.Hour).Truncate(time.Minute)
+	Tick(context.Background(), st, now, func(_ context.Context, sid, msg string) error {
+		if msg != "nhắc lịch tư vấn" {
+			t.Fatalf("message %q", msg)
+		}
+		got[sid]++
+		return nil
+	})
+	if got[sales.ID] != 1 || got[home.ID] != 1 {
+		t.Fatalf("fires %#v", got)
+	}
+}
+
+func cronMinhAnSession(t *testing.T, st *store.Store, tenant, key string) *store.Session {
+	t.Helper()
+	ag, err := st.CreateAgent(store.Agent{AgentKey: key, DisplayName: "Cố vấn Minh An", TenantID: tenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession(store.Session{AgentID: ag.ID, TenantID: tenant, Label: "tư vấn"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sess
+}
+
 func TestTick_DisabledSkipped(t *testing.T) {
 	st := store.New()
 	a, _ := st.CreateAgent(store.Agent{AgentKey: "d", DisplayName: "D"})

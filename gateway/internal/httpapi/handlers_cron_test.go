@@ -184,7 +184,7 @@ func TestCron_Cap20(t *testing.T) {
 		`{"spec":"every:1h","session_id":"`+sess.ID+`","message":"m"}`))
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(w, req)
-	if w.Code != 400 {
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "cron cap: max 20 jobs per tenant") {
 		t.Fatalf("cap %d %s", w.Code, w.Body.String())
 	}
 }
