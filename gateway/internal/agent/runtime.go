@@ -18,6 +18,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/security"
+	"github.com/mqglobal/goso/gateway/internal/skill"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
 )
@@ -293,6 +294,15 @@ func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args m
 	enabled := false
 	if rt.Store != nil {
 		enabled = rt.Store.GetToolFlag(tool)
+	}
+	if (tool == builtin.ToolUseSkill || tool == builtin.ToolSkillSearch) && !skill.HasTenant(ctx) {
+		tid := store.DefaultTenant
+		if rt.Store != nil && callMetaFrom(ctx).AgentID != "" {
+			if ag, err := rt.Store.GetAgent(callMetaFrom(ctx).AgentID); err == nil && ag != nil {
+				tid = store.NormalizeTenant(ag.TenantID)
+			}
+		}
+		ctx = skill.WithTenant(ctx, tid)
 	}
 	res, err := builtin.Invoke(ctx, tool, args, enabled)
 	lat := time.Since(start)
@@ -627,6 +637,15 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		}
 		out.Trace.Status = "ok"
 		return out, nil
+	}
+	if pipeline.IsSkillTool(call.Name) {
+		tid := store.DefaultTenant
+		if a.rt.Store != nil && agentID != "" {
+			if ag, err := a.rt.Store.GetAgent(agentID); err == nil && ag != nil {
+				tid = store.NormalizeTenant(ag.TenantID)
+			}
+		}
+		ctx = skill.WithTenant(ctx, tid)
 	}
 	conn, tool := pipeline.ResolveCall(call)
 	ctx = WithCallMeta(ctx, agentID, "", "agent:"+agentID)

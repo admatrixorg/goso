@@ -65,7 +65,7 @@ func (s *Service) Catalog(tenantID string) Catalog {
 		})
 	}
 	out.SkillsConfigured = skill.Configured()
-	if list, err := skill.List(); err == nil {
+	if list, err := skill.List(tenantID); err == nil {
 		for _, info := range list {
 			out.Skills = append(out.Skills, CatalogSkill{Name: info.Name, Path: info.Path})
 		}
@@ -189,7 +189,7 @@ func (s *Service) Export(tenantID string, sel Selection) (*Job, error) {
 			j.Report.Failed = append(j.Report.Failed, ReportItem{Kind: "skill", Name: "*", Detail: "not_configured"})
 		} else {
 			for name := range wantSkills {
-				doc, err := skill.Load(name)
+				doc, err := skill.Load(tenantID, name)
 				if err != nil {
 					j.Report.Failed = append(j.Report.Failed, ReportItem{Kind: "skill", Name: name, Detail: err.Error()})
 					continue
@@ -334,7 +334,7 @@ func (s *Service) findConflicts(tenantID string, a *Archive) []ConflictItem {
 	var out []ConflictItem
 	agents := s.agentsByKey(tenantID)
 	teams := s.teamsByName(tenantID)
-	skills := s.skillSet()
+	skills := s.skillSet(tenantID)
 	mcp := s.mcpSet()
 	for _, ag := range a.Agents {
 		if cur, ok := agents[ag.AgentKey]; ok {
@@ -390,7 +390,7 @@ func (s *Service) Import(tenantID string, raw []byte, conflict string, dryRun bo
 		s.remember(j)
 		return PublicJob(j), errors.New("store unavailable")
 	}
-	plan := &rollbackPlan{}
+	plan := &rollbackPlan{SkillTenant: tenantID}
 	keyToID := s.agentKeyIDs(tenantID)
 
 	s.importAgents(tenantID, j, a, norm, dryRun, plan, keyToID)
@@ -399,7 +399,7 @@ func (s *Service) Import(tenantID string, raw []byte, conflict string, dryRun bo
 	s.importTeams(tenantID, j, a, norm, dryRun, plan, keyToID)
 	markStep(j, "teams", StatusDone, "")
 	j.Progress = 50
-	s.importSkills(j, a, norm, dryRun, plan)
+	s.importSkills(tenantID, j, a, norm, dryRun, plan)
 	markStep(j, "skills", StatusDone, "")
 	j.Progress = 75
 	s.importMCP(j, a, norm, dryRun, plan)
@@ -613,7 +613,7 @@ func (s *Service) syncMembers(teamID string, members []MemberItem, keyToID map[s
 	}
 }
 
-func (s *Service) importSkills(j *Job, a *Archive, conflict string, dryRun bool, plan *rollbackPlan) {
+func (s *Service) importSkills(tenantID string, j *Job, a *Archive, conflict string, dryRun bool, plan *rollbackPlan) {
 	if len(a.Skills) == 0 {
 		return
 	}
@@ -623,7 +623,8 @@ func (s *Service) importSkills(j *Job, a *Archive, conflict string, dryRun bool,
 		}
 		return
 	}
-	have := s.skillSet()
+	tenantID = store.NormalizeTenant(tenantID)
+	have := s.skillSet(tenantID)
 	for _, item := range a.Skills {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
@@ -658,11 +659,11 @@ func (s *Service) importSkills(j *Job, a *Archive, conflict string, dryRun bool,
 			continue
 		}
 		if action == "overwrite" {
-			if doc, err := skill.Load(name); err == nil {
-				plan.PrevSkills = append(plan.PrevSkills, SkillItem{Name: doc.Name, Body: doc.Body})
+			if doc, err := skill.Load(tenantID, name); err == nil {
+				plan.PrevSkills = append(plan.PrevSkills, skillSnap{Name: doc.Name, Body: doc.Body, Owned: skill.TenantOwned(tenantID, doc.Path)})
 			}
 		}
-		if _, err := skill.Create(final, item.Body); err != nil {
+		if _, err := skill.Create(tenantID, final, item.Body); err != nil {
 			j.Report.Failed = append(j.Report.Failed, ReportItem{Kind: "skill", Name: final, Detail: err.Error()})
 			continue
 		}
@@ -821,7 +822,7 @@ func (s *Service) Rollback(id string) (*Job, error) {
 		ignoreMissing("agent", aid, s.st.DeleteAgent(aid))
 	}
 	for _, name := range plan.CreatedSkills {
-		ignoreMissing("skill", name, skill.Delete(name))
+		ignoreMissing("skill", name, skill.Delete(plan.SkillTenant, name))
 	}
 	for _, name := range plan.CreatedMCP {
 		off := false
@@ -854,7 +855,12 @@ func (s *Service) Rollback(id string) (*Job, error) {
 		note("team", prev.ID, err)
 	}
 	for _, prev := range plan.PrevSkills {
-		_, err := skill.Create(prev.Name, prev.Body)
+		var err error
+		if prev.Owned || store.NormalizeTenant(plan.SkillTenant) == store.DefaultTenant {
+			_, err = skill.Create(plan.SkillTenant, prev.Name, prev.Body)
+		} else {
+			err = skill.Delete(plan.SkillTenant, prev.Name)
+		}
 		note("skill", prev.Name, err)
 	}
 	for _, prev := range plan.PrevMCP {
@@ -942,9 +948,9 @@ func (s *Service) teamsByName(tenantID string) map[string]*store.Team {
 	return out
 }
 
-func (s *Service) skillSet() map[string]bool {
+func (s *Service) skillSet(tenantID string) map[string]bool {
 	out := map[string]bool{}
-	list, err := skill.List()
+	list, err := skill.List(tenantID)
 	if err != nil {
 		return out
 	}

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 // BM25 parameters (k1=1.2, b=0.75, top 5).
@@ -36,34 +38,56 @@ type bm25Doc struct {
 }
 
 type bm25Index struct {
-	root  string
-	stamp int64
-	count int
-	n     int
-	avgDL float64
-	df    map[string]int
-	docs  []bm25Doc
+	root   string
+	tenant string
+	stamp  int64
+	count  int
+	n      int
+	avgDL  float64
+	df     map[string]int
+	docs   []bm25Doc
 }
 
 var (
 	idxMu   sync.Mutex
-	liveIdx bm25Index
+	indexes = map[string]bm25Index{}
 )
 
-func invalidateIndex() {
-	idxMu.Lock()
-	liveIdx.stamp = -1
-	idxMu.Unlock()
+func indexKey(root, tenant string) string {
+	return root + "\x00" + tenant
 }
 
-// Search ranks skills by BM25 over name + description + body. Max SearchLimit.
-// Empty env → ErrNotConfigured and no walk. Empty/1-char-only query → no hits.
-func Search(query string) ([]Hit, error) {
+// invalidateIndex drops one tenant corpus. A default-tenant change rewrites
+// the shared root, so every tenant corpus is dropped. No argument clears the map.
+func invalidateIndex(tenant ...string) {
+	idxMu.Lock()
+	defer idxMu.Unlock()
+	if len(tenant) == 0 {
+		indexes = map[string]bm25Index{}
+		return
+	}
+	t, err := checkedTenant(tenant[0])
+	if err != nil || t == store.DefaultTenant {
+		indexes = map[string]bm25Index{}
+		return
+	}
+	suffix := "\x00" + t
+	for k := range indexes {
+		if strings.HasSuffix(k, suffix) {
+			delete(indexes, k)
+		}
+	}
+}
+
+// Search ranks the tenant's visible skills by BM25 over name + description + body.
+// Each tenant has its own index. Empty env → ErrNotConfigured and no walk.
+// Empty/1-char-only query → no hits.
+func Search(tenant, query string) ([]Hit, error) {
 	if !Configured() {
 		return nil, ErrNotConfigured
 	}
 	terms := tokenize(query)
-	idx, err := ensureIndex()
+	idx, err := ensureIndex(tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -125,50 +149,62 @@ func Search(query string) ([]Hit, error) {
 	return out, nil
 }
 
-func ensureIndex() (bm25Index, error) {
+func ensureIndex(tenant string) (bm25Index, error) {
 	root, err := resolveRoot()
 	if err != nil {
 		return bm25Index{}, err
 	}
-	stamp, count, err := dirStamp(root)
+	tenant, err = checkedTenant(tenant)
 	if err != nil {
 		return bm25Index{}, err
 	}
+	stamp, count, err := dirStamp(tenant)
+	if err != nil {
+		return bm25Index{}, err
+	}
+	key := indexKey(root, tenant)
 	idxMu.Lock()
-	if liveIdx.root == root && liveIdx.stamp == stamp && liveIdx.count == count && liveIdx.stamp >= 0 {
-		cur := liveIdx
+	if cur, ok := indexes[key]; ok && cur.root == root && cur.tenant == tenant && cur.stamp == stamp && cur.count == count && cur.stamp >= 0 {
 		idxMu.Unlock()
 		return cur, nil
 	}
 	idxMu.Unlock()
 
-	built, err := buildIndex()
+	built, err := buildIndex(tenant)
 	if err != nil {
 		return bm25Index{}, err
 	}
-	stamp2, count2, err := dirStamp(root)
+	stamp2, count2, err := dirStamp(tenant)
 	if err != nil {
 		return bm25Index{}, err
 	}
 	if stamp2 != stamp || count2 != count {
-		built, err = buildIndex()
+		built, err = buildIndex(tenant)
 		if err != nil {
 			return bm25Index{}, err
 		}
 		stamp, count = stamp2, count2
 	}
 	built.root = root
+	built.tenant = tenant
 	built.stamp = stamp
 	built.count = count
 
 	idxMu.Lock()
-	liveIdx = built
+	if indexes == nil {
+		indexes = map[string]bm25Index{}
+	}
+	indexes[key] = built
 	idxMu.Unlock()
 	return built, nil
 }
 
-func dirStamp(root string) (stamp int64, count int, err error) {
-	list, err := List()
+func dirStamp(tenant string) (stamp int64, count int, err error) {
+	root, err := resolveRoot()
+	if err != nil {
+		return 0, 0, err
+	}
+	list, err := List(tenant)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -186,8 +222,8 @@ func dirStamp(root string) (stamp int64, count int, err error) {
 	return max, len(list), nil
 }
 
-func buildIndex() (bm25Index, error) {
-	list, err := List()
+func buildIndex(tenant string) (bm25Index, error) {
+	list, err := List(tenant)
 	if err != nil {
 		return bm25Index{}, err
 	}
@@ -195,7 +231,7 @@ func buildIndex() (bm25Index, error) {
 	df := map[string]int{}
 	var totalLen int
 	for _, info := range list {
-		doc, err := Load(info.Name)
+		doc, err := Load(tenant, info.Name)
 		if err != nil {
 			continue
 		}

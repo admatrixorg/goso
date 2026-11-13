@@ -17,25 +17,25 @@ func TestList_EmptyEnvFailClosed(t *testing.T) {
 	if Configured() {
 		t.Fatal("empty env is not configured")
 	}
-	list, err := List()
+	list, err := List("")
 	if !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("list %v %v", list, err)
 	}
 	if list != nil {
 		t.Fatalf("must not walk: %+v", list)
 	}
-	doc, err := Load("demo")
+	doc, err := Load("", "demo")
 	if !errors.Is(err, ErrNotConfigured) || doc != nil {
 		t.Fatalf("load %v %v", doc, err)
 	}
-	hits, err := Search("invoice")
+	hits, err := Search("", "invoice")
 	if !errors.Is(err, ErrNotConfigured) || hits != nil {
 		t.Fatalf("search %v %v", hits, err)
 	}
-	if _, err := Create("demo", "body"); !errors.Is(err, ErrNotConfigured) {
+	if _, err := Create("", "demo", "body"); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("create %v", err)
 	}
-	if err := Delete("demo"); !errors.Is(err, ErrNotConfigured) {
+	if err := Delete("", "demo"); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("delete %v", err)
 	}
 }
@@ -61,14 +61,14 @@ func TestLoad_TempDirOneSkill(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 
-	list, err := List()
+	list, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(list) != 1 || list[0].Name != "demo" || list[0].Path != "demo/SKILL.md" {
 		t.Fatalf("list %+v", list)
 	}
-	doc, err := Load("demo")
+	doc, err := Load("", "demo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +92,14 @@ func TestLoad_PathEscapeRejected(t *testing.T) {
 	t.Setenv("GOSO_WORKSPACE", "")
 
 	for _, name := range []string{"../ok", "..", "/etc", "ok/../ok", "ok/nested", `ok\x`, ".", ""} {
-		if _, err := Load(name); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrNotFound) {
+		if _, err := Load("", name); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrNotFound) {
 			t.Fatalf("%q err %v", name, err)
 		}
 	}
-	if _, err := Load("../ok"); !errors.Is(err, ErrPathEscape) {
+	if _, err := Load("", "../ok"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("dotdot %v", err)
 	}
-	if _, err := Load("/etc"); !errors.Is(err, ErrPathEscape) {
+	if _, err := Load("", "/etc"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("abs %v", err)
 	}
 }
@@ -128,14 +128,14 @@ func TestList_SymlinkEscapeSkipped(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 
-	list, err := List()
+	list, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(list) != 1 || list[0].Name != "ok" {
 		t.Fatalf("symlink escape listed %+v", list)
 	}
-	if _, err := Load("escape"); !errors.Is(err, ErrPathEscape) {
+	if _, err := Load("", "escape"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("load symlink %v", err)
 	}
 }
@@ -151,10 +151,10 @@ func TestLoad_WorkspaceJail(t *testing.T) {
 	}
 	t.Setenv("GOSO_WORKSPACE", ws)
 	t.Setenv("GOSO_SKILLS_DIR", other)
-	if _, err := List(); !errors.Is(err, ErrPathEscape) {
+	if _, err := List(""); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("list outside workspace %v", err)
 	}
-	if _, err := Load("x"); !errors.Is(err, ErrPathEscape) {
+	if _, err := Load("", "x"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("load outside workspace %v", err)
 	}
 
@@ -166,7 +166,7 @@ func TestLoad_WorkspaceJail(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GOSO_SKILLS_DIR", inside)
-	doc, err := Load("in")
+	doc, err := Load("", "in")
 	if err != nil || doc.Body != "yes" {
 		t.Fatalf("%v %+v", err, doc)
 	}
@@ -184,7 +184,7 @@ func TestLoad_Cap64KiB(t *testing.T) {
 	}
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
-	doc, err := Load("big")
+	doc, err := Load("", "big")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestLoad_Missing(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
-	if _, err := Load("nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := Load("", "nope"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing %v", err)
 	}
 }
@@ -221,7 +221,7 @@ func TestSearch_RanksRelevantFirst(t *testing.T) {
 	t.Setenv("GOSO_WORKSPACE", "")
 	invalidateIndex()
 
-	hits, err := Search("invoices billing")
+	hits, err := Search("", "invoices billing")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestSearch_RanksRelevantFirst(t *testing.T) {
 	if hits[0].Snippet == "" {
 		t.Fatal("snippet")
 	}
-	unrel, err := Search("xylophoneuniquezzz")
+	unrel, err := Search("", "xylophoneuniquezzz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestSearch_RebuildOnNewerMtime(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 	invalidateIndex()
-	hits, err := Search("hello")
+	hits, err := Search("", "hello")
 	if err != nil || len(hits) != 1 || hits[0].Name != "alpha" {
 		t.Fatalf("first %v %+v", err, hits)
 	}
@@ -259,11 +259,11 @@ func TestSearch_RebuildOnNewerMtime(t *testing.T) {
 	if err := os.Chtimes(p, st.ModTime().Add(2*time.Second), st.ModTime().Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	hits, err = Search("xylophoneunique")
+	hits, err = Search("", "xylophoneunique")
 	if err != nil || len(hits) != 1 || hits[0].Name != "alpha" {
 		t.Fatalf("inplace rebuild %v %+v", err, hits)
 	}
-	hits, err = Search("hello")
+	hits, err = Search("", "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,14 +281,14 @@ func TestSearch_MaxFiveAndDropOneChar(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 	invalidateIndex()
-	hits, err := Search("sharedtoken")
+	hits, err := Search("", "sharedtoken")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(hits) != SearchLimit {
 		t.Fatalf("cap %d %+v", len(hits), hits)
 	}
-	one, err := Search("a")
+	one, err := Search("", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,24 +301,24 @@ func TestCreateDelete_TempDir(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
-	doc, err := Create("ledger", "---\ndescription: ledger entries\n---\n# Ledger\n")
+	doc, err := Create("", "ledger", "---\ndescription: ledger entries\n---\n# Ledger\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.Name != "ledger" || doc.Path != "ledger/SKILL.md" {
 		t.Fatalf("doc %+v", doc)
 	}
-	hits, err := Search("ledger")
+	hits, err := Search("", "ledger")
 	if err != nil || len(hits) == 0 || hits[0].Name != "ledger" {
 		t.Fatalf("search after create %v %+v", err, hits)
 	}
-	if err := Delete("ledger"); err != nil {
+	if err := Delete("", "ledger"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load("ledger"); !errors.Is(err, ErrNotFound) {
+	if _, err := Load("", "ledger"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("load after delete %v", err)
 	}
-	hits, err = Search("ledger")
+	hits, err = Search("", "ledger")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,11 +332,11 @@ func TestCreate_RejectsJailAndSize(t *testing.T) {
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
 	for _, name := range []string{"../x", "Bad", "has space", strings.Repeat("a", 65), ""} {
-		if _, err := Create(name, "body"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrInvalidName) {
+		if _, err := Create("", name, "body"); !errors.Is(err, ErrPathEscape) && !errors.Is(err, ErrInvalidName) {
 			t.Fatalf("%q err %v", name, err)
 		}
 	}
-	if _, err := Create("ok", strings.Repeat("a", MaxBody+1)); !errors.Is(err, ErrTooLarge) {
+	if _, err := Create("", "ok", strings.Repeat("a", MaxBody+1)); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("size %v", err)
 	}
 }
@@ -357,7 +357,7 @@ func TestCreate_SymlinkFileRejected(t *testing.T) {
 	}
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
-	if _, err := Create("escape", "pwn"); !errors.Is(err, ErrPathEscape) {
+	if _, err := Create("", "escape", "pwn"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("symlink write %v", err)
 	}
 	got, err := os.ReadFile(secret)
@@ -371,10 +371,10 @@ func TestDelete_PathJail(t *testing.T) {
 	writeSkill(t, root, "ok", "in")
 	t.Setenv("GOSO_SKILLS_DIR", root)
 	t.Setenv("GOSO_WORKSPACE", "")
-	if err := Delete("../ok"); !errors.Is(err, ErrPathEscape) {
+	if err := Delete("", "../ok"); !errors.Is(err, ErrPathEscape) {
 		t.Fatalf("dotdot %v", err)
 	}
-	if err := Delete("missing"); !errors.Is(err, ErrNotFound) {
+	if err := Delete("", "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing %v", err)
 	}
 }

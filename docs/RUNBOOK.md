@@ -18,7 +18,7 @@ export GOSO_VAULT_DIR=data/vault
 # Optional local Postgres (compose profile; host 5433). Unset = SQLite.
 # docker compose --profile postgres up -d postgres
 # export GOSO_DATABASE_URL='postgres://goso:goso@127.0.0.1:5433/goso?sslmode=disable'
-# export GOSO_SKILLS_DIR=data/skills   # empty = use_skill / skill_search / manage fail-closed
+# export GOSO_SKILLS_DIR=data/skills   # empty = use_skill / skill_search / manage fail-closed. Shared <dir>/<name>/; other tenants <dir>/t/<tenant>/.
 export GOSO_ENV=production
 export GOSO_RATE_LIMIT=60
 go run ./gateway/cmd/goso-gateway gateway --port 8080 --host 127.0.0.1

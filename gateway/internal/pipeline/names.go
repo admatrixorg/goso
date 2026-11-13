@@ -82,6 +82,16 @@ func IsSessionTool(name string) bool {
 	}
 }
 
+// IsSkillTool reports use_skill / skill_search, including the advertised builtin__ form.
+func IsSkillTool(name string) bool {
+	switch advertisedBase(name) {
+	case "use_skill", "skill_search":
+		return true
+	default:
+		return false
+	}
+}
+
 // ResolveCall maps a ToolCall to connector + tool names for Runtime.CallTool.
 func ResolveCall(call llm.ToolCall) (connector, tool string) {
 	if c, t, ok := SplitAdvertised(call.Name); ok {

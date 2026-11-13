@@ -88,6 +88,18 @@ func TestIsMemoryTool(t *testing.T) {
 	}
 }
 
+func TestIsSkillTool(t *testing.T) {
+	if !IsSkillTool("use_skill") || !IsSkillTool("skill_search") {
+		t.Fatal("expected skill tool names")
+	}
+	if !IsSkillTool("builtin__use_skill") || !IsSkillTool("builtin__skill_search") {
+		t.Fatal("advertised skill tool")
+	}
+	if IsSkillTool("memory_search") || IsSkillTool("read_file") {
+		t.Fatal("non-skill names")
+	}
+}
+
 func TestIsSessionTool(t *testing.T) {
 	if !IsSessionTool("sessions_list") || !IsSessionTool("sessions_history") {
 		t.Fatal("expected session tool names")
