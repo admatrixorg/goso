@@ -62,7 +62,7 @@ A team, member, or link is created only when both ends are agents this import ow
 |---|---|---|
 | `id` | `goclaw_agent_import_map.source_key` | Goso assigns a new `agents.id`. The map stores it. |
 | `tenant_id` | not copied | Selects the export tenant. The stored tenant is `--tenant`. |
-| `agent_key` | `agents.agent_key` | Trimmed, 1–100 runes, no slash or control character. `zalo-personal`, `zalo-oa`, and `telegram` are `reserved-key` and are not written. |
+| `agent_key` | `agents.agent_key` | Trimmed, 1–100 runes, no slash or control character. A key equal to any `channel.Names` entry is `reserved-key` and is not written. |
 | `display_name` | `agents.display_name` | Trimmed, at most 255 runes. |
 | `provider` | `agents.llm_provider` | At most 50 runes. |
 | `model` | `agents.model` | At most 200 runes. |

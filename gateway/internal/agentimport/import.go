@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -886,12 +887,13 @@ func sourceStatus(row rawRow) string {
 }
 
 func reservedAgentKey(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "zalo-personal", "zalo-oa", "telegram":
-		return true
-	default:
-		return false
+	key = strings.TrimSpace(key)
+	for _, name := range channel.Names {
+		if strings.EqualFold(name, key) {
+			return true
+		}
 	}
+	return false
 }
 
 func activeStatus(row rawRow) bool {

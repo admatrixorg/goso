@@ -20,6 +20,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
+	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -1022,7 +1023,10 @@ func TestDenylistBlocksTenantAndBadFiles(t *testing.T) {
 }
 
 func TestReservedChannelKeysWriteNothing(t *testing.T) {
-	for _, key := range []string{"zalo-personal", "zalo-oa", "telegram"} {
+	if len(channel.Names) != 7 {
+		t.Fatalf("channel catalog %v", channel.Names)
+	}
+	for _, key := range channel.Names {
 		t.Run(key, func(t *testing.T) {
 			ex, err := ReadExport(strings.NewReader(oneAgentExport(key, "active")))
 			if err != nil {
