@@ -34,8 +34,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	customerPath := fs.String("customers", "", "customer map JSON (user_id, customer_key) or JSONL")
 	source := fs.String("source-tenant", "", "GoClaw tenant id or slug for this run")
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
-	dry := fs.Bool("dry-run", false, "print counts and create nothing")
-	remove := fs.Bool("remove", false, "delete this tenant's gc-ep memories and gc-sess sessions")
+	dry := fs.Bool("dry-run", false, "print counts and create or delete nothing")
+	apply := fs.Bool("apply", false, "with --remove, delete gc-ep memories and gc-sess sessions; without it, --remove only counts")
+	remove := fs.Bool("remove", false, "count this tenant's gc-ep memories and gc-sess sessions; pass --apply to delete")
 	tenant := fs.String("tenant", "", "goso tenant_id to write, or to remove")
 	denyPath := fs.String("denylist", "", "local denylist file, one tenant id per line (or GOSO_TENANT_DENYLIST)")
 	nowFlag := fs.String("now", "", "expiry clock, RFC3339 (default: current time)")
@@ -44,26 +45,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if *remove {
 		if strings.TrimSpace(*tenant) == "" || strings.TrimSpace(*dbPath) == "" || strings.TrimSpace(*exportPath) != "" {
-			fmt.Fprintln(stderr, "usage: goso-episodic-import --remove --tenant id --db path [--dry-run]")
+			fmt.Fprintln(stderr, "usage: goso-episodic-import --remove --tenant id --denylist file --db path [--apply] [--dry-run]")
 			return 2
 		}
-		return runRemove(stdout, stderr, strings.TrimSpace(*tenant), strings.TrimSpace(*dbPath), *dry)
+		deny, code := loadDeny(stderr, *denyPath)
+		if code != 0 {
+			return code
+		}
+		// --remove counts unless --apply is set. --dry-run keeps it a dry run.
+		return runRemove(stdout, stderr, strings.TrimSpace(*tenant), strings.TrimSpace(*dbPath), !*apply || *dry, deny)
 	}
 	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*tenantPath) == "" || strings.TrimSpace(*agentPath) == "" || strings.TrimSpace(*dbPath) == "" || strings.TrimSpace(*source) == "" || strings.TrimSpace(*tenant) == "" {
 		fmt.Fprintln(stderr, "usage: goso-episodic-import --export file.jsonl --source-tenant id --tenant id --tenants tenants.jsonl --agents agents.jsonl --denylist file --db path [--customers file] [--now RFC3339] [--dry-run]")
 		return 2
 	}
-	denyFile := strings.TrimSpace(*denyPath)
-	if denyFile == "" {
-		denyFile = strings.TrimSpace(os.Getenv("GOSO_TENANT_DENYLIST"))
-	}
-	if denyFile == "" {
-		fmt.Fprintln(stderr, "denylist is missing")
-		return 2
-	}
-	deny, err := readDenylist(denyFile)
-	if err != nil {
-		return fail(stderr, err)
+	deny, code := loadDeny(stderr, *denyPath)
+	if code != 0 {
+		return code
 	}
 	rows, err := readExport(*exportPath)
 	if err != nil {
@@ -115,7 +113,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return writeJSON(stdout, stderr, rep)
 }
 
-func runRemove(stdout, stderr io.Writer, tenant, dbPath string, dry bool) int {
+func loadDeny(stderr io.Writer, flagPath string) (episodicimport.Denylist, int) {
+	denyFile := strings.TrimSpace(flagPath)
+	if denyFile == "" {
+		denyFile = strings.TrimSpace(os.Getenv("GOSO_TENANT_DENYLIST"))
+	}
+	if denyFile == "" {
+		fmt.Fprintln(stderr, "denylist is missing")
+		return episodicimport.Denylist{}, 2
+	}
+	deny, err := readDenylist(denyFile)
+	if err != nil {
+		return episodicimport.Denylist{}, fail(stderr, err)
+	}
+	return deny, 0
+}
+
+func runRemove(stdout, stderr io.Writer, tenant, dbPath string, dry bool, deny episodicimport.Denylist) int {
+	if deny.Hits(tenant) {
+		_ = writeJSON(stdout, stderr, map[string]int{"denied_tenants": deny.DeniedCount(nil, tenant)})
+		return 1
+	}
 	db, closeDB, err := openDB(dbPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())

@@ -210,8 +210,13 @@ func Import(db DB, rows []Parsed, opt Options) (*Report, error) {
 		return sec
 	}
 
+	deniedSeen := map[string]struct{}{}
 	var writes []decision
 	for _, d := range decided {
+		if key, denied := opt.deniedRow(d.source); denied {
+			deniedSeen[key] = struct{}{}
+			continue
+		}
 		sec := touch(d)
 		sec.Read++
 		switch {
@@ -308,7 +313,7 @@ func Import(db DB, rows []Parsed, opt Options) (*Report, error) {
 		}
 	}
 
-	rep := &Report{DryRun: opt.DryRun, Table: tableName, DeniedTenants: 0}
+	rep := &Report{DryRun: opt.DryRun, Table: tableName, DeniedTenants: len(deniedSeen)}
 	sort.Strings(order)
 	for _, source := range order {
 		sec := sections[source]
@@ -324,6 +329,24 @@ func Import(db DB, rows []Parsed, opt Options) (*Report, error) {
 		rep.Tenants = []TenantReport{}
 	}
 	return rep, nil
+}
+
+// deniedRow reports whether this row's tenant id, or any alias or dest on
+// its tenant-map entry, is on the denylist. The key is stable for one tenant
+// so several rows count once. Callers must not copy the id into a report.
+func (opt Options) deniedRow(tenantID string) (string, bool) {
+	cands := []string{tenantID}
+	key := normID(tenantID)
+	if e, ok := opt.Tenants.Lookup(tenantID); ok {
+		cands = append(cands, e.SourceTenant, e.Slug, e.DestTenant)
+		if strings.TrimSpace(e.SourceTenant) != "" {
+			key = normID(e.SourceTenant)
+		}
+	}
+	if key == "" || !opt.Deny.Hits(cands...) {
+		return "", false
+	}
+	return key, true
 }
 
 func classify(db DB, row parsed, opt Options, now time.Time, seen map[string]bool) (decision, error) {

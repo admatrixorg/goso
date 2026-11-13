@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -127,7 +128,7 @@ func TestCLIDryRunThenIdempotent(t *testing.T) {
 	}
 
 	stdout.Reset()
-	rm := []string{"--remove", "--tenant", "minh-an", "--db", dbPath, "--dry-run"}
+	rm := []string{"--remove", "--tenant", "minh-an", "--denylist", denyPath, "--db", dbPath, "--dry-run"}
 	if code := run(rm, &stdout, &stderr); code != 0 {
 		t.Fatalf("remove dry %d %s", code, stderr.String())
 	}
@@ -142,7 +143,7 @@ func TestCLIDryRunThenIdempotent(t *testing.T) {
 	if !removed.DryRun || removed.Memories != 9 || removed.Sessions != 8 {
 		t.Fatalf("remove dry %+v", removed)
 	}
-	if code := run([]string{"--remove", "--tenant", "minh-an", "--db", dbPath}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"--remove", "--tenant", "minh-an", "--denylist", denyPath, "--db", dbPath, "--apply"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("remove %d %s", code, stderr.String())
 	}
 	if code := run([]string{"--db", "postgres://example.com/goso"}, &stdout, &stderr); code != 2 {
@@ -224,4 +225,105 @@ func TestCLIDenylistStops(t *testing.T) {
 			t.Fatalf("denied wrote %d", n)
 		}
 	}
+}
+
+func TestCLIRemoveDenylistAndApply(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "goso.db")
+	st, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "minh-an-cskh", DisplayName: "CSKH"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	if _, err := st.InsertGCSession(store.Session{ID: "gc-sess:remove-minh-an", AgentID: ag.ID, TenantID: "minh-an", CreatedAt: created}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertGCMemory(store.Memory{ID: "gc-ep:remove-minh-an", SessionID: "gc-sess:remove-minh-an", TenantID: "minh-an", Body: "episodic minh an", CreatedAt: created, CustomerKey: "goclaw:user-minh-an"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertGCSession(store.Session{ID: "gc-docsess:remove-minh-an", AgentID: ag.ID, TenantID: "minh-an", CreatedAt: created}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertGCMemory(store.Memory{ID: "gc-doc:remove-minh-an", SessionID: "gc-docsess:remove-minh-an", TenantID: "minh-an", Body: "document minh an", CreatedAt: created, CustomerKey: "goclaw:user-minh-an"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	allow := filepath.Join(dir, "allow.txt")
+	if err := os.WriteFile(allow, []byte("denied-shop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(dir, "blocked.txt")
+	if err := os.WriteFile(blocked, []byte("minh-an\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--remove", "--tenant", "minh-an", "--db", dbPath}, &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), "denylist is missing") {
+		t.Fatalf("missing denylist code=%d stderr=%s", code, stderr.String())
+	}
+	if n := countMem(t, dbPath, "gc-ep:remove-minh-an"); n != 1 {
+		t.Fatalf("missing denylist deleted %d", 1-n)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--remove", "--tenant", "minh-an", "--denylist", blocked, "--db", dbPath, "--apply"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("denied remove code=%d stderr=%s", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "minh-an") || strings.Contains(stderr.String(), "minh-an") {
+		t.Fatalf("denied id leaked stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"denied_tenants": 1`) && !strings.Contains(stdout.String(), `"denied_tenants":1`) {
+		t.Fatalf("stdout %s", stdout.String())
+	}
+	if n := countMem(t, dbPath, "gc-ep:remove-minh-an"); n != 1 {
+		t.Fatal("denied remove deleted a row")
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--remove", "--tenant", "minh-an", "--denylist", allow, "--db", dbPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("dry remove %d %s", code, stderr.String())
+	}
+	var dry struct {
+		DryRun   bool `json:"dry_run"`
+		Memories int  `json:"memories"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &dry); err != nil {
+		t.Fatal(err)
+	}
+	if !dry.DryRun || dry.Memories != 1 {
+		t.Fatalf("dry %+v", dry)
+	}
+	if n := countMem(t, dbPath, "gc-ep:remove-minh-an"); n != 1 {
+		t.Fatal("dry-run deleted")
+	}
+	stdout.Reset()
+	if code := run([]string{"--remove", "--apply", "--tenant", "minh-an", "--denylist", allow, "--db", dbPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("apply %d %s", code, stderr.String())
+	}
+	if n := countMem(t, dbPath, "gc-ep:remove-minh-an"); n != 0 {
+		t.Fatal("apply left the episodic row")
+	}
+	if n := countMem(t, dbPath, "gc-doc:remove-minh-an"); n != 1 {
+		t.Fatal("apply removed the other prefix")
+	}
+}
+
+func countMem(t *testing.T, dbPath, id string) int {
+	t.Helper()
+	st, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	db, _ := st.SQL()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM memories WHERE id=?`, id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

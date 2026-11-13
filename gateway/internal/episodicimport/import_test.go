@@ -622,6 +622,74 @@ func TestDeniedTenantWritesNothing(t *testing.T) {
 	}
 }
 
+func TestReportOmitsDeniedTenantInExport(t *testing.T) {
+	const (
+		blockedID   = "66666666-6666-4666-8666-666666666666"
+		blockedSlug = "blocked-tenant"
+		rowID       = "10000000-0000-4000-8000-0000000000bb"
+	)
+	st, err := store.OpenSQLite(filepath.Join(t.TempDir(), "mixed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	ag := mustAgent(t, st, "minh-an", "minh-an-mixed")
+	agents, err := LoadAgents(strings.NewReader(`{"source_agent":"` + srcAgent1 + `","dest_agent":"` + ag + `","dest_tenant":"minh-an"}` + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenants, err := LoadTenants(strings.NewReader(strings.Join([]string{
+		`{"source_tenant":"` + srcMinh + `","slug":"minh-an","dest_tenant":"minh-an"}`,
+		`{"source_tenant":"` + blockedID + `","slug":"` + blockedSlug + `","dest_tenant":"` + blockedSlug + `"}`,
+		"",
+	}, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deny, err := LoadDenylist(strings.NewReader(blockedSlug + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Join([]string{
+		`{"id":"10000000-0000-4000-8000-0000000000aa","tenant_id":"` + srcMinh + `","agent_id":"` + srcAgent1 + `","user_id":"user-minh-an-01","session_key":"sess-ok","summary":"Bien ban Minh An duoc giu.","created_at":"2026-01-03T00:00:00Z"}`,
+		`{"id":"` + rowID + `","tenant_id":"` + blockedID + `","agent_id":"` + srcAgent1 + `","user_id":"user-blocked-01","session_key":"sess-blocked","summary":"Khong hien tenant bi chan.","created_at":"2026-01-03T00:00:00Z"}`,
+		"",
+	}, "\n")
+	rows, err := ReadExport(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Import(st, rows, Options{
+		Tenants: tenants, Agents: agents, Deny: deny, Now: clock,
+		SourceTenant: srcMinh, DestTenant: "minh-an",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
+	}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, hidden := range []string{blockedSlug, blockedID, "user-blocked-01"} {
+		if strings.Contains(text, hidden) {
+			t.Fatalf("report leaked %s: %s", hidden, text)
+		}
+	}
+	if !strings.Contains(text, "minh-an") {
+		t.Fatalf("allowed tenant missing: %s", text)
+	}
+	if _, err := st.GetMemory(MemoryID(rowID)); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("denied tenant row was written")
+	}
+	if _, err := st.GetMemory(MemoryID("10000000-0000-4000-8000-0000000000aa")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func readFixture(t *testing.T) []Parsed {
 	t.Helper()
 	f, err := os.Open(filepath.Join("testdata", "minh-an-episodic.jsonl"))
