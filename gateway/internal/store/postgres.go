@@ -77,6 +77,17 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_relations ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`)
+	// SPEC 182: add-only customer_key. Existing rows stay '' via the default.
+	// No UPDATE and no DELETE. The (tenant, agent, customer_key) indexes are
+	// NOT created here: they are CREATE INDEX CONCURRENTLY in
+	// docs/qa/182-kg-customer-scope/migration.sql and wait for Dat's approval.
+	// Do not Exec kgCustomerIndexSQL from startup.
+	if _, err := s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("postgres migrate kg_entities.customer_key: %w", err)
+	}
+	if _, err := s.db.db.Exec(`ALTER TABLE kg_relations ADD COLUMN IF NOT EXISTS customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("postgres migrate kg_relations.customer_key: %w", err)
+	}
 	// Every memory query reads customer_key, so this one must not fail silently
 	// (lesson from the SQLite-only columns that took the bridge down).
 	if _, err := s.db.db.Exec(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
@@ -345,7 +356,8 @@ var postgresSchema = []string{
 		valid_until TEXT,
 		created_at TEXT NOT NULL,
 		agent_id TEXT NOT NULL DEFAULT '',
-		provenance TEXT NOT NULL DEFAULT ''
+		provenance TEXT NOT NULL DEFAULT '',
+		customer_key TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`,
@@ -358,7 +370,8 @@ var postgresSchema = []string{
 		body TEXT,
 		valid_from TEXT NOT NULL,
 		valid_until TEXT,
-		provenance TEXT NOT NULL DEFAULT ''
+		provenance TEXT NOT NULL DEFAULT '',
+		customer_key TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,

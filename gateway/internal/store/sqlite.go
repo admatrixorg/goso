@@ -342,7 +342,8 @@ func (s *SQLiteStore) migrate() error {
 			valid_until TEXT,
 			created_at TEXT NOT NULL,
 			agent_id TEXT NOT NULL DEFAULT '',
-			provenance TEXT NOT NULL DEFAULT ''
+			provenance TEXT NOT NULL DEFAULT '',
+			customer_key TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_entities_tenant ON kg_entities(tenant_id)`,
 		`CREATE TABLE IF NOT EXISTS kg_relations (
@@ -354,7 +355,8 @@ func (s *SQLiteStore) migrate() error {
 			body TEXT,
 			valid_from TEXT NOT NULL,
 			valid_until TEXT,
-			provenance TEXT NOT NULL DEFAULT ''
+			provenance TEXT NOT NULL DEFAULT '',
+			customer_key TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_tenant ON kg_relations(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id)`,
@@ -433,6 +435,9 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE kg_entities ADD COLUMN provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE kg_relations ADD COLUMN provenance TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_agent ON kg_entities(agent_id)`)
+	if err := s.migrateKGCustomerKey(); err != nil {
+		return err
+	}
 	_, _ = s.db.Exec(`UPDATE agents SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE sessions SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE memories SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
@@ -1651,6 +1656,36 @@ func (s *SQLiteStore) finishMemoryCustomerKey() error {
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("goso store: backfilled customer_key on %d channel memory notes", n)
+	}
+	return nil
+}
+
+// migrateKGCustomerKey adds customer_key on upgraded SQLite databases.
+// Fresh databases already have the column from CREATE TABLE. The index is
+// created here because SQLite has no CONCURRENTLY. Postgres adds the column
+// in migratePostgres and leaves the index for the documented CONCURRENTLY
+// step. No existing row is updated or deleted; the default is ”.
+func (s *SQLiteStore) migrateKGCustomerKey() error {
+	if s.pg {
+		return fmt.Errorf("postgres kg customer index is not created at startup")
+	}
+	for _, table := range []string{"kg_entities", "kg_relations"} {
+		has, err := s.hasColumn(table, "customer_key")
+		if err != nil {
+			return fmt.Errorf("%s.customer_key check: %w", table, err)
+		}
+		if has {
+			continue
+		}
+		if _, err := s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN customer_key TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("%s.customer_key add: %w", table, err)
+		}
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_entities_customer ON kg_entities(tenant_id, agent_id, customer_key)`); err != nil {
+		return fmt.Errorf("idx_kg_entities_customer: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kg_relations_customer ON kg_relations(tenant_id, customer_key)`); err != nil {
+		return fmt.Errorf("idx_kg_relations_customer: %w", err)
 	}
 	return nil
 }

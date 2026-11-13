@@ -59,11 +59,15 @@ func (s *Store) SupersedeKGRelation(tenant, id string, until time.Time) error {
 }
 
 // supersedeExclusiveLocked closes every current relation with the same
-// (tenant, from_id, rel) but a different to_id. Caller holds s.mu.
+// (tenant, from_id, rel, customer_key) but a different to_id. Another
+// customer's row, and a shared row (customer_key ”), stay open. Caller holds s.mu.
 func (s *Store) supersedeExclusiveLocked(rel KGRelation) {
 	now := time.Now().UTC()
 	for _, r := range s.kgRelations {
 		if r == nil || !SameTenant(r.TenantID, rel.TenantID) || r.FromID != rel.FromID || r.Rel != rel.Rel || r.ToID == rel.ToID {
+			continue
+		}
+		if r.CustomerKey != rel.CustomerKey {
 			continue
 		}
 		if kgCurrent(r.ValidFrom, r.ValidUntil) {
@@ -108,10 +112,13 @@ func (s *SQLiteStore) SupersedeKGRelation(tenant, id string, until time.Time) er
 }
 
 // supersedeExclusive (SQL stores): see supersedeExclusiveLocked.
+// customer_key is an equality match, so a channel write does not close
+// another customer's relation or a shared (empty) one.
 func (s *SQLiteStore) supersedeExclusive(rel KGRelation) {
 	now := formatTime(time.Now().UTC())
 	_, _ = s.db.Exec(`UPDATE kg_relations SET valid_until=?
 		WHERE tenant_id=? AND from_id=? AND rel=? AND to_id<>?
+		AND customer_key=?
 		AND (valid_until IS NULL OR valid_until='' OR valid_until > ?)`,
-		now, rel.TenantID, rel.FromID, rel.Rel, rel.ToID, now)
+		now, rel.TenantID, rel.FromID, rel.Rel, rel.ToID, rel.CustomerKey, now)
 }

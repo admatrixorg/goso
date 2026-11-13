@@ -91,6 +91,12 @@ Xem `.env.example` và `docs/SETUP.md`. Trong Docker:
 | `BACKUP_INTERVAL_SECONDS` | `3600` | Chỉ overlay prod |
 | `GOSO_OTEL_ENDPOINT` | (unset) | Optional OTLP HTTP JSON URL. Unset = noop. Profile `otel`: compose-network `http://jaeger:4318/v1/traces`; host `http://127.0.0.1:4318/v1/traces`. No Grafana Cloud keys (DI-18). |
 
+## SPEC 182 — KG `customer_key` (Postgres)
+
+Startup only adds `customer_key TEXT NOT NULL DEFAULT ''` on `kg_entities` and `kg_relations`. That is add-only: existing rows stay, with `customer_key ''`. The gateway does **not** build `idx_kg_entities_customer` `(tenant_id, agent_id, customer_key)` or `idx_kg_relations_customer` `(tenant_id, customer_key)` at startup.
+
+Those indexes are `CREATE INDEX CONCURRENTLY` in `docs/qa/182-kg-customer-scope/migration.sql`. Production runs that file only after a backup, off-hours, and Dat's approval, and only after the column exists. Do not wrap the statements in a transaction. Details and rollback: `docs/qa/182-kg-customer-scope/README.md`. SQLite creates the same indexes when the file opens.
+
 ## Không nằm trong SPEC này
 
 - Kubernetes / Helm
