@@ -68,9 +68,9 @@ Exit 0. Memory and SQLite ran `TestMinhAnFixture`, `TestConflictDoesNotOverwrite
 
 ## qa:tabs
 
-Log for code commit `764015195370d514859a2a312d3dd5b2efc1247a`: [qa-tabs-764015195370d514859a2a312d3dd5b2efc1247a.log](../181/qa-tabs-764015195370d514859a2a312d3dd5b2efc1247a.log).
+Log for code commit `d0d5ce845fc1d098f77743919516d4be4646f166` (after merging SPEC 182): [qa-tabs-d0d5ce845fc1d098f77743919516d4be4646f166.log](../181/qa-tabs-d0d5ce845fc1d098f77743919516d4be4646f166.log).
 
-Chrome binary `/usr/local/bin/google-chrome`. Gateway from that commit, fresh SQLite `GOSO_DB_PATH`, `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` development. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+Chrome binary `/usr/local/bin/google-chrome`. Gateway from that commit, fresh SQLite `GOSO_DB_PATH`, `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` development. Seed agent `minh-an-sales` / `Cố vấn Minh An` / `echo`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. The earlier log for `764015195370d514859a2a312d3dd5b2efc1247a` is still in `docs/qa/181/`.
 
 ## Column assumptions that are not in the `\d`
 
