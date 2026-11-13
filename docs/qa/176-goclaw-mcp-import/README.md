@@ -14,8 +14,8 @@ go build -o /tmp/goso-mcp-import ./gateway/cmd/goso-mcp-import
 
 ## qa:tabs
 
-Code under test: `8349fb74efd365c63e79cadcef86ad239203257d`.
+Code under test: `755514888f0492031ddf4132982d9d29659346ba` (merge of `origin/main` SPEC 182).
 
-[qa-tabs log](../176/qa-tabs-8349fb74efd365c63e79cadcef86ad239203257d.log)
+[qa-tabs log](../176/qa-tabs-755514888f0492031ddf4132982d9d29659346ba.log)
 
-Gateway from that commit, fresh SQLite database, seed `minh-an-sales` / `Cố vấn Minh An` / `echo`. `CHROME_PATH=/usr/local/bin/google-chrome`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. The earlier log for `fbc2a9b1a6a0573f216183f2310cef1fc13e06e5` remains in the same directory.
+Gateway from that commit, fresh SQLite database, seed `minh-an-sales` / `Cố vấn Minh An` / `echo`. `CHROME_PATH=/usr/local/bin/google-chrome`. Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Earlier logs remain in the same directory.
