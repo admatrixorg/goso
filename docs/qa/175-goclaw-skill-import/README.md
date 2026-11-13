@@ -14,7 +14,7 @@ Offline importer for one tenant into the existing skill folders. Sample data is 
 | `--apply` | Refused for import. With `--rollback`, removes that tenant's mapped folders |
 | `--rollback` | Count mapped folders for `--tenant`. Add `--apply` to remove them |
 
-Dry-run writes the rename map and no skill file. `--apply` returns an error and writes no files, because the skills directory is shared. A local denylist file is required. A missing, empty, or malformed file exits non-zero before a dry-run. A listed tenant writes nothing. The report field `denied_tenants` is a count and does not name the tenant.
+Dry-run writes the rename map and no skill file. `--apply` returns an error and writes no files, because the skills directory is shared. A local denylist file is required. A missing, empty, or malformed file exits non-zero before a dry-run. A listed `--tenant`, `--source-tenant`, or any row in the export writes nothing. The report field `denied_tenants` is a count and does not name the tenant.
 
 `--rollback` counts mapped folders for `--tenant`. `--rollback --apply` removes only those folders. A native folder and another tenant's folder stay.
 

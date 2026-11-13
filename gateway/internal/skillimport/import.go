@@ -161,6 +161,9 @@ func Import(ex *Export, opt Options) (Report, error) {
 	if opt.Apply {
 		return Report{}, errConfig("apply refused until skills are stored per tenant")
 	}
+	if n := deniedExportCount(ids, ex); n > 0 {
+		return Report{DryRun: !opt.Apply, DeniedTenants: n}, errConfig("tenant is denied")
+	}
 	sm, err := loadSourceMap(opt.SkillsDir)
 	if err != nil {
 		return Report{}, err

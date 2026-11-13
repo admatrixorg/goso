@@ -80,6 +80,31 @@ func listed(ids []string, tenant string) bool {
 	return false
 }
 
+// deniedExportCount is how many distinct export tenant ids are on the list.
+// The ids themselves are not returned.
+func deniedExportCount(ids []string, ex *Export) int {
+	if ex == nil {
+		return 0
+	}
+	var tenants []string
+	for _, row := range ex.Skills {
+		tenants = append(tenants, row.TenantID)
+	}
+	for _, row := range ex.Versions {
+		tenants = append(tenants, row.TenantID)
+	}
+	for _, row := range ex.AgentGrants {
+		tenants = append(tenants, row.TenantID)
+	}
+	for _, row := range ex.UserGrants {
+		tenants = append(tenants, row.TenantID)
+	}
+	for _, row := range ex.TenantConfigs {
+		tenants = append(tenants, row.TenantID)
+	}
+	return deniedCount(ids, tenants...)
+}
+
 // deniedCount is how many of the explicit tenant values are on the list.
 // The same value is counted once. The names are not included.
 func deniedCount(ids []string, tenants ...string) int {

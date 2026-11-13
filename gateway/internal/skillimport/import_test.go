@@ -335,6 +335,49 @@ func TestDenyFile(t *testing.T) {
 	}
 }
 
+func TestDeniedExportTenantIsCountedNotNamed(t *testing.T) {
+	ex := loadFixture(t)
+	ex.Skills = append(ex.Skills, SkillRow{
+		ID: "blocked-skill", TenantID: "blocked-tenant", Slug: "blocked-skill",
+		Status: "active", FilePath: "skills/bao-gia/SKILL.md",
+	})
+	ex.Versions = append(ex.Versions, VersionRow{
+		ID: "blocked-ver", TenantID: "blocked-tenant", SkillID: "blocked-skill", Version: 1,
+	})
+	ex.AgentGrants = append(ex.AgentGrants, AgentGrantRow{
+		ID: "blocked-grant", TenantID: "blocked-tenant", SkillID: "blocked-skill",
+	})
+	ex.UserGrants = append(ex.UserGrants, UserGrantRow{
+		ID: "blocked-user", TenantID: "blocked-tenant", SkillID: "blocked-skill", UserID: "blocked-user",
+	})
+	ex.TenantConfigs = append(ex.TenantConfigs, TenantConfigRow{
+		SkillID: "blocked-skill", TenantID: "blocked-tenant",
+	})
+	dir := t.TempDir()
+	var logBuf bytes.Buffer
+	rep, err := Import(ex, Options{
+		Tenant: "minh-an", SourceTenant: "minh-an", DenyFile: writeDeny(t, "blocked-tenant"),
+		SkillsDir: filepath.Join(dir, "skills"), SrcDir: fixtureSrc(t),
+		RenameMapPath: filepath.Join(dir, "map.json"), Log: bufLog{&logBuf},
+	})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants < 1 {
+		t.Fatalf("denied count %d", rep.DeniedTenants)
+	}
+	blob := mustReport(t, rep) + "\n" + logBuf.String() + "\n" + err.Error()
+	if strings.Contains(blob, "blocked-tenant") {
+		t.Fatalf("denied tenant id leaked: %s", blob)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "map.json")); !os.IsNotExist(statErr) {
+		t.Fatal("denied export wrote the rename map")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(statErr) {
+		t.Fatal("denied export wrote skills")
+	}
+}
+
 func TestMaskPhone(t *testing.T) {
 	if strings.Contains(MaskIdentifiers("call 0901234567"), "0901234567") {
 		t.Fatal("phone leaked")
