@@ -20,9 +20,9 @@ ok  github.com/mqglobal/goso/gateway/cmd/goso-episodic-import
 
 ## qa:tabs
 
-Code under test: `a6e2028e2a6c5458a6ec30db77265a21dd66279e`.
+Code under test: `74b09bb63313859d5f296b9f7015f496df61b26d`.
 
-Log: [qa-tabs-a6e2028e2a6c5458a6ec30db77265a21dd66279e.log](../179/qa-tabs-a6e2028e2a6c5458a6ec30db77265a21dd66279e.log).
+Log: [qa-tabs-74b09bb63313859d5f296b9f7015f496df61b26d.log](../179/qa-tabs-74b09bb63313859d5f296b9f7015f496df61b26d.log).
 
 Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` and `QA_SHOTS` were unset. Gateway was the binary built from that commit, on `127.0.0.1:8080`, with a fresh SQLite file and vault directory. Seeded agent `minh-an-sales` / `Cố vấn Minh An` / model `echo`. Control plane was `npm run dev` on port 3000.
 
