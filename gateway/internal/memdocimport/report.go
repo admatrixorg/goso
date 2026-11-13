@@ -48,7 +48,6 @@ type Reasons struct {
 	Expired         int `json:"expired"`
 	CustomerPrivate int `json:"customer-private"`
 	TeamScope       int `json:"team/scope"`
-	MQ              int `json:"mq"`
 	Unmapped        int `json:"unmapped"`
 	MissingEndpoint int `json:"missing-relation-endpoint"`
 	System          int `json:"system"`
@@ -65,7 +64,7 @@ func (r *Reasons) sum() int {
 	if r == nil {
 		return 0
 	}
-	return r.Expired + r.CustomerPrivate + r.TeamScope + r.MQ + r.Unmapped +
+	return r.Expired + r.CustomerPrivate + r.TeamScope + r.Unmapped +
 		r.MissingEndpoint + r.System + r.Path + r.Chunks + r.Hash +
 		r.NativeExists + r.OtherTenant + r.Binary + r.TooLarge
 }

@@ -11,7 +11,7 @@ goso-memdoc-import --export file.jsonl --map map.json --tenant <source> --deny-f
 goso-memdoc-import --remove-tenant <goso tenant> --deny-file tenants.txt --db path --vault-dir dir
 ```
 
-`--map` is JSON. `tenants` is the SPEC 152 source id → dest tenant pair, plus `slug`. `agents` is the GoClaw agent id → existing Goso agent id. `customers` is optional; a missing user becomes `goclaw:<user_id>`.
+`--map` is JSON. `tenants` is the SPEC 152 source id → dest tenant pair, plus `slug`. `agents` is the GoClaw agent id → existing Goso agent id. `--customer-map` is the contacts importer TSV (`channel`, `sender`, `user`, `key`). Channel names are normalized (`zalo_personal` → `zalo-personal`, `lark` → `feishu`). A user with no row becomes `goclaw:<user_id>`.
 
 ## qa:tabs
 

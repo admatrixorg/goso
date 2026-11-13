@@ -436,7 +436,7 @@ func allowDeny(t *testing.T) *DenyList {
 
 func mustCustomers(t *testing.T) *CustomerIndex {
 	t.Helper()
-	idx, err := ReadCustomerMap(strings.NewReader(`{"channel_contacts":[{"channel_type":"zalo-personal","sender_id":"minh","user_id":"khach-z","merged_id":""}]}`))
+	idx, err := ReadCustomerMap(strings.NewReader("zalo_personal\tminh\tkhach-z\tzalo_personal:minh\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,52 +576,84 @@ func TestDeniedTenantWritesNothing(t *testing.T) {
 	}
 }
 
+func TestCustomerMapNormalizesChannel(t *testing.T) {
+	idx, err := ReadCustomerMap(strings.NewReader("zalo_personal\tminh\tkhach-z\tzalo_personal:minh\nlark\to1\tkhach-l\tlark:o1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.Key("khach-z"); got != "zalo-personal:minh" {
+		t.Fatalf("zalo key %q", got)
+	}
+	if got := idx.Key("khach-l"); got != "feishu:o1" {
+		t.Fatalf("lark key %q", got)
+	}
+	if got := idx.Key("khach-x"); got != "goclaw:khach-x" {
+		t.Fatalf("fallback %q", got)
+	}
+}
+
 func TestRollbackLeavesOtherKind(t *testing.T) {
-	st := store.New()
-	ag, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "co-van-roll", DisplayName: "Co van Minh An", Model: "echo"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := t.TempDir()
-	svc := vault.New(st, root)
-	mapping := Mapping{
-		Tenants: []TenantMap{{SourceID: minhSrc, Slug: "minh-an", Dest: "minh-an"}},
-		Agents:  []AgentMap{{SourceID: "agent-minh", SourceTenant: minhSrc, DestID: ag.ID}},
-	}
-	export := docLine(minhSrc, "agent-minh", "memory/notes.md", "VAULTMEM minh an") +
-		docLineUser(minhSrc, "agent-minh", "khach-x", "memory/hop.md", "Minh An hopdongx")
-	opt := Options{Mapping: mapping, SourceTenant: minhSrc, Deny: allowDeny(t)}
-	if _, err := Import(st, svc, strings.NewReader(export), opt); err != nil {
-		t.Fatal(err)
-	}
-	live, err := st.CreateSession(store.Session{TenantID: "minh-an", AgentID: ag.ID, Label: "Minh An web"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ok, err := st.InsertMemoryIfNew(store.Memory{
-		ID: "gc-ep:sample", TenantID: "minh-an", SessionID: live.ID,
-		Kind: store.KindEpisodic, Body: "episodic kind stays", CustomerKey: "goclaw:other",
-	})
-	if err != nil || !ok {
-		t.Fatalf("seed gc-ep %v %v", ok, err)
-	}
-	before, err := st.GetMemory("gc-ep:sample")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := RemoveTenant(st, root, "minh-an"); err != nil {
-		t.Fatal(err)
-	}
-	after, err := st.GetMemory("gc-ep:sample")
-	if err != nil || after.Body != before.Body {
-		t.Fatalf("other kind changed %+v %v", after, err)
-	}
-	docs, err := st.ListImportedMemdocVault("minh-an")
-	if err != nil || len(docs) != 0 {
-		t.Fatalf("vault rows left %d", len(docs))
-	}
-	if _, err := st.GetMemory(MemoryID(ag.ID, "khach-x", "memory/hop.md")); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("durable note survived rollback")
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st, root := open(t)
+			ag, err := st.CreateAgent(store.Agent{TenantID: "minh-an", AgentKey: "co-van-roll", DisplayName: "Co van Minh An", Model: "echo"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc := vault.New(st, root)
+			mapping := Mapping{
+				Tenants: []TenantMap{{SourceID: minhSrc, Slug: "minh-an", Dest: "minh-an"}},
+				Agents:  []AgentMap{{SourceID: "agent-minh", SourceTenant: minhSrc, DestID: ag.ID}},
+			}
+			export := docLine(minhSrc, "agent-minh", "memory/notes.md", "VAULTMEM minh an") +
+				docLineUser(minhSrc, "agent-minh", "khach-x", "memory/hop.md", "Minh An hopdongx")
+			opt := Options{Mapping: mapping, SourceTenant: minhSrc, Deny: allowDeny(t)}
+			if _, err := Import(st, svc, strings.NewReader(export), opt); err != nil {
+				t.Fatal(err)
+			}
+			ok, err := st.InsertSessionIfNew(store.Session{
+				ID: "gc-sess:sample", TenantID: "minh-an", AgentID: ag.ID, Archived: true,
+			})
+			if err != nil || !ok {
+				t.Fatalf("seed gc-sess %v %v", ok, err)
+			}
+			ok, err = st.InsertMemoryIfNew(store.Memory{
+				ID: "gc-ep:sample", TenantID: "minh-an", SessionID: "gc-sess:sample",
+				Kind: store.KindEpisodic, Body: "episodic kind stays", CustomerKey: "goclaw:other",
+			})
+			if err != nil || !ok {
+				t.Fatalf("seed gc-ep %v %v", ok, err)
+			}
+			epBefore, err := st.GetMemory("gc-ep:sample")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sessBefore, err := st.GetSession("gc-sess:sample")
+			if err != nil || sessBefore.TenantID != "minh-an" {
+				t.Fatal(err)
+			}
+			if _, err := RemoveTenant(st, root, "minh-an"); err != nil {
+				t.Fatal(err)
+			}
+			epAfter, err := st.GetMemory("gc-ep:sample")
+			if err != nil || epAfter.Body != epBefore.Body {
+				t.Fatalf("gc-ep changed %+v %v", epAfter, err)
+			}
+			sessAfter, err := st.GetSession("gc-sess:sample")
+			if err != nil || sessAfter.ID != sessBefore.ID || sessAfter.AgentID != ag.ID {
+				t.Fatalf("gc-sess changed %+v %v", sessAfter, err)
+			}
+			docs, err := st.ListImportedMemdocVault("minh-an")
+			if err != nil || len(docs) != 0 {
+				t.Fatalf("vault rows left %d", len(docs))
+			}
+			if _, err := st.GetMemory(MemoryID(ag.ID, "khach-x", "memory/hop.md")); !errors.Is(err, store.ErrNotFound) {
+				t.Fatal("durable note survived rollback")
+			}
+			if _, err := st.GetSession(SessionID(ag.ID, "khach-x")); !errors.Is(err, store.ErrNotFound) {
+				t.Fatal("imported session survived rollback")
+			}
+		})
 	}
 }
 

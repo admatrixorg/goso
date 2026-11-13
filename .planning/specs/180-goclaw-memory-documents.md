@@ -70,7 +70,7 @@ Content over 1 MiB, invalid UTF-8, or a NUL byte is not imported (`too-large` or
 }
 ```
 
-`tenants` is the SPEC 152 pair, one object per source tenant, plus `slug`. `agents` is the SPEC 174 id map in this shape; the operator writes it, or that importer's output is converted to it. Customer keys are a separate `channel_contacts` file (`--customer-map`), the same export the contacts importer reads. A row `(channel_type, sender_id, user_id)` becomes `<channel>:<sender_id>` (or `<channel>:<user_id>` when `sender_id` is empty). A memory `user_id` matches `user_id` first, then `sender_id`. No match becomes `goclaw:<user_id>`, never empty. Unknown JSON fields in the tenant map are rejected. The files contain ids only, not document bodies.
+`tenants` is the SPEC 152 pair, one object per source tenant, plus `slug`. `agents` is the SPEC 174 id map in this shape; the operator writes it, or that importer's output is converted to it. Customer keys are the contacts importer's TSV (`--customer-map`): `channel`, `sender`, `user`, `key`, separated by tabs. Channel names are normalized to the live catalog (`zalo_personal` → `zalo-personal`, `lark` → `feishu`, and the same for the other catalog names) before the key is used. A memory `user_id` matches the user column first, then the sender column. No match becomes `goclaw:<user_id>`, never empty. Unknown JSON fields in the tenant map are rejected. The files contain ids only, not document bodies.
 
 ## Command
 
