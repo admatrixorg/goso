@@ -76,6 +76,13 @@ func (s *Store) PutKGEntity(e KGEntity) (*KGEntity, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	sess := s.sessions[strings.TrimSpace(e.SessionID)]
+	key, err := stampKGCustomer(sess, e.SessionID, e.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	e.CustomerKey = key
+	e.SessionID = ""
 	e.ID = s.nextID()
 	e.CreatedAt = time.Now().UTC()
 	cp := e
@@ -84,12 +91,16 @@ func (s *Store) PutKGEntity(e KGEntity) (*KGEntity, error) {
 	return &out, nil
 }
 
-func (s *Store) GetKGEntity(id string) (*KGEntity, error) {
+func (s *Store) GetKGEntity(id string, sc KGScope) (*KGEntity, error) {
 	id = strings.TrimSpace(id)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.kgEntityLocked(id, sc)
+}
+
+func (s *Store) kgEntityLocked(id string, sc KGScope) (*KGEntity, error) {
 	e, ok := s.kgEntities[id]
-	if !ok || e == nil {
+	if !ok || e == nil || !sc.Allows(e.CustomerKey) {
 		return nil, ErrNotFound
 	}
 	cp := *e
@@ -102,16 +113,26 @@ func (s *Store) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	sess := s.sessions[strings.TrimSpace(rel.SessionID)]
+	key, err := stampKGCustomer(sess, rel.SessionID, rel.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	rel.CustomerKey = key
+	rel.SessionID = ""
+	// A channel write may only attach to rows that customer can read.
+	// An unscoped write (web/API) may attach to any row in the tenant.
+	sc := KGScope{}
+	if key != "" {
+		sc = KGScope{Scoped: true, CustomerKey: key}
+	}
 	from, ok := s.kgEntities[rel.FromID]
-	if !ok || from == nil {
+	if !ok || from == nil || !SameTenant(from.TenantID, rel.TenantID) || !sc.Allows(from.CustomerKey) {
 		return nil, errors.New("from entity not found")
 	}
 	to, ok := s.kgEntities[rel.ToID]
-	if !ok || to == nil {
+	if !ok || to == nil || !SameTenant(to.TenantID, rel.TenantID) || !sc.Allows(to.CustomerKey) {
 		return nil, errors.New("to entity not found")
-	}
-	if !SameTenant(from.TenantID, rel.TenantID) || !SameTenant(to.TenantID, rel.TenantID) {
-		return nil, errors.New("from entity not found")
 	}
 	if rel.Exclusive {
 		s.supersedeExclusiveLocked(rel)
@@ -123,27 +144,44 @@ func (s *Store) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	return &out, nil
 }
 
-func (s *Store) ListKGRelations(entityID string) ([]*KGRelation, error) {
+func (s *Store) ListKGRelations(entityID string, sc KGScope) ([]*KGRelation, error) {
 	entityID = strings.TrimSpace(entityID)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if _, ok := s.kgEntities[entityID]; !ok {
-		return nil, ErrNotFound
+	if _, err := s.kgEntityLocked(entityID, sc); err != nil {
+		return nil, err
 	}
 	var out []*KGRelation
 	for _, r := range s.kgRelations {
-		if r == nil {
+		if r == nil || (r.FromID != entityID && r.ToID != entityID) {
 			continue
 		}
-		if r.FromID == entityID || r.ToID == entityID {
-			cp := *r
-			out = append(out, &cp)
+		if !relationVisibleLocked(s, r, sc) {
+			continue
 		}
+		cp := *r
+		out = append(out, &cp)
 	}
 	if out == nil {
 		out = []*KGRelation{}
 	}
 	return out, nil
+}
+
+// relationVisibleLocked reports a neighbour edge the caller may see.
+// The edge's own customer_key and both endpoints must be visible, so a
+// shared edge cannot name another customer's entity. Caller holds s.mu.
+func relationVisibleLocked(s *Store, r *KGRelation, sc KGScope) bool {
+	if r == nil || !sc.Allows(r.CustomerKey) {
+		return false
+	}
+	if from := s.kgEntities[r.FromID]; from != nil && !sc.Allows(from.CustomerKey) {
+		return false
+	}
+	if to := s.kgEntities[r.ToID]; to != nil && !sc.Allows(to.CustomerKey) {
+		return false
+	}
+	return true
 }
 
 func (s *Store) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
@@ -168,12 +206,12 @@ func (s *Store) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
 	return BuildKGGraph(ents, rels, q), nil
 }
 
-func (s *Store) ExpandKG(id string) (*KGExpand, error) {
-	ent, err := s.GetKGEntity(id)
+func (s *Store) ExpandKG(id string, sc KGScope) (*KGExpand, error) {
+	ent, err := s.GetKGEntity(id, sc)
 	if err != nil {
 		return nil, err
 	}
-	rels, err := s.ListKGRelations(id)
+	rels, err := s.ListKGRelations(id, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +239,7 @@ func (s *Store) ExpandKG(id string) (*KGExpand, error) {
 
 const progressivePerTier = 25
 
-func (s *Store) SearchProgressive(q, tenant string) ([]KGSearchHit, error) {
+func (s *Store) SearchProgressive(q, tenant string, sc KGScope) ([]KGSearchHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []KGSearchHit{}, nil
@@ -261,6 +299,9 @@ func (s *Store) SearchProgressive(q, tenant string) ([]KGSearchHit, error) {
 	}
 	for _, e := range s.kgEntities {
 		if e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) || !SameTenant(e.TenantID, tenant) {
+			continue
+		}
+		if !sc.Allows(e.CustomerKey) {
 			continue
 		}
 		blob := strings.ToLower(e.Name + " " + e.Body)
