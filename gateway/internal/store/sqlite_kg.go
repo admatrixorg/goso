@@ -60,17 +60,31 @@ func (s *SQLiteStore) initKGFTS() {
 	s.kgFTS = true
 }
 
-const kgEntityCols = `id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance`
-const kgRelationCols = `id, tenant_id, from_id, to_id, rel, body, valid_from, valid_until, provenance`
+const kgEntityCols = `id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance, customer_key`
+const kgRelationCols = `id, tenant_id, from_id, to_id, rel, body, valid_from, valid_until, provenance, customer_key`
 
 func (s *SQLiteStore) PutKGEntity(e KGEntity) (*KGEntity, error) {
 	if err := prepareKGEntity(&e); err != nil {
 		return nil, err
 	}
+	var sess *Session
+	if sid := strings.TrimSpace(e.SessionID); sid != "" {
+		got, err := s.GetSession(sid)
+		if err != nil {
+			return nil, errKGSessionNotFound
+		}
+		sess = got
+	}
+	key, err := stampKGCustomer(sess, e.SessionID, e.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	e.CustomerKey = key
+	e.SessionID = ""
 	e.ID = newID()
 	e.CreatedAt = time.Now().UTC()
-	_, err := s.db.Exec(`INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		e.ID, e.TenantID, e.Name, e.Kind, e.Body, formatTime(e.ValidFrom), formatNullTime(e.ValidUntil), formatTime(e.CreatedAt), e.AgentID, e.Source)
+	_, err = s.db.Exec(`INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance, customer_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		e.ID, e.TenantID, e.Name, e.Kind, e.Body, formatTime(e.ValidFrom), formatNullTime(e.ValidUntil), formatTime(e.CreatedAt), e.AgentID, e.Source, e.CustomerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +92,7 @@ func (s *SQLiteStore) PutKGEntity(e KGEntity) (*KGEntity, error) {
 	return &cp, nil
 }
 
-func (s *SQLiteStore) GetKGEntity(id string) (*KGEntity, error) {
+func (s *SQLiteStore) getKGEntity(id string) (*KGEntity, error) {
 	id = strings.TrimSpace(id)
 	row := s.db.QueryRow(`SELECT `+kgEntityCols+` FROM kg_entities WHERE id=?`, id)
 	e, err := scanKGEntity(row)
@@ -88,24 +102,50 @@ func (s *SQLiteStore) GetKGEntity(id string) (*KGEntity, error) {
 	return e, err
 }
 
+func (s *SQLiteStore) GetKGEntity(id string, sc KGScope) (*KGEntity, error) {
+	e, err := s.getKGEntity(id)
+	if err != nil || e == nil {
+		return nil, err
+	}
+	if !sc.Allows(e.CustomerKey) {
+		return nil, ErrNotFound
+	}
+	return e, nil
+}
+
 func (s *SQLiteStore) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	if err := prepareKGRelation(&rel); err != nil {
 		return nil, err
 	}
-	from, err := s.GetKGEntity(rel.FromID)
+	var sess *Session
+	if sid := strings.TrimSpace(rel.SessionID); sid != "" {
+		got, err := s.GetSession(sid)
+		if err != nil {
+			return nil, errKGSessionNotFound
+		}
+		sess = got
+	}
+	key, err := stampKGCustomer(sess, rel.SessionID, rel.TenantID)
 	if err != nil {
+		return nil, err
+	}
+	rel.CustomerKey = key
+	rel.SessionID = ""
+	sc := KGScope{}
+	if key != "" {
+		sc = KGScope{Scoped: true, CustomerKey: key}
+	}
+	from, err := s.getKGEntity(rel.FromID)
+	if err != nil || from == nil || !SameTenant(from.TenantID, rel.TenantID) || !sc.Allows(from.CustomerKey) {
 		return nil, errors.New("from entity not found")
 	}
-	to, err := s.GetKGEntity(rel.ToID)
-	if err != nil {
+	to, err := s.getKGEntity(rel.ToID)
+	if err != nil || to == nil || !SameTenant(to.TenantID, rel.TenantID) || !sc.Allows(to.CustomerKey) {
 		return nil, errors.New("to entity not found")
 	}
-	if !SameTenant(from.TenantID, rel.TenantID) || !SameTenant(to.TenantID, rel.TenantID) {
-		return nil, errors.New("from entity not found")
-	}
 	rel.ID = newID()
-	_, err = s.db.Exec(`INSERT INTO kg_relations(id, tenant_id, from_id, to_id, rel, body, valid_from, valid_until, provenance) VALUES(?,?,?,?,?,?,?,?,?)`,
-		rel.ID, rel.TenantID, rel.FromID, rel.ToID, rel.Rel, rel.Body, formatTime(rel.ValidFrom), formatNullTime(rel.ValidUntil), rel.Source)
+	_, err = s.db.Exec(`INSERT INTO kg_relations(id, tenant_id, from_id, to_id, rel, body, valid_from, valid_until, provenance, customer_key) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		rel.ID, rel.TenantID, rel.FromID, rel.ToID, rel.Rel, rel.Body, formatTime(rel.ValidFrom), formatNullTime(rel.ValidUntil), rel.Source, rel.CustomerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -116,12 +156,14 @@ func (s *SQLiteStore) PutKGRelation(rel KGRelation) (*KGRelation, error) {
 	return &cp, nil
 }
 
-func (s *SQLiteStore) ListKGRelations(entityID string) ([]*KGRelation, error) {
+func (s *SQLiteStore) ListKGRelations(entityID string, sc KGScope) ([]*KGRelation, error) {
 	entityID = strings.TrimSpace(entityID)
-	if _, err := s.GetKGEntity(entityID); err != nil {
+	if _, err := s.GetKGEntity(entityID, sc); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT `+kgRelationCols+` FROM kg_relations WHERE from_id=? OR to_id=?`, entityID, entityID)
+	pred, pargs := kgCustomerPredicate("customer_key", sc)
+	args := append([]any{entityID, entityID}, pargs...)
+	rows, err := s.db.Query(`SELECT `+kgRelationCols+` FROM kg_relations WHERE (from_id=? OR to_id=?)`+pred, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +171,7 @@ func (s *SQLiteStore) ListKGRelations(entityID string) ([]*KGRelation, error) {
 	var out []*KGRelation
 	for rows.Next() {
 		r, err := scanKGRelation(rows)
-		if err != nil {
+		if err != nil || r == nil || !relationEndpointsVisible(s, r, sc) {
 			continue
 		}
 		out = append(out, r)
@@ -140,9 +182,27 @@ func (s *SQLiteStore) ListKGRelations(entityID string) ([]*KGRelation, error) {
 	return out, nil
 }
 
+// relationEndpointsVisible drops a neighbour whose endpoint belongs to
+// another customer. A missing endpoint stays, matching the unscoped expand.
+func relationEndpointsVisible(s *SQLiteStore, r *KGRelation, sc KGScope) bool {
+	if r == nil || !sc.Allows(r.CustomerKey) {
+		return false
+	}
+	if from, err := s.getKGEntity(r.FromID); err == nil && from != nil && !sc.Allows(from.CustomerKey) {
+		return false
+	}
+	if to, err := s.getKGEntity(r.ToID); err == nil && to != nil && !sc.Allows(to.CustomerKey) {
+		return false
+	}
+	return true
+}
+
 func (s *SQLiteStore) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
 	tenant := NormalizeTenant(q.Tenant)
-	erows, err := s.db.Query(`SELECT `+kgEntityCols+` FROM kg_entities WHERE tenant_id=?`, tenant)
+	sc := KGScope{Scoped: q.CustomerScoped, CustomerKey: q.CustomerKey}
+	pred, pargs := kgCustomerPredicate("customer_key", sc)
+	args := append([]any{tenant}, pargs...)
+	erows, err := s.db.Query(`SELECT `+kgEntityCols+` FROM kg_entities WHERE tenant_id=?`+pred, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +215,8 @@ func (s *SQLiteStore) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
 		ents = append(ents, e)
 	}
 	_ = erows.Close()
-	rrows, err := s.db.Query(`SELECT `+kgRelationCols+` FROM kg_relations WHERE tenant_id=?`, tenant)
+	rargs := append([]any{tenant}, pargs...)
+	rrows, err := s.db.Query(`SELECT `+kgRelationCols+` FROM kg_relations WHERE tenant_id=?`+pred, rargs...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,12 +232,12 @@ func (s *SQLiteStore) ListKGGraph(q KGGraphQuery) (*KGGraph, error) {
 	return BuildKGGraph(ents, rels, q), nil
 }
 
-func (s *SQLiteStore) ExpandKG(id string) (*KGExpand, error) {
-	ent, err := s.GetKGEntity(id)
+func (s *SQLiteStore) ExpandKG(id string, sc KGScope) (*KGExpand, error) {
+	ent, err := s.GetKGEntity(id, sc)
 	if err != nil {
 		return nil, err
 	}
-	rels, err := s.ListKGRelations(id)
+	rels, err := s.ListKGRelations(id, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -189,10 +250,10 @@ func (s *SQLiteStore) ExpandKG(id string) (*KGExpand, error) {
 			continue
 		}
 		view := KGRelationExpand{KGRelation: *r}
-		if from, err := s.GetKGEntity(r.FromID); err == nil && from != nil {
+		if from, err := s.getKGEntity(r.FromID); err == nil && from != nil && sc.Allows(from.CustomerKey) {
 			view.FromName = from.Name
 		}
-		if to, err := s.GetKGEntity(r.ToID); err == nil && to != nil {
+		if to, err := s.getKGEntity(r.ToID); err == nil && to != nil && sc.Allows(to.CustomerKey) {
 			view.ToName = to.Name
 		}
 		out.Relations = append(out.Relations, view)
@@ -200,7 +261,7 @@ func (s *SQLiteStore) ExpandKG(id string) (*KGExpand, error) {
 	return out, nil
 }
 
-func (s *SQLiteStore) SearchProgressive(q, tenant string) ([]KGSearchHit, error) {
+func (s *SQLiteStore) SearchProgressive(q, tenant string, sc KGScope) ([]KGSearchHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []KGSearchHit{}, nil
@@ -210,7 +271,7 @@ func (s *SQLiteStore) SearchProgressive(q, tenant string) ([]KGSearchHit, error)
 	if err != nil {
 		return nil, err
 	}
-	l2, err := s.searchProgressiveL2(q, tenant)
+	l2, err := s.searchProgressiveL2(q, tenant, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -289,17 +350,20 @@ func (s *SQLiteStore) searchProgressiveL1FTS(q, tenant string) ([]KGSearchHit, e
 	return out, nil
 }
 
-func (s *SQLiteStore) searchProgressiveL2(q, tenant string) ([]KGSearchHit, error) {
+func (s *SQLiteStore) searchProgressiveL2(q, tenant string, sc KGScope) ([]KGSearchHit, error) {
 	if s.kgFTS {
-		if hits, err := s.searchProgressiveL2FTS(q, tenant); err == nil {
+		if hits, err := s.searchProgressiveL2FTS(q, tenant, sc); err == nil {
 			return hits, nil
 		}
 	}
 	if s.bodyTSV {
-		return s.searchProgressiveL2TSV(q, tenant)
+		return s.searchProgressiveL2TSV(q, tenant, sc)
 	}
+	pred, pargs := kgCustomerPredicate("customer_key", sc)
+	args := append([]any{tenant, q, q}, pargs...)
+	args = append(args, progressivePerTier)
 	rows, err := s.db.Query(`SELECT `+kgEntityCols+` FROM kg_entities
-		WHERE tenant_id=? AND (instr(lower(name), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0) LIMIT ?`, tenant, q, q, progressivePerTier)
+		WHERE tenant_id=? AND (instr(lower(name), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)`+pred+` LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +371,7 @@ func (s *SQLiteStore) searchProgressiveL2(q, tenant string) ([]KGSearchHit, erro
 	var out []KGSearchHit
 	for rows.Next() {
 		e, err := scanKGEntity(rows)
-		if err != nil || e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) {
+		if err != nil || e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) || !sc.Allows(e.CustomerKey) {
 			continue
 		}
 		out = append(out, KGSearchHit{
@@ -321,13 +385,16 @@ func (s *SQLiteStore) searchProgressiveL2(q, tenant string) ([]KGSearchHit, erro
 	return out, nil
 }
 
-func (s *SQLiteStore) searchProgressiveL2FTS(q, tenant string) ([]KGSearchHit, error) {
+func (s *SQLiteStore) searchProgressiveL2FTS(q, tenant string, sc KGScope) ([]KGSearchHit, error) {
 	phrase := strings.ReplaceAll(q, `"`, `""`)
+	pred, pargs := kgCustomerPredicate("e.customer_key", sc)
+	args := append([]any{`"` + phrase + `"`, tenant}, pargs...)
+	args = append(args, progressivePerTier)
 	rows, err := s.db.Query(`SELECT f.id
 		FROM kg_fts f
 		JOIN kg_entities e ON e.id = f.id
-		WHERE kg_fts MATCH ? AND f.source = 'entity' AND e.tenant_id = ?
-		ORDER BY rank LIMIT ?`, `"`+phrase+`"`, tenant, progressivePerTier)
+		WHERE kg_fts MATCH ? AND f.source = 'entity' AND e.tenant_id = ?`+pred+`
+		ORDER BY rank LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +405,7 @@ func (s *SQLiteStore) searchProgressiveL2FTS(q, tenant string) ([]KGSearchHit, e
 		if err := rows.Scan(&id); err != nil {
 			continue
 		}
-		e, err := s.GetKGEntity(id)
+		e, err := s.GetKGEntity(id, sc)
 		if err != nil || e == nil || !kgCurrent(e.ValidFrom, e.ValidUntil) {
 			continue
 		}
@@ -363,7 +430,7 @@ func formatNullTime(t *time.Time) any {
 func scanKGEntity(sc scanner) (*KGEntity, error) {
 	var e KGEntity
 	var from, until, created sql.NullString
-	if err := sc.Scan(&e.ID, &e.TenantID, &e.Name, &e.Kind, &e.Body, &from, &until, &created, &e.AgentID, &e.Source); err != nil {
+	if err := sc.Scan(&e.ID, &e.TenantID, &e.Name, &e.Kind, &e.Body, &from, &until, &created, &e.AgentID, &e.Source, &e.CustomerKey); err != nil {
 		return nil, err
 	}
 	e.TenantID = NormalizeTenant(e.TenantID)
@@ -387,7 +454,7 @@ func scanKGEntity(sc scanner) (*KGEntity, error) {
 func scanKGRelation(sc scanner) (*KGRelation, error) {
 	var r KGRelation
 	var from, until sql.NullString
-	if err := sc.Scan(&r.ID, &r.TenantID, &r.FromID, &r.ToID, &r.Rel, &r.Body, &from, &until, &r.Source); err != nil {
+	if err := sc.Scan(&r.ID, &r.TenantID, &r.FromID, &r.ToID, &r.Rel, &r.Body, &from, &until, &r.Source, &r.CustomerKey); err != nil {
 		return nil, err
 	}
 	r.TenantID = NormalizeTenant(r.TenantID)
