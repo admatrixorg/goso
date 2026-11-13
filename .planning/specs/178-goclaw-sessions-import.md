@@ -14,9 +14,9 @@ The written tenant is `--tenant`. `--source-tenant` is required and is the only 
 
 A local denylist file is required (`--deny-tenants` or `GOSO_IMPORT_DENY_TENANTS`), one tenant id per line. Blocking is the default. A missing, empty, or malformed file stops the process before any write, including a dry-run. If `--tenant` or `--source-tenant` is listed, the run stops the same way. The report has a `denied` count and does not print those names. The file is not committed.
 
-A session id that already exists in another tenant is `id_collision` and is left where it is. A session in the destination tenant that already exists and differs is `native_exists` and is not updated. An identical rerun is `skipped`.
+A session id that already exists in another tenant is `id_collision` and is left where it is. A session in the destination tenant that already exists and differs is `native-exists` and is not updated. An identical rerun is `skipped`.
 
-`--rollback` removes only the sessions, messages, and `session_import_links` rows recorded for that `--tenant`. Dry-run is the default. Native rows and other tenants stay.
+`--rollback` deletes importer-created message ids (`sessionID` plus a digit suffix) and drops a session only when no real message remains. A session that received a message after import stays, with that message. Dry-run is the default. Native rows and other tenants stay.
 
 Sessions with no resolved agent are stored `archived` and the placeholder agent `import-unresolved.<tenant>` is `enabled=0`, so a later chat turn does not call a model. Re-mapping those sessions is a later change.
 
@@ -66,7 +66,7 @@ These columns have no home on `sessions` or `messages`. They are not written. `s
 
 The file is streamed. Sessions are written in batches. One session is not held with the rest of the file. A line over 16MiB is invalid and does not stop the file.
 
-While `--apply` runs on SQLite, the `messages_ai` trigger is dropped and restored so the insert does not copy message text into `memory_fts`. The import does not call `PutMemory`, `SaveSummary`, or the chat pipeline.
+The SQLite `messages_ai` trigger stays in place during `--apply`. Imported message ids are removed from `memory_fts` in the same transaction as the insert. The import does not call `PutMemory`, `SaveSummary`, or the chat pipeline. An archived session, and a session whose agent is disabled, does not get a chat or channel reply.
 
 ## Out of scope
 

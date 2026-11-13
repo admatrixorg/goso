@@ -49,13 +49,13 @@ func Rollback(st SQLDB, opt Options) (*RollbackReport, error) {
 	if !ok {
 		return out, nil
 	}
-	if err := w.db.QueryRow(w.q(`SELECT COUNT(*) FROM session_import_links WHERE tenant_id=?`), w.dest).Scan(&out.Links); err != nil {
+	plan, err := w.rollbackPlan()
+	if err != nil {
 		return nil, err
 	}
-	if err := w.db.QueryRow(w.q(`SELECT COUNT(*) FROM sessions WHERE tenant_id=? AND id IN (SELECT session_id FROM session_import_links WHERE tenant_id=?)`), w.dest, w.dest).Scan(&out.Sessions); err != nil {
-		return nil, err
-	}
-	if opt.DryRun || out.Links == 0 {
+	out.Links = len(plan.dropLinks)
+	out.Sessions = len(plan.dropSessions)
+	if opt.DryRun || (len(plan.dropMessages) == 0 && len(plan.dropSessions) == 0) {
 		return out, nil
 	}
 	tx, err := w.db.Begin()
@@ -63,16 +63,16 @@ func Rollback(st SQLDB, opt Options) (*RollbackReport, error) {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := deleteImportFTS(tx, w.pg, w.dest); err != nil {
+	if err := deleteFTSIDs(tx, w.pg, plan.dropMessages); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(w.q(`DELETE FROM messages WHERE session_id IN (SELECT session_id FROM session_import_links WHERE tenant_id=?)`), w.dest); err != nil {
+	if err := deleteIDs(tx, w, `messages`, `id`, plan.dropMessages); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(w.q(`DELETE FROM sessions WHERE tenant_id=? AND id IN (SELECT session_id FROM session_import_links WHERE tenant_id=?)`), w.dest, w.dest); err != nil {
+	if err := deleteIDs(tx, w, `sessions`, `id`, plan.dropSessions); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(w.q(`DELETE FROM session_import_links WHERE tenant_id=?`), w.dest); err != nil {
+	if err := deleteIDs(tx, w, `session_import_links`, `session_id`, plan.dropLinks); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -81,14 +81,110 @@ func Rollback(st SQLDB, opt Options) (*RollbackReport, error) {
 	return out, nil
 }
 
-func deleteImportFTS(tx *sql.Tx, pg bool, tenant string) error {
-	if pg {
+type rollbackPlan struct {
+	dropMessages []string
+	dropSessions []string
+	dropLinks    []string
+}
+
+func (w *writer) rollbackPlan() (rollbackPlan, error) {
+	var plan rollbackPlan
+	rows, err := w.db.Query(w.q(`SELECT session_id FROM session_import_links WHERE tenant_id=?`), w.dest)
+	if err != nil {
+		return plan, err
+	}
+	var sessions []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return plan, err
+		}
+		sessions = append(sessions, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return plan, err
+	}
+	rows.Close()
+	if len(sessions) == 0 {
+		return plan, nil
+	}
+	msgRows, err := w.db.Query(w.q(`SELECT id, session_id FROM messages WHERE session_id IN `+placeholders(len(sessions))), anys(sessions)...)
+	if err != nil {
+		return plan, err
+	}
+	real := map[string]int{}
+	for _, id := range sessions {
+		real[id] = 0
+	}
+	for msgRows.Next() {
+		var id, sid string
+		if err := msgRows.Scan(&id, &sid); err != nil {
+			msgRows.Close()
+			return plan, err
+		}
+		if importMessageID(sid, id) {
+			plan.dropMessages = append(plan.dropMessages, id)
+			continue
+		}
+		real[sid]++
+	}
+	if err := msgRows.Err(); err != nil {
+		msgRows.Close()
+		return plan, err
+	}
+	msgRows.Close()
+	for _, id := range sessions {
+		if real[id] > 0 {
+			continue
+		}
+		plan.dropSessions = append(plan.dropSessions, id)
+		plan.dropLinks = append(plan.dropLinks, id)
+	}
+	return plan, nil
+}
+
+func importMessageID(sessionID, id string) bool {
+	prefix := sessionID + ":"
+	if !strings.HasPrefix(id, prefix) {
+		return false
+	}
+	rest := id[len(prefix):]
+	if rest == "" {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func deleteIDs(tx *sql.Tx, w *writer, table, column string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	q := `DELETE FROM ` + table + ` WHERE ` + column + ` IN ` + placeholders(len(ids))
+	if table == `session_import_links` {
+		q += ` AND tenant_id=?`
+		args := append(anys(ids), w.dest)
+		_, err := tx.Exec(w.q(q), args...)
+		return err
+	}
+	_, err := tx.Exec(w.q(q), anys(ids)...)
+	return err
+}
+
+func deleteFTSIDs(tx *sql.Tx, pg bool, ids []string) error {
+	if pg || len(ids) == 0 {
 		return nil
 	}
 	var n int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_fts'`).Scan(&n); err != nil || n == 0 {
 		return err
 	}
-	_, err := tx.Exec(`DELETE FROM memory_fts WHERE session_id IN (SELECT session_id FROM session_import_links WHERE tenant_id=?)`, tenant)
+	_, err := tx.Exec(`DELETE FROM memory_fts WHERE id IN `+placeholders(len(ids)), anys(ids)...)
 	return err
 }

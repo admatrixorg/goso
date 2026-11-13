@@ -156,6 +156,9 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 		return ""
 	}
 	sess := t.ensureSession(agent.ID, chatID)
+	if inboundBlocked(agent, sess) {
+		return ""
+	}
 	reply := answerTurn(ctx, t.Store, agent, sess, t.LLM, t.Meter, text)
 	if err := sendFn(ctx, chatID, reply); err != nil {
 		return err.Error()

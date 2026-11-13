@@ -78,6 +78,12 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	agent := z.ensureAgent()
 	sess := z.ensureSession(agent.ID, threadID)
+	if inboundBlocked(agent, sess) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		return
+	}
 
 	reply := answerTurn(r.Context(), z.Store, agent, sess, z.LLM, z.Meter, text)
 

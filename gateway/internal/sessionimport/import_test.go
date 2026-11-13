@@ -3,10 +3,12 @@
 package sessionimport
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -694,5 +697,81 @@ func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
 	}
 	if count(t, st, `SELECT COUNT(*) FROM session_import_links WHERE tenant_id=?`, "other-shop") != 1 {
 		t.Fatal("other tenant link removed")
+	}
+}
+
+func TestRollbackKeepsPostImportMessage(t *testing.T) {
+	st := openStore(t)
+	seedAgent(t, st, agentSrc, "minh-an-sales", "minh-an")
+	opt := minhOpt(t)
+	if _, err := Import(st, openFixture(t), opt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddMessage(store.Message{SessionID: "s-minh-an-order", Role: "user", Content: "after-import-keep"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rollback(st, Options{Tenant: "minh-an", DenyFile: opt.DenyFile}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetSession("s-minh-an-order")
+	if err != nil || got == nil {
+		t.Fatal("session with a real message was deleted")
+	}
+	msgs, err := st.ListMessages("s-minh-an-order")
+	if err != nil || len(msgs) != 1 || msgs[0].Content != "after-import-keep" || importMessageID("s-minh-an-order", msgs[0].ID) {
+		t.Fatalf("messages %#v %v", msgs, err)
+	}
+	if _, err := st.GetSession("s-minh-an-no-agent"); err == nil {
+		t.Fatal("import-only session survived")
+	}
+	if count(t, st, `SELECT COUNT(*) FROM messages WHERE session_id=? AND id LIKE ?`, "s-minh-an-order", "s-minh-an-order:%") != 0 {
+		t.Fatal("importer message survived")
+	}
+}
+
+func TestChannelInboundBlockedOnUnattachedImport(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_TELEGRAM_WEBHOOK_SECRET", "")
+	st := openStore(t)
+	if _, err := Import(st, openFixture(t), minhOpt(t)); err != nil {
+		t.Fatal(err)
+	}
+	before, err := st.ListMessages("s-minh-an-no-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutChannelConfig(store.ChannelConfig{Name: "telegram", AgentID: unresolvedAgentID("minh-an"), Enabled: true, DMPolicy: "open"}); err != nil {
+		t.Fatal(err)
+	}
+	scripted := &llm.Scripted{Replies: []llm.Reply{{Text: "should-not-send"}}}
+	var sent string
+	tg := &channel.Telegram{
+		Store: st,
+		LLM:   scripted,
+		Sender: func(_ context.Context, _ int64, text string) error {
+			sent = text
+			return nil
+		},
+	}
+	body, _ := json.Marshal(map[string]any{
+		"update_id": 1,
+		"message": map[string]any{
+			"message_id": 1,
+			"chat":       map[string]any{"id": 12345},
+			"text":       "hello imported",
+		},
+	})
+	req := httptest.NewRequest("POST", "/api/channels/telegram/webhook", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	tg.HandleUpdate(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	if len(scripted.Recorded) != 0 || sent != "" {
+		t.Fatalf("inbound replied recorded=%d sent=%q", len(scripted.Recorded), sent)
+	}
+	after, err := st.ListMessages("s-minh-an-no-agent")
+	if err != nil || len(after) != len(before) {
+		t.Fatalf("imported messages changed %d -> %d %v", len(before), len(after), err)
 	}
 }

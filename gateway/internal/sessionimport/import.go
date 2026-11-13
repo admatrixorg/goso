@@ -91,7 +91,7 @@ type TenantCount struct {
 	Messages          int    `json:"messages"`
 	New               int    `json:"new"`
 	Skipped           int    `json:"skipped"`
-	NativeExists      int    `json:"native_exists"`
+	NativeExists      int    `json:"native-exists"`
 	IDCollision       int    `json:"id_collision"`
 	Invalid           int    `json:"invalid"`
 	InvalidMessages   int    `json:"invalid_messages"`
