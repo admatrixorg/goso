@@ -180,6 +180,19 @@ func TestCustomerScope_Tools(t *testing.T) {
 			if _, err := DispatchMemoryTool(st, store.DefaultTenant, b.ID, llm.ToolCall{Name: ToolMemoryExpand, Arguments: map[string]any{"id": cur.ID}}); err != nil {
 				t.Fatalf("curated entity expand: %v", err)
 			}
+			hidden, err := st.PutKGEntity(store.KGEntity{Name: "PINEAPPLE-9 of B only", Kind: "order", SessionID: b.ID, AgentID: ag.ID})
+			if err != nil || hidden.CustomerKey != "zalo-personal:B" {
+				t.Fatalf("channel stamp: %+v %v", hidden, err)
+			}
+			if got := ids(search(a.ID)); got["|"+hidden.ID] || !got["curated"] {
+				t.Fatalf("A must not see B's entity: %v", got)
+			}
+			if _, err := DispatchMemoryTool(st, store.DefaultTenant, a.ID, llm.ToolCall{Name: ToolMemoryExpand, Arguments: map[string]any{"id": hidden.ID}}); err == nil {
+				t.Fatal("A must not expand B's entity")
+			}
+			if got := ids(search(web.ID)); !got["|"+hidden.ID] {
+				t.Fatalf("web search still sees customer entities: %v", got)
+			}
 
 			list := func(caller string) int {
 				body, err := DispatchSessionTool(st, store.DefaultTenant, caller, llm.ToolCall{Name: ToolSessionsList})

@@ -266,6 +266,14 @@ type KGEntity struct {
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
+	// CustomerKey scopes an entity written from a channel thread to that
+	// customer (CustomerKeyForLabel). Empty means shared: visible to every
+	// customer, and the value of every row that existed before SPEC 182.
+	// Callers cannot set it; PutKGEntity stamps it from SessionID.
+	CustomerKey string `json:"customer_key,omitempty"`
+	// SessionID is write-only. It is not stored. A channel session stamps
+	// CustomerKey; a web session or an empty id leaves the row shared.
+	SessionID string `json:"-"`
 }
 
 // KGRelation is one L2 edge between entities.
@@ -280,8 +288,11 @@ type KGRelation struct {
 	ValidFrom  time.Time  `json:"valid_from"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 	// Exclusive: on insert, close every current relation with the same
-	// (tenant, from_id, rel) but a different to_id (temporal supersede).
+	// (tenant, from_id, rel, customer_key) but a different to_id.
 	Exclusive bool `json:"exclusive,omitempty"`
+	// CustomerKey and SessionID follow the entity rules.
+	CustomerKey string `json:"customer_key,omitempty"`
+	SessionID   string `json:"-"`
 }
 
 // KGSearchHit is one progressive L1+L2 search row.
@@ -459,12 +470,12 @@ type StoreIface interface {
 	LatestSummary(sessionID string) (*Memory, error)
 	SearchMemory(q string) ([]SearchHit, error)
 	PutKGEntity(KGEntity) (*KGEntity, error)
-	GetKGEntity(string) (*KGEntity, error)
+	GetKGEntity(id string, scope KGScope) (*KGEntity, error)
 	PutKGRelation(KGRelation) (*KGRelation, error)
-	ListKGRelations(entityID string) ([]*KGRelation, error)
+	ListKGRelations(entityID string, scope KGScope) ([]*KGRelation, error)
 	ListKGGraph(KGGraphQuery) (*KGGraph, error)
-	ExpandKG(id string) (*KGExpand, error)
-	SearchProgressive(q, tenant string) ([]KGSearchHit, error)
+	ExpandKG(id string, scope KGScope) (*KGExpand, error)
+	SearchProgressive(q, tenant string, scope KGScope) ([]KGSearchHit, error)
 	RecallMemories(q RecallQuery) ([]RecallHit, error)
 	PruneEpisodic(before time.Time) (int, error)
 	SupersedeKGEntity(tenant, id string, until time.Time) error
