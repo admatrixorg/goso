@@ -33,6 +33,8 @@ func Tick(ctx context.Context, st store.StoreIface, now time.Time, fire FireFunc
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Global on purpose: every tenant's due jobs run from this process.
+	// HTTP listing is ListCronJobsTenant.
 	jobs := st.ListCronJobs()
 	if len(jobs) == 0 {
 		return

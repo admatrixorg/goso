@@ -1,0 +1,2127 @@
+{
+  "channel_contacts": [
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0000",
+      "display_name": "Minh An 0000",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:00:00Z",
+      "last_seen_at": "2026-01-15T09:00:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0001",
+      "display_name": "Minh An 0001",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:01:00Z",
+      "last_seen_at": "2026-01-15T09:01:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0002",
+      "display_name": "Minh An 0002",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:02:00Z",
+      "last_seen_at": "2026-01-15T09:02:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0003",
+      "display_name": "Minh An 0003",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:03:00Z",
+      "last_seen_at": "2026-01-15T09:03:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0004",
+      "display_name": "Minh An 0004",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:04:00Z",
+      "last_seen_at": "2026-01-15T09:04:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0005",
+      "display_name": "Minh An 0005",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:05:00Z",
+      "last_seen_at": "2026-01-15T09:05:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0006",
+      "display_name": "Minh An 0006",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:06:00Z",
+      "last_seen_at": "2026-01-15T09:06:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0007",
+      "display_name": "Minh An 0007",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:07:00Z",
+      "last_seen_at": "2026-01-15T09:07:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0008",
+      "display_name": "Minh An 0008",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:08:00Z",
+      "last_seen_at": "2026-01-15T09:08:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0009",
+      "display_name": "Minh An 0009",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:09:00Z",
+      "last_seen_at": "2026-01-15T09:09:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0010",
+      "display_name": "Minh An 0010",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:10:00Z",
+      "last_seen_at": "2026-01-15T09:10:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0011",
+      "display_name": "Minh An 0011",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:11:00Z",
+      "last_seen_at": "2026-01-15T09:11:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0012",
+      "display_name": "Minh An 0012",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:12:00Z",
+      "last_seen_at": "2026-01-15T09:12:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0013",
+      "display_name": "Minh An 0013",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:13:00Z",
+      "last_seen_at": "2026-01-15T09:13:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0014",
+      "display_name": "Minh An 0014",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:14:00Z",
+      "last_seen_at": "2026-01-15T09:14:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0015",
+      "display_name": "Minh An 0015",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:15:00Z",
+      "last_seen_at": "2026-01-15T09:15:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0016",
+      "display_name": "Minh An 0016",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:16:00Z",
+      "last_seen_at": "2026-01-15T09:16:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0017",
+      "display_name": "Minh An 0017",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:17:00Z",
+      "last_seen_at": "2026-01-15T09:17:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0018",
+      "display_name": "Minh An 0018",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:18:00Z",
+      "last_seen_at": "2026-01-15T09:18:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0019",
+      "display_name": "Minh An 0019",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:19:00Z",
+      "last_seen_at": "2026-01-15T09:19:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0020",
+      "display_name": "Minh An 0020",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:20:00Z",
+      "last_seen_at": "2026-01-15T09:20:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0021",
+      "display_name": "Minh An 0021",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:21:00Z",
+      "last_seen_at": "2026-01-15T09:21:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0022",
+      "display_name": "Minh An 0022",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:22:00Z",
+      "last_seen_at": "2026-01-15T09:22:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0023",
+      "display_name": "Minh An 0023",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:23:00Z",
+      "last_seen_at": "2026-01-15T09:23:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0024",
+      "display_name": "Minh An 0024",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:24:00Z",
+      "last_seen_at": "2026-01-15T09:24:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0025",
+      "display_name": "Minh An 0025",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:25:00Z",
+      "last_seen_at": "2026-01-15T09:25:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0026",
+      "display_name": "Minh An 0026",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:26:00Z",
+      "last_seen_at": "2026-01-15T09:26:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0027",
+      "display_name": "Minh An 0027",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:27:00Z",
+      "last_seen_at": "2026-01-15T09:27:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0028",
+      "display_name": "Minh An 0028",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:28:00Z",
+      "last_seen_at": "2026-01-15T09:28:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0029",
+      "display_name": "Minh An 0029",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:29:00Z",
+      "last_seen_at": "2026-01-15T09:29:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0030",
+      "display_name": "Minh An 0030",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:30:00Z",
+      "last_seen_at": "2026-01-15T09:30:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0031",
+      "display_name": "Minh An 0031",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:31:00Z",
+      "last_seen_at": "2026-01-15T09:31:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0032",
+      "display_name": "Minh An 0032",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:32:00Z",
+      "last_seen_at": "2026-01-15T09:32:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0033",
+      "display_name": "Minh An 0033",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:33:00Z",
+      "last_seen_at": "2026-01-15T09:33:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0034",
+      "display_name": "Minh An 0034",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:34:00Z",
+      "last_seen_at": "2026-01-15T09:34:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0035",
+      "display_name": "Minh An 0035",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:35:00Z",
+      "last_seen_at": "2026-01-15T09:35:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0036",
+      "display_name": "Minh An 0036",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:36:00Z",
+      "last_seen_at": "2026-01-15T09:36:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0037",
+      "display_name": "Minh An 0037",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:37:00Z",
+      "last_seen_at": "2026-01-15T09:37:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0038",
+      "display_name": "Minh An 0038",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:38:00Z",
+      "last_seen_at": "2026-01-15T09:38:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0039",
+      "display_name": "Minh An 0039",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:39:00Z",
+      "last_seen_at": "2026-01-15T09:39:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0040",
+      "display_name": "Minh An 0040",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:40:00Z",
+      "last_seen_at": "2026-01-15T09:40:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0041",
+      "display_name": "Minh An 0041",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:41:00Z",
+      "last_seen_at": "2026-01-15T09:41:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0042",
+      "display_name": "Minh An 0042",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:42:00Z",
+      "last_seen_at": "2026-01-15T09:42:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0043",
+      "display_name": "Minh An 0043",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:43:00Z",
+      "last_seen_at": "2026-01-15T09:43:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0044",
+      "display_name": "Minh An 0044",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:44:00Z",
+      "last_seen_at": "2026-01-15T09:44:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0045",
+      "display_name": "Minh An 0045",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:45:00Z",
+      "last_seen_at": "2026-01-15T09:45:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0046",
+      "display_name": "Minh An 0046",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:46:00Z",
+      "last_seen_at": "2026-01-15T09:46:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0047",
+      "display_name": "Minh An 0047",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:47:00Z",
+      "last_seen_at": "2026-01-15T09:47:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0048",
+      "display_name": "Minh An 0048",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:48:00Z",
+      "last_seen_at": "2026-01-15T09:48:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0049",
+      "display_name": "Minh An 0049",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:49:00Z",
+      "last_seen_at": "2026-01-15T09:49:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0050",
+      "display_name": "Minh An 0050",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:50:00Z",
+      "last_seen_at": "2026-01-15T09:50:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0051",
+      "display_name": "Minh An 0051",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:51:00Z",
+      "last_seen_at": "2026-01-15T09:51:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0052",
+      "display_name": "Minh An 0052",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:52:00Z",
+      "last_seen_at": "2026-01-15T09:52:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0053",
+      "display_name": "Minh An 0053",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:53:00Z",
+      "last_seen_at": "2026-01-15T09:53:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0054",
+      "display_name": "Minh An 0054",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:54:00Z",
+      "last_seen_at": "2026-01-15T09:54:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0055",
+      "display_name": "Minh An 0055",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:55:00Z",
+      "last_seen_at": "2026-01-15T09:55:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0056",
+      "display_name": "Minh An 0056",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:56:00Z",
+      "last_seen_at": "2026-01-15T09:56:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0057",
+      "display_name": "Minh An 0057",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:57:00Z",
+      "last_seen_at": "2026-01-15T09:57:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0058",
+      "display_name": "Minh An 0058",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:58:00Z",
+      "last_seen_at": "2026-01-15T09:58:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0059",
+      "display_name": "Minh An 0059",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T08:59:00Z",
+      "last_seen_at": "2026-01-15T09:59:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0060",
+      "display_name": "Minh An 0060",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:00:00Z",
+      "last_seen_at": "2026-01-15T10:00:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0061",
+      "display_name": "Minh An 0061",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:01:00Z",
+      "last_seen_at": "2026-01-15T10:01:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0062",
+      "display_name": "Minh An 0062",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:02:00Z",
+      "last_seen_at": "2026-01-15T10:02:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0063",
+      "display_name": "Minh An 0063",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:03:00Z",
+      "last_seen_at": "2026-01-15T10:03:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0064",
+      "display_name": "Minh An 0064",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:04:00Z",
+      "last_seen_at": "2026-01-15T10:04:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0065",
+      "display_name": "Minh An 0065",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:05:00Z",
+      "last_seen_at": "2026-01-15T10:05:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0066",
+      "display_name": "Minh An 0066",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:06:00Z",
+      "last_seen_at": "2026-01-15T10:06:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0067",
+      "display_name": "Minh An 0067",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:07:00Z",
+      "last_seen_at": "2026-01-15T10:07:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0068",
+      "display_name": "Minh An 0068",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:08:00Z",
+      "last_seen_at": "2026-01-15T10:08:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0069",
+      "display_name": "Minh An 0069",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:09:00Z",
+      "last_seen_at": "2026-01-15T10:09:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0070",
+      "display_name": "Minh An 0070",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:10:00Z",
+      "last_seen_at": "2026-01-15T10:10:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0071",
+      "display_name": "Minh An 0071",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:11:00Z",
+      "last_seen_at": "2026-01-15T10:11:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0072",
+      "display_name": "Minh An 0072",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:12:00Z",
+      "last_seen_at": "2026-01-15T10:12:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0073",
+      "display_name": "Minh An 0073",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:13:00Z",
+      "last_seen_at": "2026-01-15T10:13:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0074",
+      "display_name": "Minh An 0074",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:14:00Z",
+      "last_seen_at": "2026-01-15T10:14:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0075",
+      "display_name": "Minh An 0075",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:15:00Z",
+      "last_seen_at": "2026-01-15T10:15:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0076",
+      "display_name": "Minh An 0076",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:16:00Z",
+      "last_seen_at": "2026-01-15T10:16:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0077",
+      "display_name": "Minh An 0077",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:17:00Z",
+      "last_seen_at": "2026-01-15T10:17:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0078",
+      "display_name": "Minh An 0078",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:18:00Z",
+      "last_seen_at": "2026-01-15T10:18:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0079",
+      "display_name": "Minh An 0079",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:19:00Z",
+      "last_seen_at": "2026-01-15T10:19:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0080",
+      "display_name": "Minh An 0080",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:20:00Z",
+      "last_seen_at": "2026-01-15T10:20:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0081",
+      "display_name": "Minh An 0081",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:21:00Z",
+      "last_seen_at": "2026-01-15T10:21:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0082",
+      "display_name": "Minh An 0082",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:22:00Z",
+      "last_seen_at": "2026-01-15T10:22:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0083",
+      "display_name": "Minh An 0083",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:23:00Z",
+      "last_seen_at": "2026-01-15T10:23:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0084",
+      "display_name": "Minh An 0084",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:24:00Z",
+      "last_seen_at": "2026-01-15T10:24:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0085",
+      "display_name": "Minh An 0085",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:25:00Z",
+      "last_seen_at": "2026-01-15T10:25:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0086",
+      "display_name": "Minh An 0086",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:26:00Z",
+      "last_seen_at": "2026-01-15T10:26:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0087",
+      "display_name": "Minh An 0087",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:27:00Z",
+      "last_seen_at": "2026-01-15T10:27:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0088",
+      "display_name": "Minh An 0088",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:28:00Z",
+      "last_seen_at": "2026-01-15T10:28:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0089",
+      "display_name": "Minh An 0089",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:29:00Z",
+      "last_seen_at": "2026-01-15T10:29:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0090",
+      "display_name": "Minh An 0090",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:30:00Z",
+      "last_seen_at": "2026-01-15T10:30:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0091",
+      "display_name": "Minh An 0091",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:31:00Z",
+      "last_seen_at": "2026-01-15T10:31:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0092",
+      "display_name": "Minh An 0092",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:32:00Z",
+      "last_seen_at": "2026-01-15T10:32:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0093",
+      "display_name": "Minh An 0093",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:33:00Z",
+      "last_seen_at": "2026-01-15T10:33:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0094",
+      "display_name": "Minh An 0094",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:34:00Z",
+      "last_seen_at": "2026-01-15T10:34:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0095",
+      "display_name": "Minh An 0095",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:35:00Z",
+      "last_seen_at": "2026-01-15T10:35:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0096",
+      "display_name": "Minh An 0096",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:36:00Z",
+      "last_seen_at": "2026-01-15T10:36:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0097",
+      "display_name": "Minh An 0097",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:37:00Z",
+      "last_seen_at": "2026-01-15T10:37:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0098",
+      "display_name": "Minh An 0098",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:38:00Z",
+      "last_seen_at": "2026-01-15T10:38:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0099",
+      "display_name": "Minh An 0099",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:39:00Z",
+      "last_seen_at": "2026-01-15T10:39:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0100",
+      "display_name": "Minh An 0100",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:40:00Z",
+      "last_seen_at": "2026-01-15T10:40:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0101",
+      "display_name": "Minh An 0101",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:41:00Z",
+      "last_seen_at": "2026-01-15T10:41:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0102",
+      "display_name": "Minh An 0102",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:42:00Z",
+      "last_seen_at": "2026-01-15T10:42:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0103",
+      "display_name": "Minh An 0103",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:43:00Z",
+      "last_seen_at": "2026-01-15T10:43:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0104",
+      "display_name": "Minh An 0104",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:44:00Z",
+      "last_seen_at": "2026-01-15T10:44:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0105",
+      "display_name": "Minh An 0105",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:45:00Z",
+      "last_seen_at": "2026-01-15T10:45:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0106",
+      "display_name": "Minh An 0106",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:46:00Z",
+      "last_seen_at": "2026-01-15T10:46:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0107",
+      "display_name": "Minh An 0107",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:47:00Z",
+      "last_seen_at": "2026-01-15T10:47:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0108",
+      "display_name": "Minh An 0108",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:48:00Z",
+      "last_seen_at": "2026-01-15T10:48:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0109",
+      "display_name": "Minh An 0109",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:49:00Z",
+      "last_seen_at": "2026-01-15T10:49:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0110",
+      "display_name": "Minh An 0110",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:50:00Z",
+      "last_seen_at": "2026-01-15T10:50:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0111",
+      "display_name": "Minh An 0111",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:51:00Z",
+      "last_seen_at": "2026-01-15T10:51:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0112",
+      "display_name": "Minh An 0112",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:52:00Z",
+      "last_seen_at": "2026-01-15T10:52:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0113",
+      "display_name": "Minh An 0113",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:53:00Z",
+      "last_seen_at": "2026-01-15T10:53:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0114",
+      "display_name": "Minh An 0114",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:54:00Z",
+      "last_seen_at": "2026-01-15T10:54:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0115",
+      "display_name": "Minh An 0115",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:55:00Z",
+      "last_seen_at": "2026-01-15T10:55:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0116",
+      "display_name": "Minh An 0116",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:56:00Z",
+      "last_seen_at": "2026-01-15T10:56:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0117",
+      "display_name": "Minh An 0117",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:57:00Z",
+      "last_seen_at": "2026-01-15T10:57:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0118",
+      "display_name": "Minh An 0118",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:58:00Z",
+      "last_seen_at": "2026-01-15T10:58:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0119",
+      "display_name": "Minh An 0119",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T09:59:00Z",
+      "last_seen_at": "2026-01-15T10:59:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0120",
+      "display_name": "Minh An 0120",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:00:00Z",
+      "last_seen_at": "2026-01-15T11:00:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0121",
+      "display_name": "Minh An 0121",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:01:00Z",
+      "last_seen_at": "2026-01-15T11:01:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0122",
+      "display_name": "Minh An 0122",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:02:00Z",
+      "last_seen_at": "2026-01-15T11:02:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0123",
+      "display_name": "Minh An 0123",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:03:00Z",
+      "last_seen_at": "2026-01-15T11:03:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0124",
+      "display_name": "Minh An 0124",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:04:00Z",
+      "last_seen_at": "2026-01-15T11:04:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0125",
+      "display_name": "Minh An 0125",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:05:00Z",
+      "last_seen_at": "2026-01-15T11:05:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0126",
+      "display_name": "Minh An 0126",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:06:00Z",
+      "last_seen_at": "2026-01-15T11:06:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0127",
+      "display_name": "Minh An 0127",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:07:00Z",
+      "last_seen_at": "2026-01-15T11:07:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0128",
+      "display_name": "Minh An 0128",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:08:00Z",
+      "last_seen_at": "2026-01-15T11:08:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0129",
+      "display_name": "Minh An 0129",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:09:00Z",
+      "last_seen_at": "2026-01-15T11:09:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0130",
+      "display_name": "Minh An 0130",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:10:00Z",
+      "last_seen_at": "2026-01-15T11:10:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0131",
+      "display_name": "Minh An 0131",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:11:00Z",
+      "last_seen_at": "2026-01-15T11:11:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0132",
+      "display_name": "Minh An 0132",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:12:00Z",
+      "last_seen_at": "2026-01-15T11:12:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0133",
+      "display_name": "Minh An 0133",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:13:00Z",
+      "last_seen_at": "2026-01-15T11:13:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0134",
+      "display_name": "Minh An 0134",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:14:00Z",
+      "last_seen_at": "2026-01-15T11:14:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0135",
+      "display_name": "Minh An 0135",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:15:00Z",
+      "last_seen_at": "2026-01-15T11:15:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0136",
+      "display_name": "Minh An 0136",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:16:00Z",
+      "last_seen_at": "2026-01-15T11:16:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0137",
+      "display_name": "Minh An 0137",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:17:00Z",
+      "last_seen_at": "2026-01-15T11:17:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0138",
+      "display_name": "Minh An 0138",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:18:00Z",
+      "last_seen_at": "2026-01-15T11:18:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0139",
+      "display_name": "Minh An 0139",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:19:00Z",
+      "last_seen_at": "2026-01-15T11:19:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0140",
+      "display_name": "Minh An 0140",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:20:00Z",
+      "last_seen_at": "2026-01-15T11:20:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0141",
+      "display_name": "Minh An 0141",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:21:00Z",
+      "last_seen_at": "2026-01-15T11:21:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0142",
+      "display_name": "Minh An 0142",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:22:00Z",
+      "last_seen_at": "2026-01-15T11:22:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0143",
+      "display_name": "Minh An 0143",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:23:00Z",
+      "last_seen_at": "2026-01-15T11:23:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0144",
+      "display_name": "Minh An 0144",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:24:00Z",
+      "last_seen_at": "2026-01-15T11:24:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0145",
+      "display_name": "Minh An 0145",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:25:00Z",
+      "last_seen_at": "2026-01-15T11:25:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0146",
+      "display_name": "Minh An 0146",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:26:00Z",
+      "last_seen_at": "2026-01-15T11:26:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0147",
+      "display_name": "Minh An 0147",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:27:00Z",
+      "last_seen_at": "2026-01-15T11:27:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0148",
+      "display_name": "Minh An 0148",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:28:00Z",
+      "last_seen_at": "2026-01-15T11:28:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0149",
+      "display_name": "Minh An 0149",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:29:00Z",
+      "last_seen_at": "2026-01-15T11:29:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0150",
+      "display_name": "Minh An 0150",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:30:00Z",
+      "last_seen_at": "2026-01-15T11:30:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0151",
+      "display_name": "Minh An 0151",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:31:00Z",
+      "last_seen_at": "2026-01-15T11:31:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0152",
+      "display_name": "Minh An 0152",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:32:00Z",
+      "last_seen_at": "2026-01-15T11:32:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0153",
+      "display_name": "Minh An 0153",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:33:00Z",
+      "last_seen_at": "2026-01-15T11:33:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0154",
+      "display_name": "Minh An 0154",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:34:00Z",
+      "last_seen_at": "2026-01-15T11:34:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0155",
+      "display_name": "Minh An 0155",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:35:00Z",
+      "last_seen_at": "2026-01-15T11:35:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0156",
+      "display_name": "Minh An 0156",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:36:00Z",
+      "last_seen_at": "2026-01-15T11:36:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0157",
+      "display_name": "Minh An 0157",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:37:00Z",
+      "last_seen_at": "2026-01-15T11:37:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0158",
+      "display_name": "Minh An 0158",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:38:00Z",
+      "last_seen_at": "2026-01-15T11:38:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0159",
+      "display_name": "Minh An 0159",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:39:00Z",
+      "last_seen_at": "2026-01-15T11:39:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0160",
+      "display_name": "Minh An 0160",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:40:00Z",
+      "last_seen_at": "2026-01-15T11:40:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0161",
+      "display_name": "Minh An 0161",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:41:00Z",
+      "last_seen_at": "2026-01-15T11:41:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0162",
+      "display_name": "Minh An 0162",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:42:00Z",
+      "last_seen_at": "2026-01-15T11:42:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0163",
+      "display_name": "Minh An 0163",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:43:00Z",
+      "last_seen_at": "2026-01-15T11:43:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0164",
+      "display_name": "Minh An 0164",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:44:00Z",
+      "last_seen_at": "2026-01-15T11:44:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0165",
+      "display_name": "Minh An 0165",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:45:00Z",
+      "last_seen_at": "2026-01-15T11:45:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0166",
+      "display_name": "Minh An 0166",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:46:00Z",
+      "last_seen_at": "2026-01-15T11:46:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0167",
+      "display_name": "Minh An 0167",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:47:00Z",
+      "last_seen_at": "2026-01-15T11:47:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0168",
+      "display_name": "Minh An 0168",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:48:00Z",
+      "last_seen_at": "2026-01-15T11:48:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0169",
+      "display_name": "Minh An 0169",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:49:00Z",
+      "last_seen_at": "2026-01-15T11:49:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0170",
+      "display_name": "Minh An 0170",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:50:00Z",
+      "last_seen_at": "2026-01-15T11:50:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0171",
+      "display_name": "Minh An 0171",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:51:00Z",
+      "last_seen_at": "2026-01-15T11:51:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0172",
+      "display_name": "Minh An 0172",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:52:00Z",
+      "last_seen_at": "2026-01-15T11:52:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0173",
+      "display_name": "Minh An 0173",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:53:00Z",
+      "last_seen_at": "2026-01-15T11:53:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0174",
+      "display_name": "Minh An 0174",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:54:00Z",
+      "last_seen_at": "2026-01-15T11:54:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0175",
+      "display_name": "Minh An 0175",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:55:00Z",
+      "last_seen_at": "2026-01-15T11:55:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0176",
+      "display_name": "Minh An 0176",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:56:00Z",
+      "last_seen_at": "2026-01-15T11:56:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0177",
+      "display_name": "Minh An 0177",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:57:00Z",
+      "last_seen_at": "2026-01-15T11:57:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0178",
+      "display_name": "Minh An 0178",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:58:00Z",
+      "last_seen_at": "2026-01-15T11:58:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0179",
+      "display_name": "Minh An 0179",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T10:59:00Z",
+      "last_seen_at": "2026-01-15T11:59:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0180",
+      "display_name": "Minh An 0180",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:00:00Z",
+      "last_seen_at": "2026-01-15T12:00:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0181",
+      "display_name": "Minh An 0181",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:01:00Z",
+      "last_seen_at": "2026-01-15T12:01:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0182",
+      "display_name": "Minh An 0182",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:02:00Z",
+      "last_seen_at": "2026-01-15T12:02:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0183",
+      "display_name": "Minh An 0183",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:03:00Z",
+      "last_seen_at": "2026-01-15T12:03:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0184",
+      "display_name": "Minh An 0184",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:04:00Z",
+      "last_seen_at": "2026-01-15T12:04:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0185",
+      "display_name": "Minh An 0185",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:05:00Z",
+      "last_seen_at": "2026-01-15T12:05:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0186",
+      "display_name": "Minh An 0186",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:06:00Z",
+      "last_seen_at": "2026-01-15T12:06:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0187",
+      "display_name": "Minh An 0187",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:07:00Z",
+      "last_seen_at": "2026-01-15T12:07:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0188",
+      "display_name": "Minh An 0188",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:08:00Z",
+      "last_seen_at": "2026-01-15T12:08:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0189",
+      "display_name": "Minh An 0189",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:09:00Z",
+      "last_seen_at": "2026-01-15T12:09:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0190",
+      "display_name": "Minh An 0190",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:10:00Z",
+      "last_seen_at": "2026-01-15T12:10:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0191",
+      "display_name": "Minh An 0191",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:11:00Z",
+      "last_seen_at": "2026-01-15T12:11:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0192",
+      "display_name": "Minh An 0192",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:12:00Z",
+      "last_seen_at": "2026-01-15T12:12:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0193",
+      "display_name": "Minh An 0193",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:13:00Z",
+      "last_seen_at": "2026-01-15T12:13:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0194",
+      "display_name": "Minh An 0194",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:14:00Z",
+      "last_seen_at": "2026-01-15T12:14:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0195",
+      "display_name": "Minh An 0195",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:15:00Z",
+      "last_seen_at": "2026-01-15T12:15:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0196",
+      "display_name": "Minh An 0196",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:16:00Z",
+      "last_seen_at": "2026-01-15T12:16:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0197",
+      "display_name": "Minh An 0197",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:17:00Z",
+      "last_seen_at": "2026-01-15T12:17:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0198",
+      "display_name": "Minh An 0198",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:18:00Z",
+      "last_seen_at": "2026-01-15T12:18:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0199",
+      "display_name": "Minh An 0199",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:19:00Z",
+      "last_seen_at": "2026-01-15T12:19:00Z",
+      "contact_type": "user"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0200",
+      "display_name": "Minh An Thread 0200",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:20:00Z",
+      "last_seen_at": "2026-01-15T12:20:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0200"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0201",
+      "display_name": "Minh An Thread 0201",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:21:00Z",
+      "last_seen_at": "2026-01-15T12:21:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0201"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0202",
+      "display_name": "Minh An Thread 0202",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:22:00Z",
+      "last_seen_at": "2026-01-15T12:22:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0202"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0203",
+      "display_name": "Minh An Thread 0203",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:23:00Z",
+      "last_seen_at": "2026-01-15T12:23:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0203"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0204",
+      "display_name": "Minh An Thread 0204",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:24:00Z",
+      "last_seen_at": "2026-01-15T12:24:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0204"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0205",
+      "display_name": "Minh An Thread 0205",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:25:00Z",
+      "last_seen_at": "2026-01-15T12:25:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0205"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0206",
+      "display_name": "Minh An Thread 0206",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:26:00Z",
+      "last_seen_at": "2026-01-15T12:26:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0206"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0207",
+      "display_name": "Minh An Thread 0207",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:27:00Z",
+      "last_seen_at": "2026-01-15T12:27:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0207"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-0000",
+      "display_name": "Minh An Thread 0000",
+      "peer_kind": "user",
+      "first_seen_at": "2026-01-15T11:30:00Z",
+      "last_seen_at": "2026-01-15T12:30:00Z",
+      "contact_type": "user",
+      "thread_id": "thread-minh-an-0000"
+    },
+    {
+      "tenant_id": "minh-an",
+      "channel_type": "zalo-oa",
+      "sender_id": "grp-minh-an-0001",
+      "display_name": "Minh An Group 0001",
+      "peer_kind": "group",
+      "first_seen_at": "2026-01-15T11:31:00Z",
+      "last_seen_at": "2026-01-15T12:31:00Z",
+      "contact_type": "group",
+      "thread_id": "thread-minh-an-g1",
+      "thread_type": "group"
+    },
+    {
+      "id": "c0ffee0a-1b2c-4d3e-8f90-a1b2c3d4e5f6",
+      "tenant_id": "minh-an",
+      "channel_type": "telegram",
+      "sender_id": "ext-minh-an-merged",
+      "display_name": "Minh An Merged",
+      "peer_kind": "user",
+      "merged_id": "a1b2c3d4-e5f6-4789-a012-b3c4d5e6f708",
+      "first_seen_at": "2026-01-15T11:32:00Z",
+      "last_seen_at": "2026-01-15T12:32:00Z",
+      "contact_type": "user"
+    }
+  ]
+}
