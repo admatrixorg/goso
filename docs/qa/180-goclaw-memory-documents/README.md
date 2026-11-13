@@ -15,9 +15,9 @@ goso-memdoc-import --remove-tenant <goso tenant> --deny-file tenants.txt --db pa
 
 ## qa:tabs
 
-Code under test: `e735dca5e7a2a5c4b5fd3560885ee9375f800209`.
+Code under test: `b8da4a398068f70006c8369be01b597a5b6c26f2`.
 
-Log: [qa-tabs-e735dca5e7a2a5c4b5fd3560885ee9375f800209.log](../180/qa-tabs-e735dca5e7a2a5c4b5fd3560885ee9375f800209.log).
+Log: [qa-tabs-b8da4a398068f70006c8369be01b597a5b6c26f2.log](../180/qa-tabs-b8da4a398068f70006c8369be01b597a5b6c26f2.log).
 
 Chrome: **Google Chrome 156.0.8078.47**. Binary: `/usr/local/bin/google-chrome`.
 
