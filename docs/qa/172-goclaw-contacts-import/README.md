@@ -144,7 +144,7 @@ Exit 0 on clean tree `ef51fba81b219123a887df5380b489cf88f16030`. `gateway/intern
 
 ## qa:tabs
 
-No control-plane tab, route, or client state changed. The all-tabs check still ran against a gateway built from `2729e4babaa875352b251cc0689073a6249d900f`.
+No control-plane tab, route, or client state changed. The all-tabs check ran against a gateway built from `47a2515d2f81b7a6ea6bf3e3ead3eaddfd564fa7`. That commit contains the customer-map and rollback fixes from `30a223a437b19ba64201f6aacf6d00bae17624c2` and the merge of `main` (`d000fa8`, SPEC 182). An earlier log for `2729e4babaa875352b251cc0689073a6249d900f` stays in the tree.
 
 Chrome binary: `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` and `QA_SHOTS` were unset.
 
@@ -155,4 +155,6 @@ GOSO_UI=http://127.0.0.1:3000 GOSO_GW=http://127.0.0.1:8080 \
 
 Gateway: `go run ./gateway/cmd/goso-gateway gateway --host 127.0.0.1 --port 8080` from that commit. Fresh `GOSO_DB_PATH` and `GOSO_VAULT_DIR`. Unset: `GOSO_DATABASE_URL`, `GOSO_ADMIN_TOKEN`, `GOSO_VIEW_TOKEN`, `GOSO_VAULT_SCOPED_SYNC`, `GOSO_LITE`, `GOSO_CONTACTS_DURABLE`. Set: `GOSO_DEV_MODE` on, `GOSO_RATE_LIMIT` 0, `GOSO_ENV` `development`. Seed: `POST /api/agents` with `agent_key` `minh-an-sales`, `display_name` `Cố vấn Minh An`, `model` `echo`.
 
-Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Log: [../172/qa-tabs-2729e4babaa875352b251cc0689073a6249d900f.log](../172/qa-tabs-2729e4babaa875352b251cc0689073a6249d900f.log).
+`go test ./... -count=1 -timeout 25m` exited 0 on the same commit, with `GOSO_TEST_POSTGRES_DSN` set. The DSN value is not recorded.
+
+Exit 0. Last lines: `flow chat` then `qa:tabs ok`. Log: [../172/qa-tabs-47a2515d2f81b7a6ea6bf3e3ead3eaddfd564fa7.log](../172/qa-tabs-47a2515d2f81b7a6ea6bf3e3ead3eaddfd564fa7.log).
