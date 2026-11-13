@@ -24,7 +24,7 @@ Logs from this branch:
 
 ## qa:tabs
 
-Code under test: `d3af65f65d98b3abc7f3ec15c8f7ca5690c0419b`. The log is [qa-tabs-d3af65f65d98b3abc7f3ec15c8f7ca5690c0419b.log](../174/qa-tabs-d3af65f65d98b3abc7f3ec15c8f7ca5690c0419b.log). The earlier log for `97f20f59fb3c83a4a99b018a233331e447288652` is unchanged.
+Code under test: `8fac372a9cb396b96e91887fb5933a9456f99edc`. The log is [qa-tabs-8fac372a9cb396b96e91887fb5933a9456f99edc.log](../174/qa-tabs-8fac372a9cb396b96e91887fb5933a9456f99edc.log). Earlier logs stay in `docs/qa/174/`.
 
 Chrome **156.0.8078.47**. `CHROME_PATH=/usr/local/bin/google-chrome`. `QA_SKIP_TABS` and `QA_SHOTS` were unset.
 
