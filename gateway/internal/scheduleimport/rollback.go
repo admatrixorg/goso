@@ -11,18 +11,22 @@ import (
 
 // RollbackResult counts channel import mappings for one tenant.
 // DryRun does not delete. Names from the denylist are not included.
+// Skipped lists reason codes only, never channel names.
 type RollbackResult struct {
-	DryRun        bool `json:"dry_run"`
-	DeniedTenants int  `json:"denied_tenants"`
-	Mappings      int  `json:"mappings"`
-	Channels      int  `json:"channels"`
+	DryRun        bool     `json:"dry_run"`
+	DeniedTenants int      `json:"denied_tenants"`
+	Mappings      int      `json:"mappings"`
+	Channels      int      `json:"channels"`
+	Kept          int      `json:"kept"`
+	Skipped       []string `json:"skipped,omitempty"`
 }
 
 // Rollback deletes channel_instance mappings for this exact tenant and the
-// channel_config rows those mappings name. A channel_config that is not named
-// by one of those mappings is left in place, including a native catalog row
-// and another tenant's imported channel. DryRun counts the rows and writes
-// nothing. A denied tenant is refused before any delete.
+// channel_config rows that are still the untouched import: disabled, and with
+// no channel secret stored. A row that was enabled, or that has a secret, is
+// left in place and its mapping is kept. A native catalog name is not deleted.
+// DryRun counts the rows and writes nothing. A denied tenant is refused
+// before any delete.
 func Rollback(st store.StoreIface, tenant string, deny map[string]struct{}, dryRun bool) (*RollbackResult, error) {
 	if st == nil {
 		return nil, errConfig("store is required")
@@ -41,28 +45,66 @@ func Rollback(st store.StoreIface, tenant string, deny map[string]struct{}, dryR
 	if err != nil {
 		return nil, err
 	}
-	channels := 0
+	rep := &RollbackResult{DryRun: dryRun}
 	for _, row := range rows {
-		if importedChannelName(row.GosoID) {
-			channels++
-		}
-	}
-	if dryRun {
-		return &RollbackResult{DryRun: true, Mappings: len(rows), Channels: channels}, nil
-	}
-	for _, row := range rows {
-		if !importedChannelName(row.GosoID) {
-			continue
-		}
-		if err := st.DeleteChannelConfig(row.GosoID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		reason, drop, err := rollbackChannel(st, row.GosoID)
+		if err != nil {
 			return nil, err
 		}
+		if !drop {
+			rep.Kept++
+			rep.Skipped = append(rep.Skipped, reason)
+			continue
+		}
+		if !dryRun {
+			if importedChannelName(row.GosoID) {
+				if err := st.DeleteChannelConfig(row.GosoID); err != nil && !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+			}
+			if err := st.DeleteImportSource(tenant, kindChannel, row.SourceID); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return nil, err
+			}
+		}
+		rep.Mappings++
+		if importedChannelName(row.GosoID) {
+			rep.Channels++
+		}
 	}
-	n, err := st.DeleteImportSources(tenant, kindChannel)
+	return rep, nil
+}
+
+// rollbackChannel reports whether this mapped channel_config may be removed.
+// drop is false when the row was enabled, has a stored channel secret, or is
+// a native catalog name. A missing row can still drop the mapping.
+func rollbackChannel(st store.StoreIface, name string) (reason string, drop bool, err error) {
+	name = strings.TrimSpace(name)
+	if !importedChannelName(name) {
+		return "native-exists", false, nil
+	}
+	cfg, err := st.GetChannelConfig(name)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", true, nil
+	}
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
-	return &RollbackResult{DryRun: false, Mappings: n, Channels: channels}, nil
+	if cfg.Enabled || channelSecretSet(st, name) {
+		return "edited", false, nil
+	}
+	return "", true, nil
+}
+
+// channelSecretSet reports a ciphertext stored for this channel name.
+// The importer never writes these. Kinds match the channel secret box.
+func channelSecretSet(st store.StoreIface, name string) bool {
+	for _, kind := range []string{"bot", "access", "secret", "session"} {
+		row, err := st.GetSecret("channel:" + name + ":" + kind)
+		if err == nil && row != nil && len(row.CT) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // importedChannelName is the qualified name this importer writes. A catalog

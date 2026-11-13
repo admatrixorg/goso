@@ -119,6 +119,27 @@ func (s *SQLiteStore) DeleteImportSources(tenant, kind string) (int, error) {
 	return int(n), nil
 }
 
+func (s *SQLiteStore) DeleteImportSource(tenant, kind, sourceID string) error {
+	tenant = strings.TrimSpace(tenant)
+	kind = strings.TrimSpace(kind)
+	sourceID = strings.TrimSpace(sourceID)
+	if tenant == "" || kind == "" || sourceID == "" {
+		return ErrNotFound
+	}
+	res, err := s.db.Exec(
+		`DELETE FROM import_source_ids WHERE tenant_id=? AND kind=? AND source_id=?`,
+		tenant, kind, sourceID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) DeleteChannelConfig(name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

@@ -583,6 +583,8 @@ type StoreIface interface {
 	// DeleteImportSources removes mappings for this exact tenant id and kind
 	// and returns how many rows were removed. Other tenants and other kinds stay.
 	DeleteImportSources(tenant, kind string) (int, error)
+	// DeleteImportSource removes one mapping. The kind is part of the key.
+	DeleteImportSource(tenant, kind, sourceID string) error
 	// DeleteChannelConfig removes one channel_config row by name. The cron and
 	// channel importer uses it only to roll back a row that same call inserted
 	// when the source-id map cannot be saved.

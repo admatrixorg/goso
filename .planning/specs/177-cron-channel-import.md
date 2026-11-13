@@ -20,7 +20,7 @@ A second `--apply` of the same source id does not insert again. If the stored ro
 
 ## Rollback
 
-`--rollback` counts `channel_instance` mappings for the exact `--tenant`. Without `--apply` it writes nothing. With `--apply` it deletes those mappings and the imported `channel_config` rows they name. A native catalog row, other kinds, and other tenants stay.
+`--rollback` counts `channel_instance` mappings for the exact `--tenant`. Without `--apply` it writes nothing. With `--apply` it deletes a mapped `channel_config` only while that row is still disabled and has no channel secret, then deletes that mapping. An enabled row or a row with a secret is kept. A native catalog row, other kinds, and other tenants stay.
 
 ## Dry-run
 

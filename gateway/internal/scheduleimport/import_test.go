@@ -572,6 +572,88 @@ func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
 	}
 }
 
+func TestRollbackKeepsEnabledOrCredentialedChannel(t *testing.T) {
+	st := store.New()
+	_ = seed(t, st)
+	if err := st.PutChannelConfig(store.ChannelConfig{
+		Name: "minh-an/telegram/minh-an-plain", Enabled: false, DMPolicy: "pairing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutImportSource("minh-an", kindChannel, "ch-plain", "minh-an/telegram/minh-an-plain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutChannelConfig(store.ChannelConfig{
+		Name: "minh-an/telegram/minh-an-live", Enabled: true, DMPolicy: "open",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutImportSource("minh-an", kindChannel, "ch-live", "minh-an/telegram/minh-an-live"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutChannelConfig(store.ChannelConfig{
+		Name: "minh-an/telegram/minh-an-secret", Enabled: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutImportSource("minh-an", kindChannel, "ch-secret", "minh-an/telegram/minh-an-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutSecret(store.SecretRow{
+		Name: "channel:minh-an/telegram/minh-an-secret:bot", Nonce: []byte("nonce"), CT: []byte("cipher"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutImportSource("minh-an", kindChannel, "ch-native", "telegram"); err != nil {
+		t.Fatal(err)
+	}
+
+	dry, err := Rollback(st, "minh-an", testDeny(), true)
+	if err != nil || !dry.DryRun || dry.Channels != 1 || dry.Kept != 3 {
+		t.Fatalf("dry %+v %v", dry, err)
+	}
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-plain"); err != nil {
+		t.Fatal("dry-run removed the untouched channel")
+	}
+
+	applied, err := Rollback(st, "minh-an", testDeny(), false)
+	if err != nil || applied.Channels != 1 || applied.Kept != 3 || applied.Mappings != 1 {
+		t.Fatalf("apply %+v %v", applied, err)
+	}
+	if _, err := st.GetChannelConfig("minh-an/telegram/minh-an-plain"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("untouched channel still present: %v", err)
+	}
+	if _, ok, err := st.GetImportSource("minh-an", kindChannel, "ch-plain"); err != nil || ok {
+		t.Fatalf("plain mapping ok=%v err=%v", ok, err)
+	}
+	live, err := st.GetChannelConfig("minh-an/telegram/minh-an-live")
+	if err != nil || !live.Enabled || live.DMPolicy != "open" {
+		t.Fatalf("enabled channel changed %+v %v", live, err)
+	}
+	if _, ok, err := st.GetImportSource("minh-an", kindChannel, "ch-live"); err != nil || !ok {
+		t.Fatalf("enabled mapping ok=%v err=%v", ok, err)
+	}
+	secret, err := st.GetChannelConfig("minh-an/telegram/minh-an-secret")
+	if err != nil || secret.Enabled {
+		t.Fatalf("credentialed channel changed %+v %v", secret, err)
+	}
+	if row, err := st.GetSecret("channel:minh-an/telegram/minh-an-secret:bot"); err != nil || len(row.CT) == 0 {
+		t.Fatal("credential was removed")
+	}
+	native, err := st.GetChannelConfig("telegram")
+	if err != nil || !native.Enabled {
+		t.Fatalf("native catalog row changed %+v %v", native, err)
+	}
+	for _, reason := range applied.Skipped {
+		if reason != "edited" && reason != "native-exists" {
+			t.Fatalf("reason %q", reason)
+		}
+	}
+	if strings.Contains(mustJSON(t, applied), "minh-an-secret") || strings.Contains(mustJSON(t, applied), "cipher") {
+		t.Fatal("rollback report included a channel name or secret")
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }
 
 func TestPostgresChannelImport(t *testing.T) {

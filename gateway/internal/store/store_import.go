@@ -100,6 +100,24 @@ func (s *Store) DeleteImportSources(tenant, kind string) (int, error) {
 	return n, nil
 }
 
+// DeleteImportSource removes one mapping for this tenant, kind, and source id.
+func (s *Store) DeleteImportSource(tenant, kind, sourceID string) error {
+	tenant = strings.TrimSpace(tenant)
+	kind = strings.TrimSpace(kind)
+	sourceID = strings.TrimSpace(sourceID)
+	if tenant == "" || kind == "" || sourceID == "" {
+		return ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := importSourceKey(tenant, kind, sourceID)
+	if _, ok := s.importSources[key]; !ok {
+		return ErrNotFound
+	}
+	delete(s.importSources, key)
+	return nil
+}
+
 // DeleteChannelConfig removes one channel_config row. Missing name is ErrNotFound.
 func (s *Store) DeleteChannelConfig(name string) error {
 	name = strings.TrimSpace(name)

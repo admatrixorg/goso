@@ -50,13 +50,6 @@ func maskReport(rep *Report) {
 	}
 }
 
-func cronSame(j *store.CronJob, spec, message, sessionID string) bool {
-	if j == nil || j.Enabled {
-		return false
-	}
-	return j.Spec == spec && j.Message == message && j.SessionID == sessionID
-}
-
 func channelSame(got *store.ChannelConfig, want store.ChannelConfig) bool {
 	if got == nil || got.Enabled || got.Name != want.Name || got.AgentID != want.AgentID {
 		return false
