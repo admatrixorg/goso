@@ -77,6 +77,15 @@ func CheckDeny(path, source, dest string) (int, error) {
 	return deniedCount(ids, source, dest), nil
 }
 
+func tenantDenied(ids map[string]struct{}, tenant string) bool {
+	key := strings.ToLower(strings.TrimSpace(tenant))
+	if key == "" {
+		return false
+	}
+	_, ok := ids[key]
+	return ok
+}
+
 func deniedCount(ids map[string]struct{}, tenants ...string) int {
 	seen := map[string]struct{}{}
 	n := 0

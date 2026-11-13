@@ -503,6 +503,96 @@ func TestDenylistStopsBeforeWrite(t *testing.T) {
 	_ = base
 }
 
+func TestDeniedExportRowIsOmitted(t *testing.T) {
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{
+		AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deny := filepath.Join(t.TempDir(), "deny.txt")
+	if err := os.WriteFile(deny, []byte("blocked-tenant\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ex := &Export{
+		Agents: []AgentFile{
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "kept"},
+			{TenantID: "blocked-tenant", AgentID: "tu-van-sales", FileName: "SECRET.md", Content: "nope"},
+		},
+		Users: []UserFile{
+			{TenantID: "blocked-tenant", AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: "nope"},
+		},
+	}
+	log := &bytes.Buffer{}
+	rep, err := Import(st, ex, Options{
+		SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
+		DenyFile: deny, Log: printfLog{log},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DeniedTenants != 1 || rep.Inserted != 1 || rep.Updated != 0 || rep.Rejected != 0 {
+		t.Fatalf("report %+v", rep)
+	}
+	raw, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "blocked-tenant") || strings.Contains(log.String(), "blocked-tenant") {
+		t.Fatalf("denied tenant leaked report %s log %s", raw, log.String())
+	}
+	got, err := st.GetContextFile(destTenant, store.ContextScopeAgent, mustAgent(t, st, "tu-van-sales"), "AGENTS.md")
+	if err != nil || got.Body != "kept" {
+		t.Fatalf("kept %+v %v", got, err)
+	}
+	if _, err := st.GetContextFile(destTenant, store.ContextScopeAgent, got.AgentID, "SECRET.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("denied row stored: %v", err)
+	}
+}
+
+func TestEditedImportIsNotOverwritten(t *testing.T) {
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st := open(t)
+			ag, err := st.CreateAgent(store.Agent{
+				AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := &Export{Agents: []AgentFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "imported"},
+			}}
+			if _, err := Import(st, first, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.PutContextFile(store.ContextFile{
+				TenantID: destTenant, Scope: store.ContextScopeAgent, AgentID: ag.ID,
+				Name: "AGENTS.md", Body: "hand edit",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			again := &Export{Agents: []AgentFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "AGENTS.md", Content: "new export"},
+			}}
+			rep, err := Import(st, again, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Updated != 0 || rep.Inserted != 0 || rep.Skipped != 1 {
+				t.Fatalf("rerun %+v", rep)
+			}
+			if len(rep.Agents) != 1 || rep.Agents[0].Reasons[reasonNativeExists] != 1 {
+				t.Fatalf("reasons %+v", rep.Agents)
+			}
+			got, err := st.GetContextFile(destTenant, store.ContextScopeAgent, ag.ID, "AGENTS.md")
+			if err != nil || got.Body != "hand edit" {
+				t.Fatalf("edit lost %+v %v", got, err)
+			}
+		})
+	}
+}
+
 func TestNativeFileSurvivesImportAndRollback(t *testing.T) {
 	for name, open := range backends(t) {
 		t.Run(name, func(t *testing.T) {

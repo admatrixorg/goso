@@ -321,11 +321,21 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	}
 	tally := &tally{log: opt.Log}
 	items := make([]item, 0, len(ex.Agents)+len(ex.Users))
+	denied := map[string]struct{}{}
+	agentN, userN := 0, 0
 	for _, row := range ex.Agents {
+		if rememberDenied(denied, ids, row.TenantID) {
+			continue
+		}
 		items = append(items, classifyAgent(st, dest, source, opt.AgentMap, row))
+		agentN++
 	}
 	for _, row := range ex.Users {
+		if rememberDenied(denied, ids, row.TenantID) {
+			continue
+		}
 		items = append(items, classifyUser(st, dest, source, opt.AgentMap, opt.Customers, row))
+		userN++
 	}
 	markNatural(items)
 	markDest(items)
@@ -360,7 +370,8 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			return tally.abort(!opt.Apply, errors.New("store"))
 		}
 		owned := hasMap && mapped.Scope == it.scope && mapped.Owner == it.ownerID && mapped.Name == it.name
-		if exists && !owned {
+		if exists && (!owned || bodySum(prev.body) != mapped.Sum) {
+			// A hand edit no longer matches the imported sum, so it is kept.
 			tally.skip(it.kind, it.tenant, it.name, it.ownerKey, reasonNativeExists)
 			continue
 		}
@@ -413,14 +424,24 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		}
 		tally.add(it.kind, it.tenant, "inserted", "", it.name, it.ownerKey)
 	}
-	rep, err := tally.finish(!opt.Apply, len(ex.Agents), len(ex.Users))
+	rep, err := tally.finish(!opt.Apply, agentN, userN)
 	if err != nil {
 		return rep, err
 	}
 	if rep != nil {
-		rep.DeniedTenants = 0
+		rep.DeniedTenants = len(denied)
 	}
 	return rep, nil
+}
+
+// rememberDenied records a row tenant that is on the denylist and reports
+// whether the row must be left out of the tally. The id is not logged.
+func rememberDenied(denied, ids map[string]struct{}, tenant string) bool {
+	if !tenantDenied(ids, tenant) {
+		return false
+	}
+	denied[strings.ToLower(strings.TrimSpace(tenant))] = struct{}{}
+	return true
 }
 
 func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string]string, row AgentFile) item {
