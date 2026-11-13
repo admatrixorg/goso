@@ -17,12 +17,16 @@ const (
 )
 
 // KGGraphQuery filters an agent-scoped node/edge list.
+// CustomerScoped false is web/API: every entity and relation in the tenant.
+// CustomerScoped true keeps customer_key=” or customer_key=CustomerKey.
 type KGGraphQuery struct {
-	Tenant  string
-	AgentID string
-	Scope   string
-	Q       string
-	Limit   int
+	Tenant         string
+	AgentID        string
+	Scope          string
+	Q              string
+	Limit          int
+	CustomerScoped bool
+	CustomerKey    string
 }
 
 // KGGraphNode is one L2 entity in the bounded explorer list. No canvas.
@@ -157,6 +161,7 @@ func BuildKGGraph(ents []*KGEntity, rels []*KGRelation, q KGGraphQuery) *KGGraph
 	agent := strings.TrimSpace(q.AgentID)
 	needle := strings.ToLower(strings.TrimSpace(q.Q))
 	tenant := NormalizeTenant(q.Tenant)
+	cust := KGScope{Scoped: q.CustomerScoped, CustomerKey: q.CustomerKey}
 
 	var matched []*KGEntity
 	for _, e := range ents {
@@ -164,6 +169,9 @@ func BuildKGGraph(ents []*KGEntity, rels []*KGRelation, q KGGraphQuery) *KGGraph
 			continue
 		}
 		if !SameTenant(e.TenantID, tenant) {
+			continue
+		}
+		if !cust.Allows(e.CustomerKey) {
 			continue
 		}
 		if agent != "" && strings.TrimSpace(e.AgentID) != agent {
@@ -217,6 +225,9 @@ func BuildKGGraph(ents []*KGEntity, rels []*KGRelation, q KGGraphQuery) *KGGraph
 			continue
 		}
 		if !SameTenant(r.TenantID, tenant) {
+			continue
+		}
+		if !cust.Allows(r.CustomerKey) {
 			continue
 		}
 		if _, ok := seen[r.FromID]; !ok {

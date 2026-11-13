@@ -9,29 +9,32 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/pipeline"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 func handleCreateKGEntity(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Name    string `json:"name"`
-			Kind    string `json:"kind"`
-			Body    string `json:"body"`
-			AgentID string `json:"agent_id"`
-			Source  string `json:"source"`
+			Name      string `json:"name"`
+			Kind      string `json:"kind"`
+			Body      string `json:"body"`
+			AgentID   string `json:"agent_id"`
+			Source    string `json:"source"`
+			SessionID string `json:"session_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 		e, err := st.PutKGEntity(store.KGEntity{
-			TenantID: requestTenant(r),
-			Name:     strings.TrimSpace(body.Name),
-			Kind:     strings.TrimSpace(body.Kind),
-			Body:     strings.TrimSpace(body.Body),
-			AgentID:  strings.TrimSpace(body.AgentID),
-			Source:   strings.TrimSpace(body.Source),
+			TenantID:  requestTenant(r),
+			Name:      strings.TrimSpace(body.Name),
+			Kind:      strings.TrimSpace(body.Kind),
+			Body:      strings.TrimSpace(body.Body),
+			AgentID:   strings.TrimSpace(body.AgentID),
+			Source:    strings.TrimSpace(body.Source),
+			SessionID: strings.TrimSpace(body.SessionID),
 		})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -50,6 +53,7 @@ func handleCreateKGRelation(st store.StoreIface) http.HandlerFunc {
 			Body      string `json:"body"`
 			Source    string `json:"source"`
 			Exclusive bool   `json:"exclusive"`
+			SessionID string `json:"session_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
@@ -63,6 +67,7 @@ func handleCreateKGRelation(st store.StoreIface) http.HandlerFunc {
 			Body:      strings.TrimSpace(body.Body),
 			Source:    strings.TrimSpace(body.Source),
 			Exclusive: body.Exclusive,
+			SessionID: strings.TrimSpace(body.SessionID),
 		})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -79,11 +84,17 @@ func handleSearchKG(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "q is required")
 			return
 		}
-		hits, err := st.SearchProgressive(q, requestTenant(r))
+		scope, status, msg := kgScopeFromRequest(st, r)
+		if status != 0 {
+			writeErr(w, status, msg)
+			return
+		}
+		hits, err := st.SearchProgressive(q, requestTenant(r), scope)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		hits = pipeline.VisibleSearchHits(st, strings.TrimSpace(r.URL.Query().Get("session_id")), hits)
 		if hits == nil {
 			hits = []store.KGSearchHit{}
 		}
@@ -98,7 +109,12 @@ func handleExpandKG(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		exp, err := st.ExpandKG(id)
+		scope, status, msg := kgScopeFromRequest(st, r)
+		if status != 0 {
+			writeErr(w, status, msg)
+			return
+		}
+		exp, err := st.ExpandKG(id, scope)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -139,12 +155,19 @@ func handleGraphKG(st store.StoreIface) http.HandlerFunc {
 				limit = n
 			}
 		}
+		scope, status, msg := kgScopeFromRequest(st, r)
+		if status != 0 {
+			writeErr(w, status, msg)
+			return
+		}
 		g, err := st.ListKGGraph(store.KGGraphQuery{
-			Tenant:  tid,
-			AgentID: aid,
-			Scope:   strings.TrimSpace(r.URL.Query().Get("scope")),
-			Q:       strings.TrimSpace(r.URL.Query().Get("q")),
-			Limit:   limit,
+			Tenant:         tid,
+			AgentID:        aid,
+			Scope:          strings.TrimSpace(r.URL.Query().Get("scope")),
+			Q:              strings.TrimSpace(r.URL.Query().Get("q")),
+			Limit:          limit,
+			CustomerScoped: scope.Scoped,
+			CustomerKey:    scope.CustomerKey,
 		})
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
@@ -179,4 +202,23 @@ func handleGraphKG(st store.StoreIface) http.HandlerFunc {
 			"embedding_configured":   false,
 		})
 	}
+}
+
+// kgScopeFromRequest is the customer scope of a KG HTTP read.
+// No session_id, and a web session, see the whole tenant (memory web behaviour).
+// A channel session sees shared rows (customer_key ”) and its own rows.
+// An unknown or other-tenant session is 404.
+func kgScopeFromRequest(st store.StoreIface, r *http.Request) (store.KGScope, int, string) {
+	sid := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	if sid == "" {
+		return store.KGScope{}, 0, ""
+	}
+	sess, err := st.GetSession(sid)
+	if err != nil || sess == nil || !store.SameTenant(sess.TenantID, requestTenant(r)) {
+		return store.KGScope{}, http.StatusNotFound, "session not found"
+	}
+	if !pipeline.IsChannelSession(sess) {
+		return store.KGScope{}, 0, ""
+	}
+	return store.KGScope{Scoped: true, CustomerKey: pipeline.CustomerKey(sess)}, 0, ""
 }

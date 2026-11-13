@@ -236,11 +236,11 @@ func TestPostgresBodyTSVBackfillAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kh, err := re.SearchProgressive("MA-WALNUT-77", DefaultTenant)
+	kh, err := re.SearchProgressive("MA-WALNUT-77", DefaultTenant, KGScope{})
 	if err != nil || !hitIDs(kh, byBody.ID) || hitIDs(kh, byName.ID) {
 		t.Fatalf("kg body %#v %v", kh, err)
 	}
-	kh, err = re.SearchProgressive("Kho Minh An", DefaultTenant)
+	kh, err = re.SearchProgressive("Kho Minh An", DefaultTenant, KGScope{})
 	if err != nil || !hitIDs(kh, byName.ID) {
 		t.Fatalf("kg name %#v %v", kh, err)
 	}
