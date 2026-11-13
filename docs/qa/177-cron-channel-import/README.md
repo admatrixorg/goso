@@ -18,13 +18,15 @@ go run ./gateway/cmd/goso-cron-channel-import \
 ## Checks
 
 - Dry-run leaves the cron and channel tables unchanged and still lists `needs_credential`.
-- `--apply` stores cron jobs and the channel row disabled. A later tick does not run those jobs.
+- `--apply` stores the channel row disabled and does not write a cron job.
 - A second `--apply` skips the same source ids and does not insert a duplicate.
 - A pre-existing cron job and the catalog row `telegram` are not updated.
 - Rows whose `tenant_id` is `other-co` are not written when `--source-tenant` is `minh-an`.
 - The fixture secret string is absent from the report, the log, and the SQLite file.
 
-Code under the browser check: `4bfc382ba3dfb4d31a45a11c279d2a0a15043c21`. The log is [qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log](../177/qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+Code under the browser check: `151a150f2009331f02738943a89013dcf1476f43`. The log is [qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log](../177/qa-tabs-151a150f2009331f02738943a89013dcf1476f43.log). `git status --porcelain` was empty before that run. Chrome binary `/usr/local/bin/google-chrome`. `QA_SKIP_TABS` was not set. `QA_SHOTS` was not set. Exit 0. Last lines: `flow chat` then `qa:tabs ok`.
+
+An earlier check of `4bfc382ba3dfb4d31a45a11c279d2a0a15043c21` is [qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log](../177/qa-tabs-4bfc382ba3dfb4d31a45a11c279d2a0a15043c21.log).
 
 `go build` of `goso-gateway` and `goso-cron-channel-import` exited 0.
 
