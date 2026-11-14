@@ -55,9 +55,21 @@ type ContextFile struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// UserKeyOK reports an opaque user id: letters, digits, dot, underscore, hyphen; 1–64.
-// It is not an email address and not a display name.
-func UserKeyOK(id string) bool { return TenantOK(id) }
+// UserKeyOK reports an opaque user id or a customer key from the import map.
+// Letters, digits, dot, underscore, hyphen, and colon; 1–128. It is not an
+// email address and not a display name. Tenant ids stay on TenantOK.
+func UserKeyOK(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 func normalizeContextFile(in ContextFile) (ContextFile, error) {
 	f := in
@@ -215,14 +227,26 @@ func (s *Store) PutContextFile(in ContextFile) (*ContextFile, error) {
 	}
 	key := contextFileKey(f.TenantID, f.Scope, f.OwnerID, f.Name)
 	now := time.Now().UTC()
+	updated := now
+	if !f.UpdatedAt.IsZero() {
+		updated = f.UpdatedAt.UTC()
+	}
 	if cur := s.contextFiles[key]; cur != nil {
 		cur.Body = f.Body
-		cur.UpdatedAt = now
+		cur.UpdatedAt = updated
+		// A zero CreatedAt keeps the original row. The importer passes the
+		// source clock; the HTTP handler leaves it zero.
+		if !f.CreatedAt.IsZero() {
+			cur.CreatedAt = f.CreatedAt.UTC()
+		}
 		return presentContext(cur), nil
 	}
 	f.ID = s.nextID()
 	f.CreatedAt = now
-	f.UpdatedAt = now
+	if !in.CreatedAt.IsZero() {
+		f.CreatedAt = in.CreatedAt.UTC()
+	}
+	f.UpdatedAt = updated
 	stored := f
 	s.contextFiles[key] = &stored
 	return presentContext(&stored), nil
