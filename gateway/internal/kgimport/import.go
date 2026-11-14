@@ -272,16 +272,17 @@ func classifyEntity(w Target, item row, opt Options, agents map[string]*store.Ag
 		return nil, false, reasonInvalid, nil
 	}
 	ent := &store.KGEntity{
-		ID:         id,
-		TenantID:   dest.Dest,
-		Name:       strings.TrimSpace(item.Name),
-		Kind:       strings.TrimSpace(item.EntityType),
-		Body:       entityBody(item.Description, props),
-		AgentID:    gosoAgent,
-		Source:     prov,
-		ValidFrom:  from,
-		ValidUntil: until,
-		CreatedAt:  created,
+		ID:          id,
+		TenantID:    dest.Dest,
+		Name:        strings.TrimSpace(item.Name),
+		Kind:        strings.TrimSpace(item.EntityType),
+		Body:        entityBody(item.Description, props),
+		AgentID:     gosoAgent,
+		Source:      prov,
+		CustomerKey: customerKeyOf(item),
+		ValidFrom:   from,
+		ValidUntil:  until,
+		CreatedAt:   created,
 	}
 	cur, err := w.ReadImportedKGEntity(id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -531,10 +532,10 @@ func keptEntity(kept map[string]map[string]entityKept, item row, present bool) {
 	kept[src][orig] = entityKept{present: present, userID: item.userID()}
 }
 
-// endpointKept is true only when this run kept the entity and its user_id
-// is empty. A follow-up that admits customer-bound entities after SPEC 182
-// has to change this check together with admit. Until then a relation
-// whose endpoint was held as customer-private is missing relation endpoint.
+// endpointKept is true when this run kept the entity. Since the SPEC 182
+// follow-up admits customer-bound rows, an endpoint may carry a customer
+// key; the edge is written either way. A relation whose endpoint was not
+// kept is missing relation endpoint.
 func endpointKept(kept map[string]map[string]entityKept, sourceTenant, orig string) bool {
 	id, ok := canonUUID(orig)
 	if !ok {
@@ -545,7 +546,7 @@ func endpointKept(kept map[string]map[string]entityKept, sourceTenant, orig stri
 		return false
 	}
 	e, ok := bucket[id]
-	return ok && e.present && strings.TrimSpace(e.userID) == ""
+	return ok && e.present
 }
 
 func sectionFor(sections map[string]*Section, source, table string, tenants TenantMap) *Section {
@@ -599,6 +600,16 @@ func finish(sections map[string]*Section) []Section {
 		return tableOrder(out[i].Table) < tableOrder(out[j].Table)
 	})
 	return out
+}
+
+// customerKeyOf is the GoClaw user_id that owns this KG row, or "" for a
+// tenant-wide row. SPEC 182 stores it in kg_entities.customer_key so a
+// customer-scoped read sees the row and another customer does not.
+func customerKeyOf(item row) string {
+	if item.UserID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*item.UserID)
 }
 
 func tableOrder(table string) int {

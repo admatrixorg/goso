@@ -20,17 +20,20 @@ type KGIDHit struct {
 }
 
 const (
-	insertImportedKGEntitySQL   = `INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING`
+	insertImportedKGEntitySQL   = `INSERT INTO kg_entities(id, tenant_id, name, kind, body, valid_from, valid_until, created_at, agent_id, provenance, customer_key) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING`
 	insertImportedKGRelationSQL = `INSERT INTO kg_relations(id, tenant_id, from_id, to_id, rel, body, valid_from, valid_until, provenance) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING`
 )
 
 // InsertImportedKGEntity writes one row with the caller's id.
 // ON CONFLICT (id) DO NOTHING: a second insert does not change the stored
-// row. Provenance is stored as given. This method does not add a column
-// and does not take a customer key. SPEC 182 adds customer_key; the
-// follow-up that imports customer-bound rows has to pass that key in
-// here. Until then, callers must only pass rows whose GoClaw user_id is
-// empty.
+// row. Provenance is stored as given.
+//
+// CustomerKey is stored as given. SPEC 182 added the column; this is the
+// follow-up that admits customer-bound rows. An empty key is a tenant-wide
+// row, which is the only shape the importer could write before. A non-empty
+// key is the GoClaw user_id of the customer the row belongs to, so a later
+// read scoped to that customer sees it and a read scoped to another customer
+// does not.
 func (s *SQLiteStore) InsertImportedKGEntity(e KGEntity) (bool, error) {
 	e = normalizeImportedEntity(e)
 	if err := validateImportedEntity(e); err != nil {
@@ -39,7 +42,7 @@ func (s *SQLiteStore) InsertImportedKGEntity(e KGEntity) (bool, error) {
 	res, err := s.db.Exec(insertImportedKGEntitySQL,
 		e.ID, e.TenantID, e.Name, e.Kind, e.Body,
 		formatTime(e.ValidFrom), formatNullTime(e.ValidUntil), formatTime(e.CreatedAt),
-		e.AgentID, e.Source)
+		e.AgentID, e.Source, e.CustomerKey)
 	if err != nil {
 		return false, err
 	}

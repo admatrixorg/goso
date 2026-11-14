@@ -63,7 +63,9 @@ func TestCLIDryRunThenSecondRunThenRemove(t *testing.T) {
 			t.Fatalf("output leaked %s", secret)
 		}
 	}
-	if !strings.Contains(stdout.String(), `"will_write": 1`) || !strings.Contains(stdout.String(), `"customer-private": 1`) || !strings.Contains(stdout.String(), `"denied_tenants": 1`) || !strings.Contains(stdout.String(), `"team/scope": 0`) {
+	// SPEC 182 follow-up: the customer-bound row is written with its key,
+	// so nothing is held as customer-private any more.
+	if !strings.Contains(stdout.String(), `"will_write": 2`) || !strings.Contains(stdout.String(), `"customer-private": 0`) || !strings.Contains(stdout.String(), `"denied_tenants": 1`) || !strings.Contains(stdout.String(), `"team/scope": 0`) {
 		t.Fatalf("stdout %s", stdout.String())
 	}
 	st, err = store.OpenSQLite(dbPath)
@@ -85,7 +87,7 @@ func TestCLIDryRunThenSecondRunThenRemove(t *testing.T) {
 	if code := run(args, stdout, stderr); code != 0 {
 		t.Fatalf("second %d %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"will_write": 0`) || !strings.Contains(stdout.String(), `"exists": 1`) {
+	if !strings.Contains(stdout.String(), `"will_write": 0`) || !strings.Contains(stdout.String(), `"exists": 2`) {
 		t.Fatalf("second stdout %s", stdout.String())
 	}
 	if strings.Contains(stdout.String()+stderr.String(), "user-minh-an-01") || strings.Contains(stdout.String()+stderr.String(), "0900000111") {
@@ -99,7 +101,7 @@ func TestCLIDryRunThenSecondRunThenRemove(t *testing.T) {
 	if code := run([]string{"--remove", "--tenant", "minh-an", "--deny-file", denyPath, "--db", dbPath}, stdout, stderr); code != 0 {
 		t.Fatalf("remove %d %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"entities": 1`) {
+	if !strings.Contains(stdout.String(), `"entities": 2`) {
 		t.Fatalf("remove stdout %s", stdout.String())
 	}
 	st, err = store.OpenSQLite(dbPath)
