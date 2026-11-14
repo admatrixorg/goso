@@ -1,0 +1,177 @@
+{
+  "mcp_servers": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000a1",
+      "name": "notes",
+      "display_name": "Minh An Notes",
+      "transport": "sse",
+      "command": "",
+      "args": [],
+      "url": "http://127.0.0.1:9/minh-an-notes",
+      "headers": {"Authorization": "placeholder-minh-an-header"},
+      "env": {"TOKEN": "placeholder-minh-an-env"},
+      "api_key": "placeholder-minh-an-api-key",
+      "tool_prefix": "notes",
+      "timeout_sec": 60,
+      "settings": {"note": "minh-an-notes"},
+      "enabled": true,
+      "created_by": "lan",
+      "created_at": "2026-01-15T08:00:00Z",
+      "updated_at": "2026-01-15T09:00:00Z",
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000a2",
+      "name": "files",
+      "display_name": "Minh An Files",
+      "transport": "stdio",
+      "command": "minh-an-files",
+      "args": ["--root", "minh-an"],
+      "url": "",
+      "headers": {},
+      "env": {},
+      "api_key": "",
+      "tool_prefix": "",
+      "timeout_sec": 30,
+      "settings": {},
+      "enabled": true,
+      "created_by": "lan",
+      "created_at": "2026-01-15T08:00:00Z",
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000a3",
+      "name": "search",
+      "display_name": "Minh An Search",
+      "transport": "http",
+      "url": "http://127.0.0.1:9/minh-an-search?access_token=placeholder-minh-an-query",
+      "headers": null,
+      "env": null,
+      "api_key": null,
+      "timeout_sec": 15,
+      "enabled": false,
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000b1",
+      "name": "ledger",
+      "display_name": "Other Shop Ledger",
+      "transport": "sse",
+      "url": "http://127.0.0.1:9/other-shop-ledger",
+      "api_key": "placeholder-minh-an-other-key",
+      "enabled": true,
+      "tenant_id": "other-shop"
+    }
+  ],
+  "mcp_agent_grants": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000c1",
+      "server_id": "00000000-0000-4000-8000-0000000000a1",
+      "agent_id": "tu-van-sales",
+      "enabled": true,
+      "tool_allow": null,
+      "tool_deny": null,
+      "config_overrides": null,
+      "granted_by": "lan",
+      "created_at": "2026-01-15T08:00:00Z",
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c2",
+      "server_id": "00000000-0000-4000-8000-0000000000a2",
+      "agent_id": "tu-van-sales",
+      "enabled": false,
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c3",
+      "server_id": "00000000-0000-4000-8000-0000000000a1",
+      "agent_id": "missing-agent",
+      "enabled": true,
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c4",
+      "server_id": "00000000-0000-4000-8000-0000000000a3",
+      "agent_id": "tu-van-sales",
+      "enabled": true,
+      "tool_allow": ["notes.read"],
+      "config_overrides": {"token": "placeholder-minh-an-override"},
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c5",
+      "server_id": "00000000-0000-4000-8000-0000000000a1",
+      "agent_id": "other-shop-ke-toan",
+      "enabled": true,
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c6",
+      "server_id": "00000000-0000-4000-8000-0000000000b1",
+      "agent_id": "other-shop-ke-toan",
+      "enabled": true,
+      "tenant_id": "other-shop"
+    }
+  ],
+  "mcp_user_grants": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000d1",
+      "server_id": "00000000-0000-4000-8000-0000000000a1",
+      "user_id": "lan",
+      "enabled": true,
+      "tool_allow": ["notes.read"],
+      "tenant_id": "minh-an"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000d2",
+      "server_id": "00000000-0000-4000-8000-0000000000b1",
+      "user_id": "hoa",
+      "enabled": true,
+      "tenant_id": "other-shop"
+    }
+  ],
+  "builtin_tools": [
+    {
+      "name": "web_search",
+      "display_name": "Web search",
+      "description": "Minh An sample tool",
+      "category": "general",
+      "enabled": true,
+      "settings": {"marker": "placeholder-minh-an-tool-setting"},
+      "requires": ["net"],
+      "metadata": {}
+    }
+  ],
+  "builtin_tool_tenant_configs": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000e1",
+      "tool_name": "web_search",
+      "tenant_id": "minh-an",
+      "enabled": false,
+      "settings": {"marker": "placeholder-minh-an-tenant-setting"},
+      "updated_at": "2026-01-15T08:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000e2",
+      "tool_name": "web_search",
+      "tenant_id": "other-shop",
+      "enabled": false,
+      "settings": {"marker": "placeholder-minh-an-other-setting"}
+    }
+  ],
+  "mcp_user_credentials": [
+    {
+      "tenant_id": "minh-an",
+      "user_id": "lan",
+      "server_id": "00000000-0000-4000-8000-0000000000a1",
+      "api_key": "placeholder-minh-an-user-cred"
+    }
+  ],
+  "mcp_context_credentials": [
+    {
+      "tenant_id": "minh-an",
+      "api_key": "placeholder-minh-an-context-cred"
+    }
+  ]
+}
