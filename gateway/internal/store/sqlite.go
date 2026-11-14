@@ -144,6 +144,17 @@ func sqliteWALEnabled() bool {
 	return true
 }
 
+// agentImportMapCreate is the source-id map for the offline agent importer.
+// Both engines create it on open. The importer does not create it at runtime.
+const agentImportMapCreate = `CREATE TABLE IF NOT EXISTS goclaw_agent_import_map (
+	dest_tenant TEXT NOT NULL,
+	source_table TEXT NOT NULL,
+	source_key TEXT NOT NULL,
+	goso_kind TEXT NOT NULL,
+	goso_ref TEXT NOT NULL,
+	PRIMARY KEY (dest_tenant, source_table, source_key)
+)`
+
 func (s *SQLiteStore) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS agents (
@@ -416,6 +427,7 @@ func (s *SQLiteStore) migrate() error {
 			UNIQUE(tenant_id, scope, owner_id, name)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_context_files_owner ON context_files(tenant_id, scope, owner_id)`,
+		agentImportMapCreate,
 		ingestJobCreateTable,
 		ingestJobCreateIndex,
 	}
@@ -717,8 +729,13 @@ func (s *SQLiteStore) CreateAgent(a Agent) (*Agent, error) {
 	now := time.Now().UTC()
 	a.CreatedAt = now
 	a.UpdatedAt = now
-	a.Enabled = true
 	en := 1
+	if a.StartDisabled {
+		a.Enabled = false
+		en = 0
+	} else {
+		a.Enabled = true
+	}
 	_, err := s.db.Exec(`INSERT INTO agents(id, agent_key, display_name, model, llm_provider, instructions, orchestration_mode, created_at, tenant_id, enabled, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.AgentKey, a.DisplayName, a.Model, a.LLMProvider, a.Instructions, a.OrchestrationMode, formatTime(a.CreatedAt), a.TenantID, en, formatTime(a.UpdatedAt))
 	if err != nil {

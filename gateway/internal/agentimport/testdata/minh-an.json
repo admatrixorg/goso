@@ -1,0 +1,403 @@
+{
+  "agents": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-tu-van",
+      "display_name": "Tu van Minh An",
+      "owner_id": "user-lan",
+      "provider": "openrouter",
+      "model": "sample-model",
+      "context_window": 200000,
+      "max_tool_iterations": 20,
+      "workspace": ".",
+      "restrict_to_workspace": true,
+      "tools_config": {"api_token": "SECRETMARKERdonotimport"},
+      "sandbox_config": {"password": "SECRETMARKERdonotimport"},
+      "other_config": {"system": "SECRETMARKERdonotimport"},
+      "is_default": false,
+      "agent_type": "open",
+      "status": "active",
+      "created_at": "2026-04-01T08:00:00Z",
+      "updated_at": "2026-04-02T08:00:00Z",
+      "deleted_at": null,
+      "frontmatter": "Mau tu van Minh An.",
+      "embedding": null,
+      "budget_monthly_cents": 0,
+      "emoji": "EMOJI-KHONG-LUU",
+      "agent_description": "MO-TA-KHONG-LUU",
+      "thinking_level": "",
+      "max_tokens": 0,
+      "self_evolve": false,
+      "model_fallback": {"api_key": "SECRETMARKERdonotimport"}
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-phap-che",
+      "display_name": "Phap che Minh An",
+      "provider": "openrouter",
+      "model": "sample-model",
+      "status": "active",
+      "frontmatter": "Mau phap che Minh An.",
+      "embedding": [0.01, 0.02],
+      "agent_description": "MO-TA-KHONG-LUU"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-ke-toan",
+      "display_name": "Ke toan Minh An",
+      "status": "active",
+      "frontmatter": "Mau ke toan Minh An.",
+      "embedding": "EMBEDMARKERvector"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-nghi",
+      "display_name": "Nghi Minh An",
+      "status": "inactive",
+      "frontmatter": "Mau agent tam dung."
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-xoa",
+      "display_name": "Da xoa Minh An",
+      "status": "active",
+      "deleted_at": "2026-04-03T08:00:00Z",
+      "frontmatter": "Khong nhap agent da xoa."
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0006",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-tu-van",
+      "display_name": "Khong ghi de Minh An",
+      "status": "active",
+      "frontmatter": "Khong ghi de."
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-tu-van",
+      "display_name": "Ban trung id",
+      "status": "active",
+      "frontmatter": "Ban trung id."
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0007",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "",
+      "display_name": "Thieu khoa",
+      "status": "active"
+    },
+    {
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-thieu-id",
+      "display_name": "Thieu id",
+      "status": "active"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0008",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_key": "minh-an-la",
+      "display_name": "Trang thai la",
+      "status": "weird"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "tenant_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "agent_key": "minh-an-b-tu-van",
+      "display_name": "Tu van Minh An B",
+      "status": "active",
+      "frontmatter": "Mau tenant khac."
+    }
+  ],
+  "agent_teams": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "Nhom tu van Minh An",
+      "lead_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "description": "Mo ta khong luu",
+      "status": "active",
+      "settings": {"api_token": "SECRETMARKERdonotimport"},
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "Nhom tam dung",
+      "lead_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "status": "paused"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1003",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "Nhom thieu lead",
+      "lead_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005",
+      "status": "active"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1004",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "",
+      "lead_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "status": "active"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "Ten khac",
+      "lead_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "status": "active"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb1001",
+      "tenant_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "name": "Nhom Minh An B",
+      "lead_agent_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "status": "active"
+    }
+  ],
+  "agent_team_members": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "role": "lead"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "role": "Member"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2003",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "role": "member"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2005",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1002",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "role": "member"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2006",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005",
+      "role": "member"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2007",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "role": "lead"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2008",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "role": "reviewer"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2009",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004",
+      "role": "lead"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa2002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "role": "lead"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb2001",
+      "tenant_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "team_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb1001",
+      "agent_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "role": "lead"
+    }
+  ],
+  "agent_links": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "direction": "Outbound",
+      "description": "khong luu",
+      "max_concurrent": 3,
+      "settings": {"api_token": "SECRETMARKERdonotimport"},
+      "status": "active",
+      "created_by": "user-lan",
+      "team_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa1001"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "direction": "bidirectional",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3003",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "direction": "outbound",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3004",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0005",
+      "direction": "outbound",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3005",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "direction": "outbound",
+      "status": "paused",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3006",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "direction": "inbound",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3007",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "direction": "sideways",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa3001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "target_agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+      "direction": "outbound",
+      "status": "active",
+      "created_by": "user-lan"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb3001",
+      "tenant_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "source_agent_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "target_agent_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "direction": "outbound",
+      "status": "active",
+      "created_by": "user-hoa"
+    }
+  ],
+  "agent_config_permissions": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa4001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "scope": "tools",
+      "config_type": "sandbox",
+      "user_id": "user-lan",
+      "permission": "read",
+      "granted_by": "user-hoa",
+      "metadata": {"api_token": "SECRETMARKERdonotimport"}
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa4002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "scope": "model",
+      "config_type": "provider",
+      "user_id": "user-hoa",
+      "permission": "write",
+      "granted_by": "user-lan"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb4001",
+      "tenant_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+      "agent_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+      "scope": "tools",
+      "config_type": "sandbox",
+      "user_id": "user-lan",
+      "permission": "read",
+      "granted_by": "user-hoa"
+    }
+  ],
+  "user_agent_overrides": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa5001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "user_id": "user-lan",
+      "provider": "openrouter",
+      "model": "SHOULD-NOT-BECOME-MODEL",
+      "settings": {"api_key": "SECRETMARKERdonotimport"}
+    }
+  ],
+  "user_agent_profiles": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "user_id": "user-lan",
+      "workspace": "/tmp/khong-luu",
+      "metadata": {"note": "SECRETMARKERdonotimport"}
+    }
+  ],
+  "agent_shares": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+      "user_id": "user-lan",
+      "role": "user",
+      "granted_by": "user-hoa"
+    },
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "agent_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+      "user_id": "user-hoa",
+      "role": "admin",
+      "granted_by": "user-lan"
+    }
+  ],
+  "skills": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8001",
+      "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "name": "Khong nhap skill",
+      "slug": "khong-nhap"
+    }
+  ]
+}
