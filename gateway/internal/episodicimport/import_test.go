@@ -146,8 +146,14 @@ func TestLoadCustomersTSVMatchesWriteCustomerMap(t *testing.T) {
 	if _, err := LoadCustomers(strings.NewReader("zalo-personal\tsender-minh-an-01\tuser-minh-an-01\n")); err == nil {
 		t.Fatal("three columns")
 	}
-	if _, err := LoadCustomers(strings.NewReader("zalo-personal\ta\tuser-minh-an-01\tzalo-personal:a\nzalo-personal\tb\tuser-minh-an-01\tzalo-personal:b\n")); err == nil {
-		t.Fatal("two keys")
+	// FIX-53: two channels for one user is no longer fatal; the first row wins.
+	// The rule now matches the contacts importer (SPEC 172) and kgimport.
+	firstWins, err := LoadCustomers(strings.NewReader("zalo-personal\ta\tuser-minh-an-01\tzalo-personal:a\nzalo-personal\tb\tuser-minh-an-01\tzalo-personal:b\n"))
+	if err != nil {
+		t.Fatalf("two keys must not abort: %v", err)
+	}
+	if firstWins["user-minh-an-01"] != "zalo-personal:a" {
+		t.Fatalf("first row must win, got %q", firstWins["user-minh-an-01"])
 	}
 }
 

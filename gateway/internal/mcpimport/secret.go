@@ -24,9 +24,12 @@ var secretNameParts = []string{
 }
 
 // shortSecretFlags are single-letter switches that carry a credential.
-// Other short flags, such as -n, stay usable.
+// Other short flags, such as -n, stay usable. -k and -p are the common
+// spellings for an API key and a password on an MCP command line.
 var shortSecretFlags = map[string]struct{}{
 	"t": {},
+	"k": {},
+	"p": {},
 }
 
 // kvPair is KEY=VALUE. The value is not kept.
@@ -83,10 +86,34 @@ func fieldSecret(field string) bool {
 	if strings.Contains(low, "authorization") || strings.Contains(low, "bearer ") {
 		return true
 	}
+	if name, ok := headerName(field); ok {
+		return nameSecret(name)
+	}
+	// "--header=X-Api-Key: value" carries the header name after the '='.
+	// The switch is named "header", which is not itself a credential, so the
+	// value side has to be classified too.
+	if i := strings.IndexByte(field, '='); i >= 0 {
+		if name, ok := headerName(field[i+1:]); ok {
+			return nameSecret(name)
+		}
+	}
+	// getopt allows the value to be glued to a short switch: "-kabc" is
+	// "-k abc". Only a known credential switch is read that way, so "-n3"
+	// keeps working.
+	if attachedShortSecret(field) {
+		return true
+	}
 	name, ok := flagName(field)
 	if !ok {
 		return false
 	}
+	return nameSecret(name)
+}
+
+// nameSecret reports a credential-shaped switch or header name. The caller
+// strips the dashes or the colon first, so "x-api-key" and "-k" both land
+// here as lowercase letters and digits.
+func nameSecret(name string) bool {
 	if _, short := shortSecretFlags[name]; short {
 		return true
 	}
@@ -96,6 +123,45 @@ func fieldSecret(field string) bool {
 		}
 	}
 	return false
+}
+
+// attachedShortSecret reports "-KVALUE" where K is a known credential switch.
+// The glued form is one dash, a credential letter, and at least one more byte.
+func attachedShortSecret(field string) bool {
+	f := strings.TrimSpace(field)
+	if len(f) < 3 || f[0] != '-' || f[1] == '-' {
+		return false
+	}
+	_, short := shortSecretFlags[string(f[1])]
+	return short
+}
+
+// headerName returns a lowercase header name with "-" and "_" stripped
+// when the field is a header line. A header line is a name, a colon, and a
+// value: "X-Api-Key: abc", "PRIVATE-TOKEN:abc", or the bare "x-api-key:".
+// The colon is required. Without it a dashed *value* such as an api_key of
+// "placeholder-minh-an-api-key" would read as a header name and every such
+// row would be held, which is not what the field is.
+func headerName(field string) (string, bool) {
+	f := strings.TrimSpace(field)
+	if f == "" || strings.HasPrefix(f, "-") {
+		return "", false
+	}
+	k := strings.IndexByte(f, ':')
+	if k < 0 {
+		return "", false
+	}
+	f = strings.TrimSpace(f[:k])
+	if strings.ContainsAny(f, " \t") || strings.ContainsAny(f, "{}\"[]") {
+		return "", false
+	}
+	name := strings.ToLower(f)
+	name = strings.ReplaceAll(name, "-", "")
+	name = strings.ReplaceAll(name, "_", "")
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // flagName returns the switch name with one leading dash group removed and
