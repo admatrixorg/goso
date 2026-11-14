@@ -1,0 +1,110 @@
+{
+  "agent_context_files": [
+    {
+      "id": "99999999-9999-4999-8999-999999999999",
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "file_name": "AGENTS.md",
+      "content": "Chiết khấu tối đa của Minh An là 9 phần trăm.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "file_name": "SOUL.md",
+      "content": "Cố vấn Minh An nói ngắn, tiếng Việt.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111102",
+      "file_name": "AGENTS.md",
+      "content": "Pháp chế Minh An không báo chiết khấu.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111103",
+      "file_name": "AGENTS.md",
+      "content": "OTHERAGENTMARKER không được ghi sang tenant khác.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111104",
+      "file_name": "AGENTS.md",
+      "content": "MISSINGAGENTMARKER không có agent này.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "file_name": "AGENTS.md",
+      "content": "FOREIGNAGENTMARKER không được nhập.",
+      "embedding": "EMBEDMARKERvector",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    }
+  ],
+  "user_context_files": [
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "user_id": "lan",
+      "file_name": "USER.md",
+      "content": "Lan chỉ nhận báo giá một dòng.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "user_id": "hoa",
+      "file_name": "USER.md",
+      "content": "Hoa giữ bản báo giá dài.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111102",
+      "user_id": "lan",
+      "file_name": "NOTES.md",
+      "content": "Lan giữ điều khoản mẫu của pháp chế.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111103",
+      "user_id": "lan",
+      "file_name": "USER.md",
+      "content": "OTHERUSERMARKER không được ghi sang tenant khác.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "11111111-1111-4111-8111-111111111104",
+      "user_id": "hoa",
+      "file_name": "USER.md",
+      "content": "MISSINGUSERMARKER không có agent này.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    },
+    {
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "agent_id": "11111111-1111-4111-8111-111111111101",
+      "user_id": "lan",
+      "file_name": "USER.md",
+      "content": "FOREIGNUSERMARKER không được nhập.",
+      "created_at": "2026-03-01T04:05:06Z",
+      "updated_at": "2026-04-02T05:06:07Z"
+    }
+  ]
+}
