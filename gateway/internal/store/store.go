@@ -1235,6 +1235,23 @@ func (s *Store) LinkAgentConnector(agentID, connectorName string) error {
 	return nil
 }
 
+func (s *Store) DeleteConnector(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.connectors[name]; !ok {
+		return ErrNotFound
+	}
+	delete(s.connectors, name)
+	for _, set := range s.agentConns {
+		delete(set, name)
+	}
+	return nil
+}
+
 func (s *Store) ListAgentConnectors(agentID string) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
