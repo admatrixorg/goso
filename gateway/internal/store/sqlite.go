@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,32 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// OpenSQLiteReadOnly opens an existing SQLite file without migrating and
+// without creating the file. Writes through this handle fail.
+func OpenSQLiteReadOnly(path string) (*SQLiteStore, error) {
+	if err := RefusePostgres(path); err != nil {
+		return nil, err
+	}
+	path = strings.TrimSpace(path)
+	if path == "" || path == ":memory:" {
+		return nil, errors.New("open database failed")
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return nil, errors.New("open database failed")
+	}
+	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)"}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, errors.New("open database failed")
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, errors.New("open database failed")
+	}
+	return &SQLiteStore{db: &sqlHandle{db: db}}, nil
 }
 
 // SQLiteBusyTimeoutMS is how long a SQLite connection waits for a lock held by
@@ -462,6 +489,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.migrateIngestConvert(); err != nil {
+		return err
+	}
+	if err := s.migrateImportSource(); err != nil {
 		return err
 	}
 	return nil
