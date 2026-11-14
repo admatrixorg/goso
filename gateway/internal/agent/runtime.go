@@ -52,8 +52,11 @@ type ChatResult struct {
 // ErrMentionNotFound means the one-turn @ agent is missing or outside the session tenant.
 var ErrMentionNotFound = errors.New("agent not found")
 
-// ErrAgentInactive means the one-turn @ agent is paused.
+// ErrAgentInactive means the one-turn @ agent, or the session agent, is paused.
 var ErrAgentInactive = errors.New("agent is inactive")
+
+// ErrSessionArchived means the session is closed and must not call a model.
+var ErrSessionArchived = errors.New("session is archived")
 
 // ChatTurn is optional per-message routing. MentionAgentID does not change the session agent.
 // Empty mention uses the session agent. The session model override, when set, still wins over the agent model.
@@ -458,6 +461,12 @@ func (rt *Runtime) ChatWithTurn(ctx context.Context, sessionID, message, promptM
 		sessionMode = s.PromptMode
 		sessionAgent = s.AgentID
 		turnAgent = s.AgentID
+		if s.Archived {
+			return nil, ErrSessionArchived
+		}
+		if ag, aerr := rt.Store.GetAgent(s.AgentID); aerr == nil && ag != nil && !ag.Enabled {
+			return nil, ErrAgentInactive
+		}
 		mention := strings.TrimSpace(turn.MentionAgentID)
 		if mention != "" && mention != s.AgentID {
 			ag, aerr := rt.Store.GetAgent(mention)

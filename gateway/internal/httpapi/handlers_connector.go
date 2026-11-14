@@ -518,7 +518,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 					writeErr(w, http.StatusBadRequest, "agent not found")
 					return
 				}
-				if errors.Is(err, agent.ErrAgentInactive) {
+				if errors.Is(err, agent.ErrAgentInactive) || errors.Is(err, agent.ErrSessionArchived) {
 					writeErr(w, http.StatusConflict, err.Error())
 					return
 				}
@@ -555,7 +555,7 @@ func handleChatRuntime(rt *agent.Runtime, st store.StoreIface, meter *billing.St
 				writeErr(w, http.StatusBadRequest, "agent not found")
 				return
 			}
-			if errors.Is(err, agent.ErrAgentInactive) {
+			if errors.Is(err, agent.ErrAgentInactive) || errors.Is(err, agent.ErrSessionArchived) {
 				writeErr(w, http.StatusConflict, err.Error())
 				return
 			}
