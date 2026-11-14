@@ -213,8 +213,15 @@ func customerMapIsTSV(raw []byte) bool {
 
 // loadCustomerTSV reads channel, sender, user, key. Column 3 is the GoClaw
 // user id and column 4 is the customer key. zalo_personal and lark in the
-// key's channel are normalized. The same user with two different keys is an
-// error. The error text does not include the user id.
+// key's channel are normalized.
+//
+// A row that cannot name a customer is skipped, not fatal: GoClaw exports
+// carry rows whose user_id is empty, and one such row used to abort the whole
+// load. A user that appears under two keys keeps the first row, which matches
+// the first-wins rule of the contacts importer (SPEC 172) and of the kgimport
+// CustomerMap. The only remaining fatal case is a structural one, a line that
+// does not have four columns, because then the file is not this format.
+// Skipped rows never print the user id.
 func loadCustomerTSV(raw []byte) (map[string]string, error) {
 	out := map[string]string{}
 	sc := bufio.NewScanner(bytes.NewReader(raw))
@@ -233,10 +240,10 @@ func loadCustomerTSV(raw []byte) (map[string]string, error) {
 		user := strings.TrimSpace(cols[2])
 		key := normalizeCustomerKey(cols[3])
 		if user == "" || key == "" || strings.ContainsRune(key, 0) || strings.ContainsAny(key, "\r\n") {
-			return nil, configf("customer map line %d needs a user and a key", lineNo)
+			continue
 		}
-		if prev, ok := out[user]; ok && prev != key {
-			return nil, config("customer user maps to two keys")
+		if _, ok := out[user]; ok {
+			continue
 		}
 		out[user] = key
 	}
@@ -263,6 +270,10 @@ func normalizeCustomerKey(key string) string {
 	return ch + ":" + rest
 }
 
+// addCustomers folds JSON rows into the same map as the TSV path. A row that
+// cannot name a customer is skipped rather than fatal, and the first row for a
+// user wins, so the JSON and TSV paths agree. Neither path can abort a load on
+// a single empty or duplicated user_id.
 func addCustomers(dst map[string]string, rows []customerRow) error {
 	for _, row := range rows {
 		user := strings.TrimSpace(row.UserID)
@@ -275,10 +286,10 @@ func addCustomers(dst map[string]string, rows []customerRow) error {
 			}
 		}
 		if user == "" || key == "" || strings.ContainsRune(key, 0) || strings.ContainsAny(key, "\r\n") {
-			return config("customer mapping needs a user_id and a customer_key")
+			continue
 		}
 		if _, ok := dst[user]; ok {
-			return config("customer user_id is repeated")
+			continue
 		}
 		dst[user] = key
 	}
