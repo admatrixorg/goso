@@ -39,18 +39,16 @@ var reasonKeys = []string{
 // A non-empty value is still counted as team/scope and is not written.
 // There is no separate import path for those rows.
 //
-// A non-empty user_id is customer-private and is not written. SPEC 182
-// adds customer_key on the Goso KG tables in another PR. The follow-up
-// to this importer changes admit so a non-empty user_id can return "",
-// and changes the insert call to store that customer's key. Until the
-// column exists, admit must keep returning customer-private. team/scope
-// stays a skip after that change.
+// A non-empty user_id is that customer's row. SPEC 182 added customer_key
+// on the Goso KG tables, so this importer now writes those rows with the
+// key set instead of holding them as customer-private. A row is visible to
+// a read scoped to that customer and invisible to a read scoped to another
+// customer; the tenant-wide rows (empty user_id) stay visible to everyone
+// in the tenant. team/scope stays a skip: kg_entities and kg_relations have
+// no team column.
 func admit(userID, teamID, customScope string) string {
 	if strings.TrimSpace(teamID) != "" || strings.TrimSpace(customScope) != "" {
 		return reasonTeamScope
-	}
-	if strings.TrimSpace(userID) != "" {
-		return reasonCustomerPrivate
 	}
 	return ""
 }

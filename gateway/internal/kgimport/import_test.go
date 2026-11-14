@@ -57,8 +57,10 @@ func TestAdmitKeepsCustomerAndTeamOut(t *testing.T) {
 	if admit("", "", "") != "" {
 		t.Fatal("empty user_id should be admitted")
 	}
-	if admit("khach-a", "", "") != reasonCustomerPrivate {
-		t.Fatal("user_id")
+	// SPEC 182 follow-up: a customer-bound row is written with its
+	// customer_key instead of being held as customer-private.
+	if admit("khach-a", "", "") != "" {
+		t.Fatal("user_id must be admitted with its key")
 	}
 	if admit("", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0", "") != reasonTeamScope {
 		t.Fatal("team_id")
@@ -67,7 +69,7 @@ func TestAdmitKeepsCustomerAndTeamOut(t *testing.T) {
 		t.Fatal("custom_scope")
 	}
 	if admit("khach-a", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb0", "rieng") != reasonTeamScope {
-		t.Fatal("team/scope wins over user_id")
+		t.Fatal("team/scope is still a skip")
 	}
 }
 
@@ -164,6 +166,7 @@ func runMinhAn(t *testing.T, st testStore) {
 	}
 	assertIsolation(t, st)
 	assertNoLeak(t, st)
+	assertCustomerScope(t, st)
 	assertNoCustomerKey(t, st)
 
 	again, err := Import(st, ex, opt)
@@ -179,7 +182,8 @@ func runMinhAn(t *testing.T, st testStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dryRemove.Entities != 3 || dryRemove.Relations != 1 || !dryRemove.DryRun {
+	// 4 entities and 3 relations: the customer-bound row is imported now.
+	if dryRemove.Entities != 4 || dryRemove.Relations != 3 || !dryRemove.DryRun {
 		t.Fatalf("dry remove %+v", dryRemove)
 	}
 	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != nil {
@@ -189,7 +193,7 @@ func runMinhAn(t *testing.T, st testStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed.Entities != 3 || removed.Relations != 1 {
+	if removed.Entities != 4 || removed.Relations != 3 {
 		t.Fatalf("remove %+v", removed)
 	}
 	if _, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{}); err != store.ErrNotFound {
@@ -240,7 +244,9 @@ func TestConflictDoesNotOverwrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			sec := mustSection(t, rep, tenantMinh, "kg_entities")
-			if sec.WillWrite != 2 || sec.Skipped[reasonNativeExists] != 1 || sec.Skipped[reasonExists] != 0 {
+			// One entity is now written with its customer key, so the
+			// second run writes one more row than the pre-182 importer.
+			if sec.WillWrite != 3 || sec.Skipped[reasonNativeExists] != 1 || sec.Skipped[reasonExists] != 0 {
 				t.Fatalf("conflict counts %+v", sec)
 			}
 			got, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{})
@@ -264,8 +270,8 @@ func assertFirstCounts(t *testing.T, rep *Report) {
 		missing, bad      int
 		exists            int
 	}{
-		{tenantMinh, "kg_entities", 10, 3, 1, 2, 3, 0, 1, 0},
-		{tenantMinh, "kg_relations", 6, 1, 1, 1, 0, 3, 0, 0},
+		{tenantMinh, "kg_entities", 10, 4, 0, 2, 3, 0, 1, 0},
+		{tenantMinh, "kg_relations", 6, 3, 0, 1, 0, 2, 0, 0},
 		{tenantPhap, "kg_entities", 2, 0, 0, 0, 2, 0, 0, 0},
 		{tenantPhap, "kg_relations", 1, 0, 0, 0, 1, 0, 0, 0},
 		{tenantNope, "kg_entities", 1, 0, 0, 0, 1, 0, 0, 0},
@@ -299,11 +305,13 @@ func assertSecondCounts(t *testing.T, rep *Report) {
 		}
 	}
 	minh := mustSection(t, rep, tenantMinh, "kg_entities")
-	if minh.Skipped[reasonExists] != 3 || minh.Skipped[reasonCustomerPrivate] != 1 {
+	// The customer-bound entity is written on the first run now, so the
+	// second run sees one more exists and one fewer customer-private.
+	if minh.Skipped[reasonExists] != 4 || minh.Skipped[reasonCustomerPrivate] != 0 {
 		t.Fatalf("second entities %+v", minh.Skipped)
 	}
 	rel := mustSection(t, rep, tenantMinh, "kg_relations")
-	if rel.Skipped[reasonExists] != 1 || rel.Skipped[reasonMissingEndpoint] != 3 {
+	if rel.Skipped[reasonExists] != 3 || rel.Skipped[reasonMissingEndpoint] != 2 {
 		t.Fatalf("second relations %+v", rel.Skipped)
 	}
 }
@@ -365,7 +373,9 @@ func assertStored(t *testing.T, st testStore, agentID string) {
 	if err != nil || rprov != "goclaw:"+relKeep {
 		t.Fatalf("rel provenance %q %v", rprov, err)
 	}
-	for _, id := range []string{idPrivate, idTeam, idScope, idNoAgent, idMQ, idUnknown, idCross, idWrongMap} {
+	// idPrivate is written now: it belongs to customer "khach-a", which
+	// SPEC 182 can express as customer_key.
+	for _, id := range []string{idTeam, idScope, idNoAgent, idMQ, idUnknown, idCross, idWrongMap} {
 		if _, err := st.GetKGEntity("gc-kg:"+id, store.KGScope{}); err != store.ErrNotFound {
 			t.Fatalf("skipped entity stored %s", id)
 		}
@@ -382,7 +392,9 @@ func assertIsolation(t *testing.T, st testStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if minh.TotalNodes != 3 || phap.TotalNodes != 2 {
+	// minh-an has 4 nodes now: the customer-bound entity is written with
+	// its key. The tenant graph read is unscoped, so it sees that row too.
+	if minh.TotalNodes != 4 || phap.TotalNodes != 2 {
 		t.Fatalf("nodes minh %d phap %d", minh.TotalNodes, phap.TotalNodes)
 	}
 	for _, n := range minh.Nodes {
@@ -406,9 +418,16 @@ func assertIsolation(t *testing.T, st testStore) {
 	}
 }
 
+// assertNoLeak checks rows that must not reach a tenant at all.
+//
+// PRIVMARKER is excluded on purpose: since the SPEC 182 follow-up that row
+// is written with customer_key=khach-a, so it is visible to a tenant read
+// and invisible to another customer. assertCustomerScope covers that.
 func assertNoLeak(t *testing.T, st testStore) {
 	t.Helper()
-	for _, marker := range []string{"PRIVMARKER", "TEAMMARKER", "SCOPEMARKER", "DENIEDMARKER", "EMBEDMARKER", "TSVMARKER", "UNMAPPEDMARKER", "BADMARKER", "0900000111"} {
+	// 0900000111 is the phone inside PRIVMARKER's body, so it follows the
+	// same rule: customer-scoped, not tenant-wide.
+	for _, marker := range []string{"TEAMMARKER", "SCOPEMARKER", "DENIEDMARKER", "EMBEDMARKER", "TSVMARKER", "UNMAPPEDMARKER", "BADMARKER"} {
 		for _, tenant := range []string{"minh-an", "phap-che", "default"} {
 			hit, err := st.SearchProgressive(marker, tenant, store.KGScope{})
 			if err != nil || len(hit) != 0 {
@@ -418,9 +437,26 @@ func assertNoLeak(t *testing.T, st testStore) {
 	}
 }
 
+// assertCustomerScope checks the whole point of the SPEC 182 follow-up: a
+// customer-bound row is visible to that customer and to nobody else.
+func assertCustomerScope(t *testing.T, st testStore) {
+	t.Helper()
+	mine, err := st.SearchProgressive("PRIVMARKER", "minh-an", store.KGScope{Scoped: true, CustomerKey: "khach-a"})
+	if err != nil || len(mine) == 0 {
+		t.Fatalf("own customer row not visible (%d, %v)", len(mine), err)
+	}
+	other, err := st.SearchProgressive("PRIVMARKER", "minh-an", store.KGScope{Scoped: true, CustomerKey: "khach-b"})
+	if err != nil || len(other) != 0 {
+		t.Fatalf("row leaked to another customer (%d, %v)", len(other), err)
+	}
+}
+
 func assertNoCustomerKey(t *testing.T, st testStore) {
 	t.Helper()
-	// SPEC 182 added the column. Imported tenant-wide rows leave it empty.
+	// SPEC 182 added the column. A tenant-wide row (empty GoClaw user_id)
+	// leaves it empty; the customer-bound row keeps its key. This check
+	// looks at the tenant-wide one on purpose: the column must not be
+	// stamped for a row that belongs to nobody in particular.
 	place, err := st.GetKGEntity("gc-kg:"+idPlace, store.KGScope{})
 	if err != nil || place.CustomerKey != "" {
 		t.Fatalf("imported customer_key %q %v", place.CustomerKey, err)

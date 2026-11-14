@@ -11,7 +11,10 @@ import (
 
 func TestImportSQLLeavesSchemaColumnsAlone(t *testing.T) {
 	for _, q := range []string{insertImportedKGEntitySQL, insertImportedKGRelationSQL} {
-		if strings.Contains(q, "embedding") || strings.Contains(q, "customer_key") || strings.Contains(q, "tsv") {
+		// embedding and tsv stay out: this importer does not compute them.
+		// customer_key is written on purpose since the SPEC 182 follow-up,
+		// so an imported row keeps the customer it belongs to.
+		if strings.Contains(q, "embedding") || strings.Contains(q, "tsv") {
 			t.Fatalf("import SQL touches a column this spec does not write: %s", q)
 		}
 		if !strings.Contains(q, "ON CONFLICT (id) DO NOTHING") {
