@@ -14,17 +14,21 @@ import (
 
 // Agent represents an AI agent.
 type Agent struct {
-	ID                string    `json:"id"`
-	TenantID          string    `json:"tenant_id"`
-	AgentKey          string    `json:"agent_key"`
-	DisplayName       string    `json:"display_name"`
-	Model             string    `json:"model,omitempty"`
-	LLMProvider       string    `json:"llm_provider,omitempty"`
-	Instructions      string    `json:"instructions,omitempty"`
-	OrchestrationMode string    `json:"orchestration_mode,omitempty"`
-	Enabled           bool      `json:"enabled"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                string `json:"id"`
+	TenantID          string `json:"tenant_id"`
+	AgentKey          string `json:"agent_key"`
+	DisplayName       string `json:"display_name"`
+	Model             string `json:"model,omitempty"`
+	LLMProvider       string `json:"llm_provider,omitempty"`
+	Instructions      string `json:"instructions,omitempty"`
+	OrchestrationMode string `json:"orchestration_mode,omitempty"`
+	Enabled           bool   `json:"enabled"`
+	// StartDisabled writes enabled=0 in the INSERT. The zero value keeps
+	// CreateAgent enabled for operators and channels. The importer sets it
+	// so an imported row is never stored enabled and then patched.
+	StartDisabled bool      `json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Lite caps when GOSO_LITE=1 (desktop default may set this later).
@@ -832,7 +836,11 @@ func (s *Store) CreateAgent(a Agent) (*Agent, error) {
 	now := time.Now().UTC()
 	a.CreatedAt = now
 	a.UpdatedAt = now
-	a.Enabled = true
+	if a.StartDisabled {
+		a.Enabled = false
+	} else {
+		a.Enabled = true
+	}
 	cp := a
 	s.agents[cp.ID] = &cp
 	out := cp

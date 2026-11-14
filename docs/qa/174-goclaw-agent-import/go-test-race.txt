@@ -1,0 +1,49 @@
+=== RUN   TestMinhAnFixture
+2026/11/12 14:15:06 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestMinhAnFixture/memory
+=== RUN   TestMinhAnFixture/sqlite
+=== RUN   TestMinhAnFixture/postgres
+--- PASS: TestMinhAnFixture (0.72s)
+    --- PASS: TestMinhAnFixture/memory (0.00s)
+    --- PASS: TestMinhAnFixture/sqlite (0.21s)
+    --- PASS: TestMinhAnFixture/postgres (0.05s)
+=== RUN   TestAddOnlyDoesNotOverwrite
+2026/11/12 14:15:07 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestAddOnlyDoesNotOverwrite/memory
+=== RUN   TestAddOnlyDoesNotOverwrite/sqlite
+=== RUN   TestAddOnlyDoesNotOverwrite/postgres
+--- PASS: TestAddOnlyDoesNotOverwrite (0.42s)
+    --- PASS: TestAddOnlyDoesNotOverwrite/memory (0.00s)
+    --- PASS: TestAddOnlyDoesNotOverwrite/sqlite (0.01s)
+    --- PASS: TestAddOnlyDoesNotOverwrite/postgres (0.00s)
+=== RUN   TestAgentKeyTakenDoesNotTouchOtherTenant
+2026/11/12 14:15:07 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestAgentKeyTakenDoesNotTouchOtherTenant/memory
+=== RUN   TestAgentKeyTakenDoesNotTouchOtherTenant/sqlite
+=== RUN   TestAgentKeyTakenDoesNotTouchOtherTenant/postgres
+--- PASS: TestAgentKeyTakenDoesNotTouchOtherTenant (0.44s)
+    --- PASS: TestAgentKeyTakenDoesNotTouchOtherTenant/memory (0.00s)
+    --- PASS: TestAgentKeyTakenDoesNotTouchOtherTenant/sqlite (0.01s)
+    --- PASS: TestAgentKeyTakenDoesNotTouchOtherTenant/postgres (0.01s)
+=== RUN   TestRollbackStopsWhenAgentIsStillLead
+--- PASS: TestRollbackStopsWhenAgentIsStillLead (0.00s)
+=== RUN   TestEmptyDirectionIsOutbound
+--- PASS: TestEmptyDirectionIsOutbound (0.00s)
+=== RUN   TestJSONL
+--- PASS: TestJSONL (0.00s)
+=== RUN   TestRejectsBadExportAndBadTenant
+--- PASS: TestRejectsBadExportAndBadTenant (0.43s)
+=== RUN   TestConcurrentApplyNoDuplicates
+--- PASS: TestConcurrentApplyNoDuplicates (0.00s)
+=== RUN   TestLinkAlreadyThereIsNotClaimed
+--- PASS: TestLinkAlreadyThereIsNotClaimed (0.34s)
+=== RUN   TestConfigErrorIsError
+--- PASS: TestConfigErrorIsError (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/agentimport	3.393s
+=== RUN   TestCLIDryRunApplyRollback
+--- PASS: TestCLIDryRunApplyRollback (0.94s)
+=== RUN   TestCLIRefusesRemoteAndBadFlags
+--- PASS: TestCLIRefusesRemoteAndBadFlags (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-agent-import	1.949s

@@ -151,7 +151,7 @@ func (s *Store) PruneEpisodic(before time.Time) (int, error) {
 	for sid, list := range s.memories {
 		kept := make([]*Memory, 0, len(list))
 		for _, m := range list {
-			if m != nil && NormalizeMemoryKind(m.Kind) == KindEpisodic && m.CreatedAt.Before(before) {
+			if m != nil && NormalizeMemoryKind(m.Kind) == KindEpisodic && m.CreatedAt.Before(before) && !importedEpisodicID(m.ID) {
 				n++
 				continue
 			}
@@ -282,7 +282,7 @@ func (s *SQLiteStore) PruneEpisodic(before time.Time) (int, error) {
 	if before.IsZero() {
 		return 0, errors.New("before is required")
 	}
-	res, err := s.db.Exec(`DELETE FROM memories WHERE kind=? AND created_at < ?`, KindEpisodic, formatTime(before))
+	res, err := s.db.Exec(`DELETE FROM memories WHERE kind=? AND created_at < ? AND `+s.notImportedEpisodicSQL(), KindEpisodic, formatTime(before))
 	if err != nil {
 		return 0, err
 	}
