@@ -1,0 +1,79 @@
+=== RUN   TestReadExportDropsUnknownFields
+--- PASS: TestReadExportDropsUnknownFields (0.00s)
+=== RUN   TestExportTooLarge
+--- PASS: TestExportTooLarge (0.00s)
+=== RUN   TestMinhAnFixture
+=== RUN   TestMinhAnFixture/memory
+=== RUN   TestMinhAnFixture/memory/flag_off
+2026/11/12 13:58:10 goso memory: recall session=20261112-7 agent=20261112-1 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/memory/flag_on_loads_the_imported_files
+2026/11/12 13:58:10 goso memory: recall session=20261112-7 agent=20261112-1 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/sqlite
+=== RUN   TestMinhAnFixture/sqlite/flag_off
+2026/11/12 13:58:10 goso memory: recall session=20261112-9e7da82f79512af7 agent=20261112-c66f0a3912dd30ae customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/sqlite/flag_on_loads_the_imported_files
+2026/11/12 13:58:10 goso memory: recall session=20261112-9e7da82f79512af7 agent=20261112-c66f0a3912dd30ae customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/postgres
+2026/11/12 13:58:10 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestMinhAnFixture/postgres/flag_off
+2026/11/12 13:58:10 goso memory: recall session=20261112-d4859f940483a675 agent=20261112-a9b6e2f2d63ad412 customer_scoped=false candidates=0 injected=0 runes=0
+=== RUN   TestMinhAnFixture/postgres/flag_on_loads_the_imported_files
+2026/11/12 13:58:10 goso memory: recall session=20261112-d4859f940483a675 agent=20261112-a9b6e2f2d63ad412 customer_scoped=false candidates=0 injected=0 runes=0
+--- PASS: TestMinhAnFixture (0.18s)
+    --- PASS: TestMinhAnFixture/memory (0.00s)
+        --- PASS: TestMinhAnFixture/memory/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/memory/flag_on_loads_the_imported_files (0.00s)
+    --- PASS: TestMinhAnFixture/sqlite (0.05s)
+        --- PASS: TestMinhAnFixture/sqlite/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/sqlite/flag_on_loads_the_imported_files (0.00s)
+    --- PASS: TestMinhAnFixture/postgres (0.13s)
+        --- PASS: TestMinhAnFixture/postgres/flag_off (0.00s)
+        --- PASS: TestMinhAnFixture/postgres/flag_on_loads_the_imported_files (0.00s)
+=== RUN   TestDuplicateLastWinsIsIdempotent
+=== RUN   TestDuplicateLastWinsIsIdempotent/postgres
+2026/11/12 13:58:10 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+=== RUN   TestDuplicateLastWinsIsIdempotent/memory
+=== RUN   TestDuplicateLastWinsIsIdempotent/sqlite
+--- PASS: TestDuplicateLastWinsIsIdempotent (0.11s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/postgres (0.08s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/memory (0.00s)
+    --- PASS: TestDuplicateLastWinsIsIdempotent/sqlite (0.03s)
+=== RUN   TestOwnerCapAndTooLarge
+=== RUN   TestOwnerCapAndTooLarge/memory
+=== RUN   TestOwnerCapAndTooLarge/sqlite
+=== RUN   TestOwnerCapAndTooLarge/postgres
+2026/11/12 13:58:10 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestOwnerCapAndTooLarge (0.14s)
+    --- PASS: TestOwnerCapAndTooLarge/memory (0.00s)
+    --- PASS: TestOwnerCapAndTooLarge/sqlite (0.04s)
+    --- PASS: TestOwnerCapAndTooLarge/postgres (0.10s)
+=== RUN   TestInvalidRowsWriteNothing
+=== RUN   TestInvalidRowsWriteNothing/memory
+=== RUN   TestInvalidRowsWriteNothing/sqlite
+=== RUN   TestInvalidRowsWriteNothing/postgres
+2026/11/12 13:58:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestInvalidRowsWriteNothing (0.10s)
+    --- PASS: TestInvalidRowsWriteNothing/memory (0.00s)
+    --- PASS: TestInvalidRowsWriteNothing/sqlite (0.02s)
+    --- PASS: TestInvalidRowsWriteNothing/postgres (0.08s)
+=== RUN   TestUserFileConflictDoesNotOverwrite
+=== RUN   TestUserFileConflictDoesNotOverwrite/memory
+=== RUN   TestUserFileConflictDoesNotOverwrite/sqlite
+=== RUN   TestUserFileConflictDoesNotOverwrite/postgres
+2026/11/12 13:58:11 goso store: CREATE EXTENSION vector skipped: ERROR: extension "vector" is not available (SQLSTATE 0A000)
+--- PASS: TestUserFileConflictDoesNotOverwrite (0.11s)
+    --- PASS: TestUserFileConflictDoesNotOverwrite/memory (0.00s)
+    --- PASS: TestUserFileConflictDoesNotOverwrite/sqlite (0.02s)
+    --- PASS: TestUserFileConflictDoesNotOverwrite/postgres (0.09s)
+=== RUN   TestJSONLUsesTheSameColumns
+--- PASS: TestJSONLUsesTheSameColumns (0.00s)
+=== RUN   TestBadOptionsWriteNothing
+--- PASS: TestBadOptionsWriteNothing (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/internal/contextimport	0.648s
+=== RUN   TestCLIDryRunIsDefaultAndRerunWritesNothing
+--- PASS: TestCLIDryRunIsDefaultAndRerunWritesNothing (0.06s)
+=== RUN   TestCLIRequiresTenantAndRefusesRemoteDB
+--- PASS: TestCLIRequiresTenantAndRefusesRemoteDB (0.00s)
+PASS
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-context-import	0.059s
