@@ -159,12 +159,15 @@ type Session struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-// Cron job persistence (SPEC 054). Cap is store-side; empty list is a no-op for the runner.
+// Cron job persistence (SPEC 054). CronJobCap is per tenant (SPEC 183),
+// counted the same way as LiteMaxAgents. An empty list is a no-op for the runner.
 const CronJobCap = 20
 
 // CronJob is one scheduled chat into a session.
+// TenantID is copied from the session at create. The HTTP body cannot set it.
 type CronJob struct {
 	ID        string     `json:"id"`
+	TenantID  string     `json:"tenant_id"`
 	Spec      string     `json:"spec"`
 	SessionID string     `json:"session_id"`
 	Message   string     `json:"message"`
@@ -544,7 +547,10 @@ type StoreIface interface {
 	UpdateChannelPairing(ChannelPairing) (*ChannelPairing, error)
 	CountPendingChannelPairings(channel, sender string, now time.Time) int
 	CreateCronJob(CronJob) (*CronJob, error)
+	// ListCronJobs returns every tenant. cron.Tick uses it so a non-default
+	// tenant's jobs still run. HTTP listing uses ListCronJobsTenant.
 	ListCronJobs() []*CronJob
+	ListCronJobsTenant(tid string) []*CronJob
 	GetCronJob(string) (*CronJob, error)
 	DeleteCronJob(string) error
 	SetCronEnabled(id string, enabled bool) error
@@ -913,6 +919,7 @@ func (s *Store) DeleteAgent(id string) error {
 		delete(s.sessions, sid)
 		delete(s.messages, sid)
 		delete(s.memories, sid)
+		s.deleteSessionCronLocked(sid)
 	}
 	delete(s.agentConns, id)
 	delete(s.agentLinks, id)
@@ -1036,6 +1043,7 @@ func (s *Store) DeleteSession(id string) error {
 	delete(s.sessions, id)
 	delete(s.messages, id)
 	delete(s.memories, id)
+	s.deleteSessionCronLocked(id)
 	return nil
 }
 
