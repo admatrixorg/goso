@@ -159,12 +159,15 @@ type Session struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-// Cron job persistence (SPEC 054). Cap is store-side; empty list is a no-op for the runner.
+// Cron job persistence (SPEC 054). CronJobCap is per tenant (SPEC 183),
+// counted the same way as LiteMaxAgents. An empty list is a no-op for the runner.
 const CronJobCap = 20
 
 // CronJob is one scheduled chat into a session.
+// TenantID is copied from the session at create. The HTTP body cannot set it.
 type CronJob struct {
 	ID        string     `json:"id"`
+	TenantID  string     `json:"tenant_id"`
 	Spec      string     `json:"spec"`
 	SessionID string     `json:"session_id"`
 	Message   string     `json:"message"`
@@ -544,7 +547,10 @@ type StoreIface interface {
 	UpdateChannelPairing(ChannelPairing) (*ChannelPairing, error)
 	CountPendingChannelPairings(channel, sender string, now time.Time) int
 	CreateCronJob(CronJob) (*CronJob, error)
+	// ListCronJobs returns every tenant. cron.Tick uses it so a non-default
+	// tenant's jobs still run. HTTP listing uses ListCronJobsTenant.
 	ListCronJobs() []*CronJob
+	ListCronJobsTenant(tid string) []*CronJob
 	GetCronJob(string) (*CronJob, error)
 	DeleteCronJob(string) error
 	SetCronEnabled(id string, enabled bool) error
@@ -573,6 +579,22 @@ type StoreIface interface {
 	GetContextFile(tenant, scope, ownerID, name string) (*ContextFile, error)
 	ListContextFiles(tenant, scope, ownerID string) ([]*ContextFile, error)
 	DeleteContextFile(tenant, scope, ownerID, name string) error
+	// Import source ids remember which GoClaw id was already copied into this
+	// destination tenant. Put is add-only: an existing triple is unchanged and
+	// returns ErrExists.
+	GetImportSource(tenant, kind, sourceID string) (gosoID string, ok bool, err error)
+	PutImportSource(tenant, kind, sourceID, gosoID string) error
+	// ListImportSources returns mappings stored for this exact tenant id and kind.
+	ListImportSources(tenant, kind string) ([]ImportSource, error)
+	// DeleteImportSources removes mappings for this exact tenant id and kind
+	// and returns how many rows were removed. Other tenants and other kinds stay.
+	DeleteImportSources(tenant, kind string) (int, error)
+	// DeleteImportSource removes one mapping. The kind is part of the key.
+	DeleteImportSource(tenant, kind, sourceID string) error
+	// DeleteChannelConfig removes one channel_config row by name. The cron and
+	// channel importer uses it only to roll back a row that same call inserted
+	// when the source-id map cannot be saved.
+	DeleteChannelConfig(name string) error
 }
 
 // GatewaySettings is the persisted overlay for GET/PUT /api/config.
@@ -645,6 +667,7 @@ type Store struct {
 	kgRelations     map[string]*KGRelation
 	channelConfig   map[string]*ChannelConfig
 	channelPairing  map[string]*ChannelPairing
+	importSources   map[string]string
 	gatewaySettings *GatewaySettings
 	contextFiles    map[string]*ContextFile
 	ingestJobs      map[string]*IngestJob
@@ -709,6 +732,7 @@ func New() *Store {
 		kgRelations:    make(map[string]*KGRelation),
 		channelConfig:  make(map[string]*ChannelConfig),
 		channelPairing: make(map[string]*ChannelPairing),
+		importSources:  make(map[string]string),
 		contextFiles:   make(map[string]*ContextFile),
 		ingestJobs:     make(map[string]*IngestJob),
 	}
@@ -895,6 +919,7 @@ func (s *Store) DeleteAgent(id string) error {
 		delete(s.sessions, sid)
 		delete(s.messages, sid)
 		delete(s.memories, sid)
+		s.deleteSessionCronLocked(sid)
 	}
 	delete(s.agentConns, id)
 	delete(s.agentLinks, id)
@@ -1018,6 +1043,7 @@ func (s *Store) DeleteSession(id string) error {
 	delete(s.sessions, id)
 	delete(s.messages, id)
 	delete(s.memories, id)
+	s.deleteSessionCronLocked(id)
 	return nil
 }
 

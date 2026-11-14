@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,32 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// OpenSQLiteReadOnly opens an existing SQLite file without migrating and
+// without creating the file. Writes through this handle fail.
+func OpenSQLiteReadOnly(path string) (*SQLiteStore, error) {
+	if err := RefusePostgres(path); err != nil {
+		return nil, err
+	}
+	path = strings.TrimSpace(path)
+	if path == "" || path == ":memory:" {
+		return nil, errors.New("open database failed")
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return nil, errors.New("open database failed")
+	}
+	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)&_pragma=query_only(1)"}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, errors.New("open database failed")
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, errors.New("open database failed")
+	}
+	return &SQLiteStore{db: &sqlHandle{db: db}}, nil
 }
 
 // SQLiteBusyTimeoutMS is how long a SQLite connection waits for a lock held by
@@ -278,7 +305,8 @@ func (s *SQLiteStore) migrate() error {
 			message TEXT NOT NULL,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			last_run TEXT,
-			last_error TEXT NOT NULL DEFAULT ''
+			last_error TEXT NOT NULL DEFAULT '',
+			tenant_id TEXT NOT NULL DEFAULT 'default'
 		)`,
 		`CREATE TABLE IF NOT EXISTS llm_providers (
 			name TEXT PRIMARY KEY,
@@ -433,6 +461,11 @@ func (s *SQLiteStore) migrate() error {
 	_, _ = s.db.Exec(`UPDATE teams SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE webhooks SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
 	_, _ = s.db.Exec(`UPDATE llm_providers SET tenant_id='default' WHERE tenant_id IS NULL OR tenant_id=''`)
+	// SPEC 183: SQLite backfill and indexes. Postgres startup stays add-only;
+	// its UPDATE and CREATE INDEX CONCURRENTLY live in the rollout file.
+	if err := s.migrateCronTenant(); err != nil {
+		return err
+	}
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agents_tenant ON agents(tenant_id)`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id)`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id)`)
@@ -456,6 +489,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.migrateIngestConvert(); err != nil {
+		return err
+	}
+	if err := s.migrateImportSource(); err != nil {
 		return err
 	}
 	return nil
@@ -952,6 +988,9 @@ func (s *SQLiteStore) DeleteSession(id string) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM memories WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM cron_jobs WHERE session_id=?`, id); err != nil {
 		return err
 	}
 	if s.fts {

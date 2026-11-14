@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,6 +56,51 @@ func OpenPostgres(dsn string) (*PostgresStore, error) {
 	return s, nil
 }
 
+// OpenPostgresReadOnly connects without running migrations. The session is
+// read only, so a dry-run cannot create tables.
+func OpenPostgresReadOnly(dsn string) (*PostgresStore, error) {
+	dsn = strings.TrimSpace(dsn)
+	if !IsPostgresDSN(dsn) {
+		return nil, fmt.Errorf("not a postgres DSN")
+	}
+	ro, err := postgresReadOnlyDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("pgx", ro)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(4)
+	db.SetConnMaxLifetime(time.Hour)
+	ctx, cancel := context.WithTimeout(context.Background(), postgresPingTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	inner := &SQLiteStore{db: &sqlHandle{db: db, pg: true}, pg: true}
+	return &PostgresStore{SQLiteStore: inner}, nil
+}
+
+func postgresReadOnlyDSN(dsn string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	opt := q.Get("options")
+	if !strings.Contains(opt, "default_transaction_read_only") {
+		if strings.TrimSpace(opt) != "" {
+			opt += " "
+		}
+		opt += "-c default_transaction_read_only=on"
+	}
+	q.Set("options", opt)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 func (s *PostgresStore) migratePostgres() error {
 	for _, stmt := range postgresSchema {
 		if _, err := s.db.db.Exec(stmt); err != nil {
@@ -72,6 +118,15 @@ func (s *PostgresStore) migratePostgres() error {
 	_, _ = s.db.db.Exec(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS enabled INTEGER NOT NULL DEFAULT 1`)
 	_, _ = s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''`)
+	// SPEC 183: add-only tenant_id. Existing rows stay 'default' via the
+	// default. No UPDATE and no DELETE. The tenant and session indexes are
+	// NOT created here: they are CREATE INDEX CONCURRENTLY in
+	// docs/qa/183-cron-per-tenant/migration.sql and wait for Dat's approval.
+	// Do not Exec cronTenantRolloutStmts from startup. SQLite backfills in
+	// migrateCronTenant; this method must not call that.
+	if _, err := s.db.db.Exec(`ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`); err != nil {
+		return fmt.Errorf("postgres migrate cron_jobs.tenant_id: %w", err)
+	}
 	_, _ = s.db.db.Exec(`ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''`)
@@ -301,7 +356,8 @@ var postgresSchema = []string{
 		message TEXT NOT NULL,
 		enabled INTEGER NOT NULL DEFAULT 1,
 		last_run TEXT,
-		last_error TEXT NOT NULL DEFAULT ''
+		last_error TEXT NOT NULL DEFAULT '',
+		tenant_id TEXT NOT NULL DEFAULT 'default'
 	)`,
 	`CREATE TABLE IF NOT EXISTS llm_providers (
 		name TEXT PRIMARY KEY,
@@ -416,4 +472,11 @@ var postgresSchema = []string{
 	`CREATE INDEX IF NOT EXISTS idx_context_files_owner ON context_files(tenant_id, scope, owner_id)`,
 	ingestJobCreateTable,
 	ingestJobCreateIndex,
+	`CREATE TABLE IF NOT EXISTS import_source_ids (
+		tenant_id TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		source_id TEXT NOT NULL,
+		goso_id TEXT NOT NULL,
+		PRIMARY KEY (tenant_id, kind, source_id)
+	)`,
 }
