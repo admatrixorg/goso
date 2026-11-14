@@ -1,0 +1,5 @@
+=== go test -race -count=1 ===
+ok  	github.com/mqglobal/goso/gateway/internal/mcpimport	1.301s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-mcp-import	1.608s
+exit=0
+
