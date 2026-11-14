@@ -236,8 +236,15 @@ type rollbackPlan struct {
 	CreatedMCP    []string
 	PrevAgents    []agentSnap
 	PrevTeams     []teamSnap
-	PrevSkills    []SkillItem
+	PrevSkills    []skillSnap
 	PrevMCP       []mcpSnap
+	SkillTenant   string
+}
+
+type skillSnap struct {
+	Name  string
+	Body  string
+	Owned bool
 }
 
 type agentSnap struct {

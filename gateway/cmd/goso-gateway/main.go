@@ -100,7 +100,7 @@ Environment:
   GOSO_BROWSER_BIN         existing Chrome/Chromium file (or CHROME_PATH); empty = browser not_configured
   GOSO_FFMPEG              existing ffmpeg file for builtin media (or PATH ffmpeg + GOSO_MEDIA=1)
   GOSO_MEDIA / GOSO_MEDIA_* 1 = PATH ffmpeg for media, and image_gen/tts only with an injected test double (never a paid API)
-  GOSO_SKILLS_DIR          One-level SKILL.md folders for use_skill / skill_search / POST-DELETE /api/skills; empty = fail-closed
+  GOSO_SKILLS_DIR          Shared <dir>/<name>/SKILL.md (default tenant writes). Other tenants: <dir>/t/<tenant>/<name>/SKILL.md. Empty = fail-closed
   GOSO_CONTEXT_DIR         Direct children SOUL.md IDENTITY.md AGENTS.md (optional USER.md); empty = no inject
   GOSO_CONTEXT_FILES       1 = durable per-tenant agent and user context files. Default off (routes 404, chat unchanged)
   GOSO_TELEGRAM_BOT_TOKEN  Telegram bot token (optional)

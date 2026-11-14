@@ -13,9 +13,10 @@ import (
 
 func handleListSkills() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tid := requestTenant(r)
 		name := strings.TrimSpace(r.URL.Query().Get("name"))
 		if name != "" {
-			doc, err := skill.Load(name)
+			doc, err := skill.Load(tid, name)
 			if err != nil {
 				writeSkillErr(w, err)
 				return
@@ -25,7 +26,7 @@ func handleListSkills() http.HandlerFunc {
 		}
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if q != "" {
-			hits, err := skill.Search(q)
+			hits, err := skill.Search(tid, q)
 			if err != nil {
 				if errors.Is(err, skill.ErrNotConfigured) {
 					writeJSON(w, http.StatusOK, map[string]any{"skills": []skill.Hit{}})
@@ -40,10 +41,14 @@ func handleListSkills() http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"skills": hits})
 			return
 		}
-		list, err := skill.List()
+		list, err := skill.List(tid)
 		if err != nil {
 			if errors.Is(err, skill.ErrNotConfigured) {
 				writeJSON(w, http.StatusOK, map[string]any{"skills": []skill.Info{}})
+				return
+			}
+			if errors.Is(err, skill.ErrPathEscape) {
+				writeSkillErr(w, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"skills": []skill.Info{}})
@@ -66,7 +71,7 @@ func handleCreateSkill() http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		doc, err := skill.Create(body.Name, body.Body)
+		doc, err := skill.Create(requestTenant(r), body.Name, body.Body)
 		if err != nil {
 			writeSkillManageErr(w, err)
 			return
@@ -78,7 +83,7 @@ func handleCreateSkill() http.HandlerFunc {
 func handleDeleteSkill() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSpace(r.PathValue("name"))
-		if err := skill.Delete(name); err != nil {
+		if err := skill.Delete(requestTenant(r), name); err != nil {
 			writeSkillManageErr(w, err)
 			return
 		}

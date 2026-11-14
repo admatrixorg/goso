@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/skill"
 )
 
 func TestCatalog_Tools(t *testing.T) {
@@ -320,6 +321,35 @@ func TestInvoke_UseSkillEmptyEnv(t *testing.T) {
 	res, err = Invoke(context.Background(), ToolSkillSearch, map[string]any{"query": "demo"}, true)
 	if err != nil || res == nil || res.Status != "not_configured" {
 		t.Fatalf("skill_search %v %+v", err, res)
+	}
+}
+
+func TestInvoke_UseSkillTenantContext(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOSO_SKILLS_DIR", root)
+	t.Setenv("GOSO_WORKSPACE", "")
+	if _, err := skill.Create("", "bao-gia", "shared quote"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := skill.Create("minh-an-sales", "bao-gia", "Cố vấn Minh An sales quote"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := skill.WithTenant(context.Background(), "minh-an-sales")
+	res, err := Invoke(ctx, ToolUseSkill, map[string]any{"name": "bao-gia"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("%v %+v", err, res)
+	}
+	raw, _ := json.Marshal(res.Content)
+	if !strings.Contains(string(raw), "sales quote") {
+		t.Fatalf("tenant context %s", raw)
+	}
+	res, err = Invoke(context.Background(), ToolUseSkill, map[string]any{"name": "bao-gia"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("default %v %+v", err, res)
+	}
+	raw, _ = json.Marshal(res.Content)
+	if !strings.Contains(string(raw), "shared quote") || strings.Contains(string(raw), "sales quote") {
+		t.Fatalf("unset context %s", raw)
 	}
 }
 

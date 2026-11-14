@@ -98,13 +98,13 @@ var catalog = []Spec{
 	},
 	{
 		Name:             ToolUseSkill,
-		Description:      "Read a local SKILL.md by folder name. Fail-closed unless GOSO_SKILLS_DIR is set. Never executes skill scripts.",
+		Description:      "Read a local SKILL.md by folder name for this agent's tenant. A tenant file overrides a shared root skill. Fail-closed unless GOSO_SKILLS_DIR is set. Never executes skill scripts.",
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
 	},
 	{
 		Name:             ToolSkillSearch,
-		Description:      "BM25 search over local SKILL.md name, description, and body. Returns at most 5 ranked hits. Empty query fail-closed. Never executes skill scripts.",
+		Description:      "BM25 search over this tenant's skills (shared root plus that tenant's own files). Returns at most 5 ranked hits. Empty query fail-closed. Never executes skill scripts.",
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"q":{"type":"string"}},"required":["query"]}`),
 	},
@@ -288,9 +288,9 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 	case ToolWebFetch:
 		return webFetch(ctx, args)
 	case ToolUseSkill:
-		return useSkill(args)
+		return useSkill(ctx, args)
 	case ToolSkillSearch:
-		return skillSearch(args)
+		return skillSearch(ctx, args)
 	case ToolReadFile:
 		return readFile(args)
 	case ToolWriteFile:
@@ -350,12 +350,12 @@ func skillNameArg(args map[string]any) string {
 	return ""
 }
 
-func useSkill(args map[string]any) (*connector.InvokeResult, error) {
+func useSkill(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !skill.Configured() {
 		return notConfigured(ToolUseSkill), nil
 	}
 	n := skillNameArg(args)
-	doc, err := skill.Load(n)
+	doc, err := skill.Load(skill.TenantFrom(ctx), n)
 	if err != nil {
 		status := "error"
 		msg := "read failed"
@@ -388,7 +388,7 @@ func useSkill(args map[string]any) (*connector.InvokeResult, error) {
 	}, nil
 }
 
-func skillSearch(args map[string]any) (*connector.InvokeResult, error) {
+func skillSearch(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !skill.Configured() {
 		return notConfigured(ToolSkillSearch), nil
 	}
@@ -401,7 +401,7 @@ func skillSearch(args map[string]any) (*connector.InvokeResult, error) {
 			Content:   map[string]any{"error": "query is required"},
 		}, nil
 	}
-	hits, err := skill.Search(q)
+	hits, err := skill.Search(skill.TenantFrom(ctx), q)
 	if err != nil {
 		if errors.Is(err, skill.ErrNotConfigured) {
 			return notConfigured(ToolSkillSearch), nil
