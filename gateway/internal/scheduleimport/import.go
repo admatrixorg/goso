@@ -1,0 +1,714 @@
+// Copyright (c) 2026 MQ Global — GOSO Gateway. Clean-room implementation.
+
+// Package scheduleimport loads channel_instances from an offline GoClaw JSON
+// or JSONL export into goso's existing channel config. It does not open a
+// live database by itself and it does not copy credentials.
+//
+// Cron rows are counted and not written: goso cron jobs have no tenant column.
+// Every imported channel is stored with enabled false. channel_instances.credentials
+// is never written and never logged. Each kept channel is reported as needs credential.
+//
+// Goso channel_config is one global row per name, and the live adapters look
+// up the seven catalog names (telegram, zalo-personal, …). An imported
+// instance is stored as "<tenant>/<catalog>/<instance>" so it does not
+// overwrite that catalog row and the live manager does not start it.
+//
+// A second run sees import_source_ids and does not insert again. Rows that
+// were already in goso are not updated or deleted.
+package scheduleimport
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"sort"
+	"strings"
+	"unicode"
+
+	"github.com/mqglobal/goso/gateway/internal/store"
+)
+
+const (
+	kindCron    = "cron_job"
+	kindChannel = "channel_instance"
+
+	// ReasonNeedsDecision is the report text for a column or row that has no
+	// home in the existing goso cron or channel models.
+	ReasonNeedsDecision = "not imported, needs decision"
+	// ReasonNativeExists means the target row is already in goso and is not
+	// the same as this export row. The importer does not update it.
+	ReasonNativeExists = "native-exists"
+	// ReasonCronNoTenant means the cron row is not imported. Goso cron jobs
+	// have no tenant column, so this tool does not write them.
+	ReasonCronNoTenant = "cron-no-tenant"
+)
+
+// Unmapped columns have no field on the goso cron job or channel config.
+// enabled is not in this list: it is stored, and the stored value is false.
+var (
+	UnmappedCronColumns = []string{
+		"user_id",
+		"name",
+		"timezone",
+		"run_at",
+		"delete_after_run",
+		"next_run_at",
+		"last_run_at",
+		"last_status",
+		"last_error",
+		"created_at",
+		"updated_at",
+		"team_id",
+		"stateless",
+		"deliver",
+		"deliver_channel",
+		"deliver_to",
+		"wake_heartbeat",
+		"agent_id",
+		"payload fields other than one message string",
+	}
+	UnmappedChannelColumns = []string{
+		"credentials",
+		"display_name",
+		"created_by",
+		"created_at",
+		"updated_at",
+		"config fields other than dm_policy, group_policy, require_mention, allow_from",
+	}
+)
+
+// Options selects the single destination tenant for this run.
+type Options struct {
+	// SourceTenant is the export tenant_id to write. Other tenants are counted
+	// and not written.
+	SourceTenant string
+	// DestTenant is the goso tenant. It is not defaulted.
+	DestTenant string
+	// DryRun reports per-tenant counts and writes nothing.
+	DryRun bool
+	// Deny is a set of tenant ids, lowercased. A match on SourceTenant or
+	// DestTenant stops the run before any write. Nil denies nothing.
+	Deny map[string]struct{}
+	// Log receives reason codes and masked ids. It must not be given a
+	// credential, a payload, a message, or a raw customer identifier.
+	Log Logger
+}
+
+// Logger is the rejection log.
+type Logger interface {
+	Printf(format string, args ...any)
+}
+
+// ConfigError is a bad flag or a bad file, before any write.
+type ConfigError struct{ msg string }
+
+func (e *ConfigError) Error() string { return e.msg }
+
+func errConfig(msg string) error { return &ConfigError{msg: msg} }
+
+// Report is the run summary. NeedsCredential never carries secret bytes.
+type Report struct {
+	DryRun          bool                `json:"dry_run"`
+	DeniedTenants   int                 `json:"denied_tenants"`
+	Tenants         []TenantCount       `json:"tenants"`
+	NeedsCredential []CredentialNote    `json:"needs_credential"`
+	NotImported     []Dropped           `json:"not_imported"`
+	UnmappedColumns map[string][]string `json:"unmapped_columns"`
+}
+
+// TenantCount is one export tenant_id.
+type TenantCount struct {
+	TenantID         string    `json:"tenant_id"`
+	Selected         bool      `json:"selected"`
+	CronJobs         RowCounts `json:"cron_jobs"`
+	ChannelInstances RowCounts `json:"channel_instances"`
+}
+
+// RowCounts balances as input = new + skipped + not_imported + held + native_exists.
+// Written is 0 on a dry-run and for a tenant that was not selected.
+type RowCounts struct {
+	Input        int `json:"input"`
+	New          int `json:"new"`
+	Skipped      int `json:"skipped"`
+	NotImported  int `json:"not_imported"`
+	Held         int `json:"held"`
+	NativeExists int `json:"native_exists"`
+	Written      int `json:"written"`
+}
+
+// CredentialNote lists one channel instance whose credentials were not copied.
+type CredentialNote struct {
+	TenantID        string `json:"tenant_id"`
+	SourceID        string `json:"source_id"`
+	Name            string `json:"name"`
+	ChannelType     string `json:"channel_type"`
+	NeedsCredential bool   `json:"needs_credential"`
+}
+
+// Dropped is one column or row with no home in the existing models.
+type Dropped struct {
+	Kind     string `json:"kind"`
+	TenantID string `json:"tenant_id,omitempty"`
+	SourceID string `json:"source_id,omitempty"`
+	Column   string `json:"column,omitempty"`
+	Reason   string `json:"reason"`
+	Detail   string `json:"detail,omitempty"`
+}
+
+// Import writes the selected tenant, or only counts when DryRun is set.
+func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
+	if st == nil {
+		return nil, errConfig("store is required")
+	}
+	if ex == nil {
+		return nil, errConfig("export is required")
+	}
+	dest := strings.TrimSpace(opt.DestTenant)
+	source := strings.TrimSpace(opt.SourceTenant)
+	if source == "" || dest == "" || !store.TenantOK(dest) || !store.TenantOK(source) {
+		return nil, errConfig("tenant id is required")
+	}
+	if len(opt.Deny) == 0 {
+		return nil, errConfig("deny file is empty")
+	}
+	if n := DenialCount(opt.Deny, source, dest); n > 0 {
+		return nil, &DenyError{Count: n}
+	}
+	opt.DestTenant = dest
+	opt.SourceTenant = source
+	a := &acc{opt: opt, st: st, buckets: map[string]*bucket{}, denied: map[string]struct{}{}}
+	for _, row := range ex.CronJobs {
+		if err := a.cron(row); err != nil {
+			return nil, err
+		}
+	}
+	for _, row := range ex.ChannelInstances {
+		if err := a.channel(row); err != nil {
+			return nil, err
+		}
+	}
+	for _, o := range ex.otherTables {
+		a.noteOther(o)
+	}
+	return a.finish(), nil
+}
+
+type bucket struct {
+	cron RowCounts
+	ch   RowCounts
+}
+
+type acc struct {
+	opt     Options
+	st      store.StoreIface
+	buckets map[string]*bucket
+	drops   []Dropped
+	creds   []CredentialNote
+	seen    map[string]struct{}
+	denied  map[string]struct{}
+}
+
+func (a *acc) bucket(tenant string) *bucket {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" {
+		tenant = "(empty)"
+	}
+	b := a.buckets[tenant]
+	if b == nil {
+		b = &bucket{}
+		a.buckets[tenant] = b
+	}
+	return b
+}
+
+func (a *acc) selected(tenant string) bool {
+	return strings.EqualFold(strings.TrimSpace(tenant), a.opt.SourceTenant)
+}
+
+func (a *acc) logf(format string, args ...any) {
+	if a.opt.Log == nil {
+		return
+	}
+	for i, arg := range args {
+		if s, ok := arg.(string); ok {
+			args[i] = maskIdent(s)
+		}
+	}
+	a.opt.Log.Printf(format, args...)
+}
+
+func (a *acc) noteDenied(tenant string) bool {
+	if !tenantDenied(a.opt.Deny, tenant) {
+		return false
+	}
+	if a.denied == nil {
+		a.denied = map[string]struct{}{}
+	}
+	a.denied[strings.ToLower(strings.TrimSpace(tenant))] = struct{}{}
+	return true
+}
+
+func (a *acc) native(c *RowCounts, kind, tenant, source string) {
+	c.NativeExists++
+	if len(a.drops) < 500 {
+		a.drops = append(a.drops, Dropped{
+			Kind:     kind,
+			TenantID: maskIdent(strings.TrimSpace(tenant)),
+			SourceID: maskIdent(strings.TrimSpace(source)),
+			Reason:   ReasonNativeExists,
+			Detail:   ReasonNativeExists,
+		})
+	}
+	a.logf("scheduleimport: %s tenant=%s source=%s detail=%s", kind, strings.TrimSpace(tenant), strings.TrimSpace(source), ReasonNativeExists)
+}
+
+func (a *acc) drop(kind, tenant, source, column, detail string) {
+	if len(a.drops) >= 500 {
+		return
+	}
+	a.drops = append(a.drops, Dropped{
+		Kind: kind, TenantID: maskIdent(strings.TrimSpace(tenant)), SourceID: maskIdent(strings.TrimSpace(source)),
+		Column: maskIdent(column), Reason: ReasonNeedsDecision, Detail: maskIdent(detail),
+	})
+	a.logf("scheduleimport: %s tenant=%s source=%s column=%s detail=%s", kind, strings.TrimSpace(tenant), strings.TrimSpace(source), column, detail)
+}
+
+// cron reports every job as not imported. Goso cron_jobs has no tenant
+// column, so this tool does not write a job and does not attach one to a session.
+func (a *acc) cron(row CronRow) error {
+	tenant := strings.TrimSpace(row.TenantID)
+	if a.noteDenied(tenant) {
+		return nil
+	}
+	b := a.bucket(tenant)
+	b.cron.Input++
+	b.cron.NotImported++
+	if len(a.drops) < 500 {
+		a.drops = append(a.drops, Dropped{
+			Kind:     kindCron,
+			TenantID: maskIdent(tenant),
+			SourceID: maskIdent(strings.TrimSpace(row.ID)),
+			Column:   "cron_jobs",
+			Reason:   ReasonCronNoTenant,
+			Detail:   ReasonCronNoTenant,
+		})
+	}
+	a.logf("scheduleimport: %s tenant=%s source=%s detail=%s", kindCron, tenant, strings.TrimSpace(row.ID), ReasonCronNoTenant)
+	return nil
+}
+
+func (a *acc) channel(row ChannelRow) error {
+	tenant := strings.TrimSpace(row.TenantID)
+	if a.noteDenied(tenant) {
+		return nil
+	}
+	b := a.bucket(tenant)
+	b.ch.Input++
+	blobs := secretBlobs(row.Credentials, row.Config)
+	a.creds = append(a.creds, credentialNote(tenant, row, blobs))
+	if !a.selected(tenant) {
+		b.ch.Held++
+		return nil
+	}
+	sourceID := strings.TrimSpace(row.ID)
+	if !idOK(sourceID) {
+		b.ch.NotImported++
+		a.drop(kindChannel, tenant, sourceID, "id", "bad-id")
+		return nil
+	}
+	key := tenant + "\x00" + kindChannel + "\x00" + sourceID
+	if a.seen == nil {
+		a.seen = map[string]struct{}{}
+	}
+	if _, ok := a.seen[key]; ok {
+		b.ch.Skipped++
+		return nil
+	}
+	catalog, ok := catalogOf(row.ChannelType)
+	if !ok {
+		b.ch.NotImported++
+		a.seen[key] = struct{}{}
+		a.drop(kindChannel, tenant, sourceID, "channel_type", "unknown-channel")
+		return nil
+	}
+	instance := strings.TrimSpace(row.Name)
+	if !instanceOK(instance) {
+		b.ch.NotImported++
+		a.seen[key] = struct{}{}
+		a.drop(kindChannel, tenant, sourceID, "name", "bad-name")
+		return nil
+	}
+	if containsSecret(instance, blobs) || containsSecret(catalog, blobs) {
+		b.ch.NotImported++
+		a.seen[key] = struct{}{}
+		a.drop(kindChannel, tenant, sourceID, "name", "secret-in-name")
+		return nil
+	}
+	cfg, extra := policyFrom(row.Config, blobs)
+	agentID, where := resolveAgent(a.st, a.opt.DestTenant, row.AgentID)
+	switch where {
+	case "dest":
+		cfg.AgentID = agentID
+	case "other":
+		a.drop(kindChannel, tenant, sourceID, "agent_id", "agent-other-tenant")
+	case "missing":
+		if strings.TrimSpace(row.AgentID) != "" {
+			a.drop(kindChannel, tenant, sourceID, "agent_id", "agent-unresolved")
+		}
+	}
+	for _, k := range extra {
+		if containsSecret(k, blobs) {
+			continue
+		}
+		a.drop(kindChannel, tenant, sourceID, "config."+k, "no-column")
+	}
+	name := a.opt.DestTenant + "/" + catalog + "/" + instance
+	cfg.Name = name
+	cfg.Enabled = false
+	if gosoID, ok, err := a.st.GetImportSource(a.opt.DestTenant, kindChannel, sourceID); err != nil {
+		return err
+	} else if ok && gosoID != "" {
+		a.seen[key] = struct{}{}
+		got, gerr := a.st.GetChannelConfig(gosoID)
+		if gerr == nil && got != nil && !channelSame(got, cfg) {
+			a.native(&b.ch, kindChannel, tenant, sourceID)
+			return nil
+		}
+		b.ch.Skipped++
+		return nil
+	}
+	if got, err := a.st.GetChannelConfig(name); err == nil {
+		a.seen[key] = struct{}{}
+		if !channelSame(got, cfg) {
+			a.native(&b.ch, kindChannel, tenant, sourceID)
+			return nil
+		}
+		b.ch.Skipped++
+		return nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if a.opt.DryRun {
+		a.seen[key] = struct{}{}
+		b.ch.New++
+		return nil
+	}
+	if err := a.st.PutChannelConfig(cfg); err != nil {
+		return err
+	}
+	if err := a.st.PutImportSource(a.opt.DestTenant, kindChannel, sourceID, name); err != nil {
+		_ = a.st.DeleteChannelConfig(name)
+		if errors.Is(err, store.ErrExists) {
+			a.seen[key] = struct{}{}
+			b.ch.Skipped++
+			return nil
+		}
+		return err
+	}
+	got, err := a.st.GetChannelConfig(name)
+	if err != nil || got == nil || got.Enabled {
+		_ = a.st.DeleteChannelConfig(name)
+		return errConfig("refusing to leave an enabled channel")
+	}
+	a.seen[key] = struct{}{}
+	b.ch.New++
+	b.ch.Written++
+	return nil
+}
+
+func (a *acc) noteOther(o otherTable) {
+	tenant := strings.TrimSpace(o.TenantID)
+	b := a.bucket(tenant)
+	b.ch.Input++
+	if !a.selected(tenant) {
+		b.ch.Held++
+		return
+	}
+	b.ch.NotImported++
+	a.drop("table", tenant, strings.TrimSpace(o.ID), o.Table, "other-table")
+}
+
+func (a *acc) finish() *Report {
+	rep := &Report{
+		DryRun:          a.opt.DryRun,
+		DeniedTenants:   len(a.denied),
+		Tenants:         []TenantCount{},
+		NeedsCredential: append([]CredentialNote(nil), a.creds...),
+		NotImported:     append([]Dropped(nil), a.drops...),
+		UnmappedColumns: map[string][]string{
+			"cron_jobs":         append([]string(nil), UnmappedCronColumns...),
+			"channel_instances": append([]string(nil), UnmappedChannelColumns...),
+		},
+	}
+	ids := make([]string, 0, len(a.buckets))
+	for id := range a.buckets {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		b := a.buckets[id]
+		rep.Tenants = append(rep.Tenants, TenantCount{
+			TenantID: id, Selected: a.selected(id),
+			CronJobs: b.cron, ChannelInstances: b.ch,
+		})
+	}
+	maskReport(rep)
+	sort.Slice(rep.NeedsCredential, func(i, j int) bool {
+		if rep.NeedsCredential[i].TenantID != rep.NeedsCredential[j].TenantID {
+			return rep.NeedsCredential[i].TenantID < rep.NeedsCredential[j].TenantID
+		}
+		return rep.NeedsCredential[i].SourceID < rep.NeedsCredential[j].SourceID
+	})
+	sort.Slice(rep.NotImported, func(i, j int) bool {
+		if rep.NotImported[i].SourceID != rep.NotImported[j].SourceID {
+			return rep.NotImported[i].SourceID < rep.NotImported[j].SourceID
+		}
+		if rep.NotImported[i].Column != rep.NotImported[j].Column {
+			return rep.NotImported[i].Column < rep.NotImported[j].Column
+		}
+		return rep.NotImported[i].Detail < rep.NotImported[j].Detail
+	})
+	return rep
+}
+
+func credentialNote(tenant string, row ChannelRow, blobs []string) CredentialNote {
+	note := CredentialNote{NeedsCredential: true}
+	if !containsSecret(tenant, blobs) {
+		note.TenantID = tenant
+	}
+	if id := strings.TrimSpace(row.ID); !containsSecret(id, blobs) {
+		note.SourceID = id
+	}
+	if name := strings.TrimSpace(row.Name); !containsSecret(name, blobs) {
+		note.Name = name
+	}
+	if kind := strings.TrimSpace(row.ChannelType); !containsSecret(kind, blobs) {
+		note.ChannelType = kind
+	}
+	return note
+}
+
+func resolveAgent(st store.StoreIface, dest, ref string) (string, string) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", "none"
+	}
+	other := false
+	for _, a := range st.ListAgents() {
+		if a == nil || (a.ID != ref && a.AgentKey != ref) {
+			continue
+		}
+		if store.SameTenant(a.TenantID, dest) {
+			return a.ID, "dest"
+		}
+		other = true
+	}
+	if other {
+		return "", "other"
+	}
+	return "", "missing"
+}
+
+func catalogOf(channelType string) (string, bool) {
+	s := strings.ToLower(strings.TrimSpace(channelType))
+	s = strings.ReplaceAll(s, "_", "-")
+	switch s {
+	case "telegram", "zalo-personal", "zalo-oa", "discord", "slack", "feishu", "whatsapp":
+		return s, true
+	default:
+		return "", false
+	}
+}
+
+func policyFrom(raw json.RawMessage, blobs []string) (store.ChannelConfig, []string) {
+	var cfg store.ChannelConfig
+	trim := bytes.TrimSpace(raw)
+	if len(trim) == 0 || bytes.Equal(trim, []byte("null")) {
+		return cfg, nil
+	}
+	if trim[0] != '{' {
+		return cfg, []string{"config"}
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(trim, &obj); err != nil {
+		return cfg, []string{"config"}
+	}
+	known := map[string]bool{}
+	if v, ok := obj["dm_policy"]; ok {
+		known["dm_policy"] = true
+		var s string
+		if err := json.Unmarshal(v, &s); err == nil && policyDM(s) && !containsSecret(s, blobs) {
+			cfg.DMPolicy = s
+		}
+	}
+	if v, ok := obj["group_policy"]; ok {
+		known["group_policy"] = true
+		var s string
+		if err := json.Unmarshal(v, &s); err == nil && policyGroup(s) && !containsSecret(s, blobs) {
+			cfg.GroupPolicy = s
+		}
+	}
+	if v, ok := obj["require_mention"]; ok {
+		known["require_mention"] = true
+		var b bool
+		if err := json.Unmarshal(v, &b); err == nil {
+			cfg.RequireMention = b
+		}
+	}
+	if v, ok := obj["allow_from"]; ok {
+		known["allow_from"] = true
+		var list []string
+		if err := json.Unmarshal(v, &list); err == nil && allowFromOK(list, blobs) {
+			cfg.AllowFrom = list
+		}
+	}
+	var extra []string
+	for k := range obj {
+		if known[k] || secretKey(k) {
+			if !known[k] {
+				extra = append(extra, k)
+			}
+			continue
+		}
+		extra = append(extra, k)
+	}
+	sort.Strings(extra)
+	return cfg, extra
+}
+
+func policyDM(s string) bool {
+	switch strings.TrimSpace(s) {
+	case "pairing", "allowlist", "open", "disabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func policyGroup(s string) bool {
+	switch strings.TrimSpace(s) {
+	case "open", "allowlist", "disabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowFromOK(list []string, blobs []string) bool {
+	if len(list) > 32 {
+		return false
+	}
+	for _, item := range list {
+		if !instanceOK(item) || containsSecret(item, blobs) {
+			return false
+		}
+	}
+	return true
+}
+
+func idOK(id string) bool {
+	if id == "" || len(id) > 80 {
+		return false
+	}
+	for _, r := range id {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func instanceOK(name string) bool {
+	if name == "" || len(name) > 100 {
+		return false
+	}
+	for _, r := range name {
+		if r == '/' || r == '\\' || unicode.IsControl(r) || unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func secretKey(name string) bool {
+	n := strings.ToLower(name)
+	n = strings.ReplaceAll(n, "_", "")
+	n = strings.ReplaceAll(n, "-", "")
+	switch {
+	case strings.Contains(n, "token"),
+		strings.Contains(n, "secret"),
+		strings.Contains(n, "password"),
+		strings.Contains(n, "credential"),
+		strings.Contains(n, "cookie"),
+		strings.Contains(n, "imei"),
+		strings.Contains(n, "authorization"),
+		strings.Contains(n, "apikey"),
+		strings.Contains(n, "privatekey"):
+		return true
+	default:
+		return false
+	}
+}
+
+func secretBlobs(cred, extra json.RawMessage) []string {
+	var out []string
+	collectSecrets(cred, true, &out)
+	collectSecrets(extra, false, &out)
+	return out
+}
+
+func collectSecrets(raw json.RawMessage, all bool, out *[]string) {
+	trim := bytes.TrimSpace(raw)
+	if len(trim) == 0 || bytes.Equal(trim, []byte("null")) {
+		return
+	}
+	if trim[0] == '"' {
+		var s string
+		if err := json.Unmarshal(trim, &s); err == nil {
+			addBlob(out, s)
+		}
+		return
+	}
+	if trim[0] == '{' {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(trim, &obj); err != nil {
+			return
+		}
+		for k, v := range obj {
+			if all || secretKey(k) {
+				collectSecrets(v, true, out)
+			}
+		}
+		return
+	}
+	if trim[0] == '[' {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(trim, &arr); err != nil {
+			return
+		}
+		for _, v := range arr {
+			collectSecrets(v, all, out)
+		}
+	}
+}
+
+func addBlob(out *[]string, s string) {
+	s = strings.TrimSpace(s)
+	if len(s) < 8 {
+		return
+	}
+	*out = append(*out, s)
+}
+
+func containsSecret(s string, blobs []string) bool {
+	if s == "" || len(blobs) == 0 {
+		return false
+	}
+	for _, b := range blobs {
+		if b != "" && strings.Contains(s, b) {
+			return true
+		}
+	}
+	return false
+}
