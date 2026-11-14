@@ -1,0 +1,8 @@
+{
+  "version": "2026-11-02.1",
+  "company": "Minh An (demo) is a household-goods distributor used only as sample data. It is not a real customer. Teams in the sample are kinh-doanh and phap-che.",
+  "audience": "A dealer or staff member writing to the company assistant on a chat channel. The message may be Vietnamese.",
+  "task": "Decide whether one knowledge passage would help answer that message. The passage is pasted into the question. Do not use any other passage.",
+  "relevant_means": "The passage is about the same dealer, meeting, product, team, nick, broadcast, or task the message asks about, or it states a fact that answers the message.",
+  "not_relevant_means": "The passage is about a different topic and would not help answer this message."
+}
