@@ -83,7 +83,8 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 // (pipeline.ChannelSystem: agent instructions, this customer's memory,
 // bootstrap) followed by the whole thread. Memory never blocks the reply: a
 // recall failure only drops the note. LLM errors become the reply text, as
-// before.
+// before. The user message is stored before the model is called. An archived
+// session or a disabled agent does not skip that store.
 func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) string {
 	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
