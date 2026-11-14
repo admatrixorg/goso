@@ -1,0 +1,19 @@
+=== go test -count=1 ===
+ok  	github.com/mqglobal/goso/gateway/internal/mcpimport	0.039s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-mcp-import	0.056s
+exit=0
+
+=== go test -race -count=1 ===
+ok  	github.com/mqglobal/goso/gateway/internal/mcpimport	1.301s
+ok  	github.com/mqglobal/goso/gateway/cmd/goso-mcp-import	1.608s
+exit=0
+
+=== go build goso-mcp-import ===
+exit=0
+
+=== go build ./gateway/... ===
+go: downloading connectrpc.com/connect v1.18.1
+go: downloading golang.org/x/net v0.56.0
+go: downloading google.golang.org/protobuf v1.34.2
+go: downloading github.com/gorilla/websocket v1.5.3
+exit=0
