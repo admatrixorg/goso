@@ -267,7 +267,12 @@ func (p *planner) consider(item row) (*planned, error) {
 		tab.Skipped.Path++
 		return nil, nil
 	}
-	if kind == kindSystem {
+	// A chunk is a body slice, not a whole document. GoClaw cuts chunks
+	// under _system/ too (the dreaming consolidation notes), and the
+	// document-level rule that keeps _system/ out of the vault does not
+	// apply to a slice that already carries its own customer. A chunk
+	// without a customer was dropped above.
+	if kind == kindSystem && !item.chunk {
 		tab.Skipped.System++
 		if !item.userSet {
 			p.names[source] = append(p.names[source], systemFileName(clean))
