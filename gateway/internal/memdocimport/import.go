@@ -248,9 +248,15 @@ func (p *planner) consider(item row) (*planned, error) {
 	}
 	sec.Slug = tb.slug
 	sec.Dest = tb.dest
+	// A memory_chunks row is a slice of a document. It is stored as a
+	// durable memory on an archived import session, the same shape a
+	// customer-scoped memory_document row takes, so recall can read it.
+	// A chunk without a customer stays out: it belongs to no one.
 	if item.chunk {
-		tab.Skipped.Chunks++
-		return nil, nil
+		if !item.userSet {
+			tab.Skipped.Chunks++
+			return nil, nil
+		}
 	}
 	if item.teamSet || item.scopeSet {
 		tab.Skipped.TeamScope++

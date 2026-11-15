@@ -246,22 +246,32 @@ func TestRollbackKeepsNativeAndOtherTenant(t *testing.T) {
 	}
 }
 
-func TestApplyWritesNothing(t *testing.T) {
+// SPEC 184 stores a skill per tenant, so --apply now writes the folders
+// instead of being refused. A non-default tenant lands under t/<tenant>/.
+func TestApplyWritesPerTenantFolders(t *testing.T) {
 	ex := loadFixture(t)
 	dir := t.TempDir()
 	skillsDir := filepath.Join(dir, "skills")
-	_, err := callImport(t, ex, Options{
-		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: filepath.Join(dir, "map.json"), Apply: true,
+	rep, err := callImport(t, ex, Options{
+		Tenant: "minh-an", SourceTenant: "minh-an", SkillsDir: skillsDir,
+		SrcDir: fixtureSrc(t), RenameMapPath: filepath.Join(dir, "map.json"),
+		DenyFile: writeDeny(t, "other-tenant"), Apply: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "apply refused") {
-		t.Fatal(err)
+	if err != nil {
+		t.Fatalf("apply must write now: %v", err)
 	}
-	if _, statErr := os.Stat(skillsDir); !os.IsNotExist(statErr) {
-		t.Fatal("apply created the skills dir")
+	if rep.DryRun {
+		t.Fatal("apply reported a dry-run")
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "map.json")); !os.IsNotExist(statErr) {
-		t.Fatal("apply wrote the rename map")
+	tenantRoot := filepath.Join(skillsDir, "t", "minh-an")
+	if _, statErr := os.Stat(tenantRoot); statErr != nil {
+		t.Fatalf("tenant folder missing: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "map.json")); statErr != nil {
+		t.Fatal("apply did not write the rename map")
+	}
+	if _, statErr := os.Stat(skillsDir); statErr != nil {
+		t.Fatal("apply did not create the skills dir")
 	}
 }
 
@@ -406,19 +416,36 @@ func TestMaskPhone(t *testing.T) {
 	}
 }
 
+// A rename map that does not match the export means the operator is applying
+// a plan made from different data. The check runs before any folder is
+// created, so a mismatch must still write nothing and must not leave a
+// half-written tenant tree behind.
 func TestRenameMapMismatchWritesNothing(t *testing.T) {
 	ex := loadFixture(t)
 	dir := t.TempDir()
 	skillsDir := filepath.Join(dir, "skills")
-	_, err := callImport(t, ex, Options{
-		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
-		RenameMapPath: filepath.Join(dir, "rename.json"), Apply: true,
+	mapPath := filepath.Join(dir, "rename.json")
+
+	// A map from a different export: one rename this run does not produce.
+	stale, err := json.Marshal(RenameFile{
+		Renames: []Rename{{SourceID: "some-other-source", Old: "old-name", New: "new-name"}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "apply refused") {
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, statErr := os.Stat(skillsDir); !os.IsNotExist(statErr) {
-		t.Fatal("apply created the skills dir")
+	if err := os.WriteFile(mapPath, stale, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = callImport(t, ex, Options{
+		Tenant: "minh-an", SkillsDir: skillsDir, SrcDir: fixtureSrc(t),
+		RenameMapPath: mapPath, Apply: true,
+	})
+	if err == nil {
+		t.Fatal("a mismatched rename map must stop the run")
+	}
+	if _, statErr := os.Stat(filepath.Join(skillsDir, "t")); !os.IsNotExist(statErr) {
+		t.Fatal("a mismatched map wrote the tenant tree")
 	}
 }
 

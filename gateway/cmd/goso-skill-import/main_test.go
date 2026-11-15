@@ -92,15 +92,13 @@ func TestCLIDryRunThenApplyRefused(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run(append(args, "--apply"), stdout, stderr); code == 0 {
-		t.Fatal("apply should fail")
+	// SPEC 184: --apply writes the per-tenant folder now.
+	if code := run(append(args, "--apply"), stdout, stderr); code != 0 {
+		t.Fatalf("apply failed: %s", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "apply refused") {
-		t.Fatal(stderr.String())
-	}
-	ents, err = os.ReadDir(skillsDir)
-	if err != nil || len(ents) != 0 {
-		t.Fatalf("apply wrote %#v", ents)
+	tenantDir := filepath.Join(skillsDir, "t", "minh-an")
+	if _, statErr := os.Stat(tenantDir); statErr != nil {
+		t.Fatalf("apply wrote nothing to t/minh-an: %v", statErr)
 	}
 }
 
