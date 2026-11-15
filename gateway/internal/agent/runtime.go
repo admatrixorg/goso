@@ -571,7 +571,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	if err != nil {
 		return nil, err
 	}
-	out := make([]llm.ToolSpec, 0, len(tools)+7)
+	out := make([]llm.ToolSpec, 0, len(tools)+9)
 	for _, bt := range tools {
 		out = append(out, llm.ToolSpec{
 			Name:        pipeline.AdvertiseName(bt.Connector, bt.Tool.Name),
@@ -584,6 +584,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	out = append(out, team.ToolSpecs(mode)...)
 	out = append(out, pipeline.MemoryToolSpecs()...)
 	out = append(out, pipeline.SessionToolSpecs()...)
+	out = append(out, pipeline.VaultToolSpecs()...)
 	if a.rt.Store != nil && agentID != "" {
 		names := make([]string, 0, len(out))
 		for _, t := range out {
@@ -595,7 +596,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 }
 
 func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCall) (pipeline.CallOutcome, error) {
-	if pipeline.IsMemoryTool(call.Name) || pipeline.IsSessionTool(call.Name) {
+	if pipeline.IsMemoryTool(call.Name) || pipeline.IsSessionTool(call.Name) || pipeline.IsVaultTool(call.Name) {
 		tid := store.DefaultTenant
 		if a.rt.Store != nil && agentID != "" {
 			if ag, err := a.rt.Store.GetAgent(agentID); err == nil && ag != nil {
@@ -605,9 +606,12 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		var body string
 		var err error
 		caller := callMetaFrom(ctx).SessionID
-		if pipeline.IsMemoryTool(call.Name) {
+		switch {
+		case pipeline.IsMemoryTool(call.Name):
 			body, err = pipeline.DispatchMemoryTool(a.rt.Store, tid, caller, call)
-		} else {
+		case pipeline.IsVaultTool(call.Name):
+			body, err = pipeline.DispatchVaultTool(a.rt.Store, "", tid, caller, call)
+		default:
 			body, err = pipeline.DispatchSessionTool(a.rt.Store, tid, caller, call)
 		}
 		failed := err != nil
