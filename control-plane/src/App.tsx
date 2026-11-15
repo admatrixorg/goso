@@ -47,6 +47,7 @@ import { useI18n, type Locale } from "./i18n";
 import { clearSelectedSession, readSelectedSession, writeSelectedSession } from "./api/sessions";
 import { TENANT_STORAGE_KEY } from "./api/client";
 import { tenantsApi, type Tenant } from "./api/tenants";
+import { LoginPage, hasBrowserToken, tokenIsEnvOwned } from "./pages/LoginPage";
 
 const DEMO = isDemoMode();
 
@@ -157,6 +158,9 @@ function useTheme() {
 
 export default function App() {
   const { t, locale, setLocale } = useI18n();
+  // Gate the shell behind a working admin token. The build can own the token
+  // (VITE_GOSO_ADMIN_TOKEN), in which case there is nothing to ask for.
+  const [authed, setAuthed] = useState(() => tokenIsEnvOwned() || hasBrowserToken());
   const [sessionId, setSessionId] = useState(() => readSelectedSession()?.id ?? "");
   const [sessionLabel, setSessionLabel] = useState(() => readSelectedSession()?.label ?? "");
   const sessionsRef = useRef<SessionsPageHandle>(null);
@@ -253,6 +257,10 @@ export default function App() {
     document.title = pageLabel ? `${pageLabel} — Goso` : "Goso";
   }, [pageLabel]);
 
+  if (!authed) {
+    return <LoginPage onDone={() => setAuthed(true)} />;
+  }
+
   return (
     <div className="z-shell">
       <header className="z-topbar">
@@ -284,6 +292,10 @@ export default function App() {
             onKeys={() => {
               setAccountOpen(false);
               go("apikeys");
+            }}
+            onLogout={() => {
+              setAccountOpen(false);
+              setAuthed(false);
             }}
           />
         </div>
@@ -462,6 +474,7 @@ function AccountMenu({
   onClose,
   onOrg,
   onKeys,
+  onLogout,
 }: {
   open: boolean;
   label: string;
@@ -472,6 +485,7 @@ function AccountMenu({
   onClose: () => void;
   onOrg: () => void;
   onKeys: () => void;
+  onLogout: () => void;
 }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [current, setCurrent] = useState("");
@@ -516,7 +530,9 @@ function AccountMenu({
       /* private mode */
     }
     onClose();
-    window.location.reload();
+    // Drop straight back to the gate. A reload would race the gate's initial
+    // state, and the point of logging out is to be asked again.
+    onLogout();
   }
 
   return (
