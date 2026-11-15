@@ -23,6 +23,18 @@ func MemoryID(agent, user, path string) string {
 	return "gc-doc:" + agent + ":" + chainHash(user, path)
 }
 
+// ChunkMemoryID is the durable memory id for one memory_chunks row.
+//
+// A chunk shares its path with the document it was cut from, so MemoryID
+// would collide with the document row and the chunk would be reported
+// native-exists and dropped. The chunk id also carries the source chunk id,
+// which is unique per slice, and the line range so a re-import of a
+// re-chunked document lands on a different row instead of overwriting.
+// Format: gc-chunk:<agent>:<sha(user, path, chunkID)>.
+func ChunkMemoryID(agent, user, path, chunkID string) string {
+	return "gc-chunk:" + agent + ":" + chainHash(user, path, chunkID)
+}
+
 // VaultID is the vault_docs id for one tenant, agent, and logical path.
 // Format: gc-vdoc:<sha(tenant, agent, logical)>.
 func VaultID(tenant, agent, logical string) string {
