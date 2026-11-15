@@ -321,7 +321,12 @@ func (p *planner) planDurable(sec *TenantReport, tab *TableCount, tb tenantBind,
 	if key == "" {
 		return nil, errConfig("customer_key is empty")
 	}
-	id := MemoryID(agent, item.userID, clean)
+	var id string
+	if item.chunk {
+		id = ChunkMemoryID(agent, item.userID, clean, item.id)
+	} else {
+		id = MemoryID(agent, item.userID, clean)
+	}
 	existing, err := p.st.GetMemory(id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return nil, err
