@@ -32,6 +32,12 @@ type row struct {
 	teamSet   bool
 	tenantID  string
 	scopeSet  bool
+	// A memory_chunks row carries text instead of content, and names the
+	// document it was cut from. Both are empty on a memory_documents row.
+	text       string
+	documentID string
+	startLine  int
+	endLine    int
 }
 
 // ReadJSONL reads a memory_documents export. It does not open a database.
@@ -100,6 +106,12 @@ func parseLine(line []byte) (row, error) {
 	if item.content, err = jsonString(raw, "content"); err != nil {
 		return row{}, err
 	}
+	// memory_chunks stores the slice in "text", not "content".
+	if strings.TrimSpace(item.content) == "" {
+		if v, err := jsonString(raw, "text"); err == nil && strings.TrimSpace(v) != "" {
+			item.content = v
+		}
+	}
 	if item.hash, err = jsonString(raw, "hash"); err != nil {
 		return row{}, err
 	}
@@ -117,6 +129,25 @@ func parseLine(line []byte) (row, error) {
 	}
 	if _, item.scopeSet, err = jsonNullable(raw, "custom_scope"); err != nil {
 		return row{}, err
+	}
+	if item.chunk {
+		if item.text, err = jsonString(raw, "text"); err != nil {
+			return row{}, err
+		}
+		if item.documentID, err = jsonString(raw, "document_id"); err != nil {
+			return row{}, err
+		}
+		if item.startLine, err = jsonInt(raw, "start_line"); err != nil {
+			return row{}, err
+		}
+		if item.endLine, err = jsonInt(raw, "end_line"); err != nil {
+			return row{}, err
+		}
+		if strings.TrimSpace(item.path) == "" {
+			// A chunk identifies its source by document_id when the path
+			// column is empty.
+			item.path = "chunk/" + strings.TrimSpace(item.documentID)
+		}
 	}
 	item.userID = strings.TrimSpace(item.userID)
 	if item.userID == "" {
@@ -148,6 +179,27 @@ func jsonString(raw map[string]json.RawMessage, key string) (string, error) {
 
 // jsonNullable reports whether a SQL NULL-able column is set to a non-empty string.
 // JSON null, a missing key, and "" are empty. Any other JSON type fails the line.
+// jsonInt reads an optional integer column. A missing or null value is 0.
+func jsonInt(raw map[string]json.RawMessage, key string) (int, error) {
+	v, ok := raw[key]
+	if !ok {
+		return 0, nil
+	}
+	v = bytes.TrimSpace(v)
+	if len(v) == 0 || string(v) == "null" {
+		return 0, nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(v, &n); err != nil {
+		return 0, errConfig("export line has a non-numeric field")
+	}
+	i, err := n.Int64()
+	if err != nil {
+		return 0, errConfig("export line has a non-numeric field")
+	}
+	return int(i), nil
+}
+
 func jsonNullable(raw map[string]json.RawMessage, key string) (string, bool, error) {
 	v, ok := raw[key]
 	if !ok || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {

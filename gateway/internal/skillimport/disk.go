@@ -9,13 +9,19 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
+
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 const (
 	skillFile     = "SKILL.md"
 	sourceMapFile = ".goso-skill-import.json"
 	mapVersion    = 1
+	// tenantSegment is the folder SPEC 184 uses for a non-default tenant:
+	// <skills-dir>/t/<tenant>/<name>/SKILL.md.
+	tenantSegment = "t"
 )
 
 type sourceMap struct {
@@ -87,6 +93,40 @@ func writeAtomic(path string, raw []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// skillTargetDir is where this tenant's skills live. SPEC 184 puts a
+// non-default tenant under <dir>/t/<tenant>/ and keeps the default tenant on
+// the shared root, so the importer writes the same place the gateway reads.
+func skillTargetDir(root, tenant string) string {
+	tenant = strings.TrimSpace(tenant)
+	if tenant == "" || tenant == store.DefaultTenant {
+		return root
+	}
+	return filepath.Join(root, tenantSegment, tenant)
+}
+
+// skillVisibleNames is every skill name this tenant can already see: the
+// shared root plus its own folder. SPEC 184 lets a tenant file override a
+// shared one, but the importer does not shadow silently — a name that is
+// already visible is reported native-exists and left as it was.
+func skillVisibleNames(root, tenant string) (map[string]struct{}, error) {
+	out, err := existingNames(root)
+	if err != nil {
+		return nil, err
+	}
+	target := skillTargetDir(root, tenant)
+	if target == root {
+		return out, nil
+	}
+	own, err := existingNames(target)
+	if err != nil {
+		return nil, err
+	}
+	for name := range own {
+		out[name] = struct{}{}
+	}
+	return out, nil
 }
 
 func existingNames(skillsDir string) (map[string]struct{}, error) {

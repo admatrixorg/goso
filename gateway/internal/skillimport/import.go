@@ -142,8 +142,11 @@ type planned struct {
 }
 
 // Import plans every row and writes the rename map on a dry-run.
-// --apply is refused until skills are stored per tenant, so this function
-// does not create skill folders. The folder writer remains for that later spec.
+//
+// With --apply it also creates the skill folders. SPEC 184 stores a skill per
+// tenant at <skills-dir>/t/<tenant>/<name>/SKILL.md, and the default tenant
+// keeps writing the shared root <skills-dir>/<name>/SKILL.md. That is what
+// this writer now does, so --apply is no longer refused.
 func Import(ex *Export, opt Options) (Report, error) {
 	if ex == nil {
 		ex = &Export{}
@@ -158,9 +161,6 @@ func Import(ex *Export, opt Options) (Report, error) {
 	if n := deniedCount(ids, opt.Tenant, opt.SourceTenant); n > 0 {
 		return Report{DryRun: !opt.Apply, DeniedTenants: n}, errConfig("tenant is denied")
 	}
-	if opt.Apply {
-		return Report{}, errConfig("apply refused until skills are stored per tenant")
-	}
 	if n := deniedExportCount(ids, ex); n > 0 {
 		return Report{DryRun: !opt.Apply, DeniedTenants: n}, errConfig("tenant is denied")
 	}
@@ -168,7 +168,7 @@ func Import(ex *Export, opt Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	names, err := existingNames(opt.SkillsDir)
+	names, err := skillVisibleNames(opt.SkillsDir, opt.Tenant)
 	if err != nil {
 		return Report{}, err
 	}
@@ -707,7 +707,7 @@ func applyPlans(opt Options, sm *sourceMap, plans []planned) error {
 		if p.action != "insert" {
 			continue
 		}
-		if err := writeNewSkill(opt.SkillsDir, p.new, p.body); err != nil {
+		if err := writeNewSkill(skillTargetDir(opt.SkillsDir, opt.Tenant), p.new, p.body); err != nil {
 			return err
 		}
 		if opt.Log != nil {
