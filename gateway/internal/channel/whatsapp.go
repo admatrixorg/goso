@@ -89,7 +89,7 @@ func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = wa.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: wa.Store, LLM: wa.LLM, Meter: wa.Meter, Sender: sender},
-		"whatsapp", "WhatsApp", from, text)
+		"whatsapp", "WhatsApp", from, from, text)
 }
 
 func (wa *WhatsApp) sendMessage(ctx context.Context, to, text string) error {

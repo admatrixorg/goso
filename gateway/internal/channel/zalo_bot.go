@@ -349,7 +349,8 @@ func (z *ZaloBot) ingest(ev zaloBotEvent) {
 	if sess == nil {
 		return
 	}
-	reply, err := answerTurnErr(ctx, z.Store, agent, sess, z.LLM, z.Meter, m.Text)
+	turnCtx := withContextUser(ctx, name, peer, m.From.ID, m.Chat.ID)
+	reply, err := answerTurnErr(turnCtx, z.Store, agent, sess, z.LLM, z.Meter, m.Text)
 	// A model error is never sent to the customer.
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return

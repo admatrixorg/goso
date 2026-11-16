@@ -48,6 +48,9 @@ type ChatResult struct {
 	Provider  string         `json:"provider,omitempty"`
 	Trace     []Trace        `json:"trace,omitempty"`
 	Spans     []observe.Span `json:"spans,omitempty"`
+	// Usage sums the token usage of the turn's model calls (zero when the
+	// provider reports none). Not part of the HTTP reply.
+	Usage llm.Usage `json:"-"`
 }
 
 // ErrMentionNotFound means the one-turn @ agent is missing or outside the session tenant.
@@ -63,6 +66,11 @@ var ErrSessionArchived = errors.New("session is archived")
 // Empty mention uses the session agent. The session model override, when set, still wins over the agent model.
 type ChatTurn struct {
 	MentionAgentID string
+	// Channel marks a customer message from an external channel (Telegram,
+	// Zalo, Lark, …). Channels always answered their thread: an archived
+	// session or a paused session agent still gets a reply, and an agent whose
+	// named provider is missing answers with the gateway provider.
+	Channel bool
 }
 
 // CallResult is a single tool-layer invocation (direct or from chat).
@@ -488,10 +496,10 @@ func (rt *Runtime) ChatWithTurn(ctx context.Context, sessionID, message, promptM
 		sessionMode = s.PromptMode
 		sessionAgent = s.AgentID
 		turnAgent = s.AgentID
-		if s.Archived {
+		if s.Archived && !turn.Channel {
 			return nil, ErrSessionArchived
 		}
-		if ag, aerr := rt.Store.GetAgent(s.AgentID); aerr == nil && ag != nil && !ag.Enabled {
+		if ag, aerr := rt.Store.GetAgent(s.AgentID); aerr == nil && ag != nil && !ag.Enabled && !turn.Channel {
 			return nil, ErrAgentInactive
 		}
 		mention := strings.TrimSpace(turn.MentionAgentID)
@@ -517,6 +525,10 @@ func (rt *Runtime) ChatWithTurn(ctx context.Context, sessionID, message, promptM
 		}
 		ctx = WithCallMeta(ctx, turnAgent, s.ID, "agent:"+turnAgent)
 		p, rerr := llm.Resolve(rt.Store, providerName, model, rt.LLM)
+		if rerr != nil && turn.Channel && errors.Is(rerr, llm.ErrProviderNotFound) {
+			p, rerr = rt.LLM, nil
+			providerName = ""
+		}
 		if rerr != nil {
 			return nil, rerr
 		}
@@ -567,6 +579,7 @@ func (rt *Runtime) ChatWithTurn(ctx context.Context, sessionID, message, promptM
 		res.Reply = out.Reply
 		res.Trace = toAgentTraces(out.Trace)
 		res.Spans = out.Spans
+		res.Usage = out.Usage
 	}
 	return res, nil
 }

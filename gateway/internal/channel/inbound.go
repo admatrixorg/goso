@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -49,7 +50,10 @@ func resolveInboundLLM(st store.StoreIface, agent *store.Agent, fallback llm.Pro
 	return provider
 }
 
-func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, text string) {
+// replyInbound answers one message of an older single-bot webhook. sender is
+// the sender id when the webhook gives one for a direct chat (it selects the
+// user context files), else "".
+func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, sender, text string) {
 	if dest == "" || text == "" {
 		writeOK(w)
 		return
@@ -71,7 +75,11 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		return
 	}
 
-	reply := answerTurn(r.Context(), d.Store, agent, sess, d.LLM, d.Meter, text)
+	ctx := r.Context()
+	if sender != "" {
+		ctx = withContextUser(ctx, agentKey, "direct", sender, dest)
+	}
+	reply := answerTurn(ctx, d.Store, agent, sess, d.LLM, d.Meter, text)
 
 	if d.Sender != nil {
 		if err := d.Sender(r.Context(), dest, reply); err != nil {
@@ -82,13 +90,14 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 	writeOK(w)
 }
 
-// answerTurn records one inbound channel message, asks the agent's LLM and
-// records the reply. The prompt is one optional system message
-// (pipeline.ChannelSystem: agent instructions, this customer's memory,
-// bootstrap) followed by the whole thread. Memory never blocks the reply: a
-// recall failure only drops the note. LLM errors become the reply text, as
-// before. The user message is stored before the model is called. An archived
-// session or a disabled agent does not skip that store.
+// answerTurn records one inbound channel message, runs the agent and records
+// the reply. With a TurnRunner wired (serve), the turn goes through the full
+// agent runtime on the channel session: tools, connectors, context files
+// (user key from ctx, see withContextUser), hooks, approvals, customer-scoped
+// recall and the no-invention guardrail. Without one it falls back to one
+// direct model call (answerTurnDirect). Errors become the reply text, as
+// before. The user message is stored exactly once, also when the turn fails.
+// An archived session or a disabled agent does not skip the store or the reply.
 func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) string {
 	reply, err := answerTurnErr(ctx, st, agent, sess, fallback, meter, text)
 	if err != nil {
@@ -100,6 +109,62 @@ func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, se
 // answerTurnErr is answerTurn for a channel that must not show a model error
 // to its customer: on error nothing is stored as the reply and err is set.
 func answerTurnErr(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) (string, error) {
+	if run := currentTurnRunner(); run != nil && agent != nil && sess != nil {
+		return answerTurnRuntime(ctx, run, st, agent, sess, meter, text)
+	}
+	return answerTurnDirect(ctx, st, agent, sess, fallback, meter, text)
+}
+
+// answerTurnRuntime runs the turn through the agent runtime. The runtime
+// stores the user message; when it failed before doing so, it is stored here.
+// Usage is metered on the agent that answered; a provider that reports no
+// usage is estimated, as the HTTP chat path does.
+func answerTurnRuntime(ctx context.Context, run TurnRunner, st store.StoreIface, agent *store.Agent, sess *store.Session, meter *billing.Store, text string) (string, error) {
+	start := time.Now()
+	res, err := run(ctx, sess.ID, text)
+	if err != nil {
+		if !userStoredSince(st, sess.ID, text, start) {
+			_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
+		}
+		return "", err
+	}
+	usage := res.Usage
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+		usage = llm.EstimateUsage([]llm.Message{{Role: "user", Content: text}}, res.Reply)
+	}
+	billed := res.AgentID
+	if billed == "" {
+		billed = agent.ID
+	}
+	trackUsage(meter, billed, res.Provider, usage)
+	return customerReply(res), nil
+}
+
+// userStoredSince reports whether the session got this user message during
+// the failed turn.
+func userStoredSince(st store.StoreIface, sessionID, text string, since time.Time) bool {
+	msgs, err := st.ListMessages(sessionID)
+	if err != nil {
+		return false
+	}
+	floor := since.Add(-2 * time.Second)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m == nil || m.CreatedAt.Before(floor) {
+			break
+		}
+		if m.Role == "user" && m.Content == text {
+			return true
+		}
+	}
+	return false
+}
+
+// answerTurnDirect is the fallback without the runtime: one system message
+// (pipeline.ChannelSystem: agent instructions, this customer's memory,
+// bootstrap, guardrail) followed by the whole thread, one model call, no
+// tools. Memory never blocks the reply: a recall failure only drops the note.
+func answerTurnDirect(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) (string, error) {
 	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
 	provider := resolveInboundLLM(st, agent, fallback)

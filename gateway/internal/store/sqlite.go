@@ -1724,6 +1724,13 @@ func (s *SQLiteStore) finishMemoryCustomerKey() error {
 	if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("goso store: backfilled customer_key on %d channel memory notes", n)
 	}
+	n, err := s.backfillInstanceCustomerKeys()
+	if err != nil {
+		return fmt.Errorf("memories.customer_key instance backfill: %w", err)
+	}
+	if n > 0 {
+		log.Printf("goso store: backfilled customer_key on %d tenant channel memory notes", n)
+	}
 	return nil
 }
 

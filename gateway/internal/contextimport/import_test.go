@@ -329,7 +329,7 @@ func TestInvalidRowsWriteNothing(t *testing.T) {
 			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan nguyen", FileName: "USER.md", Content: "no"},
 			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan@minh-an.test", FileName: "USER.md", Content: "no"},
 			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: ""},
-			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: strings.Repeat("a", 65), FileName: "USER.md", Content: "no"},
+			{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: strings.Repeat("a", 129), FileName: "USER.md", Content: "no"},
 		},
 	}
 	for name, open := range backends(t) {
@@ -733,7 +733,7 @@ func TestCustomerKeyMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if customerKey(links, "lan") != "zalo:s-lan" || customerKey(links, "hoa") != "goclaw:hoa" {
+	if customerKey(links, "lan") != "zalo:s-lan" || customerKey(links, "hoa") != "hoa" {
 		t.Fatalf("keys %q %q", customerKey(links, "lan"), customerKey(links, "hoa"))
 	}
 	st := store.New()
@@ -751,9 +751,32 @@ func TestCustomerKeyMap(t *testing.T) {
 	if err != nil || lan.Body != "mot" {
 		t.Fatalf("mapped %+v %v", lan, err)
 	}
-	hoa, err := st.GetContextFile(destTenant, store.ContextScopeUser, "goclaw:hoa", "USER.md")
+	hoa, err := st.GetContextFile(destTenant, store.ContextScopeUser, "hoa", "USER.md")
 	if err != nil || hoa.Body != "hai" {
 		t.Fatalf("fallback %+v %v", hoa, err)
+	}
+}
+
+// GoClaw group user ids ("group:<instance>:<chat>") import verbatim, the key a
+// channel turn in that group looks up.
+func TestGroupUserIDImportsVerbatim(t *testing.T) {
+	st := store.New()
+	if _, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant}); err != nil {
+		t.Fatal(err)
+	}
+	const key = "group:minh-an-bot:-100123"
+	ex := &Export{Users: []UserFile{
+		{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: key, FileName: "USER.md", Content: "nhom"},
+		{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "123456789", FileName: "USER.md", Content: "dm"},
+	}}
+	if _, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true})); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{key: "nhom", "123456789": "dm"} {
+		got, err := st.GetContextFile(destTenant, store.ContextScopeUser, k, "USER.md")
+		if err != nil || got.Body != want {
+			t.Fatalf("%s: %+v %v", k, got, err)
+		}
 	}
 }
 
@@ -1079,7 +1102,9 @@ func testDeny(t *testing.T) string {
 	return p
 }
 
-func cust(id string) string { return "goclaw:" + id }
+// cust is the goso user key of a GoClaw user_id with no customer map: the id
+// verbatim, as channel turns build it (channel.ContextUserKey).
+func cust(id string) string { return id }
 
 func mustFixture(t *testing.T) *Export {
 	t.Helper()
