@@ -436,6 +436,7 @@ func (s *SQLiteStore) migrate() error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	_, _ = s.db.Exec(`ALTER TABLE channel_config ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN instructions TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN orchestration_mode TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN llm_provider TEXT`)

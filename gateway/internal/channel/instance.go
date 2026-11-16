@@ -103,12 +103,12 @@ func sortStrings(s []string) {
 	}
 }
 
-// InstanceInfo is the GET /api/channels row for one instance. Only Telegram
-// instances run live today; the other catalogs show their stored settings and
-// health "parked".
+// InstanceInfo is the GET /api/channels row for one instance. Telegram bots
+// and Zalo channels bridged from ZaloCRM run live; the other catalogs show
+// their stored settings and health "parked".
 func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 	catalog := CatalogOf(name)
-	row := Info{Name: name, Writable: WritableFields(catalog), Phase: phaseOf(catalog), Transport: defaultTransport(catalog)}
+	row := Info{Name: name, Writable: WritableFields(name), Phase: phaseOf(catalog), Transport: defaultTransport(catalog)}
 	switch catalog {
 	case "telegram":
 		_, _, row.SecretSet = Credential(st, name, KindBot, nil)
@@ -119,6 +119,11 @@ func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 	}
 	row.Configured = row.SecretSet
 	row.Missing = !row.SecretSet
+	if catalog == "zalo-personal" {
+		if bridgeHealth(st, name, &row) {
+			return row
+		}
+	}
 	switch {
 	case catalog != "telegram":
 		row.Health = "parked"
@@ -145,4 +150,32 @@ func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 		}
 	}
 	return row
+}
+
+// bridgeHealth fills row for a tenant's Zalo channel bridged from ZaloCRM and
+// reports whether it is one (it has a ZaloCRM account set). Such a channel
+// waits for ZaloCRM's calls, so it is running whenever it is enabled and has
+// its key and ZaloCRM address.
+func bridgeHealth(st store.StoreIface, name string, row *Info) bool {
+	if _, owned := TenantOf(name); !owned || st == nil {
+		return false
+	}
+	cfg, err := st.GetChannelConfig(name)
+	if err != nil || cfg == nil || strings.TrimSpace(cfg.Settings[SettingAccountID]) == "" {
+		return false
+	}
+	_, _, row.SecretSet = Credential(st, name, KindBridge, nil)
+	ready := row.SecretSet && strings.TrimSpace(cfg.Settings[SettingCRMBaseURL]) != ""
+	row.Configured = ready
+	row.Missing = !ready
+	row.Transport = "bridge"
+	switch {
+	case !ready:
+		row.Health = "missing"
+	case cfg.Enabled:
+		row.Health = "running"
+	default:
+		row.Health = "stopped"
+	}
+	return true
 }

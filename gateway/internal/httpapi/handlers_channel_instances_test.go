@@ -148,3 +148,44 @@ func TestTenantTelegramWebhookUnknownBot(t *testing.T) {
 		t.Fatalf("webhook for a bot that is not running %d", w.Code)
 	}
 }
+
+// A ZaloCRM bridge channel is set up with plain settings plus one key.
+func TestZCRMBridgeChannelSetup(t *testing.T) {
+	h, st, _ := instanceRouter(t)
+	agent, _ := st.CreateAgent(store.Agent{AgentKey: "a", DisplayName: "Minh An", TenantID: "tenant-a"})
+	inst := "tenant-a/zalo-personal/shop"
+	if err := st.PutChannelConfig(store.ChannelConfig{Name: inst, AgentID: agent.ID, Settings: map[string]string{"account_id": "acc-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		body string
+		code int
+	}{
+		{`{"settings":{"crm_base_url":"https://crm.example.test","group_enabled":true}}`, 200},
+		{`{"settings":{"crm_base_url":"ftp://crm.example.test"}}`, 400},
+		{`{"settings":{"bridge_secret":"x"}}`, 400},
+	} {
+		if w := tenantCall(t, h, "tenant-a", "PATCH", chPath(inst, ""), tc.body); w.Code != tc.code {
+			t.Fatalf("patch %s: %d %s", tc.body, w.Code, w.Body.String())
+		}
+	}
+	if w := tenantCall(t, h, "tenant-a", "PUT", chPath(inst, "/secrets"), `{"bridge_secret":"k"}`); w.Code != 200 {
+		t.Fatalf("put bridge key %d %s", w.Code, w.Body.String())
+	}
+	cfg, _ := st.GetChannelConfig(inst)
+	if cfg.Settings["account_id"] != "acc-1" || cfg.Settings["crm_base_url"] != "https://crm.example.test" || cfg.Settings["group_enabled"] != "true" {
+		t.Fatalf("settings %v", cfg.Settings)
+	}
+	if v, err := secrets.Get(st, channel.SecretName(inst, channel.KindBridge)); err != nil || string(v) != "k" {
+		t.Fatalf("bridge key %q %v", v, err)
+	}
+	// Another tenant cannot change it.
+	if w := tenantCall(t, h, "tenant-b", "PATCH", chPath(inst, ""), `{"settings":{"crm_base_url":"https://evil.example.test"}}`); w.Code == 200 {
+		t.Fatalf("tenant-b patched tenant-a's channel")
+	}
+	// The key never comes back in the list.
+	w := tenantCall(t, h, "tenant-a", "GET", "/api/channels", "")
+	if strings.Contains(w.Body.String(), `"k"`) || !strings.Contains(w.Body.String(), "crm.example.test") {
+		t.Fatalf("list %s", w.Body.String())
+	}
+}

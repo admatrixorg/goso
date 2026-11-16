@@ -15,6 +15,8 @@ const (
 	KindBot       = "bot"
 	KindAccess    = "access"
 	KindAppSecret = "secret"
+	// KindBridge is the key ZaloCRM signs a bridged Zalo channel's calls with.
+	KindBridge = "bridge"
 )
 
 // SecretName is the AES-GCM box key channel:<name>:<kind>.
@@ -22,22 +24,31 @@ func SecretName(name, kind string) string {
 	return "channel:" + strings.TrimSpace(name) + ":" + strings.TrimSpace(kind)
 }
 
-// WritableFields are PUT /secrets JSON keys for a catalog name. Empty = no UI form.
+// WritableFields are PUT /secrets JSON keys for a channel: a catalog name or
+// a tenant's instance. Empty = no UI form. Only a tenant's Zalo personal
+// channel takes a key: the one ZaloCRM bridges its messages with.
 func WritableFields(name string) []string {
-	switch name {
+	_, owned := TenantOf(name)
+	switch CatalogOf(name) {
 	case "telegram":
 		return []string{"bot_token"}
 	case "zalo-oa":
 		return []string{"access_token", "app_secret"}
+	case "zalo-personal":
+		if owned {
+			return []string{"bridge_secret"}
+		}
+		return nil
 	default:
 		return nil
 	}
 }
 
-// FieldKind maps a PUT JSON key to the box kind for name.
+// FieldKind maps a PUT JSON key to the box kind for a channel.
 func FieldKind(name, field string) (kind string, ok bool) {
 	field = strings.ToLower(strings.TrimSpace(field))
-	switch name {
+	_, owned := TenantOf(name)
+	switch CatalogOf(name) {
 	case "telegram":
 		if field == "bot_token" {
 			return KindBot, true
@@ -48,6 +59,10 @@ func FieldKind(name, field string) (kind string, ok bool) {
 		}
 		if field == "app_secret" {
 			return KindAppSecret, true
+		}
+	case "zalo-personal":
+		if owned && field == "bridge_secret" {
+			return KindBridge, true
 		}
 	}
 	return "", false

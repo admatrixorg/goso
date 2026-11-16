@@ -60,3 +60,32 @@ func TestTelegramWebhookPassesAuthOnlyWithBotSecret(t *testing.T) {
 		}
 	}
 }
+
+// ZaloCRM cannot send the admin token either. Its signed bridge call gets past
+// the token check; the bridge handler then checks the signature itself.
+func TestZCRMBridgePassesAuthOnlyWhenSigned(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "adm")
+	t.Setenv("GOSO_LITE", "1")
+	h, _ := New(store.New(), "test")
+
+	call := func(signed bool) int {
+		req := httptest.NewRequest(http.MethodPost, channel.ZCRMBridgePath, bytes.NewBufferString(`{}`))
+		// Version 1 is refused by the bridge itself (412), so a 412 shows the
+		// call reached the handler.
+		req.Header.Set("X-Goclaw-Version", "1")
+		if signed {
+			req.Header.Set("X-Goclaw-Signature", "abc")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w.Code
+	}
+	if got := call(false); got != http.StatusUnauthorized {
+		t.Fatalf("unsigned bridge call %d want 401", got)
+	}
+	if got := call(true); got != http.StatusPreconditionFailed {
+		t.Fatalf("signed bridge call %d want 412 from the bridge", got)
+	}
+}

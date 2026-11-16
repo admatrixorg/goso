@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -381,10 +382,9 @@ func (a *acc) channel(row ChannelRow) error {
 		a.seen[key] = struct{}{}
 		got, gerr := a.st.GetChannelConfig(gosoID)
 		if gerr == nil && got != nil && !channelSame(got, cfg) {
-			if rebind(got, cfg) {
+			if next, ok := rebind(got, cfg); ok {
 				if !a.opt.DryRun {
-					got.AgentID = cfg.AgentID
-					if err := a.st.PutChannelConfig(*got); err != nil {
+					if err := a.st.PutChannelConfig(next); err != nil {
 						return err
 					}
 				}
@@ -510,13 +510,22 @@ func credentialNote(tenant string, row ChannelRow, blobs []string) CredentialNot
 
 // rebind reports a channel this tool imported with no agent, still disabled and
 // otherwise unchanged, that can now take the agent want names.
-func rebind(got *store.ChannelConfig, want store.ChannelConfig) bool {
-	if got == nil || got.Enabled || got.AgentID != "" || want.AgentID == "" {
-		return false
+func rebind(got *store.ChannelConfig, want store.ChannelConfig) (store.ChannelConfig, bool) {
+	if got == nil || got.Enabled {
+		return store.ChannelConfig{}, false
 	}
 	cp := *got
-	cp.AgentID = want.AgentID
-	return channelSame(&cp, want)
+	changed := false
+	if got.AgentID == "" && want.AgentID != "" {
+		cp.AgentID = want.AgentID
+		changed = true
+	}
+	// Rows imported before channels kept their own settings get them now.
+	if len(got.Settings) == 0 && len(want.Settings) > 0 {
+		cp.Settings = want.Settings
+		changed = true
+	}
+	return cp, changed && channelSame(&cp, want)
 }
 
 // resolveAgent finds the goso agent for a GoClaw agent id. The agent importer's
@@ -604,6 +613,19 @@ func policyFrom(raw json.RawMessage, blobs []string) (store.ChannelConfig, []str
 			cfg.AllowFrom = list
 		}
 	}
+	for _, k := range settingKeys {
+		v, ok := obj[k]
+		if !ok {
+			continue
+		}
+		known[k] = true
+		if val, ok := settingValue(v); ok && val != "" && !containsSecret(val, blobs) {
+			if cfg.Settings == nil {
+				cfg.Settings = map[string]string{}
+			}
+			cfg.Settings[k] = val
+		}
+	}
 	var extra []string
 	for k := range obj {
 		if known[k] || secretKey(k) {
@@ -616,6 +638,27 @@ func policyFrom(raw json.RawMessage, blobs []string) (store.ChannelConfig, []str
 	}
 	sort.Strings(extra)
 	return cfg, extra
+}
+
+// settingKeys are GoClaw channel options goso keeps in a channel's settings:
+// which ZaloCRM account a bridged Zalo channel answers for, where ZaloCRM is,
+// and whether it answers in groups.
+var settingKeys = []string{"account_id", "crm_base_url", "group_enabled"}
+
+func settingValue(raw json.RawMessage) (string, bool) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.TrimSpace(s), true
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		return fmt.Sprint(b), true
+	}
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n.String(), true
+	}
+	return "", false
 }
 
 func policyDM(s string) bool {

@@ -33,6 +33,8 @@ type Info struct {
 	Phase          int      `json:"phase,omitempty"`
 	LastError      string   `json:"last_error,omitempty"`
 	Enabled        bool     `json:"enabled,omitempty"`
+	// Settings are the channel's own non-secret options.
+	Settings map[string]string `json:"settings,omitempty"`
 }
 
 // Names is the fixed 7-channel catalog (C0).

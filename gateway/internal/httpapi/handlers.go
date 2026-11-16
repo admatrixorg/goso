@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -57,6 +58,8 @@ type Options struct {
 	Slack    http.HandlerFunc
 	Feishu   http.HandlerFunc
 	WhatsApp http.HandlerFunc
+	// ZCRM takes customer messages ZaloCRM bridges to tenants' Zalo channels.
+	ZCRM     http.HandlerFunc
 	Webhooks *webhook.Registry
 	// LLM is the env registry used for GET/test overlay (sqlite rows merge; env wins).
 	LLM *llm.Registry
@@ -1004,6 +1007,7 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 		{"POST /api/channels/slack/webhook", opt.Slack},
 		{"POST /api/channels/feishu/webhook", opt.Feishu},
 		{"POST /api/channels/whatsapp/webhook", opt.WhatsApp},
+		{"POST " + channel.ZCRMBridgePath, opt.ZCRM},
 	} {
 		if r.h != nil {
 			mux.HandleFunc(r.path, r.h)
@@ -1057,6 +1061,7 @@ func overlayChannelRows(st store.StoreIface, rows []channel.Info) []channel.Info
 				out[i].AllowFrom = append([]string(nil), cfg.AllowFrom...)
 				out[i].AllowFromCount = len(cfg.AllowFrom)
 				out[i].Enabled = cfg.Enabled
+				out[i].Settings = cfg.Settings
 			}
 		}
 		pol := channel.MergePolicy(out[i].Name, cfg)
@@ -1143,6 +1148,19 @@ func handlePatchChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerF
 			}
 			cfg.AgentID = s
 		}
+		if v, ok := body["settings"]; ok {
+			m, ok := v.(map[string]any)
+			if !ok {
+				writeErr(w, http.StatusBadRequest, "settings must be an object")
+				return
+			}
+			next, msg := mergeChannelSettings(cfg.Settings, m)
+			if msg != "" {
+				writeErr(w, http.StatusBadRequest, msg)
+				return
+			}
+			cfg.Settings = next
+		}
 		if owned && cfg.Enabled && strings.TrimSpace(cfg.AgentID) == "" {
 			writeErr(w, http.StatusBadRequest, "bind an agent before enabling")
 			return
@@ -1158,6 +1176,43 @@ func handlePatchChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerF
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name})
 	}
+}
+
+// mergeChannelSettings applies a PATCH settings object: a string, number or
+// bool sets a key, null removes it. Secrets belong in PUT /secrets, and a
+// crm_base_url must be an http(s) URL.
+func mergeChannelSettings(prev map[string]string, patch map[string]any) (map[string]string, string) {
+	out := map[string]string{}
+	for k, v := range prev {
+		out[k] = v
+	}
+	for k, v := range patch {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" || channelSecretKey(key) {
+			return nil, "settings may not hold secrets"
+		}
+		switch val := v.(type) {
+		case nil:
+			delete(out, key)
+			continue
+		case string:
+			out[key] = strings.TrimSpace(val)
+		case bool, float64:
+			out[key] = fmt.Sprint(val)
+		default:
+			return nil, "settings values must be strings, numbers or bools"
+		}
+		if key == channel.SettingCRMBaseURL && out[key] != "" {
+			u, err := url.Parse(out[key])
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return nil, "crm_base_url must be an http(s) URL"
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, ""
+	}
+	return out, ""
 }
 
 func channelSecretKey(k string) bool {

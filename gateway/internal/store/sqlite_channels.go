@@ -19,6 +19,10 @@ func (s *SQLiteStore) PutChannelConfig(cfg ChannelConfig) error {
 	if cfg.AllowFrom == nil {
 		allow = []byte("[]")
 	}
+	settings := []byte("{}")
+	if len(cfg.Settings) > 0 {
+		settings, _ = json.Marshal(cfg.Settings)
+	}
 	en := 0
 	if cfg.Enabled {
 		en = 1
@@ -28,8 +32,8 @@ func (s *SQLiteStore) PutChannelConfig(cfg ChannelConfig) error {
 		ment = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO channel_config(name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, updated_at)
-		 VALUES(?,?,?,?,?,?,?,?)
+		`INSERT INTO channel_config(name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, settings, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   enabled=excluded.enabled,
 		   agent_id=excluded.agent_id,
@@ -37,8 +41,9 @@ func (s *SQLiteStore) PutChannelConfig(cfg ChannelConfig) error {
 		   group_policy=excluded.group_policy,
 		   require_mention=excluded.require_mention,
 		   allow_from=excluded.allow_from,
+		   settings=excluded.settings,
 		   updated_at=excluded.updated_at`,
-		name, en, strings.TrimSpace(cfg.AgentID), cfg.DMPolicy, cfg.GroupPolicy, ment, string(allow), cfg.UpdatedAt.UTC().Format(time.RFC3339),
+		name, en, strings.TrimSpace(cfg.AgentID), cfg.DMPolicy, cfg.GroupPolicy, ment, string(allow), string(settings), cfg.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 	return err
 }
@@ -46,7 +51,7 @@ func (s *SQLiteStore) PutChannelConfig(cfg ChannelConfig) error {
 func (s *SQLiteStore) GetChannelConfig(name string) (*ChannelConfig, error) {
 	name = strings.TrimSpace(name)
 	row := s.db.QueryRow(
-		`SELECT name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, updated_at FROM channel_config WHERE name=?`,
+		`SELECT name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, settings, updated_at FROM channel_config WHERE name=?`,
 		name,
 	)
 	c, err := scanChannelConfig(row)
@@ -60,7 +65,7 @@ func (s *SQLiteStore) GetChannelConfig(name string) (*ChannelConfig, error) {
 }
 
 func (s *SQLiteStore) ListChannelConfigs() []*ChannelConfig {
-	rows, err := s.db.Query(`SELECT name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, updated_at FROM channel_config ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, enabled, agent_id, dm_policy, group_policy, require_mention, allow_from, settings, updated_at FROM channel_config ORDER BY name`)
 	if err != nil {
 		return []*ChannelConfig{}
 	}
@@ -200,8 +205,8 @@ func (s *SQLiteStore) DeleteSecret(name string) error {
 func scanChannelConfig(sc scanner) (*ChannelConfig, error) {
 	var c ChannelConfig
 	var en, ment int
-	var allow, updated, agent string
-	if err := sc.Scan(&c.Name, &en, &agent, &c.DMPolicy, &c.GroupPolicy, &ment, &allow, &updated); err != nil {
+	var allow, settings, updated, agent string
+	if err := sc.Scan(&c.Name, &en, &agent, &c.DMPolicy, &c.GroupPolicy, &ment, &allow, &settings, &updated); err != nil {
 		return nil, err
 	}
 	c.Enabled = en != 0
@@ -209,6 +214,9 @@ func scanChannelConfig(sc scanner) (*ChannelConfig, error) {
 	c.AgentID = agent
 	if allow != "" {
 		_ = json.Unmarshal([]byte(allow), &c.AllowFrom)
+	}
+	if settings != "" && settings != "{}" {
+		_ = json.Unmarshal([]byte(settings), &c.Settings)
 	}
 	if t, err := time.Parse(time.RFC3339, updated); err == nil {
 		c.UpdatedAt = t

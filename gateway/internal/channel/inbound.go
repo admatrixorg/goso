@@ -90,6 +90,16 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 // before. The user message is stored before the model is called. An archived
 // session or a disabled agent does not skip that store.
 func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) string {
+	reply, err := answerTurnErr(ctx, st, agent, sess, fallback, meter, text)
+	if err != nil {
+		return fmt.Sprintf("LLM error: %v", err)
+	}
+	return reply
+}
+
+// answerTurnErr is answerTurn for a channel that must not show a model error
+// to its customer: on error nothing is stored as the reply and err is set.
+func answerTurnErr(ctx context.Context, st store.StoreIface, agent *store.Agent, sess *store.Session, fallback llm.Provider, meter *billing.Store, text string) (string, error) {
 	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "user", Content: text})
 
 	provider := resolveInboundLLM(st, agent, fallback)
@@ -103,12 +113,13 @@ func answerTurn(ctx context.Context, st store.StoreIface, agent *store.Agent, se
 	}
 	reply, usage, err := llm.ChatUsage(ctx, provider, msgs)
 	if err != nil {
-		reply = fmt.Sprintf("LLM error: %v", err)
-	} else if agent != nil {
+		return "", err
+	}
+	if agent != nil {
 		trackUsage(meter, agent.ID, provider.Name(), usage)
 	}
 	_, _ = st.AddMessage(store.Message{SessionID: sess.ID, Role: "assistant", Content: reply})
-	return reply
+	return reply, nil
 }
 
 func ensureNamedAgent(st store.StoreIface, key, display string) *store.Agent {
