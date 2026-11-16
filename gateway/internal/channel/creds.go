@@ -25,8 +25,9 @@ func SecretName(name, kind string) string {
 }
 
 // WritableFields are PUT /secrets JSON keys for a channel: a catalog name or
-// a tenant's instance. Empty = no UI form. Only a tenant's Zalo personal
-// channel takes a key: the one ZaloCRM bridges its messages with.
+// a tenant's instance. Empty = no UI form. A tenant's Zalo personal channel
+// takes the key ZaloCRM bridges its messages with, and a tenant's Lark channel
+// its app secret (the app id is a setting).
 func WritableFields(name string) []string {
 	_, owned := TenantOf(name)
 	switch CatalogOf(name) {
@@ -41,6 +42,12 @@ func WritableFields(name string) []string {
 	case "zalo-personal":
 		if owned {
 			return []string{"bridge_secret"}
+		}
+		return nil
+	case "feishu":
+		if owned {
+			// The app id is a setting; only the app secret is secret.
+			return []string{"app_secret"}
 		}
 		return nil
 	default:
@@ -73,6 +80,10 @@ func FieldKind(name, field string) (kind string, ok bool) {
 	case "zalo-personal":
 		if owned && field == "bridge_secret" {
 			return KindBridge, true
+		}
+	case "feishu":
+		if owned && field == "app_secret" {
+			return KindAppSecret, true
 		}
 	}
 	return "", false

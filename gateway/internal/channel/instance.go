@@ -104,16 +104,20 @@ func sortStrings(s []string) {
 }
 
 // InstanceInfo is the GET /api/channels row for one instance. Telegram bots,
-// Zalo Bot platform bots (zalo-oa) and Zalo channels bridged from ZaloCRM run
+// Zalo Bot platform bots (zalo-oa), Lark app bots (feishu) and Zalo channels
+// bridged from ZaloCRM run
 // live; the other catalogs show their stored settings and health "parked".
 func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 	catalog := CatalogOf(name)
 	row := Info{Name: name, Writable: WritableFields(name), Phase: phaseOf(catalog), Transport: defaultTransport(catalog)}
 	if liveCatalogs[catalog] {
-		_, _, row.SecretSet = Credential(st, name, KindBot, nil)
+		row.SecretSet = liveCredsSet(st, name)
 	}
-	if catalog == "zalo-oa" {
+	switch catalog {
+	case "zalo-oa":
 		row.Transport = zaloBotMode()
+	case "feishu":
+		row.Transport = "websocket"
 	}
 	row.Configured = row.SecretSet
 	row.Missing = !row.SecretSet
