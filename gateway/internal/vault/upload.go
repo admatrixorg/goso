@@ -55,7 +55,7 @@ func (s *Service) SaveUpload(tenant, filename string, r io.Reader) (*UploadResul
 	if err != nil {
 		return nil, err
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(s.Root, dir); err != nil {
 		return nil, err
 	}
 	rawDir := filepath.Join(dir, "raw")

@@ -208,7 +208,7 @@ func (s *Service) namespaced(tenant, logical string) (string, error) {
 	if !underRoot(dir, abs) {
 		return "", errors.New("path escape")
 	}
-	if err := security.Confine(abs); err != nil {
+	if err := security.ConfineTo(dir, abs); err != nil {
 		return "", err
 	}
 	return abs, nil
@@ -321,7 +321,7 @@ func (s *Service) collectTenant(tenant string) ([]diskFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(s.Root, dir); err != nil {
 		return nil, err
 	}
 	st, err := os.Lstat(dir)
