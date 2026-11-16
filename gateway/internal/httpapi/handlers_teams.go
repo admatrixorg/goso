@@ -34,6 +34,7 @@ func registerTeamRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("PUT /api/teams/{id}", handleUpdateTeam(st, ev))
 	mux.HandleFunc("DELETE /api/teams/{id}", handleDeleteTeam(st, ev))
 
+	aliasAPI(mux, "GET /api/agent-links", handleTenantLinks(st))
 	aliasAPI(mux, "GET /api/agents/{id}/links", handleListLinks(st))
 	aliasAPI(mux, "POST /api/agents/{id}/links", handleAddLink(st, ev))
 	aliasAPI(mux, "DELETE /api/agents/{id}/links/{to_id}", handleRemoveLink(st, ev))
@@ -380,6 +381,27 @@ func handleListLinks(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
+// handleTenantLinks lists every agent link of the request tenant.
+func handleTenantLinks(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tid := requestTenant(r)
+		out := []map[string]any{}
+		for _, a := range st.ListAgents() {
+			if a == nil || !store.SameTenant(a.TenantID, tid) {
+				continue
+			}
+			links, err := st.ListAgentLinks(a.ID)
+			if err != nil {
+				continue
+			}
+			for _, l := range links {
+				out = append(out, map[string]any{"from_agent_id": l.FromAgentID, "to_agent_id": l.ToAgentID})
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"links": out})
+	}
+}
+
 func handleAddLink(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		from := strings.TrimSpace(r.PathValue("id"))
@@ -402,6 +424,10 @@ func handleAddLink(st store.StoreIface, ev *eventstore.Store) http.HandlerFunc {
 			return
 		}
 		if err := st.AddAgentLink(from, to); err != nil {
+			if errors.Is(err, store.ErrCrossTenantLink) {
+				writeErr(w, http.StatusBadRequest, "agents belong to different tenants")
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}

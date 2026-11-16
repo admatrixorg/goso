@@ -675,6 +675,7 @@ type Store struct {
 	gatewaySettings *GatewaySettings
 	contextFiles    map[string]*ContextFile
 	ingestJobs      map[string]*IngestJob
+	hooks           map[string]*Hook
 	seq             int64
 }
 

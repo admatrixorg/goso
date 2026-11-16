@@ -92,8 +92,8 @@ func ResolveMode(st store.StoreIface, agentID string) string {
 func ToolSpecs(mode string) []llm.ToolSpec {
 	delegate := llm.ToolSpec{
 		Name:        ToolDelegate,
-		Description: "Delegate work to another agent. Args: to_agent_id, message, mode=sync|async, bidirectional (bool).",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"to_agent_id":{"type":"string"},"message":{"type":"string"},"mode":{"type":"string"},"bidirectional":{"type":"boolean"}},"required":["to_agent_id","message"]}`),
+		Description: "Delegate work to another agent of your tenant. Args: to_agent_id (agent id or agent_key), message, mode=sync|async. When this agent has links, only linked agents are allowed.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"to_agent_id":{"type":"string"},"message":{"type":"string"},"mode":{"type":"string"}},"required":["to_agent_id","message"]}`),
 	}
 	spawn := llm.ToolSpec{
 		Name:        ToolSpawn,
@@ -196,21 +196,6 @@ func argString(args map[string]any, key string) string {
 	}
 }
 
-func argBool(args map[string]any, key string) bool {
-	v, ok := args[key]
-	if !ok || v == nil {
-		return false
-	}
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		return strings.EqualFold(t, "true") || t == "1"
-	default:
-		return false
-	}
-}
-
 func asJSON(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -263,11 +248,9 @@ func (svc *Service) delegate(ctx context.Context, agentID string, args map[strin
 	if err != nil {
 		return "", err
 	}
-	if err := svc.Store.AddAgentLink(agentID, toID); err != nil {
+	toID = target.ID
+	if err := svc.linkAllows(agentID, toID); err != nil {
 		return "", err
-	}
-	if argBool(args, "bidirectional") {
-		_ = svc.Store.AddAgentLink(toID, agentID)
 	}
 	mode := strings.ToLower(argString(args, "mode"))
 	if mode == "" {
@@ -297,22 +280,38 @@ func (svc *Service) delegate(ctx context.Context, agentID string, args map[strin
 }
 
 // sameTenantAgent returns the target agent when it lives in the caller's
-// tenant. An agent in another tenant answers "not found", the same as a
-// missing one, so a caller cannot probe other tenants' agent ids.
+// tenant. The target is an agent id, or an agent_key looked up inside the
+// caller's tenant only. An agent in another tenant answers "not found", the
+// same as a missing one, so a caller cannot probe other tenants' agent ids.
 func (svc *Service) sameTenantAgent(callerID, targetID string) (*store.Agent, error) {
 	notFound := errors.New("target agent not found")
-	target, err := svc.Store.GetAgent(targetID)
-	if err != nil || target == nil {
-		return nil, notFound
-	}
 	caller, err := svc.Store.GetAgent(callerID)
 	if err != nil || caller == nil {
 		return nil, notFound
 	}
-	if !store.SameTenant(caller.TenantID, target.TenantID) {
+	target, err := svc.Store.GetAgent(targetID)
+	if err != nil || target == nil {
+		target = store.FindAgentByKey(svc.Store, caller.TenantID, targetID)
+	}
+	if target == nil || !store.SameTenant(caller.TenantID, target.TenantID) {
 		return nil, notFound
 	}
 	return target, nil
+}
+
+// linkAllows applies agent links (GoClaw agent_links): an agent with at
+// least one outgoing link may delegate only to the agents it links to. An
+// agent with no links may delegate to any agent of its tenant. Delegating
+// never creates a link; links are managed through the agent links API.
+func (svc *Service) linkAllows(fromID, toID string) error {
+	links, err := svc.Store.ListAgentLinks(fromID)
+	if err != nil || len(links) == 0 {
+		return nil
+	}
+	if svc.Store.HasAgentLink(fromID, toID) {
+		return nil
+	}
+	return errors.New("target agent is not linked: this agent may delegate only to its linked agents")
 }
 
 func (svc *Service) enqueueAsync(fromID, toID, tenantID, msg string) (id, kind string) {

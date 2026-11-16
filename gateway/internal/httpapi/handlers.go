@@ -160,6 +160,7 @@ func NewRouter(opt Options) http.Handler {
 	mux := routerBase(opt)
 	registerChannels(mux, opt)
 	registerWebhookRoutes(mux, opt)
+	registerHookRoutes(mux, opt)
 	registerProviderRoutes(mux, opt)
 	var chat http.HandlerFunc
 	if opt.Runtime != nil {

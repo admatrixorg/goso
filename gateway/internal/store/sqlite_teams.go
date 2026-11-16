@@ -378,13 +378,18 @@ func (s *SQLiteStore) AddAgentLink(fromID, toID string) error {
 	if fromID == "" || toID == "" {
 		return errors.New("from and to agent ids are required")
 	}
-	if _, err := s.GetAgent(fromID); err != nil {
+	from, err := s.GetAgent(fromID)
+	if err != nil {
 		return errors.New("from agent not found")
 	}
-	if _, err := s.GetAgent(toID); err != nil {
+	to, err := s.GetAgent(toID)
+	if err != nil {
 		return errors.New("to agent not found")
 	}
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO agent_links(from_agent_id, to_agent_id) VALUES(?,?)`, fromID, toID)
+	if !SameTenant(from.TenantID, to.TenantID) {
+		return ErrCrossTenantLink
+	}
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO agent_links(from_agent_id, to_agent_id, tenant_id) VALUES(?,?,?)`, fromID, toID, NormalizeTenant(from.TenantID))
 	return err
 }
 

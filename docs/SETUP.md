@@ -190,3 +190,18 @@ Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.e
 - Nâng cấp tự chạy khi mở database:
   - SQLite: bảng `agents` có `UNIQUE` trên cột `agent_key` được dựng lại trong một transaction (dữ liệu giữ nguyên), rồi tạo `idx_agents_tenant_key`.
   - Postgres: tìm tên thật của ràng buộc unique hoặc index unique chỉ trên `agent_key` qua catalog (bản cũ là `agents_agent_key_key`), xoá, rồi tạo `idx_agents_tenant_key`, tất cả trong một transaction.
+
+## Liên kết agent (agent links)
+
+- `GET /api/agent-links`: mọi liên kết trong tenant của request.
+- `GET/POST /api/agents/{id}/links`, `DELETE /api/agents/{id}/links/{to_id}` (alias `/v1/...`). Liên kết giữa hai tenant bị từ chối (400). Bảng `agent_links` có thêm cột `tenant_id` (lấy từ agent nguồn, tự điền cho dòng cũ).
+- Quy tắc `delegate`: agent có ít nhất một liên kết đi thì chỉ được giao việc cho agent nó liên kết tới. Agent chưa có liên kết giao được cho mọi agent cùng tenant như trước. `to_agent_id` nhận id hoặc `agent_key` (tra trong tenant của agent gọi). Delegate không còn tự tạo liên kết; tham số `bidirectional` của tool bị bỏ.
+
+## Hook cấu hình theo tenant
+
+- `GET/POST /api/hooks`, `GET/PATCH/DELETE /api/hooks/{id}` (alias `/v1/hooks`). Chỉ thấy và sửa hook của tenant của request; hook tenant khác trả 404. Tạo, sửa, xoá đều ghi audit log (entity `hook`, không ghi secret, chỉ ghi host của URL).
+- Trường: `event` (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`), `agent_id` (bỏ trống = mọi agent của tenant), `matcher` (glob tên tool, chỉ cho `PreToolUse`/`PostToolUse`; khớp `contact_search` hoặc `zalocrm__contact_search`; trống hoặc `*` = mọi tool), `handler_type`, `config` (JSON), `enabled`, `secret` (chỉ ghi).
+- `handler_type: "http"`: POST JSON sự kiện tới `config.url` (http/https, qua SSRF guard khi tạo và khi gửi), timeout `config.timeout_ms` (mặc định 3000, tối đa 10000). Header `X-Goso-Event`, `X-Goso-Hook-Id`, `X-Goso-Timestamp`; có `secret` thì thêm `X-Goso-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`. Gửi nền, lỗi chỉ ghi log, không làm hỏng lượt chạy.
+- `handler_type: "block"` (chỉ `PreToolUse`): chặn tool khớp; model nhận kết quả `blocked by hook: <config.message>`.
+- Secret được mã hoá bằng `GOSO_MASTER_KEY` (thiếu key mà gửi secret thì 400). GET chỉ trả `has_secret`; `"secret": ""` khi PATCH để xoá.
+- Hook được nạp theo tenant lúc chạy, cache 30 giây, ghi qua API thì cache trong process bị xoá ngay.
