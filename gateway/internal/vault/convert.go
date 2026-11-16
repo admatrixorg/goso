@@ -297,7 +297,8 @@ func (w *Worker) convertBody(ctx context.Context, job *store.IngestJob) string {
 	}
 	var wrote []string
 	for i, part := range parts {
-		if _, err := w.Vault.PutTenantAt(job.TenantID, paths[i], []byte(part)); err != nil {
+		acc := Access{Scope: job.Scope, AgentID: job.AgentID, TeamID: job.TeamID, CustomerKey: job.CustomerKey}
+		if _, err := w.Vault.PutTenantAtAs(job.TenantID, paths[i], []byte(part), acc); err != nil {
 			w.removeWritten(job.TenantID, wrote)
 			return ClassInternal
 		}

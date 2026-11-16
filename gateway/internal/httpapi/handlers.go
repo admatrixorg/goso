@@ -255,6 +255,8 @@ func routerBase(opt Options) *http.ServeMux {
 	mux.HandleFunc("PUT /api/vault/docs", handlePutVaultDoc(st))
 	mux.HandleFunc("POST /api/vault/upload", handleVaultUpload(st, al))
 	mux.HandleFunc("GET /api/vault/ingest/{id}", handleGetVaultIngest(st))
+	mux.HandleFunc("GET /api/vault/embeddings", handleVaultEmbeddings())
+	mux.HandleFunc("POST /api/vault/embeddings/backfill", handleVaultBackfill())
 
 	aliasAPI(mux, "GET /api/skills", handleListSkills())
 	aliasAPI(mux, "POST /api/skills", handleCreateSkill())

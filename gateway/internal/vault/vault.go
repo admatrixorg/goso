@@ -197,8 +197,16 @@ func (s *Service) Put(title, body string) (*store.VaultDoc, error) {
 	return s.PutTenant(title, body, store.DefaultTenant)
 }
 
-// PutTenant writes a vault doc stamped with tenant_id.
+// PutTenant writes a vault doc stamped with tenant_id. An existing doc of the
+// same title keeps its scope; a new one is tenant-wide.
 func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, error) {
+	return s.PutTenantAs(title, body, tenantID, Access{})
+}
+
+// PutTenantAs is PutTenant with a scope. acc must come from ResolveAccess.
+// With a scope set, only a same-title doc of that same scope is updated;
+// another owner's doc of that title is left alone and a new path is used.
+func (s *Service) PutTenantAs(title, body, tenantID string, acc Access) (*store.VaultDoc, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, errors.New("title is required")
@@ -224,6 +232,9 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	if existing != nil && (!store.SameTenant(existing.TenantID, tenantID) || !existing.OwnerExplicit) {
 		existing = nil
 	}
+	if acc.Scope != "" && existing != nil && !sameOwner(existing, acc) {
+		existing = s.findOwnedTitle(tenantID, title, acc)
+	}
 	if existing != nil && existing.Path != "" {
 		rel = existing.Path
 	} else {
@@ -248,6 +259,10 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 		Body:          body,
 		TenantID:      tenantID,
 		OwnerExplicit: true,
+		Scope:         acc.Scope,
+		AgentID:       acc.AgentID,
+		TeamID:        acc.TeamID,
+		CustomerKey:   acc.CustomerKey,
 	}
 	if existing != nil {
 		doc.ID = existing.ID
@@ -268,7 +283,31 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 		return nil, err
 	}
 	_ = s.Store.ReResolveVaultLinks()
+	notifyIndexer(saved)
 	return saved, nil
+}
+
+func sameOwner(d *store.VaultDoc, acc Access) bool {
+	scope := d.Scope
+	if scope == "" {
+		scope = store.VaultScopeTenant
+	}
+	return scope == acc.Scope && d.AgentID == acc.AgentID && d.TeamID == acc.TeamID
+}
+
+// findOwnedTitle is the same-title doc already written under acc, if any.
+func (s *Service) findOwnedTitle(tenant, title string, acc Access) *store.VaultDoc {
+	var best *store.VaultDoc
+	for _, d := range s.Store.ListVaultDocs() {
+		if d == nil || !d.OwnerExplicit || !store.SameTenant(d.TenantID, tenant) ||
+			!strings.EqualFold(d.Title, title) || !sameOwner(d, acc) {
+			continue
+		}
+		if best == nil || d.Path < best.Path {
+			best = d
+		}
+	}
+	return best
 }
 
 // writeExclusive creates name inside dir. An existing symlink at that name is
@@ -325,11 +364,16 @@ func (s *Service) freeLogical(dir, tenant, rel string) string {
 // its file is not read. On-disk body is preferred when the file is inside
 // that tenant's namespace, or a legacy path owned by this row alone.
 func (s *Service) Get(tenant, id string) (*store.VaultDoc, error) {
+	return s.GetAs(tenant, id, store.OperatorView)
+}
+
+// GetAs is Get for one viewer. A doc the viewer may not see is not found.
+func (s *Service) GetAs(tenant, id string, v store.VaultViewer) (*store.VaultDoc, error) {
 	d, err := s.Store.GetVaultDoc(id)
 	if err != nil {
 		return nil, err
 	}
-	if !store.SameTenant(d.TenantID, tenant) || !served(d) {
+	if !store.SameTenant(d.TenantID, tenant) || !served(d) || !v.Allows(d) {
 		return nil, store.ErrNotFound
 	}
 	return s.present(d), nil
@@ -356,24 +400,38 @@ func (s *Service) Links(id string) (outbound, inbound []store.VaultLink, err err
 	return s.Store.ListVaultDocLinks(id)
 }
 
-// Search is lexical FTS5 / substring inside one tenant. The store applies the
-// tenant predicate before rank and LIMIT. Semantic search is DI-09.
+// Search is the operator search of one tenant. See SearchAs.
 func (s *Service) Search(tenant, q string) ([]store.VaultSearchHit, error) {
-	hits, err := s.Store.SearchVault(tenant, q)
+	return s.SearchAs(tenant, q, store.OperatorView)
+}
+
+// SearchAs is lexical FTS5 / tsvector / substring inside one tenant, merged
+// with vector hits when embeddings are ready (see Indexer). The store applies
+// the tenant and viewer predicate before rank and LIMIT. Each hit is checked
+// again against the current row.
+func (s *Service) SearchAs(tenant, q string, v store.VaultViewer) ([]store.VaultSearchHit, error) {
+	hits, err := s.Store.SearchVaultFor(tenant, q, v)
 	if err != nil {
 		return nil, err
 	}
 	if hits == nil {
 		hits = []store.VaultSearchHit{}
 	}
+	hits = s.hybrid(tenant, q, v, hits)
 	if barrierAfterSearch != nil {
 		barrierAfterSearch()
 	}
 	out := make([]store.VaultSearchHit, 0, len(hits))
 	for _, h := range hits {
 		d, err := s.Store.GetVaultDoc(h.ID)
-		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) {
+		if err != nil || !served(d) || !store.SameTenant(d.TenantID, tenant) || !v.Allows(d) {
 			continue
+		}
+		if h.Title == "" {
+			h.Title, h.Path = d.Title, d.Path
+		}
+		if h.SHA256 == "" && h.Match == MatchVector {
+			h.SHA256 = d.SHA256
 		}
 		// The snippet was built from h.SHA256. published verifies the file against
 		// the row fetched now, which may already be a newer write. Keep the hit:

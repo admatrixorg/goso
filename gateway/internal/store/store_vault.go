@@ -110,6 +110,9 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 	} else {
 		d.Mtime = d.Mtime.UTC()
 	}
+	if err := normalizeVaultDocAccess(&d); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var existing *VaultDoc
@@ -131,6 +134,11 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		if !existing.OwnerExplicit {
 			return nil, ErrConflict
 		}
+		keepVaultAccess(&d, existing)
+		existing.Scope = d.Scope
+		existing.AgentID = d.AgentID
+		existing.TeamID = d.TeamID
+		existing.CustomerKey = d.CustomerKey
 		existing.Title = d.Title
 		existing.Path = d.Path
 		existing.SHA256 = d.SHA256
@@ -146,6 +154,9 @@ func (s *Store) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		d.ID = s.nextID()
 	} else {
 		d.ID = strings.TrimSpace(d.ID)
+	}
+	if d.Scope == "" {
+		d.Scope = VaultScopeTenant
 	}
 	cp := d
 	s.vaultDocs[cp.ID] = &cp
@@ -307,6 +318,10 @@ func (s *Store) ListVaultDocLinks(id string) (outbound, inbound []VaultLink, err
 }
 
 func (s *Store) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
+	return s.SearchVaultFor(tenant, q, OperatorView)
+}
+
+func (s *Store) SearchVaultFor(tenant, q string, v VaultViewer) ([]VaultSearchHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []VaultSearchHit{}, nil
@@ -317,7 +332,7 @@ func (s *Store) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
 	defer s.mu.RUnlock()
 	var out []VaultSearchHit
 	for _, d := range s.vaultDocs {
-		if d == nil || !SameTenant(d.TenantID, tenant) || !d.OwnerExplicit {
+		if d == nil || !SameTenant(d.TenantID, tenant) || !d.OwnerExplicit || !v.Allows(d) {
 			continue
 		}
 		inTitle := strings.Contains(strings.ToLower(d.Title), needle)

@@ -106,6 +106,11 @@ Chi tiết overlay production: `docs/DEPLOY.md`. Do **not** switch demo `:18080`
 | GOSO_HEARTBEAT_INTERVAL_SEC | 60 | Seconds between stamps when `GOSO_HEARTBEAT=1`. Values below **30** clamp to 30s. |
 | GOSO_BACKUP_DIR | `./var/backups` | Directory for `VACUUM INTO` snapshots (SPEC 070). Empty `GOSO_DB_PATH` cannot be snapshotted. |
 | GOSO_VAULT_DIR | `data/vault` | Thư mục markdown/text knowledge vault (`*.md` `*.txt`). Optional `TEAM.md` is prepended to the team system note (SPEC 038). |
+| GOSO_EMBED_URL + GOSO_EMBED_MODEL | (rỗng = tắt) | Endpoint `/embeddings` kiểu OpenAI (base `…/v1` hoặc URL đầy đủ `…/embeddings`) và tên model. Cần cả hai **và** Postgres có extension `pgvector` thì vault mới tìm kiếm lai (từ khoá + vector). Thiếu một trong ba thì vault chỉ tìm theo từ khoá; khởi động không bao giờ lỗi vì việc này. SQLite luôn chỉ tìm theo từ khoá. Xem mục "Vault: phạm vi tài liệu và tìm kiếm vector". |
+| GOSO_EMBED_API_KEY | (rỗng) | Gửi dưới dạng `Authorization: Bearer`. Không bao giờ in ra log, lỗi hay API. |
+| GOSO_EMBED_DIM | (rỗng = theo model) | Số chiều vector; gửi kèm `dimensions` và bắt buộc mọi vector trả về đúng số chiều này. Giá trị sai (không phải số nguyên dương) → trạng thái `config_error`, vault vẫn chạy chỉ với từ khoá. |
+| GOSO_EMBED_RPS | 2 | Giới hạn số request/giây tới endpoint embeddings (dùng chung cho ghi tài liệu và backfill). |
+| GOSO_EMBED_BATCH | 16 | Số đoạn văn gửi trong một request embeddings (tối đa 2048). |
 | GOSO_LITE | (off) | `1` caps **5 agents** and **1 team** (SPEC 038). Control-plane Channels page shows one-line “Lite: channels off” (SPEC 055); `GET /api/channels` still lists adapters with `"lite": true`. 6th `POST /api/agents` and 2nd team → 400. |
 | GOSO_ANTHROPIC_API_KEY / GOSO_OPENAI_API_KEY | (empty) | Native LLM keys. Empty → provider absent; `echo` always remains. |
 | GOSO_ANTHROPIC_CACHE_MODE / GOSO_PROMPT_CACHE | (empty) | `full` attaches Anthropic `cache_control` on stable prefix blocks (system + bootstrap + last non-user). Other values omit it. OpenAI-compat is never given a fake cache field. |
@@ -174,6 +179,30 @@ With `GOSO_CONTEXT_FILES=1`, a channel turn reads the user context files of the 
 Legacy Discord, Slack and Feishu webhooks carry no sender id and read no user file. `goso-context-import` stores GoClaw's `user_id` verbatim (including `group:` ids) unless `--customer-map` maps it.
 
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
+
+## Vault: phạm vi tài liệu và tìm kiếm vector
+
+Mỗi tài liệu vault có `scope`, `agent_id`, `team_id` và `customer_key`. Tài liệu cũ (trước bản này) được chuyển thành `scope=tenant`, tức là vẫn hiện như trước.
+
+| scope | Ai thấy |
+|---|---|
+| `tenant` (mặc định) | Mọi agent của tenant |
+| `agent` | Chỉ agent có `agent_id` |
+| `team` | Chỉ agent thuộc team `team_id` (trưởng nhóm hoặc thành viên) |
+| `personal` | Chỉ agent có `agent_id`, và **không bao giờ** trong hội thoại kênh |
+
+- Một agent thấy tài liệu tenant, tài liệu của chính nó và tài liệu các team của nó; không bao giờ thấy tài liệu `agent`/`personal` của agent khác. Luật này áp cho tool `vault_search`, `vault_read` và HTTP API.
+- Hội thoại kênh (Zalo, Telegram, Discord, Slack, Lark, WhatsApp…) được dùng vault, nhưng chỉ thấy tài liệu có `customer_key` rỗng hoặc trùng `customer_key` của khách trong thread đó, và không thấy tài liệu `personal`.
+- Ghi: `PUT /api/vault/docs` và upload (`GOSO_VAULT_UPLOAD=1`) nhận thêm `scope`, `agent_id`, `team_id`, `customer_key`. Để trống `scope` mà có `agent_id` → `agent`; có `team_id` → `team`. Trả **400** khi: `scope` lạ; `agent`/`personal` thiếu `agent_id`; `team` thiếu `team_id`; `agent_id` hoặc `team_id` không thuộc tenant của request.
+- Đọc qua API: mặc định là góc nhìn quản trị (thấy mọi tài liệu của tenant). Thêm `?agent_id=<id hoặc agent_key>` vào search/get/list để xem đúng như agent đó thấy; agent của tenant khác → 400.
+- Import từ GoClaw (`goso-vault-import`) mang theo phạm vi: `agent_id`/`team_id` của GoClaw được đổi sang id goso qua danh bạ đã import (agent, team). Tài liệu có chủ chưa được import thì bị bỏ qua (`agent-unmapped`, `team-unmapped`), không bị nới thành `tenant`.
+
+Tìm kiếm vector (tuỳ chọn):
+
+- Cần Postgres có extension `vector` (pgvector). Gateway thử `CREATE EXTENSION IF NOT EXISTS vector` khi mở DB; không có quyền hoặc không có extension thì bỏ qua, chạy tiếp chỉ với từ khoá. Bảng `vault_chunks` chỉ được tạo khi có pgvector.
+- Khi bật (`GOSO_EMBED_URL` + `GOSO_EMBED_MODEL`), mỗi lần ghi tài liệu sẽ cắt đoạn và embed ở nền. Tìm kiếm trộn kết quả từ khoá và vector (reciprocal rank fusion); mỗi kết quả có `match` = `keyword` / `vector` / `both`. Endpoint embeddings lỗi thì tự quay về từ khoá.
+- `GET /api/vault/embeddings`: trạng thái của tenant (`not_configured`, `config_error`, `store_unsupported`, `ready`, kèm lỗi gần nhất) và lần backfill gần nhất. `GET /api/memory/index`, `GET /api/kg/index` và `GET /api/kg/graph` báo trạng thái embedding thật (`embedding`, `embedding_configured`, `embedding_used_for: ["vault"]`); memory và KG vẫn tìm theo từ khoá.
+- Backfill tài liệu cũ hoặc tài liệu đã đổi: `POST /api/vault/embeddings/backfill?limit=200` (mặc định 200, tối đa 1000 tài liệu mỗi lần; chạy nền, trả 202; đang chạy thì 409). Thêm `&wait=1` để chạy trong request và nhận kết quả (200, lỗi endpoint → 502). Chỉ chạy trong tenant của request, theo giới hạn `GOSO_EMBED_RPS`. Kết quả có `embedded`, `failed`, `remain`; gọi lặp lại tới khi `remain` = false.
 
 ## Khoá API theo tenant
 

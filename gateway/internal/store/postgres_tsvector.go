@@ -844,16 +844,22 @@ func (s *SQLiteStore) searchMemoryTSV(q string) ([]SearchHit, error) {
 	return out, nil
 }
 
-func (s *SQLiteStore) searchVaultTSV(tenant, q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) searchVaultTSV(tenant, q string, v VaultViewer) ([]VaultSearchHit, error) {
+	where, extra := vaultViewerSQL("", v)
+	args := []any{tenant, q}
+	args = append(args, extra...)
+	args = append(args, tenant, q)
+	args = append(args, extra...)
+	args = append(args, VaultSearchLimit)
 	rows, err := s.db.Query(`SELECT id, title, path, body, sha256 FROM (
 			SELECT id, title, path, body, sha256 FROM vault_docs
-			WHERE tenant_id = ? AND owner_explicit<>0 AND `+tsPhraseSQL("body_tsv")+`
+			WHERE tenant_id = ? AND owner_explicit<>0 AND `+tsPhraseSQL("body_tsv")+where+`
 			UNION
 			SELECT id, title, path, body, sha256 FROM vault_docs
-			WHERE tenant_id = ? AND owner_explicit<>0 AND instr(lower(title), lower(?)) > 0
+			WHERE tenant_id = ? AND owner_explicit<>0 AND instr(lower(title), lower(?)) > 0`+where+`
 		) AS hits
 		ORDER BY lower(title)
-		LIMIT ?`, tenant, q, tenant, q, VaultSearchLimit)
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ import (
 
 // MemoryToolSpecs are always advertised. LLM ToolCalls only (no keyword match).
 func MemoryToolSpecs() []llm.ToolSpec {
-	return []llm.ToolSpec{
+	return append([]llm.ToolSpec{
 		{
 			Name:        ToolMemorySearch,
 			Description: "Search L1 episodic memory and L2 knowledge-graph entities. Fail-closed if query is empty. Args: query.",
@@ -25,10 +25,11 @@ func MemoryToolSpecs() []llm.ToolSpec {
 			Description: "Deep retrieve an L2 entity: body, relations, and linked names. Args: id.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`),
 		},
-	}
+	}, knowledgeToolSpecs()...)
 }
 
-// DispatchMemoryTool runs memory_search / memory_expand for the calling tenant.
+// DispatchMemoryTool runs memory_search / memory_expand / memory_get and
+// knowledge_graph_search for the calling tenant.
 // callerSessionID scopes channel sessions to their own customer (see toolScope).
 func DispatchMemoryTool(st store.StoreIface, tenant, callerSessionID string, call llm.ToolCall) (string, error) {
 	if st == nil {
@@ -83,6 +84,10 @@ func DispatchMemoryTool(st store.StoreIface, tenant, callerSessionID string, cal
 			return `{"error":"encode"}`, err
 		}
 		return string(b), nil
+	case ToolMemoryGet:
+		return dispatchMemoryGet(st, tenant, callerSessionID, call.Arguments)
+	case ToolKnowledgeGraphSearch:
+		return dispatchKGSearch(st, tenant, callerSessionID, call.Arguments)
 	default:
 		return `{"error":"unknown tool"}`, errors.New("unknown tool")
 	}

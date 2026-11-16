@@ -278,6 +278,9 @@ func runGateway(args []string) {
 		go worker.Loop(convertCtx)
 		log.Printf("vault docling: on")
 	}
+	// Vector search is optional: a missing env, a bad env or a store without
+	// pgvector leaves vault search keyword-only and never stops startup.
+	vault.StartEmbeddings(convertCtx, st)
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() {

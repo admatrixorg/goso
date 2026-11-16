@@ -62,10 +62,11 @@ func advertisedBase(name string) string {
 	return n
 }
 
-// IsMemoryTool reports memory_search / memory_expand (no connector).
+// IsMemoryTool reports memory_search / memory_expand / memory_get and
+// knowledge_graph_search (no connector).
 func IsMemoryTool(name string) bool {
 	switch advertisedBase(name) {
-	case ToolMemorySearch, ToolMemoryExpand:
+	case ToolMemorySearch, ToolMemoryExpand, ToolMemoryGet, ToolKnowledgeGraphSearch:
 		return true
 	default:
 		return false

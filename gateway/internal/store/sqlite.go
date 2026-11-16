@@ -32,6 +32,10 @@ type SQLiteStore struct {
 	// bodyTSV is set on Postgres after SPEC 154 adds the generated body_tsv
 	// columns. SQLite stays false and keeps FTS5.
 	bodyTSV bool
+	// vaultChunks is set on Postgres when vault_chunks exists (pgvector).
+	vaultChunks bool
+	// vecSchema is the quoted schema of the pgvector extension.
+	vecSchema string
 }
 
 var _ StoreIface = (*SQLiteStore)(nil)
@@ -518,6 +522,9 @@ func (s *SQLiteStore) migrate() error {
 	}
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("migrate hooks: %w", err)
+	}
+	if err := s.migrateVaultAccess(); err != nil {
+		return err
 	}
 	return nil
 }

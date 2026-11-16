@@ -46,9 +46,15 @@ type IngestJob struct {
 	OCRLang     string    `json:"ocr_lang,omitempty"`
 	PageCount   int       `json:"page_count,omitempty"`
 	ConvertedAt time.Time `json:"converted_at,omitempty"`
+	// Scope fields are stamped on the vault docs the conversion writes. They
+	// were validated against the tenant when the upload was accepted.
+	Scope       string `json:"scope,omitempty"`
+	AgentID     string `json:"agent_id,omitempty"`
+	TeamID      string `json:"team_id,omitempty"`
+	CustomerKey string `json:"customer_key,omitempty"`
 }
 
-const ingestJobSelect = `id, tenant_id, sha256_original, original_filename, mime_detected, bytes, raw_path, status, error_class, created_at, updated_at, existing_job_id, source_paths, ocr_engine, ocr_lang, page_count, converted_at`
+const ingestJobSelect = `id, tenant_id, sha256_original, original_filename, mime_detected, bytes, raw_path, status, error_class, created_at, updated_at, existing_job_id, source_paths, ocr_engine, ocr_lang, page_count, converted_at, scope, agent_id, team_id, customer_key`
 
 const ingestJobCreateTable = `CREATE TABLE IF NOT EXISTS vault_ingest_jobs (
 	id TEXT PRIMARY KEY,
@@ -201,8 +207,8 @@ func (s *SQLiteStore) PutIngestJob(in IngestJob) (*IngestJob, error) {
 		if !SameTenant(existingTenant, job.TenantID) {
 			return nil, ErrConflict
 		}
-		_, err = s.db.Exec(`UPDATE vault_ingest_jobs SET tenant_id=?, sha256_original=?, original_filename=?, mime_detected=?, bytes=?, raw_path=?, status=?, error_class=?, created_at=?, updated_at=?, existing_job_id=?, source_paths=?, ocr_engine=?, ocr_lang=?, page_count=?, converted_at=? WHERE id=?`,
-			job.TenantID, job.SHA256, job.OriginalFilename, job.MIME, job.Bytes, job.RawPath, job.Status, job.ErrorClass, formatTime(job.CreatedAt), formatTime(job.UpdatedAt), job.ExistingJobID, encodeSourcePaths(job.SourcePaths), job.OCREngine, job.OCRLang, job.PageCount, formatOptionalTime(job.ConvertedAt), job.ID)
+		_, err = s.db.Exec(`UPDATE vault_ingest_jobs SET tenant_id=?, sha256_original=?, original_filename=?, mime_detected=?, bytes=?, raw_path=?, status=?, error_class=?, created_at=?, updated_at=?, existing_job_id=?, source_paths=?, ocr_engine=?, ocr_lang=?, page_count=?, converted_at=?, scope=?, agent_id=?, team_id=?, customer_key=? WHERE id=?`,
+			job.TenantID, job.SHA256, job.OriginalFilename, job.MIME, job.Bytes, job.RawPath, job.Status, job.ErrorClass, formatTime(job.CreatedAt), formatTime(job.UpdatedAt), job.ExistingJobID, encodeSourcePaths(job.SourcePaths), job.OCREngine, job.OCRLang, job.PageCount, formatOptionalTime(job.ConvertedAt), job.Scope, job.AgentID, job.TeamID, job.CustomerKey, job.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -211,8 +217,8 @@ func (s *SQLiteStore) PutIngestJob(in IngestJob) (*IngestJob, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	_, err = s.db.Exec(`INSERT INTO vault_ingest_jobs(id, tenant_id, sha256_original, original_filename, mime_detected, bytes, raw_path, status, error_class, created_at, updated_at, existing_job_id, source_paths, ocr_engine, ocr_lang, page_count, converted_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		job.ID, job.TenantID, job.SHA256, job.OriginalFilename, job.MIME, job.Bytes, job.RawPath, job.Status, job.ErrorClass, formatTime(job.CreatedAt), formatTime(job.UpdatedAt), job.ExistingJobID, encodeSourcePaths(job.SourcePaths), job.OCREngine, job.OCRLang, job.PageCount, formatOptionalTime(job.ConvertedAt))
+	_, err = s.db.Exec(`INSERT INTO vault_ingest_jobs(id, tenant_id, sha256_original, original_filename, mime_detected, bytes, raw_path, status, error_class, created_at, updated_at, existing_job_id, source_paths, ocr_engine, ocr_lang, page_count, converted_at, scope, agent_id, team_id, customer_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		job.ID, job.TenantID, job.SHA256, job.OriginalFilename, job.MIME, job.Bytes, job.RawPath, job.Status, job.ErrorClass, formatTime(job.CreatedAt), formatTime(job.UpdatedAt), job.ExistingJobID, encodeSourcePaths(job.SourcePaths), job.OCREngine, job.OCRLang, job.PageCount, formatOptionalTime(job.ConvertedAt), job.Scope, job.AgentID, job.TeamID, job.CustomerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +402,7 @@ func normalizeIngestJob(in IngestJob) (IngestJob, error) {
 func scanIngestJob(sc scanner) (*IngestJob, error) {
 	var job IngestJob
 	var created, updated, paths, converted string
-	if err := sc.Scan(&job.ID, &job.TenantID, &job.SHA256, &job.OriginalFilename, &job.MIME, &job.Bytes, &job.RawPath, &job.Status, &job.ErrorClass, &created, &updated, &job.ExistingJobID, &paths, &job.OCREngine, &job.OCRLang, &job.PageCount, &converted); err != nil {
+	if err := sc.Scan(&job.ID, &job.TenantID, &job.SHA256, &job.OriginalFilename, &job.MIME, &job.Bytes, &job.RawPath, &job.Status, &job.ErrorClass, &created, &updated, &job.ExistingJobID, &paths, &job.OCREngine, &job.OCRLang, &job.PageCount, &converted, &job.Scope, &job.AgentID, &job.TeamID, &job.CustomerKey); err != nil {
 		return nil, err
 	}
 	decoded, err := decodeSourcePaths(paths)

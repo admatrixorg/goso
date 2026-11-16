@@ -41,6 +41,13 @@ type UploadResult struct {
 // or records a duplicate. The caller must already have checked auth, tenant,
 // and that a quota is configured. r must already be limited to IngestMaxBytes.
 func (s *Service) SaveUpload(tenant, filename string, r io.Reader) (*UploadResult, error) {
+	return s.SaveUploadAs(tenant, filename, r, Access{})
+}
+
+// SaveUploadAs is SaveUpload with a scope from ResolveAccess. The scope is
+// kept on the ingest job and stamped on the docs its conversion writes. An
+// upload whose bytes are a duplicate keeps the first upload's scope.
+func (s *Service) SaveUploadAs(tenant, filename string, r io.Reader, acc Access) (*UploadResult, error) {
 	if !QuotaConfigured() {
 		return nil, ErrQuotaRequired
 	}
@@ -135,6 +142,10 @@ func (s *Service) SaveUpload(tenant, filename string, r io.Reader) (*UploadResul
 			Bytes:            info.Size(),
 			RawPath:          logical,
 			Status:           store.IngestUploaded,
+			Scope:            acc.Scope,
+			AgentID:          acc.AgentID,
+			TeamID:           acc.TeamID,
+			CustomerKey:      acc.CustomerKey,
 		})
 		if err != nil {
 			return nil, err
@@ -160,6 +171,10 @@ func (s *Service) SaveUpload(tenant, filename string, r io.Reader) (*UploadResul
 		Bytes:            info.Size(),
 		RawPath:          logical,
 		Status:           store.IngestUploaded,
+		Scope:            acc.Scope,
+		AgentID:          acc.AgentID,
+		TeamID:           acc.TeamID,
+		CustomerKey:      acc.CustomerKey,
 	})
 	if err != nil {
 		return nil, err

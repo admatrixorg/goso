@@ -27,13 +27,19 @@
 // strips that prefix. A workspace root (".", "/app/workspace") accepts
 // every safe relative path in one run. Any tenants/<other> path is
 // foreign-tenant. Scope personal is held back unless IncludePersonal is
-// set: goso has no per-person access control, so that body would be
-// readable by the whole tenant. When a path has both a personal and a
-// team document, the team document is stored and the personal one is
-// held once as scope-personal-held. It is not also counted as
-// scope-conflict. With IncludePersonal, the personal document wins that
-// conflict and the team one is scope-conflict.
-// There is still no scope column.
+// set. When a path has both a personal and a team document, the team
+// document is stored and the personal one is held once as
+// scope-personal-held. It is not also counted as scope-conflict. With
+// IncludePersonal, the personal document wins that conflict and the team
+// one is scope-conflict.
+//
+// Access carries over through AgentMap and TeamMap (GoClaw id to goso id):
+// a personal document becomes personal scope of its mapped agent; any
+// other document with an agent_id becomes agent scope of its mapped agent;
+// a team document (or one with only a team_id) becomes team scope of its
+// mapped team; the rest is tenant scope. An agent_id or team_id with no
+// mapping is rejected as agent-unmapped or team-unmapped, never widened to
+// tenant scope.
 //
 // A run names one source tenant id and one root folder. A document is imported
 // only when both match. Paths that leave the root, walk with "..", are
@@ -81,10 +87,14 @@ type Options struct {
 	// Non-UTF-8 files and files with a NUL byte are binary-skipped.
 	// A source or destination path under raw/ is raw-skipped and is not read or written.
 	SrcDir string
-	// IncludePersonal imports scope=personal documents. Default is off.
-	// Turn it on only after the tenant owner accepts that those notes are
-	// readable by the whole tenant. This flag is not per-person access control.
+	// IncludePersonal imports scope=personal documents as personal scope of
+	// the mapped agent: only that agent reads them, never in a channel
+	// thread. Default is off.
 	IncludePersonal bool
+	// AgentMap maps GoClaw agent ids to goso agent ids of DestTenant.
+	AgentMap map[string]string
+	// TeamMap maps GoClaw team ids to goso team ids of DestTenant.
+	TeamMap map[string]string
 	// DryRun reports counts and rejections and does not write.
 	DryRun bool
 	// Log receives rejection lines. Nil discards them. Arguments are paths and
@@ -143,6 +153,8 @@ type Document struct {
 	Metadata    json.RawMessage `json:"metadata"`
 	Scope       string          `json:"scope"`
 	CustomScope string          `json:"custom_scope"`
+	AgentID     string          `json:"agent_id"`
+	TeamID      string          `json:"team_id"`
 	CreatedAt   string          `json:"created_at"`
 	UpdatedAt   string          `json:"updated_at"`
 }
@@ -191,6 +203,7 @@ type keptDoc struct {
 	body     string
 	sum      string
 	mtime    time.Time
+	access   docAccess
 	gosoID   string
 	existing *store.VaultDoc
 	docSame  bool
@@ -237,6 +250,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		logf = discardLog{}
 	}
 	ac := &tally{log: logf}
+	opt.AgentMap, opt.TeamMap = ownedMaps(st, dest, opt.AgentMap, opt.TeamMap)
 
 	latest := latestVersions(ex.Versions)
 	pathByID := map[string]string{}
@@ -328,7 +342,13 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		if mtime.IsZero() {
 			mtime = time.Unix(0, 0).UTC()
 		}
+		access, reason := mapAccess(doc, opt)
+		if reason != "" && (!isPersonalScope(doc.Scope) || opt.IncludePersonal) {
+			ac.reject("doc", tenant, path, "", reason)
+			continue
+		}
 		candidates = append(candidates, &keptDoc{
+			access:   access,
 			src:      doc,
 			logical:  d.Logical,
 			title:    title,
@@ -434,7 +454,8 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 				existing.Body == item.body &&
 				existing.SHA256 == item.sum &&
 				existing.Mtime.Equal(item.mtime) &&
-				existing.OwnerExplicit
+				existing.OwnerExplicit &&
+				item.access.same(existing)
 		}
 		item.fileSame = true
 		if strings.TrimSpace(opt.VaultRoot) != "" {
@@ -488,6 +509,9 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			Body:          item.body,
 			TenantID:      dest,
 			OwnerExplicit: true,
+			Scope:         item.access.scope,
+			AgentID:       item.access.agentID,
+			TeamID:        item.access.teamID,
 		})
 		if err != nil {
 			return ac.abort(opt.DryRun, err)
@@ -540,6 +564,9 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 				Body:          item.body,
 				TenantID:      dest,
 				OwnerExplicit: true,
+				Scope:         item.access.scope,
+				AgentID:       item.access.agentID,
+				TeamID:        item.access.teamID,
 			}); err != nil {
 				return ac.abort(opt.DryRun, err)
 			}

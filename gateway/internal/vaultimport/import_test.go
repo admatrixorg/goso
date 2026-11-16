@@ -201,6 +201,7 @@ func TestImportMinhAn(t *testing.T) {
 				DestTenant:      destTenant,
 				VaultRoot:       vaultRoot,
 				IncludePersonal: true,
+				AgentMap:        map[string]string{"AGENTIDMARKER": seedAgent(t, raw, "minh-an-tro-ly")},
 				DryRun:          true,
 				Log:             bufLog{logBuf},
 			}
@@ -276,7 +277,8 @@ func TestImportMinhAn(t *testing.T) {
 func TestImportUpdateThenNoop(t *testing.T) {
 	ex := readMinhAn(t)
 	raw := store.New()
-	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant, IncludePersonal: true, Log: discardLog{}}
+	opt := Options{SourceTenant: sourceTenant, Root: tenantRoot, DestTenant: destTenant, IncludePersonal: true, Log: discardLog{},
+		AgentMap: map[string]string{"AGENTIDMARKER": seedAgent(t, raw, "minh-an-tro-ly")}}
 	if _, err := Import(raw, ex, opt); err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +656,7 @@ func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
 	path := "tenants/minh-an/notes/rieng.md"
 	personal := func() *Export {
 		return &Export{Documents: []Document{{
-			ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: path,
+			ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: path, AgentID: "goclaw-agent-1",
 			Title: "Ghi chu rieng Minh An", UpdatedAt: "2026-03-01T04:05:06Z",
 		}}, Versions: []Version{{
 			DocID: "doc-personal", Version: 1, Content: "PERSONALBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z",
@@ -692,6 +694,7 @@ func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
 
 	opt.IncludePersonal = true
 	opt.Log = discardLog{}
+	opt.AgentMap = map[string]string{"goclaw-agent-1": seedAgent(t, st, "minh-an-tro-ly")}
 	rep, err = Import(st, personal(), opt)
 	if err != nil {
 		t.Fatal(err)
@@ -703,10 +706,13 @@ func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
 	if err != nil || !strings.Contains(got.Body, "PERSONALBODYMARKER") {
 		t.Fatalf("included %#v %v", got, err)
 	}
+	if got.Scope != store.VaultScopePersonal || got.AgentID != opt.AgentMap["goclaw-agent-1"] {
+		t.Fatalf("personal scope not kept: %q %q", got.Scope, got.AgentID)
+	}
 
 	both := &Export{Documents: []Document{
 		{ID: "doc-team", TenantID: sourceTenant, Scope: "team", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh team", UpdatedAt: "2026-03-01T04:05:06Z"},
-		{ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
+		{ID: "doc-personal", TenantID: sourceTenant, Scope: "personal", AgentID: "goclaw-agent-1", Path: "tenants/minh-an/notes/quy-trinh.md", Title: "Quy trinh Minh An", UpdatedAt: "2026-03-01T04:05:06Z"},
 	}, Versions: []Version{
 		{DocID: "doc-team", Version: 1, Content: "TEAMBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
 		{DocID: "doc-personal", Version: 1, Content: "PERSONALBODYMARKER", CreatedAt: "2026-03-01T04:05:06Z"},
@@ -732,6 +738,7 @@ func TestPersonalScopeHeldUnlessEnabled(t *testing.T) {
 
 	chosen := store.New()
 	teamOpt.IncludePersonal = true
+	teamOpt.AgentMap = map[string]string{"goclaw-agent-1": seedAgent(t, chosen, "minh-an-tro-ly")}
 	rep, err = Import(chosen, both, teamOpt)
 	if err != nil {
 		t.Fatal(err)

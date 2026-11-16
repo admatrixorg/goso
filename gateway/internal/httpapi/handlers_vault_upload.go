@@ -34,6 +34,15 @@ func handleVaultUpload(st store.StoreIface, al *auditlog.Store) http.HandlerFunc
 			return
 		}
 		tenantID := requestTenant(r)
+		// Scope comes from the query string so it is checked before the body.
+		qv := r.URL.Query()
+		acc, err := vault.ResolveAccess(st, tenantID, vault.Access{
+			Scope: qv.Get("scope"), AgentID: qv.Get("agent_id"), TeamID: qv.Get("team_id"), CustomerKey: qv.Get("customer_key"),
+		})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if !vault.QuotaConfigured() {
 			writeErr(w, http.StatusServiceUnavailable, "quota_required")
 			return
@@ -61,7 +70,7 @@ func handleVaultUpload(st store.StoreIface, al *auditlog.Store) http.HandlerFunc
 		defer part.Close()
 		filename := part.FileName()
 		limited := http.MaxBytesReader(w, part, maxBytes)
-		res, err := vaultSvc(st).SaveUpload(tenantID, filename, limited)
+		res, err := vaultSvc(st).SaveUploadAs(tenantID, filename, limited, acc)
 		if err != nil {
 			writeUploadErr(w, err)
 			return
