@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -32,32 +33,32 @@ func (t *Telegram) startLive(ctx context.Context, mgr *Manager) {
 		pub := strings.TrimSpace(os.Getenv("GOSO_PUBLIC_URL"))
 		if pub == "" {
 			if mgr != nil {
-				mgr.SetFailed("telegram", "public url required for webhook mode")
+				mgr.SetFailed(t.instance(), "public url required for webhook mode")
 			}
 			return
 		}
 	}
 	if err := t.getMe(ctx, token); err != nil {
 		if mgr != nil {
-			mgr.SetFailed("telegram", err.Error())
+			mgr.SetFailed(t.instance(), err.Error())
 		}
 		return
 	}
 	if mode == "webhook" {
 		pub := strings.TrimSpace(os.Getenv("GOSO_PUBLIC_URL"))
-		if err := t.setWebhook(ctx, token, strings.TrimRight(pub, "/")+"/api/channels/telegram/webhook"); err != nil {
+		if err := t.setWebhook(ctx, token, strings.TrimRight(pub, "/")+t.webhookPath()); err != nil {
 			if mgr != nil {
-				mgr.SetFailed("telegram", err.Error())
+				mgr.SetFailed(t.instance(), err.Error())
 			}
 			return
 		}
 	}
 	if mgr != nil {
-		mgr.SetRunning("telegram", mode)
+		mgr.SetRunning(t.instance(), mode)
 	}
 	if mode == "poll" {
 		t.pollCancelMu.Lock()
-		if t.pollStop != nil {
+		if t.pollStop != nil || t.stopped {
 			t.pollCancelMu.Unlock()
 			return
 		}
@@ -72,6 +73,11 @@ func (t *Telegram) startLive(ctx context.Context, mgr *Manager) {
 func (t *Telegram) stopLive() {
 	t.pollCancelMu.Lock()
 	defer t.pollCancelMu.Unlock()
+	// A tenant bot can be stopped while its Start is still in getMe; the flag
+	// keeps that Start from opening a poll loop afterwards.
+	if _, owned := t.tenantBot(); owned {
+		t.stopped = true
+	}
 	if t.pollStop != nil {
 		t.pollStop()
 		t.pollStop = nil
@@ -222,4 +228,14 @@ func (t *Telegram) getUpdates(ctx context.Context, token string, offset int64) (
 
 func (t *Telegram) dispatchUpdate(ctx context.Context, upd TelegramUpdate) {
 	_ = t.ingest(ctx, upd)
+}
+
+// webhookPath is where Telegram posts this bot's updates. A tenant's bot has
+// its own path so the gateway knows which bot an update is for.
+func (t *Telegram) webhookPath() string {
+	tenant, _, inst, ok := ParseInstance(t.instance())
+	if !ok {
+		return "/api/channels/telegram/webhook"
+	}
+	return "/api/channels/telegram/webhook/" + url.PathEscape(tenant) + "/" + url.PathEscape(inst)
 }

@@ -39,9 +39,9 @@ const (
 	PolicyNeedMention PolicyAction = "mention"
 )
 
-// DefaultPolicy returns SPEC §6 defaults for a catalog name.
+// DefaultPolicy returns SPEC §6 defaults for a catalog or instance name.
 func DefaultPolicy(name string) Policy {
-	switch name {
+	switch CatalogOf(name) {
 	case "telegram":
 		p := Policy{DMPolicy: "pairing", GroupPolicy: "allowlist", RequireMention: true}
 		if demoEnv() {
@@ -74,7 +74,7 @@ func MergePolicy(name string, cfg *store.ChannelConfig) Policy {
 		p.GroupPolicy = cfg.GroupPolicy
 	}
 	p.RequireMention = cfg.RequireMention
-	if name == "telegram" && !cfg.RequireMention && cfg.DMPolicy == "" && cfg.GroupPolicy == "" && cfg.AgentID == "" && len(cfg.AllowFrom) == 0 && !cfg.Enabled {
+	if CatalogOf(name) == "telegram" && !cfg.RequireMention && cfg.DMPolicy == "" && cfg.GroupPolicy == "" && cfg.AgentID == "" && len(cfg.AllowFrom) == 0 && !cfg.Enabled {
 		p.RequireMention = true
 	}
 	p.AllowFrom = append([]string(nil), cfg.AllowFrom...)

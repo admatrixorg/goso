@@ -1009,18 +1009,21 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 			mux.HandleFunc(r.path, r.h)
 		}
 	}
+	if opt.Channels != nil {
+		mux.HandleFunc("POST /api/channels/telegram/webhook/{tenant}/{inst}", handleTenantTelegramWebhook(opt.Channels))
+	}
 	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
 	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
-	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store))
-	aliasAPI(mux, "PUT /api/channels/{name}/secrets", handlePutChannelSecrets(opt.Store))
-	aliasAPI(mux, "DELETE /api/channels/{name}/secrets", handleDeleteChannelSecrets(opt.Store))
+	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store, opt.Channels))
+	aliasAPI(mux, "PUT /api/channels/{name}/secrets", handlePutChannelSecrets(opt.Store, opt.Channels))
+	aliasAPI(mux, "DELETE /api/channels/{name}/secrets", handleDeleteChannelSecrets(opt.Store, opt.Channels))
 	aliasAPI(mux, "POST /api/channels/{name}/test", handleTestChannel(opt.Store, opt.Channels))
 }
 
 func handleListChannels(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"channels": overlayChannelRows(st, channel.CatalogWith(st, mgr)),
+			"channels": channelRows(st, mgr, requestTenant(r)),
 			"lite":     store.LiteEnabled(),
 		})
 	}
@@ -1028,12 +1031,11 @@ func handleListChannels(st store.StoreIface, mgr *channel.Manager) http.HandlerF
 
 func handleChannelHealth(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimSpace(r.PathValue("name"))
-		if !channel.Known(name) {
-			writeErr(w, http.StatusNotFound, "not found")
+		name, ok := channelTarget(w, r)
+		if !ok {
 			return
 		}
-		for _, row := range overlayChannelRows(st, channel.CatalogWith(st, mgr)) {
+		for _, row := range channelRows(st, mgr, requestTenant(r)) {
 			if row.Name == name {
 				writeJSON(w, http.StatusOK, row)
 				return
@@ -1065,13 +1067,13 @@ func overlayChannelRows(st store.StoreIface, rows []channel.Info) []channel.Info
 	return out
 }
 
-func handlePatchChannel(st store.StoreIface) http.HandlerFunc {
+func handlePatchChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimSpace(r.PathValue("name"))
-		if !channel.Known(name) {
-			writeErr(w, http.StatusNotFound, "not found")
+		name, ok := channelTarget(w, r)
+		if !ok {
 			return
 		}
+		owner, owned := channel.TenantOf(name)
 		var body map[string]any
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&body); err != nil && err != io.EOF {
@@ -1085,7 +1087,8 @@ func handlePatchChannel(st store.StoreIface) http.HandlerFunc {
 				return
 			}
 		}
-		cfg := store.ChannelConfig{Name: name, Enabled: true}
+		// A new tenant bot starts off; the older single bot keeps its old default.
+		cfg := store.ChannelConfig{Name: name, Enabled: !owned}
 		if st != nil {
 			if prev, err := st.GetChannelConfig(name); err == nil && prev != nil {
 				cfg = *prev
@@ -1132,18 +1135,26 @@ func handlePatchChannel(st store.StoreIface) http.HandlerFunc {
 			s, _ := v.(string)
 			s = strings.TrimSpace(s)
 			if s != "" && st != nil {
-				if _, err := st.GetAgent(s); err != nil {
+				a, err := st.GetAgent(s)
+				if err != nil || a == nil || (owned && !store.SameTenant(a.TenantID, owner)) {
 					writeErr(w, http.StatusNotFound, "agent not found")
 					return
 				}
 			}
 			cfg.AgentID = s
 		}
+		if owned && cfg.Enabled && strings.TrimSpace(cfg.AgentID) == "" {
+			writeErr(w, http.StatusBadRequest, "bind an agent before enabling")
+			return
+		}
 		if st != nil {
 			if err := st.PutChannelConfig(cfg); err != nil {
 				writeErr(w, http.StatusInternalServerError, "save failed")
 				return
 			}
+		}
+		if owned {
+			mgr.Reconcile()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name})
 	}
@@ -1180,4 +1191,46 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// channelTarget reads {name}: a catalog name, or a tenant's instance name
+// ("<tenant>/<catalog>/<name>", sent with each "/" as %2F). Another tenant's
+// instance is 404, as if it did not exist. It writes the 404 itself.
+func channelTarget(w http.ResponseWriter, r *http.Request) (string, bool) {
+	name := strings.TrimSpace(r.PathValue("name"))
+	if channel.Known(name) {
+		return name, true
+	}
+	owner, ok := channel.TenantOf(name)
+	if !ok || !store.SameTenant(owner, requestTenant(r)) {
+		writeErr(w, http.StatusNotFound, "not found")
+		return "", false
+	}
+	return name, true
+}
+
+// channelRows is the catalog plus the caller tenant's own instances.
+func channelRows(st store.StoreIface, mgr *channel.Manager, tenant string) []channel.Info {
+	rows := channel.CatalogWith(st, mgr)
+	for _, n := range channel.InstanceNames(st, tenant) {
+		rows = append(rows, channel.InstanceInfo(st, mgr, n))
+	}
+	return overlayChannelRows(st, rows)
+}
+
+// handleTenantTelegramWebhook takes a tenant bot's webhook update.
+func handleTenantTelegramWebhook(mgr *channel.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := channel.InstanceName(r.PathValue("tenant"), "telegram", r.PathValue("inst"))
+		if _, ok := channel.TenantOf(name); !ok {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		bot := mgr.TelegramBot(name)
+		if bot == nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		bot.HandleUpdate(w, r)
+	}
 }
