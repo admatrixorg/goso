@@ -62,7 +62,7 @@ func (d *Discord) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = d.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: d.Store, LLM: d.LLM, Meter: d.Meter, Sender: sender},
-		"discord", "Discord", channelID, text)
+		"discord", "Discord", channelID, "", text)
 }
 
 func (d *Discord) sendMessage(ctx context.Context, channelID, text string) error {

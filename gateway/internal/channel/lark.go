@@ -628,7 +628,8 @@ func (l *Lark) ingest(m LarkMessage) {
 	if sess == nil {
 		return
 	}
-	reply, err := answerTurnErr(ctx, l.Store, agent, sess, l.LLM, l.Meter, m.Text)
+	turnCtx := withContextUser(ctx, name, peer, m.SenderID, m.ChatID)
+	reply, err := answerTurnErr(turnCtx, l.Store, agent, sess, l.LLM, l.Meter, m.Text)
 	// A model error is never sent to the customer.
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return

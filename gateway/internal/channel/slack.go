@@ -61,7 +61,7 @@ func (s *Slack) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = s.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: s.Store, LLM: s.LLM, Meter: s.Meter, Sender: sender},
-		"slack", "Slack", channelID, text)
+		"slack", "Slack", channelID, "", text)
 }
 
 func (s *Slack) sendMessage(ctx context.Context, channelID, text string) error {

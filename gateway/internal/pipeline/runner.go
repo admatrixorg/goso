@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/contextfile"
+	"github.com/mqglobal/goso/gateway/internal/guardrail"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/security"
@@ -76,6 +77,8 @@ type State struct {
 	// ContextFiles is labeled context-file text for the system message.
 	// Empty when the flag is off, the mode is none, or the owner has no files.
 	ContextFiles string
+	// Usage sums the token usage of every model call in this turn.
+	Usage llm.Usage
 }
 
 // Result is returned to Runtime.Chat.
@@ -84,6 +87,8 @@ type Result struct {
 	SessionID string
 	Trace     []ToolTrace
 	Spans     []observe.Span
+	// Usage sums the token usage of every model call in this turn.
+	Usage llm.Usage
 }
 
 // Runner is the 8-stage chat pipeline.
@@ -205,6 +210,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 		if err != nil {
 			return nil, err
 		}
+		st.Usage = addUsage(st.Usage, reply.Usage)
 		st.Reply = reply.Text
 		if len(reply.ToolCalls) == 0 {
 			_, _ = r.addTurnMessage(store.Message{SessionID: sessionID, Role: "assistant", Content: reply.Text})
@@ -245,7 +251,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	// Channel writes stamp customer_key from the session. Web writes stay shared.
 	extractKG(r.Store, st.SessionID, st.Reply)
 	r.Hooks.Fire(ctx, Event{Name: Stop, SessionID: st.SessionID, AgentID: st.AgentID})
-	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces}
+	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces, Usage: st.Usage}
 	return res, nil
 }
 
@@ -334,10 +340,25 @@ func (r *Runner) attachPrompt(st *State) {
 			kept = append(kept, p)
 		}
 	}
-	if len(kept) == 0 {
+	sysText := strings.Join(kept, "\n\n")
+	if st.Channel {
+		// A customer channel thread always ends its system message with the
+		// no-invention rule, for every agent and prompt mode (as ChannelSystem).
+		sysText = guardrail.Append(sysText)
+	}
+	if sysText == "" {
 		return
 	}
-	st.Messages = append([]llm.Message{{Role: "system", Content: strings.Join(kept, "\n\n")}}, rest...)
+	st.Messages = append([]llm.Message{{Role: "system", Content: sysText}}, rest...)
+}
+
+func addUsage(a, b llm.Usage) llm.Usage {
+	return llm.Usage{
+		PromptTokens:     a.PromptTokens + b.PromptTokens,
+		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
+		CacheReadTokens:  a.CacheReadTokens + b.CacheReadTokens,
+		Estimated:        a.Estimated || b.Estimated,
+	}
 }
 
 func (r *Runner) think(ctx context.Context, st *State) (reply llm.Reply, err error) {

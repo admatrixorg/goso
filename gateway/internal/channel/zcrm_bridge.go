@@ -303,7 +303,8 @@ func (b *ZCRMBridge) answer(c bridgeChannel, agent *store.Agent, ev ZCRMEvent) {
 	if sess == nil {
 		return
 	}
-	reply, err := answerTurnErr(ctx, b.Store, agent, sess, b.LLM, b.Meter, bridgeText(ev))
+	turnCtx := withContextUser(ctx, c.cfg.Name, peerKind(ev.Data.ThreadType), ev.Data.SenderUID, conv)
+	reply, err := answerTurnErr(turnCtx, b.Store, agent, sess, b.LLM, b.Meter, bridgeText(ev))
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return
 	}

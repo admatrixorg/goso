@@ -139,7 +139,8 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	agent := z.ensureAgent()
 	sess := z.ensureSession(agent.ID, userID)
 
-	reply := answerTurn(r.Context(), z.Store, agent, sess, z.LLM, z.Meter, text)
+	ctx := withContextUser(r.Context(), "zalo-oa", "direct", userID, userID)
+	reply := answerTurn(ctx, z.Store, agent, sess, z.LLM, z.Meter, text)
 
 	sender := z.Sender
 	if sender == nil {

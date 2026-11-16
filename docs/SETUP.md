@@ -145,6 +145,17 @@ Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute
 
 Optional router9 e2e (`scripts/e2e-router9.sh`, SPEC 055): if `GOSO_ROUTER9_BASE_URL` is unset or `GET /v1/models` is not HTTP 200, the script **skips with exit 0**. If the router is up, it starts an **ephemeral** gateway (`--port 0`; does not bind `:8082` `:8091` `:3000` `:18080` `:18088`), then `POST /api/chat` with the admin Bearer (`GOSO_ADMIN_TOKEN` or `GOSO_E2E_TOKEN`) and catalog default model `ocg/deepseek-v4-flash` (`GOSO_ROUTER9_MODEL` overrides). Asserts HTTP 200 and a non-empty `reply`. No keys are hardcoded. Not part of `make verify`.
 
+Channel turns (Telegram, Zalo OA, Zalo Bot, Zalo personal and the ZaloCRM bridge, Lark/Feishu, WhatsApp, Discord, Slack) run on the full agent runtime, the same pipeline as `POST /api/chat`: tools and connectors, context files, hooks, approvals, history summary and customer-scoped memory. The channel guardrail closes the system prompt. The customer never sees an approval id or a loop-limit marker: a turn that waits for an operator approval with nothing else to say answers "Mình đã ghi nhận yêu cầu, nhân viên sẽ kiểm tra và phản hồi bạn sớm." An archived channel session and a disabled agent still answer, as before. A model error is still not sent to the customer.
+
+With `GOSO_CONTEXT_FILES=1`, a channel turn reads the user context files of the person or group that wrote. The `user_key` uses GoClaw's `user_context_files.user_id` format, so files imported from GoClaw match:
+
+| Chat | `user_key` | Example |
+|---|---|---|
+| Direct message | sender id (Telegram user id, Zalo uid, Lark `open_id`) | `123456789`, `ou_abc123` |
+| Group | `group:<instance>:<chat id>`, where `<instance>` is the last part of the channel name `<tenant>/<catalog>/<instance>`, or the catalog name for an older single bot | `group:minh-an-bot:-1001234567` |
+
+Legacy Discord, Slack and Feishu webhooks carry no sender id and read no user file. `goso-context-import` stores GoClaw's `user_id` verbatim (including `group:` ids) unless `--customer-map` maps it.
+
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
 
 ## Khoá API theo tenant

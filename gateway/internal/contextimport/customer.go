@@ -17,7 +17,7 @@ type CustomerLink struct {
 }
 
 // ReadCustomerMap indexes user_id to `<channel>:<id>`.
-// A user id that is not in the map falls back to goclaw:<user_id> in customerKey.
+// A user id that is not in the map keeps the GoClaw user_id in customerKey.
 func ReadCustomerMap(r io.Reader) (map[string]string, error) {
 	if r == nil {
 		return nil, errConfig("customer map is missing")
@@ -48,11 +48,15 @@ func ReadCustomerMap(r io.Reader) (map[string]string, error) {
 	return out, nil
 }
 
+// customerKey is the goso user key of a GoClaw user_context_files row: the map
+// hit when a customer map is given, else the GoClaw user_id verbatim. Channel
+// turns build the same key at runtime (channel.ContextUserKey): the sender id
+// for a direct chat, "group:<channel instance>:<chat id>" for a group chat.
 func customerKey(links map[string]string, userID string) string {
 	if links != nil {
 		if key := strings.TrimSpace(links[userID]); key != "" {
 			return key
 		}
 	}
-	return "goclaw:" + userID
+	return userID
 }

@@ -71,7 +71,7 @@ func (f *Feishu) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = f.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: f.Store, LLM: f.LLM, Meter: f.Meter, Sender: sender},
-		"feishu", "Feishu", chatID, text)
+		"feishu", "Feishu", chatID, "", text)
 }
 
 func (f *Feishu) sendMessage(ctx context.Context, chatID, text string) error {

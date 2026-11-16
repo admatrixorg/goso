@@ -67,7 +67,8 @@ type Options struct {
 	// agent_id in DestTenant is used, then an agent whose id or agent_key
 	// equals that agent_id. The map does not create agents.
 	AgentMap map[string]string
-	// Customers indexes user_id to a customer key. Missing ids use goclaw:<user_id>.
+	// Customers indexes user_id to a customer key. Missing ids keep the GoClaw
+	// user_id verbatim (the key channel turns use, see channel.ContextUserKey).
 	Customers map[string]string
 	// DenyFile is a local denylist. It is required. A missing, empty, or
 	// malformed file stops the run. Listed tenants are not named in the report.
@@ -503,7 +504,7 @@ func classifyUser(st store.StoreIface, dest, source string, agentMap, refs, cust
 	userID := strings.TrimSpace(row.UserID)
 	created, updated, ok := rowClocks(row.CreatedAt, row.UpdatedAt)
 	key := customerKey(customers, userID)
-	if !ok || !nameOK(it.name) || it.body == "" || !store.TenantOK(userID) || !store.UserKeyOK(key) {
+	if !ok || !nameOK(it.name) || it.body == "" || !store.UserKeyOK(userID) || !store.UserKeyOK(key) {
 		it.reason = reasonInvalid
 		return it
 	}

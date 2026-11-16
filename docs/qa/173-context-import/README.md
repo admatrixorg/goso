@@ -8,7 +8,7 @@ Offline importer for GoClaw `agent_context_files` and `user_context_files` into 
 |---|---|
 | `tenant_id` | Kept for `--source-tenant` only. Written as `--tenant`. |
 | `agent_id` + `file_name` | Agent file. `agent_id` selects an existing agent (`--agent-map`, or an agent whose id or `agent_key` equals it). Stored owner is that agent's id. Natural key `agent_id` + `file_name`. |
-| `agent_id` + `user_id` + `file_name` | User file. The agent must be in `--tenant`. The stored owner is `<channel>:<sender_id>` from `--customer-map`, or `goclaw:<user_id>` when the id is absent. Two agents that disagree on the same customer and name are `scope-conflict`. Natural key `agent_id` + `user_id` + `file_name`. |
+| `agent_id` + `user_id` + `file_name` | User file. The agent must be in `--tenant`. The stored owner is `<channel>:<sender_id>` from `--customer-map`, or GoClaw's `user_id` verbatim when the id is absent (a sender id, or `group:<instance>:<chat id>`), the key a channel turn looks up. Two agents that disagree on the same customer and name are `scope-conflict`. Natural key `agent_id` + `user_id` + `file_name`. |
 | `content` | `body` |
 | `created_at`, `updated_at` | Stored on the row. A rerun with the same body and clocks does not write. |
 

@@ -152,6 +152,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	obs.SetLogs(logs)
 	rt := agent.New(st, connReg, gate, ev, provider)
 	rt.Observer = obs
+	channel.SetTurnRunner(ChannelTurnRunner(rt))
 	mux := httpapi.NewRouter(httpapi.Options{
 		Store: st, Version: version, Provider: provider,
 		Registry: connReg, Gate: gate, Events: ev, Logs: logs, Runtime: rt, Meter: meter,
@@ -246,5 +247,32 @@ func envTruthy(v string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// ChannelTurnRunner runs channel turns through the agent runtime, so an agent
+// answers on Telegram, Zalo or Lark with the same tools, context files, hooks
+// and approvals as in the web chat.
+func ChannelTurnRunner(rt *agent.Runtime) channel.TurnRunner {
+	return func(ctx context.Context, sessionID, text string) (channel.TurnResult, error) {
+		out, err := rt.ChatWithTurn(ctx, sessionID, text, "", false, agent.ChatTurn{Channel: true}, nil)
+		if err != nil {
+			return channel.TurnResult{}, err
+		}
+		res := channel.TurnResult{}
+		if out == nil {
+			return res, nil
+		}
+		res.Reply = out.Reply
+		res.AgentID = out.AgentID
+		res.Provider = out.Provider
+		res.Usage = out.Usage
+		for _, tr := range out.Trace {
+			if tr.Status == "pending_approval" {
+				res.Pending = true
+				break
+			}
+		}
+		return res, nil
 	}
 }

@@ -11,6 +11,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestIsChannelLabel_TenantInstances(t *testing.T) {
+	for in, want := range map[string]bool{
+		"demo/telegram/minh-an-bot:42": true,
+		"demo/telegram/minh-an-bot:":   true, // channel thread with no id: recalls nothing
+		"demo/telegram/minh-an-bot":    false,
+		"demo/unknown/minh-an-bot:42":  false,
+		"telegram:1":                   true,
+		"web chat":                     false,
+	} {
+		if got := IsChannelLabel(in); got != want {
+			t.Errorf("IsChannelLabel(%q)=%v want %v", in, got, want)
+		}
+	}
+}
+
 func TestCustomerKeyForLabel(t *testing.T) {
 	cases := map[string]string{
 		"zalo-personal:123":  "zalo-personal:123",
@@ -26,6 +41,21 @@ func TestCustomerKeyForLabel(t *testing.T) {
 		"web chat":           "",
 		"":                   "",
 		" zalo-personal:123": "",
+		// Tenant channel instances: "<tenant>/<catalog>/<name>:<chat>".
+		"demo/telegram/minh-an-bot:42":       "demo/telegram/minh-an-bot:42",
+		"demo/telegram/minh-an-bot:-100":     "demo/telegram/minh-an-bot:-100",
+		"demo/feishu/minh-an-lark:oc_1":      "demo/feishu/minh-an-lark:oc_1",
+		"demo/zalo-oa/minh-an-oa:u9":         "demo/zalo-oa/minh-an-oa:u9",
+		"demo/zalo-personal/minh-an-zalo:c1": "demo/zalo-personal/minh-an-zalo:c1",
+		"demo/telegram/minh-an-bot:":         "",
+		"demo/unknown/minh-an-bot:42":        "",
+		"demo/Telegram/minh-an-bot:42":       "",
+		"demo/telegram/minh an:42":           "",
+		"demo telegram/x/y:1":                "",
+		"demo/telegram/a/b:1":                "",
+		"/telegram/minh-an-bot:42":           "",
+		"demo/telegram/:42":                  "",
+		"notes about telegram/feishu: draft": "",
 	}
 	for in, want := range cases {
 		if got := CustomerKeyForLabel(in); got != want {
@@ -120,10 +150,11 @@ func seedLegacy(t *testing.T, exec func(string, ...any) error, ph func(int) stri
 		}
 	}
 	ins(`INSERT INTO agents(id, agent_key, created_at) VALUES(`+ph(1)+`,`+ph(2)+`,`+ph(3)+`)`, "ag1", "zalo-legacy", now)
-	for _, s := range [][2]string{{"sA", "zalo-personal:A"}, {"sB", "zalo-oa:B"}, {"sW", "web chat"}, {"sE", "zalo-personal:"}, {"sU", "ZALO-PERSONAL:X"}} {
+	for _, s := range [][2]string{{"sA", "zalo-personal:A"}, {"sB", "zalo-oa:B"}, {"sW", "web chat"}, {"sE", "zalo-personal:"}, {"sU", "ZALO-PERSONAL:X"},
+		{"sT", "demo/telegram/minh-an-bot:42"}, {"sN", "demo/unknown/minh-an-bot:42"}, {"sI", "demo/zalo-oa/minh-an-oa:"}} {
 		ins(`INSERT INTO sessions(id, agent_id, label, created_at) VALUES(`+ph(1)+`,`+ph(2)+`,`+ph(3)+`,`+ph(4)+`)`, s[0], "ag1", s[1], now)
 	}
-	for _, m := range [][2]string{{"mA", "sA"}, {"mB", "sB"}, {"mW", "sW"}, {"mE", "sE"}, {"mU", "sU"}} {
+	for _, m := range [][2]string{{"mA", "sA"}, {"mB", "sB"}, {"mW", "sW"}, {"mE", "sE"}, {"mU", "sU"}, {"mT", "sT"}, {"mN", "sN"}, {"mI", "sI"}} {
 		ins(`INSERT INTO memories(id, session_id, kind, body, created_at) VALUES(`+ph(1)+`,`+ph(2)+`,`+ph(3)+`,`+ph(4)+`,`+ph(5)+`)`,
 			m[0], m[1], KindEpisodic, "legacy sofa walnut "+m[0], now)
 	}
@@ -133,7 +164,8 @@ func seedLegacy(t *testing.T, exec func(string, ...any) error, ph func(int) stri
 // notes never reach channel recall while web recall still sees them.
 func assertBackfill(t *testing.T, st StoreIface) {
 	t.Helper()
-	want := map[string]string{"mA": "zalo-personal:A", "mB": "zalo-oa:B", "mW": "", "mE": "", "mU": ""}
+	want := map[string]string{"mA": "zalo-personal:A", "mB": "zalo-oa:B", "mW": "", "mE": "", "mU": "",
+		"mT": "demo/telegram/minh-an-bot:42", "mN": "", "mI": ""}
 	for id, key := range want {
 		m, err := st.GetMemory(id)
 		if err != nil || m.CustomerKey != key {
@@ -151,7 +183,7 @@ func assertBackfill(t *testing.T, st StoreIface) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 5 {
+	if len(hits) != 8 {
 		t.Fatalf("web recall must keep all legacy notes, got %d", len(hits))
 	}
 }
