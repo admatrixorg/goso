@@ -93,3 +93,27 @@ func TestHarmlessHeadersStaySafe(t *testing.T) {
 		}
 	}
 }
+
+// A long path or a host:port is an ordinary argument, not a credential.
+// These parked eight master connectors on goso-full (audit N8, 16/11).
+func TestPathsAndAddressesAreNotKeys(t *testing.T) {
+	for _, c := range []string{
+		"host.docker.internal:18891",
+		"/app/mcp/dembrandt-mcp-shim.js",
+		"./node_modules/.bin/some-mcp-server",
+		"mcp-server-filesystem-readonly",
+	} {
+		if argSecret(c) {
+			t.Fatalf("%q must stay usable", c)
+		}
+	}
+	for _, c := range []string{
+		"sk-proj-4f9aB2cD7eF1gH3iJ5kL",
+		"ghp_1234567890abcdefghijABCDEFGHIJ",
+		"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+	} {
+		if !argSecret(c) {
+			t.Fatalf("%q must be held as a secret", c)
+		}
+	}
+}

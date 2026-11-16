@@ -776,3 +776,34 @@ func TestTools_SensitivePendingApproval(t *testing.T) {
 		t.Fatalf("events %v", ev)
 	}
 }
+
+// A disabled connector must not hand its tools to the model, whether the
+// agent links it or falls back to every registered connector (audit N5).
+func TestTools_DisabledConnectorNotListed(t *testing.T) {
+	st := store.New()
+	a, _ := st.CreateAgent(store.Agent{AgentKey: "k-off", DisplayName: "A"})
+	b, _ := st.CreateAgent(store.Agent{AgentKey: "k-free", DisplayName: "B"})
+	reg := connector.NewRegistry()
+	_ = reg.Register(connector.NewFake("zalocrm", []connector.Tool{crmTool("contact_search", false)}))
+	_ = reg.Register(connector.NewFake("pos", []connector.Tool{crmTool("order_lookup", false)}))
+	if err := reg.SetEnabled("zalocrm", false); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = st.CreateConnector(store.ConnectorRecord{Name: "zalocrm", Transport: "http", Endpoint: "http://127.0.0.1:9", Enabled: false})
+	_, _ = st.CreateConnector(store.ConnectorRecord{Name: "pos", Transport: "http", Endpoint: "http://127.0.0.1:9", Enabled: true})
+	_ = st.LinkAgentConnector(a.ID, "zalocrm")
+	_ = st.LinkAgentConnector(a.ID, "pos")
+
+	rt := New(st, reg, approval.New(0), eventstore.New(64), llm.Echo{})
+	for _, id := range []string{a.ID, b.ID} {
+		tools, err := rt.ListTools(context.Background(), id)
+		if err != nil {
+			t.Fatalf("ListTools: %v", err)
+		}
+		for _, bt := range tools {
+			if bt.Connector == "zalocrm" {
+				t.Fatalf("agent %s sees disabled connector tool %s", id, bt.Tool.Name)
+			}
+		}
+	}
+}

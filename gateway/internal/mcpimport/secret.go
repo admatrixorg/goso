@@ -41,10 +41,26 @@ var jwtRe = regexp.MustCompile(`[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9
 // telegramRe matches a numeric bot id, a colon, and a token.
 var telegramRe = regexp.MustCompile(`\d{5,}:[A-Za-z0-9_-]{20,}`)
 
+// hostPortRe is a lower-case host name with an optional port, such as
+// host.docker.internal:18891. It is an address, not a credential.
+var hostPortRe = regexp.MustCompile(`^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d{1,5})?$`)
+
 // looksLikeKey reports a single token that is long enough to be a credential.
 // Dots and colons are included so a JWT or a Telegram token is not stored.
+// A file path, a host:port, and a token with no digit are not keys: random
+// credentials of this length carry digits, and holding every long path or
+// address made the importer park ordinary MCP servers (audit N8, 16/11).
 func looksLikeKey(s string) bool {
 	if len(s) < 24 {
+		return false
+	}
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") {
+		return false
+	}
+	if hostPortRe.MatchString(s) {
+		return false
+	}
+	if !strings.ContainsAny(s, "0123456789") {
 		return false
 	}
 	for _, r := range s {
