@@ -334,15 +334,21 @@ const VaultSearchLimit = 50
 // OwnerExplicit is set only when this process recorded a resolved tenant on a
 // write. Legacy rows stay false; inventory reports them and does not assign one.
 type VaultDoc struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	Title         string    `json:"title"`
-	Path          string    `json:"path"`
-	SHA256        string    `json:"sha256"`
-	Mtime         time.Time `json:"mtime"`
-	Body          string    `json:"body,omitempty"`
-	BodyStatus    string    `json:"body_status,omitempty"`
-	OwnerExplicit bool      `json:"-"`
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	Title      string    `json:"title"`
+	Path       string    `json:"path"`
+	SHA256     string    `json:"sha256"`
+	Mtime      time.Time `json:"mtime"`
+	Body       string    `json:"body,omitempty"`
+	BodyStatus string    `json:"body_status,omitempty"`
+	// Scope is tenant, agent, team or personal (see VaultViewer). On update an
+	// empty Scope keeps the stored scope fields.
+	Scope         string `json:"scope,omitempty"`
+	AgentID       string `json:"agent_id,omitempty"`
+	TeamID        string `json:"team_id,omitempty"`
+	CustomerKey   string `json:"customer_key,omitempty"`
+	OwnerExplicit bool   `json:"-"`
 }
 
 // VaultLink is one [[wikilink]] edge. ToID is empty until the target resolves.
@@ -361,7 +367,9 @@ type VaultSearchHit struct {
 	Path       string `json:"path"`
 	Snippet    string `json:"snippet"`
 	BodyStatus string `json:"body_status,omitempty"`
-	SHA256     string `json:"-"`
+	// Match is keyword, vector or both when hybrid search ran; empty otherwise.
+	Match  string `json:"match,omitempty"`
+	SHA256 string `json:"-"`
 }
 
 // ConnectorRecord is a persisted connector registration (config only, no secrets).
@@ -496,6 +504,8 @@ type StoreIface interface {
 	ReplaceVaultLinks(fromID string, raws []string) error
 	ListVaultDocLinks(id string) ([]VaultLink, []VaultLink, error)
 	SearchVault(tenant, q string) ([]VaultSearchHit, error)
+	// SearchVaultFor applies the viewer predicate before rank and LIMIT.
+	SearchVaultFor(tenant, q string, v VaultViewer) ([]VaultSearchHit, error)
 	ReResolveVaultLinks() error
 	// Ingest jobs are the source of truth for immutable raw uploads (SPEC 170).
 	// They are not vault_docs rows.

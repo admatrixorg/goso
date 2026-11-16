@@ -19,10 +19,11 @@ func vaultSvc(st store.StoreIface) *vault.Service {
 
 func handleListVaultDocs(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list := vaultDocsInTenant(vaultSvc(st).List(), requestTenant(r))
-		if list == nil {
-			list = []*store.VaultDoc{}
+		v, ok := vaultViewerFromRequest(w, r, st)
+		if !ok {
+			return
 		}
+		list := vaultDocsVisible(vaultDocsInTenant(vaultSvc(st).List(), requestTenant(r)), v)
 		writeJSON(w, http.StatusOK, map[string]any{"docs": list})
 	}
 }
@@ -34,7 +35,11 @@ func handleGetVaultDoc(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		d, err := vaultSvc(st).Get(requestTenant(r), id)
+		v, ok := vaultViewerFromRequest(w, r, st)
+		if !ok {
+			return
+		}
+		d, err := vaultSvc(st).GetAs(requestTenant(r), id, v)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -57,7 +62,9 @@ func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 			Body        string `json:"body"`
 			TenantID    string `json:"tenant_id"`
 			Path        string `json:"path"`
+			Scope       string `json:"scope"`
 			AgentID     string `json:"agent_id"`
+			TeamID      string `json:"team_id"`
 			ProjectID   string `json:"project_id"`
 			CustomerKey string `json:"customer_key"`
 		}
@@ -72,10 +79,17 @@ func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 		}
 		svc := vaultSvc(st)
 		tid := requestTenant(r)
-		// Target tenant, path, agent, project, and customer fields are not
-		// grants. A mismatched tenant is rejected. The others are ignored.
+		// Target tenant and path are not grants: a mismatched tenant is
+		// rejected and path is ignored. scope, agent_id, team_id and
+		// customer_key narrow who reads the doc inside this tenant; an agent
+		// or team of another tenant is a 400. project_id is ignored.
 		if strings.TrimSpace(body.TenantID) != "" && !store.SameTenant(body.TenantID, tid) {
 			writeErr(w, http.StatusForbidden, "target tenant denied")
+			return
+		}
+		acc, err := vault.ResolveAccess(st, tid, vault.Access{Scope: body.Scope, AgentID: body.AgentID, TeamID: body.TeamID, CustomerKey: body.CustomerKey})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if strings.TrimSpace(body.Path) != "" {
@@ -93,13 +107,13 @@ func handlePutVaultDoc(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusForbidden, "target tenant denied")
 			return
 		}
-		d, err := svc.PutTenant(body.Title, body.Body, tid)
+		d, err := svc.PutTenantAs(body.Title, body.Body, tid, acc)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		status := http.StatusCreated
-		if existed != nil {
+		if existed != nil && existed.ID == d.ID {
 			status = http.StatusOK
 		}
 		writeJSON(w, status, d)
@@ -113,7 +127,11 @@ func handleVaultDocLinks(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		d, gerr := vaultSvc(st).Get(requestTenant(r), id)
+		v, ok := vaultViewerFromRequest(w, r, st)
+		if !ok {
+			return
+		}
+		d, gerr := vaultSvc(st).GetAs(requestTenant(r), id, v)
 		if gerr != nil {
 			if errors.Is(gerr, store.ErrNotFound) {
 				writeErr(w, http.StatusNotFound, "not found")
@@ -151,7 +169,11 @@ func handleSearchVault(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "q is required")
 			return
 		}
-		hits, err := vaultSvc(st).Search(requestTenant(r), q)
+		v, ok := vaultViewerFromRequest(w, r, st)
+		if !ok {
+			return
+		}
+		hits, err := vaultSvc(st).SearchAs(requestTenant(r), q, v)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return

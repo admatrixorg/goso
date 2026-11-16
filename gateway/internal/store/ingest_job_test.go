@@ -15,8 +15,8 @@ import (
 // TestIngestJobTableAdditive is criterion 7: a new table on SQLite and
 // Postgres, with no change to existing vault_docs columns.
 func TestIngestJobTableAdditive(t *testing.T) {
-	wantDocs := []string{"id", "title", "path", "sha256", "mtime", "body", "tenant_id", "owner_explicit"}
-	wantJobs := []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at"}
+	wantDocs := []string{"id", "title", "path", "sha256", "mtime", "body", "tenant_id", "owner_explicit", "scope", "agent_id", "team_id", "customer_key"}
+	wantJobs := []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at", "scope", "agent_id", "team_id", "customer_key"}
 
 	t.Run("memory", func(t *testing.T) {
 		s := New()
@@ -180,7 +180,7 @@ func TestIngestJobConvertColumnsAddedToOldTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	assertColumns(t, s, false, "vault_ingest_jobs", []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at"})
+	assertColumns(t, s, false, "vault_ingest_jobs", []string{"id", "tenant_id", "sha256_original", "original_filename", "mime_detected", "bytes", "raw_path", "status", "error_class", "created_at", "updated_at", "existing_job_id", "source_paths", "ocr_engine", "ocr_lang", "page_count", "converted_at", "scope", "agent_id", "team_id", "customer_key"})
 	job, err := s.PutIngestJob(IngestJob{
 		TenantID: "minh-an", SHA256: "abc", OriginalFilename: "a.txt", MIME: "text/plain",
 		Bytes: 1, RawPath: "raw/abc.txt", Status: IngestUploaded,

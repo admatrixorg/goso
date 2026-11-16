@@ -657,7 +657,7 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		case pipeline.IsMemoryTool(call.Name):
 			body, err = pipeline.DispatchMemoryTool(a.rt.Store, tid, caller, call)
 		case pipeline.IsVaultTool(call.Name):
-			body, err = pipeline.DispatchVaultTool(a.rt.Store, "", tid, caller, call)
+			body, err = pipeline.DispatchVaultToolAs(a.rt.Store, "", tid, agentID, caller, call)
 		default:
 			body, err = pipeline.DispatchSessionTool(a.rt.Store, tid, caller, call)
 		}

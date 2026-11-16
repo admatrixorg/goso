@@ -8,7 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # pgvector image: vault vector tests need the extension.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: goso
           POSTGRES_PASSWORD: goso

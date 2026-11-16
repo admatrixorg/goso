@@ -109,8 +109,8 @@ func TestDispatchVaultTool_ReadNeedsIDOrPath(t *testing.T) {
 	}
 }
 
-func TestDispatchVaultTool_ChannelCallerRefused(t *testing.T) {
-	st, root, mine, _ := vaultFixture(t)
+func TestDispatchVaultTool_ChannelCallerReadsTenantDocs(t *testing.T) {
+	st, root, mine, theirs := vaultFixture(t)
 	ag, err := st.CreateAgent(store.Agent{AgentKey: "bot", TenantID: "acme"})
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestDispatchVaultTool_ChannelCallerRefused(t *testing.T) {
 		{Name: ToolVaultRead, Arguments: map[string]any{"id": mine.ID}},
 	} {
 		body, err := DispatchVaultTool(st, root, "acme", sess.ID, call)
-		if !errors.Is(err, errVaultChannel) || strings.Contains(body, "phễu") || strings.Contains(body, mine.ID) {
+		if err != nil || !strings.Contains(body, mine.ID) || strings.Contains(body, theirs.ID) {
 			t.Fatalf("%s: err %v body %s", call.Name, err, body)
 		}
 	}

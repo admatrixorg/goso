@@ -5,6 +5,7 @@ package pipeline
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -20,21 +21,17 @@ const (
 	VaultReadMaxBytes = 64 << 10
 )
 
-// errVaultChannel is returned to channel callers. The vault is tenant-wide
-// knowledge with no customer stamp, so a customer thread never reads it.
-var errVaultChannel = errors.New("vault is not available in channel conversations")
-
 // VaultToolSpecs are always advertised. LLM ToolCalls only (no keyword match).
 func VaultToolSpecs() []llm.ToolSpec {
 	return []llm.ToolSpec{
 		{
 			Name:        ToolVaultSearch,
-			Description: "Search the knowledge vault of the calling agent's tenant (title and full text). Returns up to 50 hits with id, title, path and snippet. Read-only. Not available in channel conversations. Args: query.",
+			Description: "Search the knowledge vault of the calling agent's tenant (title and full text). Returns up to 50 hits with id, title, path and snippet. Only documents this agent may see: tenant-wide ones, its own, and its teams' ones; in a customer conversation only documents for no customer or this customer. Read-only. Args: query.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"q":{"type":"string"}},"required":["query"]}`),
 		},
 		{
 			Name:        ToolVaultRead,
-			Description: "Read one vault document of the calling agent's tenant by id (from vault_search) or by path. Body capped at 64KiB; truncated is true when cut. Read-only. Not available in channel conversations. Args: id or path.",
+			Description: "Read one vault document of the calling agent's tenant by id (from vault_search) or by path. Body capped at 64KiB; truncated is true when cut. Same visibility as vault_search. Read-only. Args: id or path.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"path":{"type":"string"}}}`),
 		},
 	}
@@ -59,18 +56,25 @@ type vaultReadResult struct {
 	Truncated  bool   `json:"truncated"`
 }
 
-// DispatchVaultTool runs vault_search / vault_read jailed to tenant. Channel
-// callers are refused (see errVaultChannel). root is the vault directory;
-// empty means vault.Dir().
+// DispatchVaultTool runs vault_search / vault_read jailed to tenant, as the
+// agent of the calling session. See DispatchVaultToolAs.
 func DispatchVaultTool(st store.StoreIface, root, tenant, callerSessionID string, call llm.ToolCall) (string, error) {
+	return DispatchVaultToolAs(st, root, tenant, "", callerSessionID, call)
+}
+
+// DispatchVaultToolAs runs vault_search / vault_read jailed to tenant and to
+// what agentID may see: tenant docs, its own agent docs, and docs of its
+// teams. An empty agentID is taken from the calling session. In a channel
+// thread personal docs are hidden and only docs with no customer_key or the
+// thread's customer key are served. root is the vault directory; empty means
+// vault.Dir().
+func DispatchVaultToolAs(st store.StoreIface, root, tenant, agentID, callerSessionID string, call llm.ToolCall) (string, error) {
 	if st == nil {
 		return `{"error":"store required"}`, errors.New("store required")
 	}
 	name := advertisedBase(call.Name)
 	tenant = store.NormalizeTenant(tenant)
-	if scopeForCaller(st, callerSessionID).channel {
-		return `{"error":` + jsonQuote(errVaultChannel.Error()) + `}`, errVaultChannel
-	}
+	viewer := vaultViewerFor(st, tenant, agentID, callerSessionID)
 	svc := vault.New(st, root)
 	switch name {
 	case ToolVaultSearch:
@@ -78,13 +82,13 @@ func DispatchVaultTool(st store.StoreIface, root, tenant, callerSessionID string
 		if q == "" {
 			return `{"error":"query is required"}`, errors.New("query is required")
 		}
-		hits, err := svc.Search(tenant, q)
+		hits, err := svc.SearchAs(tenant, q, viewer)
 		if err != nil {
 			return `{"error":` + jsonQuote(err.Error()) + `}`, err
 		}
 		return encodeVault(map[string]any{"hits": hits})
 	case ToolVaultRead:
-		doc, err := readVaultDoc(st, svc, tenant, call.Arguments)
+		doc, err := readVaultDoc(st, svc, tenant, viewer, call.Arguments)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return `{"error":"not found"}`, err
@@ -105,9 +109,25 @@ func DispatchVaultTool(st store.StoreIface, root, tenant, callerSessionID string
 	}
 }
 
-// readVaultDoc resolves id first, then path. Both go through Service.Get, so
-// another tenant's row and an unclear-owner row are both not found.
-func readVaultDoc(st store.StoreIface, svc *vault.Service, tenant string, args map[string]any) (*store.VaultDoc, error) {
+// vaultViewerFor is the agent view for a tool call. A channel session fixes
+// the agent and the customer; otherwise agentID, or the session's agent.
+func vaultViewerFor(st store.StoreIface, tenant, agentID, callerSessionID string) store.VaultViewer {
+	sc := scopeForCaller(st, callerSessionID)
+	if sc.channel {
+		return vault.ViewerForAgent(st, tenant, sc.agentID, true, sc.customer)
+	}
+	if strings.TrimSpace(agentID) == "" && strings.TrimSpace(callerSessionID) != "" {
+		if sess, err := st.GetSession(strings.TrimSpace(callerSessionID)); err == nil && sess != nil {
+			agentID = sess.AgentID
+		}
+	}
+	return vault.ViewerForAgent(st, tenant, agentID, false, "")
+}
+
+// readVaultDoc resolves id first, then path. Both go through Service.GetAs, so
+// another tenant's row, an unclear-owner row and a doc the viewer may not see
+// are all not found.
+func readVaultDoc(st store.StoreIface, svc *vault.Service, tenant string, v store.VaultViewer, args map[string]any) (*store.VaultDoc, error) {
 	id := argString(args, "id")
 	if id == "" {
 		path := argString(args, "path")
@@ -123,7 +143,7 @@ func readVaultDoc(st store.StoreIface, svc *vault.Service, tenant string, args m
 		}
 		id = row.ID
 	}
-	doc, err := svc.Get(tenant, id)
+	doc, err := svc.GetAs(tenant, id, v)
 	if err != nil {
 		return nil, err
 	}

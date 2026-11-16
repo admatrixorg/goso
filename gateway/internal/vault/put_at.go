@@ -22,7 +22,13 @@ import (
 // is deleted, and the temp file is removed. A link refresh error after the
 // file and row are both published is logged and is not a write failure.
 func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc, error) {
-	return s.putTenantAt(tenant, path, "", body)
+	return s.putTenantAt(tenant, path, "", body, Access{})
+}
+
+// PutTenantAtAs is PutTenantAt with a scope from ResolveAccess. The zero
+// Access keeps the scope of the doc already at that path.
+func (s *Service) PutTenantAtAs(tenant, path string, body []byte, acc Access) (*store.VaultDoc, error) {
+	return s.putTenantAt(tenant, path, "", body, acc)
 }
 
 // PutTenantAtID is PutTenantAt with a caller-chosen registry id.
@@ -30,10 +36,10 @@ func (s *Service) PutTenantAt(tenant, path string, body []byte) (*store.VaultDoc
 // is new; an existing path keeps its row id. SPEC 180 passes a gc-vdoc id so
 // a later run can see the row and leave it unchanged.
 func (s *Service) PutTenantAtID(tenant, path, id string, body []byte) (*store.VaultDoc, error) {
-	return s.putTenantAt(tenant, path, strings.TrimSpace(id), body)
+	return s.putTenantAt(tenant, path, strings.TrimSpace(id), body, Access{})
 }
 
-func (s *Service) putTenantAt(tenant, path, id string, body []byte) (*store.VaultDoc, error) {
+func (s *Service) putTenantAt(tenant, path, id string, body []byte, acc Access) (*store.VaultDoc, error) {
 	if body == nil {
 		body = []byte{}
 	}
@@ -85,6 +91,10 @@ func (s *Service) putTenantAt(tenant, path, id string, body []byte) (*store.Vaul
 		Body:          text,
 		TenantID:      tenant,
 		OwnerExplicit: true,
+		Scope:         acc.Scope,
+		AgentID:       acc.AgentID,
+		TeamID:        acc.TeamID,
+		CustomerKey:   acc.CustomerKey,
 	}
 	if existing != nil {
 		if !existing.OwnerExplicit {
@@ -115,9 +125,11 @@ func (s *Service) putTenantAt(tenant, path, id string, body []byte) (*store.Vaul
 		// The file and the row are already the published pair. A stale
 		// wikilink index is not a failed write.
 		log.Printf("vault: links not refreshed id=%s", saved.ID)
+		notifyIndexer(saved)
 		return saved, nil
 	}
 	_ = s.Store.ReResolveVaultLinks()
+	notifyIndexer(saved)
 	return saved, nil
 }
 

@@ -180,6 +180,10 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("postgres migrate hooks: %w", err)
 	}
+	if err := s.migrateVaultAccess(); err != nil {
+		return fmt.Errorf("postgres migrate vault access: %w", err)
+	}
+	s.migrateVaultVectors()
 	return nil
 }
 
@@ -188,15 +192,23 @@ func (s *PostgresStore) tryVector() {
 		log.Printf("goso store: CREATE EXTENSION vector skipped: %v", err)
 		return
 	}
-	if _, err := s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS embedding vector`); err != nil {
+	// The type is schema-qualified: the extension may live in a schema that
+	// is not on this connection's search_path (e.g. public vs a test schema).
+	var ns string
+	if err := s.db.db.QueryRow(`SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'vector'`).Scan(&ns); err != nil {
+		log.Printf("goso store: pgvector schema lookup skipped: %v", err)
+		return
+	}
+	s.vecSchema = `"` + strings.ReplaceAll(ns, `"`, `""`) + `"`
+	if _, err := s.db.db.Exec(`ALTER TABLE kg_entities ADD COLUMN IF NOT EXISTS embedding ` + s.vecType()); err != nil {
 		log.Printf("goso store: kg_entities.embedding skipped: %v", err)
 		return
 	}
 	s.vector = true
 }
 
-// HasVector reports whether CREATE EXTENSION vector succeeded (embeddings
-// themselves are filled by a later SPEC; search stays lexical).
+// HasVector reports whether CREATE EXTENSION vector succeeded. Vault chunks
+// use it when GOSO_EMBED_* is set; memory and KG search stay lexical.
 func (s *PostgresStore) HasVector() bool { return s.vector }
 
 // postgresSchema covers current SQLite StoreIface tables, including tenant_id

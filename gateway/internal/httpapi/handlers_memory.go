@@ -39,8 +39,9 @@ func handleMemoryIndex(st store.StoreIface) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"search":               search,
 			"fts":                  fts,
-			"embedding":            "not_configured",
-			"embedding_configured": false,
+			"embedding":            embeddingState(r),
+			"embedding_configured": embeddingConfigured(r),
+			"embedding_used_for":   embeddingUsedFor,
 		})
 	}
 }

@@ -508,6 +508,7 @@ func (s *Service) SyncTenant(tenant string) (*SyncResult, error) {
 		if err := s.refreshLinks(saved.ID, body); err != nil {
 			return nil, err
 		}
+		notifyIndexer(saved)
 		res.Upserted++
 	}
 	if err := s.Store.ReResolveVaultLinks(); err != nil {

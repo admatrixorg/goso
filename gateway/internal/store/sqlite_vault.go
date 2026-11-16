@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const vaultDocSelect = `id, title, path, sha256, mtime, body, tenant_id, owner_explicit`
+const vaultDocSelect = `id, title, path, sha256, mtime, body, tenant_id, owner_explicit, scope, agent_id, team_id, customer_key`
 
 func (s *SQLiteStore) resolveVaultInner(tenant, inner string) string {
 	inner = strings.TrimSpace(inner)
@@ -44,11 +44,18 @@ func (s *SQLiteStore) vaultTenant(id string) (string, error) {
 func scanVaultDoc(sc scanner) (*VaultDoc, error) {
 	var d VaultDoc
 	var ts string
-	var body, tenant sql.NullString
+	var body, tenant, scope, agent, team, customer sql.NullString
 	var explicit int
-	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body, &tenant, &explicit); err != nil {
+	if err := sc.Scan(&d.ID, &d.Title, &d.Path, &d.SHA256, &ts, &body, &tenant, &explicit, &scope, &agent, &team, &customer); err != nil {
 		return nil, err
 	}
+	d.Scope = scope.String
+	if d.Scope == "" {
+		d.Scope = VaultScopeTenant
+	}
+	d.AgentID = agent.String
+	d.TeamID = team.String
+	d.CustomerKey = customer.String
 	d.Mtime = parseTime(ts)
 	d.TenantID = NormalizeTenant(tenant.String)
 	d.OwnerExplicit = explicit != 0
@@ -74,6 +81,9 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 	} else {
 		d.Mtime = d.Mtime.UTC()
 	}
+	if err := normalizeVaultDocAccess(&d); err != nil {
+		return nil, err
+	}
 
 	var existing *VaultDoc
 	if d.ID != "" {
@@ -93,13 +103,14 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		}
 		d.ID = existing.ID
 		d.TenantID = NormalizeTenant(existing.TenantID)
+		keepVaultAccess(&d, existing)
 		explicit := 0
 		if existing.OwnerExplicit || d.OwnerExplicit {
 			explicit = 1
 			d.OwnerExplicit = true
 		}
-		res, err := s.db.Exec(`UPDATE vault_docs SET title=?, path=?, sha256=?, mtime=?, body=?, owner_explicit=? WHERE id=? AND tenant_id=?`,
-			d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, explicit, d.ID, d.TenantID)
+		res, err := s.db.Exec(`UPDATE vault_docs SET title=?, path=?, sha256=?, mtime=?, body=?, owner_explicit=?, scope=?, agent_id=?, team_id=?, customer_key=? WHERE id=? AND tenant_id=?`,
+			d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, explicit, d.Scope, d.AgentID, d.TeamID, d.CustomerKey, d.ID, d.TenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -117,12 +128,15 @@ func (s *SQLiteStore) PutVaultDoc(d VaultDoc) (*VaultDoc, error) {
 		d.ID = strings.TrimSpace(d.ID)
 	}
 	d.TenantID = NormalizeTenant(d.TenantID)
+	if d.Scope == "" {
+		d.Scope = VaultScopeTenant
+	}
 	explicit := 0
 	if d.OwnerExplicit {
 		explicit = 1
 	}
-	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body, tenant_id, owner_explicit) VALUES(?,?,?,?,?,?,?,?)`,
-		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.TenantID, explicit)
+	_, err = s.db.Exec(`INSERT INTO vault_docs(id, title, path, sha256, mtime, body, tenant_id, owner_explicit, scope, agent_id, team_id, customer_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		d.ID, d.Title, d.Path, d.SHA256, formatTime(d.Mtime), d.Body, d.TenantID, explicit, d.Scope, d.AgentID, d.TeamID, d.CustomerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +225,7 @@ func (s *SQLiteStore) DeleteVaultDoc(id string) error {
 	if s.vaultFTS {
 		_, _ = s.db.Exec(`DELETE FROM vault_fts WHERE id=?`, id)
 	}
+	s.deleteVaultChunks(id)
 	return nil
 }
 
@@ -296,29 +311,36 @@ func (s *SQLiteStore) ListVaultDocLinks(id string) (outbound, inbound []VaultLin
 }
 
 func (s *SQLiteStore) SearchVault(tenant, q string) ([]VaultSearchHit, error) {
+	return s.SearchVaultFor(tenant, q, OperatorView)
+}
+
+func (s *SQLiteStore) SearchVaultFor(tenant, q string, v VaultViewer) ([]VaultSearchHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []VaultSearchHit{}, nil
 	}
 	tenant = NormalizeTenant(tenant)
 	if s.vaultFTS {
-		if hits, err := s.searchVaultFTS(tenant, q); err == nil {
+		if hits, err := s.searchVaultFTS(tenant, q, v); err == nil {
 			return hits, nil
 		}
 	}
 	if s.bodyTSV {
-		return s.searchVaultTSV(tenant, q)
+		return s.searchVaultTSV(tenant, q, v)
 	}
-	return s.searchVaultInstr(tenant, q)
+	return s.searchVaultInstr(tenant, q, v)
 }
 
-func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) searchVaultFTS(tenant, q string, v VaultViewer) ([]VaultSearchHit, error) {
 	phrase := strings.ReplaceAll(q, `"`, `""`)
+	where, extra := vaultViewerSQL("vault_docs.", v)
+	args := append([]any{`"` + phrase + `"`, tenant}, extra...)
+	args = append(args, VaultSearchLimit)
 	rows, err := s.db.Query(`SELECT vault_fts.id, vault_docs.title, vault_docs.path, snippet(vault_fts, 2, '', '', '…', 16), vault_docs.sha256
 		FROM vault_fts
 		JOIN vault_docs ON vault_docs.id = vault_fts.id
-		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ? AND vault_docs.owner_explicit<>0
-		ORDER BY rank LIMIT ?`, `"`+phrase+`"`, tenant, VaultSearchLimit)
+		WHERE vault_fts MATCH ? AND vault_docs.tenant_id = ? AND vault_docs.owner_explicit<>0`+where+`
+		ORDER BY rank LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -337,10 +359,13 @@ func (s *SQLiteStore) searchVaultFTS(tenant, q string) ([]VaultSearchHit, error)
 	return out, nil
 }
 
-func (s *SQLiteStore) searchVaultInstr(tenant, q string) ([]VaultSearchHit, error) {
+func (s *SQLiteStore) searchVaultInstr(tenant, q string, v VaultViewer) ([]VaultSearchHit, error) {
+	where, extra := vaultViewerSQL("", v)
+	args := append([]any{tenant, q, q}, extra...)
+	args = append(args, VaultSearchLimit)
 	rows, err := s.db.Query(`SELECT id, title, path, body, sha256 FROM vault_docs
-		WHERE tenant_id = ? AND owner_explicit<>0 AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)
-		ORDER BY lower(title) LIMIT ?`, tenant, q, q, VaultSearchLimit)
+		WHERE tenant_id = ? AND owner_explicit<>0 AND (instr(lower(title), lower(?)) > 0 OR instr(lower(body), lower(?)) > 0)`+where+`
+		ORDER BY lower(title) LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -383,4 +408,38 @@ func (s *SQLiteStore) ReResolveVaultLinks() error {
 		_, _ = s.db.Exec(`UPDATE vault_links SET to_id=? WHERE from_id=? AND raw=?`, toID, p.from, p.raw)
 	}
 	return nil
+}
+
+// normalizeVaultDocAccess validates the scope fields of a write. An empty
+// Scope with no owner is left empty so an update keeps the stored scope.
+func normalizeVaultDocAccess(d *VaultDoc) error {
+	d.CustomerKey = strings.TrimSpace(d.CustomerKey)
+	if strings.TrimSpace(d.Scope) == "" && strings.TrimSpace(d.AgentID) == "" && strings.TrimSpace(d.TeamID) == "" {
+		d.Scope = ""
+		d.AgentID = ""
+		d.TeamID = ""
+		return nil
+	}
+	scope, agent, team, err := NormalizeVaultAccess(d.Scope, d.AgentID, d.TeamID)
+	if err != nil {
+		return err
+	}
+	d.Scope, d.AgentID, d.TeamID = scope, agent, team
+	return nil
+}
+
+// keepVaultAccess copies the stored scope onto an update that did not set one.
+func keepVaultAccess(d, existing *VaultDoc) {
+	if d.Scope != "" {
+		return
+	}
+	d.Scope = existing.Scope
+	if d.Scope == "" {
+		d.Scope = VaultScopeTenant
+	}
+	d.AgentID = existing.AgentID
+	d.TeamID = existing.TeamID
+	if d.CustomerKey == "" {
+		d.CustomerKey = existing.CustomerKey
+	}
 }

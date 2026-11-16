@@ -198,8 +198,9 @@ func handleGraphKG(st store.StoreIface) http.HandlerFunc {
 			"inferred_are_not_facts": true,
 			"search":                 search,
 			"fts":                    fts,
-			"embedding":              "not_configured",
-			"embedding_configured":   false,
+			"embedding":              embeddingState(r),
+			"embedding_configured":   embeddingConfigured(r),
+			"embedding_used_for":     embeddingUsedFor,
 		})
 	}
 }

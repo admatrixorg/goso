@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/agentimport"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/vaultimport"
 )
@@ -36,7 +37,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	vaultDir := fs.String("vault-dir", "", "optional vault root; writes t/<tenant>/ files when set")
 	keepPrefix := fs.Bool("keep-prefix", false, "store the path with the root prefix kept (default strips the root)")
 	srcDir := fs.String("src-dir", "", "source workspace; required when a kept document has no vault_versions row. Missing file: path-missing. Over 1MiB: too-large. Non-UTF-8 or NUL: binary-skipped. Empty file: empty-body")
-	includePersonal := fs.Bool("include-personal", false, "import scope=personal docs (default holds them; the whole tenant can read them)")
+	includePersonal := fs.Bool("include-personal", false, "import scope=personal docs as personal scope of the mapped agent (default holds them)")
 	dry := fs.Bool("dry-run", false, "report counts and rejections without writing")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -62,7 +63,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer closeDB()
+	// Agent and team ids come from goso-agent-import's map, so scoped
+	// documents keep their owner. A store without that map yields empty maps:
+	// scoped documents are then rejected, not widened to the whole tenant.
+	agentMap, err := agentimport.AgentRefs(st, strings.TrimSpace(*dest))
+	if err != nil {
+		fmt.Fprintln(stderr, "read agent map failed")
+		return 1
+	}
+	teamMap, err := agentimport.TeamRefs(st, strings.TrimSpace(*dest))
+	if err != nil {
+		fmt.Fprintln(stderr, "read team map failed")
+		return 1
+	}
 	rep, err := vaultimport.Import(st, ex, vaultimport.Options{
+		AgentMap:        agentMap,
+		TeamMap:         teamMap,
 		SourceTenant:    *source,
 		Root:            *root,
 		DestTenant:      *dest,
