@@ -225,6 +225,7 @@ func (svc *Service) spawn(ctx context.Context, agentID string, args map[string]a
 		return "", err
 	}
 	child, err := svc.Store.CreateAgent(store.Agent{
+		TenantID:     parent.TenantID,
 		AgentKey:     parent.AgentKey + "-spawn-" + fmt.Sprintf("%d", time.Now().UnixNano()),
 		DisplayName:  parent.DisplayName,
 		Model:        parent.Model,
@@ -233,7 +234,7 @@ func (svc *Service) spawn(ctx context.Context, agentID string, args map[string]a
 	if err != nil {
 		return "", err
 	}
-	sess, err := svc.Store.CreateSession(store.Session{AgentID: child.ID, Label: "spawn"})
+	sess, err := svc.Store.CreateSession(store.Session{AgentID: child.ID, TenantID: child.TenantID, Label: "spawn"})
 	if err != nil {
 		return "", err
 	}
@@ -258,8 +259,9 @@ func (svc *Service) delegate(ctx context.Context, agentID string, args map[strin
 	if toID == "" || msg == "" {
 		return "", errors.New("to_agent_id and message are required")
 	}
-	if _, err := svc.Store.GetAgent(toID); err != nil {
-		return "", errors.New("target agent not found")
+	target, err := svc.sameTenantAgent(agentID, toID)
+	if err != nil {
+		return "", err
 	}
 	if err := svc.Store.AddAgentLink(agentID, toID); err != nil {
 		return "", err
@@ -272,13 +274,13 @@ func (svc *Service) delegate(ctx context.Context, agentID string, args map[strin
 		mode = "sync"
 	}
 	if mode == "async" {
-		id, kind := svc.enqueueAsync(agentID, toID, msg)
+		id, kind := svc.enqueueAsync(agentID, toID, target.TenantID, msg)
 		return asJSON(map[string]any{"id": id, "kind": kind, "mode": "async"}), nil
 	}
 	if n := depth(ctx); n >= 2 {
 		return "", errors.New("delegation depth exceeded")
 	}
-	sess, err := svc.Store.CreateSession(store.Session{AgentID: toID, Label: "delegate"})
+	sess, err := svc.Store.CreateSession(store.Session{AgentID: toID, TenantID: target.TenantID, Label: "delegate"})
 	if err != nil {
 		return "", err
 	}
@@ -294,7 +296,26 @@ func (svc *Service) delegate(ctx context.Context, agentID string, args map[strin
 	return asJSON(map[string]any{"session_id": sess.ID, "mode": "sync", "reply": reply}), nil
 }
 
-func (svc *Service) enqueueAsync(fromID, toID, msg string) (id, kind string) {
+// sameTenantAgent returns the target agent when it lives in the caller's
+// tenant. An agent in another tenant answers "not found", the same as a
+// missing one, so a caller cannot probe other tenants' agent ids.
+func (svc *Service) sameTenantAgent(callerID, targetID string) (*store.Agent, error) {
+	notFound := errors.New("target agent not found")
+	target, err := svc.Store.GetAgent(targetID)
+	if err != nil || target == nil {
+		return nil, notFound
+	}
+	caller, err := svc.Store.GetAgent(callerID)
+	if err != nil || caller == nil {
+		return nil, notFound
+	}
+	if !store.SameTenant(caller.TenantID, target.TenantID) {
+		return nil, notFound
+	}
+	return target, nil
+}
+
+func (svc *Service) enqueueAsync(fromID, toID, tenantID, msg string) (id, kind string) {
 	if tm, err := svc.Store.TeamOfAgent(fromID); err == nil && tm != nil {
 		if other, err := svc.Store.TeamOfAgent(toID); err == nil && other != nil && other.ID == tm.ID {
 			m, err := svc.Store.CreateTeamMessage(store.TeamMessage{TeamID: tm.ID, FromAgentID: fromID, Body: msg})
@@ -309,7 +330,7 @@ func (svc *Service) enqueueAsync(fromID, toID, msg string) (id, kind string) {
 			return task.ID, "task"
 		}
 	}
-	sess, err := svc.Store.CreateSession(store.Session{AgentID: toID, Label: "delegate-async"})
+	sess, err := svc.Store.CreateSession(store.Session{AgentID: toID, TenantID: tenantID, Label: "delegate-async"})
 	if err != nil {
 		return "", "error"
 	}
@@ -340,6 +361,9 @@ func (svc *Service) tasks(agentID string, args map[string]any) (string, error) {
 		}
 		return asJSON(map[string]any{"tasks": list}), nil
 	case "create":
+		if err := svc.assigneeOK(agentID, argString(args, "assignee_agent_id")); err != nil {
+			return "", err
+		}
 		task, err := svc.Store.CreateTeamTask(store.TeamTask{
 			TeamID:          tm.ID,
 			Title:           argString(args, "title"),
@@ -355,6 +379,13 @@ func (svc *Service) tasks(agentID string, args map[string]any) (string, error) {
 		if id == "" {
 			return "", errors.New("id is required")
 		}
+		// Only a task of the caller's own team can be changed.
+		if cur, err := svc.Store.GetTeamTask(id); err != nil || cur == nil || cur.TeamID != tm.ID {
+			return "", errors.New("task not found")
+		}
+		if err := svc.assigneeOK(agentID, argString(args, "assignee_agent_id")); err != nil {
+			return "", err
+		}
 		task, err := svc.Store.UpdateTeamTask(store.TeamTask{
 			ID:              id,
 			Title:           argString(args, "title"),
@@ -368,6 +399,18 @@ func (svc *Service) tasks(agentID string, args map[string]any) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown action %q", action)
 	}
+}
+
+// assigneeOK refuses a task assignee from another tenant. Empty means
+// unassigned and is allowed.
+func (svc *Service) assigneeOK(callerID, assigneeID string) error {
+	if strings.TrimSpace(assigneeID) == "" {
+		return nil
+	}
+	if _, err := svc.sameTenantAgent(callerID, assigneeID); err != nil {
+		return errors.New("assignee agent not found")
+	}
+	return nil
 }
 
 func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

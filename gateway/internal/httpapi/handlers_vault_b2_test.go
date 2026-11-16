@@ -108,9 +108,14 @@ func TestB2_IssuedKeyCannotSwitchTenant(t *testing.T) {
 	if admin.Code != http.StatusOK || !strings.Contains(admin.Body.String(), "legal-only.md") || strings.Contains(admin.Body.String(), "default-note.md") {
 		t.Fatalf("admin bearer with header %d %s", admin.Code, admin.Body.String())
 	}
+	// A key naming another tenant is refused outright (A1), not rebound.
 	issued := call("gk_admin", "minh-an-legal")
-	if issued.Code != http.StatusOK || strings.Contains(issued.Body.String(), "legal-only.md") || !strings.Contains(issued.Body.String(), "default-note.md") || !strings.Contains(issued.Body.String(), `"dry_run":true`) {
+	if issued.Code != http.StatusForbidden || strings.Contains(issued.Body.String(), "legal-only.md") {
 		t.Fatalf("issued admin-scope key switched tenant %d %s", issued.Code, issued.Body.String())
+	}
+	own := call("gk_admin", "")
+	if own.Code != http.StatusOK || strings.Contains(own.Body.String(), "legal-only.md") || !strings.Contains(own.Body.String(), "default-note.md") || !strings.Contains(own.Body.String(), `"dry_run":true`) {
+		t.Fatalf("issued key in its own tenant %d %s", own.Code, own.Body.String())
 	}
 }
 

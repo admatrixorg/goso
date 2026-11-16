@@ -14,6 +14,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/apikey"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/vault"
@@ -27,7 +28,8 @@ func handleVaultUpload(st store.StoreIface, al *auditlog.Store) http.HandlerFunc
 		}
 		// Auth and tenant are decided before the body is read, including when
 		// dev-mode skipped the outer Require middleware.
-		if status, msg := authorizeVaultUpload(r); status != 0 {
+		status, msg, r := authorizeVaultUpload(r)
+		if status != 0 {
 			writeErr(w, status, msg)
 			return
 		}
@@ -97,7 +99,8 @@ func handleGetVaultIngest(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
-		if status, msg := authorizeVaultUpload(r); status != 0 {
+		status, msg, r := authorizeVaultUpload(r)
+		if status != 0 {
 			writeErr(w, status, msg)
 			return
 		}
@@ -163,25 +166,28 @@ func viewIngestJob(job *store.IngestJob) ingestJobView {
 	}
 }
 
-func authorizeVaultUpload(r *http.Request) (int, string) {
+// authorizeVaultUpload decides auth before the body is read. A key's request
+// comes back bound to the key's tenant, so the upload lands there and a
+// header naming another tenant is refused.
+func authorizeVaultUpload(r *http.Request) (int, string, *http.Request) {
 	tok := bearerToken(r)
 	admin := strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN"))
 	if admin != "" && security.Equal(tok, admin) {
-		return 0, ""
+		return 0, "", r
 	}
 	view := strings.TrimSpace(os.Getenv("GOSO_VIEW_TOKEN"))
 	if view != "" && tok != "" && security.Equal(tok, view) {
-		return http.StatusForbidden, "forbidden"
+		return http.StatusForbidden, "forbidden", r
 	}
 	if tok != "" {
 		if g, ok := apikey.Default().Accept(tok); ok {
-			if g.Has("write") {
-				return 0, ""
+			if g.Has("write") && !auth.TenantMismatch(g, r) {
+				return 0, "", r.WithContext(auth.WithGrant(r.Context(), g))
 			}
-			return http.StatusForbidden, "forbidden"
+			return http.StatusForbidden, "forbidden", r
 		}
 	}
-	return http.StatusUnauthorized, "unauthorized"
+	return http.StatusUnauthorized, "unauthorized", r
 }
 
 func bearerToken(r *http.Request) string {

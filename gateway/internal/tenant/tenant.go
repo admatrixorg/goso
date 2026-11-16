@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
@@ -32,9 +33,14 @@ func Enabled() bool {
 //   - GOSO_MULTI_TENANT unset/off → always default (header ignored; demo/single-tenant).
 //   - Empty or invalid header → default.
 //   - Non-default requires the admin bearer; view-token cannot switch tenants.
+//   - An issued API key always runs in its own tenant. The auth middleware has
+//     already refused a key whose header names another tenant.
 func Resolve(r *http.Request) string {
 	if r == nil || !Enabled() {
 		return Default
+	}
+	if g, ok := auth.GrantFrom(r.Context()); ok {
+		return store.NormalizeTenant(g.KeyTenant())
 	}
 	raw := strings.TrimSpace(r.Header.Get(Header))
 	id := store.NormalizeTenant(raw)

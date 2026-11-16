@@ -434,24 +434,35 @@ func TestVaultUpload_WriteKeyCannotSwitchTenant(t *testing.T) {
 	reg := apikey.New()
 	apikey.SetDefault(reg)
 	t.Cleanup(func() { apikey.SetDefault(prev) })
-	key, err := reg.Create(apikey.Input{Name: "minh-an-key", Scopes: []string{"write"}})
+	key, err := reg.Create(apikey.Input{Name: "default-key", Scopes: []string{"write"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := Router(store.New(), "test")
+	// A key for one tenant naming another tenant in the header is refused,
+	// and nothing is written for either tenant.
 	rr := postUpload(t, h, key.Secret, "minh-an", "hop-dong.pdf", []byte("%PDF-1.4\n% Minh An key\n"), "")
-	if rr.Code != http.StatusCreated {
+	if rr.Code != http.StatusForbidden {
 		t.Fatalf("status %d %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "t", "minh-an")); !os.IsNotExist(err) {
+		t.Fatalf("header tenant dir: %v", err)
+	}
+	// A key issued for minh-an uploads into minh-an with no header at all.
+	own, err := reg.Create(apikey.Input{Name: "minh-an-key", TenantID: "minh-an", Scopes: []string{"write"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr = postUpload(t, h, own.Secret, "", "hop-dong.pdf", []byte("%PDF-1.4\n% Minh An key\n"), "")
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("own status %d %s", rr.Code, rr.Body.String())
 	}
 	var resp uploadResp
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Job.TenantID != "default" {
-		t.Fatalf("api key changed tenant: %+v", resp.Job)
-	}
-	if _, err := os.Stat(filepath.Join(root, "t", "minh-an")); !os.IsNotExist(err) {
-		t.Fatalf("header tenant dir: %v", err)
+	if resp.Job.TenantID != "minh-an" {
+		t.Fatalf("key tenant not applied: %+v", resp.Job)
 	}
 }
 

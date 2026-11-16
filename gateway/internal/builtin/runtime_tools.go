@@ -92,7 +92,7 @@ func invokeSandbox(ctx context.Context, args map[string]any) (*connector.InvokeR
 	}
 	dockerArgs := []string{"run", "--rm", "--network=" + sandboxNetNone, "--memory=" + sandboxMemLimit}
 	if workspaceConfigured() {
-		root, err := workspaceAbs()
+		root, err := workspaceAbs(ctx)
 		if err != nil {
 			return mapFSErr(ToolSandbox, err), nil
 		}
@@ -133,11 +133,11 @@ func runFFmpeg(ctx context.Context, bin string, args map[string]any) (*connector
 	if !workspaceConfigured() {
 		return notConfigured(ToolMedia), nil
 	}
-	inAbs, _, err := jailPath(in)
+	inAbs, _, err := jailPath(ctx, in)
 	if err != nil {
 		return mapFSErr(ToolMedia, err), nil
 	}
-	outAbs, _, err := jailPath(out)
+	outAbs, _, err := jailPath(ctx, out)
 	if err != nil {
 		return mapFSErr(ToolMedia, err), nil
 	}

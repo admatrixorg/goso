@@ -111,6 +111,9 @@ type Registry struct {
 	now    func() time.Time
 	rows   map[string]*record
 	byHash map[string]string
+	// save writes create and revoke through to the database. Nil keeps the
+	// registry in memory only (tests, in-memory store).
+	save keySaver
 }
 
 var (
@@ -187,6 +190,9 @@ func (r *Registry) Create(in Input) (Created, error) {
 		return Created{}, ErrCap
 	}
 	id := r.nextID()
+	for r.rows[id] != nil {
+		id = r.nextID()
+	}
 	row := &record{
 		ID:        id,
 		Name:      name,
@@ -196,6 +202,9 @@ func (r *Registry) Create(in Input) (Created, error) {
 		Scopes:    scopes,
 		CreatedAt: now,
 		ExpiresAt: exp,
+	}
+	if err := r.persist(row); err != nil {
+		return Created{}, err
 	}
 	r.rows[id] = row
 	r.byHash[hash] = id
@@ -257,6 +266,11 @@ func (r *Registry) Revoke(id, confirm string) (Public, error) {
 	if !row.RevokedAt.IsZero() {
 		return publicOf(row, now), ErrRevoked
 	}
+	revoked := *row
+	revoked.RevokedAt = now
+	if err := r.persist(&revoked); err != nil {
+		return publicOf(row, now), err
+	}
 	row.RevokedAt = now
 	delete(r.byHash, row.Hash)
 	return publicOf(row, now), nil
@@ -290,7 +304,7 @@ func (r *Registry) Accept(token string) (auth.Grant, bool) {
 	row.UseCount++
 	row.LastUsedAt = now
 	scopes := append([]string(nil), row.Scopes...)
-	return auth.Grant{ID: row.ID, Prefix: row.Prefix, Scopes: scopes}, true
+	return auth.Grant{ID: row.ID, Prefix: row.Prefix, TenantID: row.TenantID, Scopes: scopes}, true
 }
 
 func publicOf(row *record, now time.Time) Public {

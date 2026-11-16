@@ -12,6 +12,8 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/apikey"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
+	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
 func registerAPIKeyRoutes(mux *http.ServeMux, opt Options) {
@@ -21,7 +23,7 @@ func registerAPIKeyRoutes(mux *http.ServeMux, opt Options) {
 	}
 	al := opt.Audit
 	aliasAPI(mux, "GET /api/api-keys", handleListAPIKeys(reg))
-	aliasAPI(mux, "POST /api/api-keys", handleCreateAPIKey(reg, al))
+	aliasAPI(mux, "POST /api/api-keys", handleCreateAPIKey(reg, opt.Tenants, al))
 	aliasAPI(mux, "GET /api/api-keys/{id}", handleGetAPIKey(reg))
 	aliasAPI(mux, "POST /api/api-keys/{id}/revoke", handleRevokeAPIKey(reg, al))
 }
@@ -47,7 +49,7 @@ func handleGetAPIKey(reg *apikey.Registry) http.HandlerFunc {
 	}
 }
 
-func handleCreateAPIKey(reg *apikey.Registry, al *auditlog.Store) http.HandlerFunc {
+func handleCreateAPIKey(reg *apikey.Registry, tenants *tenant.Registry, al *auditlog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name      string   `json:"name"`
@@ -57,6 +59,20 @@ func handleCreateAPIKey(reg *apikey.Registry, al *auditlog.Store) http.HandlerFu
 		}
 		if !decodeAPIKeyBody(w, r, &body) {
 			return
+		}
+		// A key runs inside its tenant, so the tenant must exist. An empty
+		// tenant_id is the operator's own "default" tenant.
+		if tid := strings.TrimSpace(body.TenantID); tid != "" && tid != tenant.Default {
+			if !store.TenantOK(tid) {
+				writeErr(w, http.StatusBadRequest, "invalid tenant_id")
+				return
+			}
+			if tenants != nil {
+				if _, err := tenants.Get(tid); err != nil {
+					writeErr(w, http.StatusBadRequest, "unknown tenant_id")
+					return
+				}
+			}
 		}
 		in := apikey.Input{Name: body.Name, TenantID: body.TenantID, Scopes: body.Scopes}
 		if strings.TrimSpace(body.ExpiresAt) != "" {
@@ -126,6 +142,8 @@ func writeAPIKeyErr(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	switch {
+	case errors.Is(err, apikey.ErrStore):
+		writeErr(w, http.StatusServiceUnavailable, "api key store failed")
 	case errors.Is(err, apikey.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "not found")
 	case errors.Is(err, apikey.ErrCap), errors.Is(err, apikey.ErrRevoked):
