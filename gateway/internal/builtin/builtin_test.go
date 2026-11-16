@@ -18,7 +18,7 @@ import (
 
 func TestCatalog_Tools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 14+len(mediaCatalog) {
+	if len(got) != 16+len(mediaCatalog) {
 		t.Fatalf("len %d", len(got))
 	}
 	byName := map[string]Spec{}
@@ -28,7 +28,7 @@ func TestCatalog_Tools(t *testing.T) {
 	want := []string{
 		ToolWebSearch, ToolWebFetch, ToolSandbox, ToolBrowser, ToolMedia, ToolImageGen, ToolTTS,
 		ToolUseSkill, ToolSkillSearch, ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile,
-		ToolSearch, ToolGlob,
+		ToolSearch, ToolGlob, ToolDatetime, ToolMessage,
 	}
 	for _, n := range want {
 		if !IsName(n) {
@@ -57,6 +57,9 @@ func TestCatalog_Tools(t *testing.T) {
 	}
 	if !byName[ToolWriteFile].RequiresApproval || !byName[ToolEdit].RequiresApproval {
 		t.Fatal("write_file/edit require approval")
+	}
+	if byName[ToolDatetime].RequiresApproval || !byName[ToolMessage].RequiresApproval {
+		t.Fatal("datetime is read-only; message requires approval")
 	}
 }
 
