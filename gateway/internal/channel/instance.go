@@ -103,19 +103,17 @@ func sortStrings(s []string) {
 	}
 }
 
-// InstanceInfo is the GET /api/channels row for one instance. Telegram bots
-// and Zalo channels bridged from ZaloCRM run live; the other catalogs show
-// their stored settings and health "parked".
+// InstanceInfo is the GET /api/channels row for one instance. Telegram bots,
+// Zalo Bot platform bots (zalo-oa) and Zalo channels bridged from ZaloCRM run
+// live; the other catalogs show their stored settings and health "parked".
 func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 	catalog := CatalogOf(name)
 	row := Info{Name: name, Writable: WritableFields(name), Phase: phaseOf(catalog), Transport: defaultTransport(catalog)}
-	switch catalog {
-	case "telegram":
+	if liveCatalogs[catalog] {
 		_, _, row.SecretSet = Credential(st, name, KindBot, nil)
-	case "zalo-oa":
-		_, _, a := Credential(st, name, KindAccess, nil)
-		_, _, s := Credential(st, name, KindAppSecret, nil)
-		row.SecretSet = a && s
+	}
+	if catalog == "zalo-oa" {
+		row.Transport = zaloBotMode()
 	}
 	row.Configured = row.SecretSet
 	row.Missing = !row.SecretSet
@@ -125,7 +123,7 @@ func InstanceInfo(st store.StoreIface, mgr *Manager, name string) Info {
 		}
 	}
 	switch {
-	case catalog != "telegram":
+	case !liveCatalogs[catalog]:
 		row.Health = "parked"
 	case store.LiteEnabled():
 		row.Health = "stopped"

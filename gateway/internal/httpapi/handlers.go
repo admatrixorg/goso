@@ -1015,6 +1015,7 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 	}
 	if opt.Channels != nil {
 		mux.HandleFunc("POST /api/channels/telegram/webhook/{tenant}/{inst}", handleTenantTelegramWebhook(opt.Channels))
+		mux.HandleFunc("POST /api/channels/zalo-oa/bot/{tenant}/{inst}", handleTenantZaloBotWebhook(opt.Channels))
 	}
 	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
 	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
@@ -1271,6 +1272,19 @@ func channelRows(st store.StoreIface, mgr *channel.Manager, tenant string) []cha
 		rows = append(rows, channel.InstanceInfo(st, mgr, n))
 	}
 	return overlayChannelRows(st, rows)
+}
+
+// handleTenantZaloBotWebhook takes a tenant Zalo Bot's webhook event.
+func handleTenantZaloBotWebhook(mgr *channel.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := channel.InstanceName(r.PathValue("tenant"), "zalo-oa", r.PathValue("inst"))
+		bot := mgr.ZaloBot(name)
+		if _, ok := channel.TenantOf(name); !ok || bot == nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		bot.HandleUpdate(w, r)
+	}
 }
 
 // handleTenantTelegramWebhook takes a tenant bot's webhook update.

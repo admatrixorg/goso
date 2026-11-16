@@ -33,6 +33,10 @@ func WritableFields(name string) []string {
 	case "telegram":
 		return []string{"bot_token"}
 	case "zalo-oa":
+		if owned {
+			// A tenant's zalo-oa channel is a Zalo Bot platform bot.
+			return []string{"bot_token"}
+		}
 		return []string{"access_token", "app_secret"}
 	case "zalo-personal":
 		if owned {
@@ -54,6 +58,12 @@ func FieldKind(name, field string) (kind string, ok bool) {
 			return KindBot, true
 		}
 	case "zalo-oa":
+		if owned {
+			if field == "bot_token" {
+				return KindBot, true
+			}
+			return "", false
+		}
 		if field == "access_token" {
 			return KindAccess, true
 		}

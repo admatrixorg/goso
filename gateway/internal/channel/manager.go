@@ -12,7 +12,8 @@ import (
 )
 
 // Manager tracks Start/Stop and health by channel name: the older single bot
-// per catalog ("telegram") and each tenant's bot ("<tenant>/telegram/<name>").
+// per catalog ("telegram") and each tenant's bot ("<tenant>/telegram/<name>",
+// "<tenant>/zalo-oa/<name>").
 type Manager struct {
 	mu        sync.Mutex
 	running   map[string]bool
@@ -26,11 +27,22 @@ type Manager struct {
 	LLM   llm.Provider
 	Meter *billing.Store
 
-	ctx       context.Context
-	telegrams map[string]*Telegram
-	// newTelegram builds a tenant bot. Tests replace it.
+	ctx  context.Context
+	bots map[string]liveBot
+	// newTelegram and newZaloBot build tenant bots. Tests replace them.
 	newTelegram func(name string) *Telegram
+	newZaloBot  func(name string) *ZaloBot
 }
+
+// liveBot is a tenant bot the manager starts and stops.
+type liveBot interface {
+	Start(ctx context.Context, mgr *Manager)
+	Stop()
+}
+
+// liveCatalogs are the catalogs whose tenant bots run live, each started when
+// enabled with a bot token.
+var liveCatalogs = map[string]bool{"telegram": true, "zalo-oa": true}
 
 // NewManager returns an empty manager.
 func NewManager() *Manager {
@@ -39,7 +51,7 @@ func NewManager() *Manager {
 		failed:    map[string]bool{},
 		lastErr:   map[string]string{},
 		transport: map[string]string{},
-		telegrams: map[string]*Telegram{},
+		bots:      map[string]liveBot{},
 	}
 }
 
@@ -69,8 +81,8 @@ func (m *Manager) StopAll() {
 		m.Telegram.Stop()
 	}
 	m.mu.Lock()
-	bots := m.telegrams
-	m.telegrams = map[string]*Telegram{}
+	bots := m.bots
+	m.bots = map[string]liveBot{}
 	m.ctx = nil
 	m.running = map[string]bool{}
 	m.mu.Unlock()
@@ -107,7 +119,30 @@ func (m *Manager) buildTelegram(name string) *Telegram {
 	return t
 }
 
-// Reconcile starts every enabled tenant Telegram bot that has a token and
+func (m *Manager) buildZaloBot(name string) *ZaloBot {
+	if m.newZaloBot != nil {
+		return m.newZaloBot(name)
+	}
+	z := &ZaloBot{Instance: name, Store: m.store(), LLM: m.LLM, Meter: m.Meter}
+	if m.Telegram != nil {
+		if z.LLM == nil {
+			z.LLM = m.Telegram.LLM
+		}
+		if z.Meter == nil {
+			z.Meter = m.Telegram.Meter
+		}
+	}
+	return z
+}
+
+func (m *Manager) buildBot(name string) liveBot {
+	if CatalogOf(name) == "zalo-oa" {
+		return m.buildZaloBot(name)
+	}
+	return m.buildTelegram(name)
+}
+
+// Reconcile starts every enabled tenant bot (Telegram, Zalo Bot) that has a token and
 // stops every running one that is no longer enabled or lost its token. It does
 // nothing before StartAll, after StopAll, or in Lite mode. Bots start in the
 // background so an HTTP caller does not wait on Telegram.
@@ -124,7 +159,7 @@ func (m *Manager) Reconcile() {
 	}
 	want := map[string]bool{}
 	for _, cfg := range st.ListChannelConfigs() {
-		if cfg == nil || !cfg.Enabled || CatalogOf(cfg.Name) != "telegram" {
+		if cfg == nil || !cfg.Enabled || !liveCatalogs[CatalogOf(cfg.Name)] {
 			continue
 		}
 		if _, owned := TenantOf(cfg.Name); !owned {
@@ -134,24 +169,24 @@ func (m *Manager) Reconcile() {
 			want[cfg.Name] = true
 		}
 	}
-	var stop []*Telegram
-	var start []*Telegram
+	var stop []liveBot
+	var start []liveBot
 	m.mu.Lock()
-	for name, t := range m.telegrams {
+	for name, t := range m.bots {
 		if !want[name] {
 			stop = append(stop, t)
-			delete(m.telegrams, name)
+			delete(m.bots, name)
 			m.running[name] = false
 			m.failed[name] = false
 			m.lastErr[name] = ""
 		}
 	}
 	for name := range want {
-		if _, ok := m.telegrams[name]; ok {
+		if _, ok := m.bots[name]; ok {
 			continue
 		}
-		t := m.buildTelegram(name)
-		m.telegrams[name] = t
+		t := m.buildBot(name)
+		m.bots[name] = t
 		start = append(start, t)
 	}
 	m.mu.Unlock()
@@ -170,8 +205,8 @@ func (m *Manager) Restart(name string) {
 		return
 	}
 	m.mu.Lock()
-	t := m.telegrams[name]
-	delete(m.telegrams, name)
+	t := m.bots[name]
+	delete(m.bots, name)
 	m.mu.Unlock()
 	if t != nil {
 		t.Stop()
@@ -190,7 +225,19 @@ func (m *Manager) TelegramBot(name string) *Telegram {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.telegrams[name]
+	t, _ := m.bots[name].(*Telegram)
+	return t
+}
+
+// ZaloBot returns a tenant's running Zalo Bot, or nil.
+func (m *Manager) ZaloBot(name string) *ZaloBot {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	z, _ := m.bots[name].(*ZaloBot)
+	return z
 }
 
 // SetRunning marks health running (clears failed).
