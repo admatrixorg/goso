@@ -242,6 +242,9 @@ func openaiMessages(messages []Message) []map[string]any {
 			role = "user"
 		}
 		msg := map[string]any{"role": role, "content": m.Content}
+		if role == "user" && len(m.Images) > 0 {
+			msg["content"] = openaiContentParts(m.Content, m.Images)
+		}
 		if m.ToolCallID != "" {
 			msg["tool_call_id"] = m.ToolCallID
 		}

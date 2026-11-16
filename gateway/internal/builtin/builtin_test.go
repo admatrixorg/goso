@@ -18,7 +18,7 @@ import (
 
 func TestCatalog_Tools(t *testing.T) {
 	got := Catalog()
-	if len(got) != 16 {
+	if len(got) != 14+len(mediaCatalog) {
 		t.Fatalf("len %d", len(got))
 	}
 	byName := map[string]Spec{}
@@ -47,8 +47,13 @@ func TestCatalog_Tools(t *testing.T) {
 	if !byName[ToolSandbox].RequiresApproval || !byName[ToolBrowser].RequiresApproval || !byName[ToolMedia].RequiresApproval {
 		t.Fatal("sandbox/browser/media require approval")
 	}
-	if !byName[ToolImageGen].RequiresApproval || !byName[ToolTTS].RequiresApproval {
-		t.Fatal("image_gen/tts require approval")
+	if !byName[ToolImageGen].RequiresApproval {
+		t.Fatal("legacy image_gen requires approval")
+	}
+	// The approval executor drops the tool result, so tools that return a
+	// path the agent must use next (tts, create_image) do not gate.
+	if byName[ToolTTS].RequiresApproval || byName[ToolCreateImage].RequiresApproval || byName[ToolReadImage].RequiresApproval || byName[ToolReadDocument].RequiresApproval || byName[ToolReadAudio].RequiresApproval || byName[ToolSTT].RequiresApproval {
+		t.Fatal("media read/create tools must not require approval")
 	}
 	if !byName[ToolWriteFile].RequiresApproval || !byName[ToolEdit].RequiresApproval {
 		t.Fatal("write_file/edit require approval")

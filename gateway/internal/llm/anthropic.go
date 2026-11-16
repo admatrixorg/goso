@@ -75,6 +75,10 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 		case "assistant":
 			in = append(in, anthropicInMsg{Role: "assistant", Content: m.Content})
 		default:
+			if len(m.Images) > 0 {
+				in = append(in, anthropicInMsg{Role: "user", Content: anthropicContentParts(m.Content, m.Images)})
+				continue
+			}
 			in = append(in, anthropicInMsg{Role: "user", Content: m.Content})
 		}
 	}

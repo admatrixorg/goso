@@ -131,7 +131,7 @@ func TestAgentTools_ListAndPatchBuiltin(t *testing.T) {
 		}
 		if tl.Name == "tts" {
 			sawTTS = true
-			if tl.Connector != "builtin" || tl.Enabled || !tl.RequiresApproval || tl.Configured {
+			if tl.Connector != "builtin" || tl.Enabled || tl.RequiresApproval || tl.Configured {
 				t.Fatalf("tts %+v", tl)
 			}
 		}
