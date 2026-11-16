@@ -81,6 +81,10 @@ type Config struct {
 	Bypass  []string
 	Pairing *Pairing
 	Keys    KeyGate
+	// SelfAuth reports a request that its handler authenticates itself, such
+	// as a Telegram webhook carrying the bot's secret token. Such a request
+	// skips the Bearer check; the handler must reject a bad secret.
+	SelfAuth func(*http.Request) bool
 }
 
 // RequireToken returns middleware that enforces Bearer token auth.
@@ -102,6 +106,10 @@ func Require(cfg Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if pairingExchangePath(r) || nodeRequestPath(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if cfg.SelfAuth != nil && cfg.SelfAuth(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

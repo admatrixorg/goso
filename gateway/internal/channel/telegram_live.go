@@ -135,12 +135,14 @@ func (t *Telegram) pollLoop(ctx context.Context, token string) {
 	}
 }
 
+// setWebhook points Telegram at hookURL. Telegram then sends this bot's
+// secret in TelegramSecretHeader on every call.
 func (t *Telegram) setWebhook(ctx context.Context, token, hookURL string) error {
 	base := t.APIBase
 	if base == "" {
 		base = "https://api.telegram.org"
 	}
-	body, _ := json.Marshal(map[string]any{"url": hookURL})
+	body, _ := json.Marshal(map[string]any{"url": hookURL, "secret_token": t.webhookSecret(token)})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base, "/")+"/bot"+token+"/setWebhook", bytes.NewReader(body))
 	if err != nil {
 		return err
