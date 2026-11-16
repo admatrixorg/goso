@@ -182,3 +182,11 @@ Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.e
 - Mọi request dùng khoá chạy trong tenant của khoá. Gửi kèm `X-Goso-Tenant` khác tenant của khoá thì nhận 403.
 - Khoá của tenant khác `default`, kể cả scope `admin`, không vào được các đường dẫn toàn hệ thống: `/api/api-keys`, `/api/tenants`, `/api/packages`, `/api/system/backup|restore`, `/api/pairing`.
 - Token admin (`GOSO_ADMIN_TOKEN`) giữ cách cũ: chọn tenant bằng header.
+
+## Agent key theo tenant
+
+- `agent_key` là duy nhất trong một tenant, không còn duy nhất toàn máy: ràng buộc là `UNIQUE(tenant_id, agent_key)` (index `idx_agents_tenant_key`). Hai tenant có thể cùng có agent `tro-ly-demo`.
+- Mọi chỗ tra agent theo key (kênh Telegram/Zalo, bridge, import agent, import MCP, delegate) chỉ tìm trong tenant của mình. Import agent không còn đổi tên key khi tenant khác đã dùng key đó.
+- Nâng cấp tự chạy khi mở database:
+  - SQLite: bảng `agents` có `UNIQUE` trên cột `agent_key` được dựng lại trong một transaction (dữ liệu giữ nguyên), rồi tạo `idx_agents_tenant_key`.
+  - Postgres: tìm tên thật của ràng buộc unique hoặc index unique chỉ trên `agent_key` qua catalog (bản cũ là `agents_agent_key_key`), xoá, rồi tạo `idx_agents_tenant_key`, tất cả trong một transaction.

@@ -159,7 +159,7 @@ func (s *SQLiteStore) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS agents (
 			id TEXT PRIMARY KEY,
-			agent_key TEXT NOT NULL UNIQUE,
+			agent_key TEXT NOT NULL,
 			display_name TEXT,
 			model TEXT,
 			llm_provider TEXT,
@@ -509,6 +509,9 @@ func (s *SQLiteStore) migrate() error {
 	}
 	if err := s.migrateImportSource(); err != nil {
 		return err
+	}
+	if err := s.migrateAgentKeyScope(); err != nil {
+		return fmt.Errorf("migrate agent_key scope: %w", err)
 	}
 	return nil
 }

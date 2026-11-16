@@ -187,13 +187,14 @@ func answerTurnDirect(ctx context.Context, st store.StoreIface, agent *store.Age
 	return reply, nil
 }
 
+// ensureNamedAgent finds or creates the default tenant's agent with this key.
+// agent_key is unique per tenant, so the lookup never takes another tenant's
+// agent that happens to share the key.
 func ensureNamedAgent(st store.StoreIface, key, display string) *store.Agent {
-	for _, a := range st.ListAgents() {
-		if a.AgentKey == key {
-			return a
-		}
+	if a := store.FindAgentByKey(st, store.DefaultTenant, key); a != nil {
+		return a
 	}
-	a, _ := st.CreateAgent(store.Agent{AgentKey: key, DisplayName: display})
+	a, _ := st.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: key, DisplayName: display})
 	return a
 }
 

@@ -1228,9 +1228,10 @@ func openPostgres(t *testing.T) store.StoreIface {
 	return pg
 }
 
-// An agent whose key goso-agent-import renamed (the key was held by another
-// tenant) is found through the agent import map, with no --agent-map.
-func TestRenamedAgentFoundThroughImportMap(t *testing.T) {
+// An imported agent whose key another tenant also holds is found through the
+// agent import map, with no --agent-map, and the file never lands on the
+// other tenant's agent (agent_key is unique per tenant, N9).
+func TestSharedKeyAgentFoundThroughImportMap(t *testing.T) {
 	st := store.New()
 	other, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Pháp chế", TenantID: otherDest})
 	if err != nil {
@@ -1243,7 +1244,7 @@ func TestRenamedAgentFoundThroughImportMap(t *testing.T) {
 	}
 	rep, err := agentimport.Import(st, agents, agentimport.Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
 		Deny: map[string]struct{}{"blocked-sample": {}}})
-	if err != nil || len(rep.RenamedKeys) != 1 {
+	if err != nil {
 		t.Fatalf("agent import %+v %v", rep, err)
 	}
 	ex := &Export{Agents: []AgentFile{
@@ -1258,16 +1259,11 @@ func TestRenamedAgentFoundThroughImportMap(t *testing.T) {
 	if sec.Inserted != 1 || sec.Rejected != 1 || sec.Reasons[reasonAgentMissing] != 1 {
 		t.Fatalf("report %+v", sec)
 	}
-	var renamed *store.Agent
-	for _, a := range st.ListAgents() {
-		if a.AgentKey == rep.RenamedKeys[0].DestKey {
-			renamed = a
-		}
+	mine := store.FindAgentByKey(st, destTenant, "tu-van-sales")
+	if mine == nil || mine.ID == other.ID {
+		t.Fatalf("imported agent %+v", mine)
 	}
-	if renamed == nil {
-		t.Fatal("renamed agent missing")
-	}
-	f, err := st.GetContextFile(destTenant, store.ContextScopeAgent, renamed.ID, "SOUL.md")
+	f, err := st.GetContextFile(destTenant, store.ContextScopeAgent, mine.ID, "SOUL.md")
 	if err != nil || f.Body != soulText {
 		t.Fatalf("context file %+v %v", f, err)
 	}

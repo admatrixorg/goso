@@ -424,13 +424,9 @@ func (s *Service) importAgents(tenantID string, j *Job, a *Archive, conflict str
 			j.Report.Failed = append(j.Report.Failed, ReportItem{Kind: "agent", Name: item.DisplayName, Detail: "agent_key required"})
 			continue
 		}
+		// agent_key is unique per tenant: the same key in another tenant is
+		// not a conflict.
 		cur, exists := existing[key]
-		if !exists {
-			if other := s.agentByKeyAny(key); other != nil && !store.SameTenant(other.TenantID, tenantID) {
-				j.Report.Failed = append(j.Report.Failed, ReportItem{Kind: "agent", Name: key, Detail: "agent_key exists"})
-				continue
-			}
-		}
 		finalKey := key
 		action := "create"
 		if exists {
@@ -910,19 +906,6 @@ func (s *Service) agentsByKey(tenantID string) map[string]*store.Agent {
 		}
 	}
 	return out
-}
-
-func (s *Service) agentByKeyAny(key string) *store.Agent {
-	if s == nil || s.st == nil {
-		return nil
-	}
-	for _, a := range s.st.ListAgents() {
-		if a != nil && a.AgentKey == key {
-			cp := *a
-			return &cp
-		}
-	}
-	return nil
 }
 
 func (s *Service) agentKeyIDs(tenantID string) map[string]string {

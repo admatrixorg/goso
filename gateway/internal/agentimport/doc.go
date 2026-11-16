@@ -10,6 +10,8 @@
 //
 // Writes are add-only. A source id that is already mapped is left as it
 // was, including when the export text differs. A goso agent_key that
-// already exists is not overwritten and is not adopted into the map.
+// already exists in the destination tenant is not overwritten and is not
+// adopted into the map. agent_key is unique per tenant, so the same key in
+// another tenant is not a conflict.
 // The map table goclaw_agent_import_map is created only when a run writes.
 package agentimport
