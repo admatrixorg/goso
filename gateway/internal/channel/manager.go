@@ -32,6 +32,7 @@ type Manager struct {
 	// newTelegram and newZaloBot build tenant bots. Tests replace them.
 	newTelegram func(name string) *Telegram
 	newZaloBot  func(name string) *ZaloBot
+	newLark     func(name string) *Lark
 }
 
 // liveBot is a tenant bot the manager starts and stops.
@@ -42,7 +43,17 @@ type liveBot interface {
 
 // liveCatalogs are the catalogs whose tenant bots run live, each started when
 // enabled with a bot token.
-var liveCatalogs = map[string]bool{"telegram": true, "zalo-oa": true}
+var liveCatalogs = map[string]bool{"telegram": true, "zalo-oa": true, "feishu": true}
+
+// liveCredsSet reports a tenant bot that has what it needs to start: a bot
+// token, or for Lark an app id and app secret.
+func liveCredsSet(st store.StoreIface, name string) bool {
+	if CatalogOf(name) == "feishu" {
+		return larkCredsSet(st, name)
+	}
+	_, _, set := Credential(st, name, KindBot, nil)
+	return set
+}
 
 // NewManager returns an empty manager.
 func NewManager() *Manager {
@@ -135,14 +146,33 @@ func (m *Manager) buildZaloBot(name string) *ZaloBot {
 	return z
 }
 
+func (m *Manager) buildLark(name string) *Lark {
+	if m.newLark != nil {
+		return m.newLark(name)
+	}
+	l := &Lark{Instance: name, Store: m.store(), LLM: m.LLM, Meter: m.Meter}
+	if m.Telegram != nil {
+		if l.LLM == nil {
+			l.LLM = m.Telegram.LLM
+		}
+		if l.Meter == nil {
+			l.Meter = m.Telegram.Meter
+		}
+	}
+	return l
+}
+
 func (m *Manager) buildBot(name string) liveBot {
-	if CatalogOf(name) == "zalo-oa" {
+	switch CatalogOf(name) {
+	case "zalo-oa":
 		return m.buildZaloBot(name)
+	case "feishu":
+		return m.buildLark(name)
 	}
 	return m.buildTelegram(name)
 }
 
-// Reconcile starts every enabled tenant bot (Telegram, Zalo Bot) that has a token and
+// Reconcile starts every enabled tenant bot (Telegram, Zalo Bot, Lark) that has its credentials and
 // stops every running one that is no longer enabled or lost its token. It does
 // nothing before StartAll, after StopAll, or in Lite mode. Bots start in the
 // background so an HTTP caller does not wait on Telegram.
@@ -165,7 +195,7 @@ func (m *Manager) Reconcile() {
 		if _, owned := TenantOf(cfg.Name); !owned {
 			continue
 		}
-		if _, _, set := Credential(st, cfg.Name, KindBot, nil); set {
+		if liveCredsSet(st, cfg.Name) {
 			want[cfg.Name] = true
 		}
 	}
@@ -305,4 +335,15 @@ func (m *Manager) Transport(name string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.transport[name]
+}
+
+// Lark returns a tenant's running Lark bot, or nil.
+func (m *Manager) Lark(name string) *Lark {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, _ := m.bots[name].(*Lark)
+	return l
 }

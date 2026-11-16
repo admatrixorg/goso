@@ -155,7 +155,7 @@ func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFu
 		}
 		catalog := channel.CatalogOf(name)
 		_, owned := channel.TenantOf(name)
-		if catalog == "discord" || catalog == "slack" || catalog == "feishu" || catalog == "whatsapp" || (owned && catalog != "telegram" && catalog != "zalo-oa") {
+		if catalog == "discord" || catalog == "slack" || catalog == "whatsapp" || (catalog == "feishu" && !owned) || (owned && catalog != "telegram" && catalog != "zalo-oa" && catalog != "feishu") {
 			writeErr(w, http.StatusConflict, "parked")
 			return
 		}
@@ -219,6 +219,25 @@ func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFu
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "health": "running"})
+		case "feishu":
+			lk := mgr.Lark(name)
+			if lk == nil {
+				lk = &channel.Lark{Store: st, Instance: name}
+			}
+			if err := lk.ProbeToken(ctx); err != nil {
+				mgr.SetFailed(name, err.Error())
+				writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "name": name, "health": "failed", "error": channelRedactPublic(err.Error())})
+				return
+			}
+			// Running means the long connection is open; a check alone does not say so.
+			health := "stopped"
+			if mgr.Lark(name) != nil {
+				health = "starting"
+				if mgr.Running(name) {
+					health = "running"
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "health": health})
 		case "zalo-personal":
 			set := channel.SecretSet(st, "zalo-personal", "session", []string{"GOSO_ZALO_PERSONAL_TOKEN"})
 			writeJSON(w, http.StatusOK, map[string]any{
