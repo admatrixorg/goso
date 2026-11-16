@@ -155,7 +155,7 @@ func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFu
 		}
 		catalog := channel.CatalogOf(name)
 		_, owned := channel.TenantOf(name)
-		if catalog == "discord" || catalog == "slack" || catalog == "feishu" || catalog == "whatsapp" || (owned && catalog != "telegram") {
+		if catalog == "discord" || catalog == "slack" || catalog == "feishu" || catalog == "whatsapp" || (owned && catalog != "telegram" && catalog != "zalo-oa") {
 			writeErr(w, http.StatusConflict, "parked")
 			return
 		}
@@ -189,6 +189,24 @@ func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFu
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "health": "running"})
 		case "zalo-oa":
+			if owned {
+				zb := mgr.ZaloBot(name)
+				if zb == nil {
+					zb = &channel.ZaloBot{Store: st, Instance: name}
+				}
+				if err := zb.ProbeToken(ctx); err != nil {
+					mgr.SetFailed(name, err.Error())
+					writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "name": name, "health": "failed", "error": channelRedactPublic(err.Error())})
+					return
+				}
+				health := "stopped"
+				if mgr.ZaloBot(name) != nil {
+					health = "running"
+					mgr.SetRunning(name, mgr.Transport(name))
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "health": health})
+				return
+			}
 			_, _, aSet := channel.Credential(st, "zalo-oa", channel.KindAccess, []string{"GOSO_ZALO_OA_ACCESS_TOKEN"})
 			_, _, sSet := channel.Credential(st, "zalo-oa", channel.KindAppSecret, []string{"GOSO_ZALO_OA_SECRET"})
 			if !aSet || !sSet {

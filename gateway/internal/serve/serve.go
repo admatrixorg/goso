@@ -230,7 +230,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 // channelSelfAuth lets a channel's own signed webhook call past the admin
 // token; its handler checks the signature.
 func channelSelfAuth(r *http.Request) bool {
-	return channel.TelegramSelfAuth(r) || channel.ZCRMSelfAuth(r)
+	return channel.TelegramSelfAuth(r) || channel.ZCRMSelfAuth(r) || channel.ZaloBotSelfAuth(r)
 }
 
 func envTruthy(v string) bool {

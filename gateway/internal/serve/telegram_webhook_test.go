@@ -89,3 +89,27 @@ func TestZCRMBridgePassesAuthOnlyWhenSigned(t *testing.T) {
 		t.Fatalf("signed bridge call %d want 412 from the bridge", got)
 	}
 }
+
+func TestZaloBotWebhookPassesAuthOnlyWithSecretHeader(t *testing.T) {
+	t.Setenv("GOSO_ENV", "demo")
+	t.Setenv("GOSO_DEV_MODE", "")
+	t.Setenv("GOSO_ADMIN_TOKEN", "adm")
+	h, _ := New(store.New(), "test")
+
+	call := func(withSecret bool) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/channels/zalo-oa/bot/tenant-a/shop", bytes.NewBufferString(`{}`))
+		if withSecret {
+			req.Header.Set(channel.ZaloBotSecretHeader, "abc")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w.Code
+	}
+	if got := call(false); got != http.StatusUnauthorized {
+		t.Fatalf("no secret %d want 401", got)
+	}
+	// No bot runs for this channel, so the handler itself answers 404.
+	if got := call(true); got != http.StatusNotFound {
+		t.Fatalf("with secret %d want 404 from the handler", got)
+	}
+}
