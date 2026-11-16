@@ -15,6 +15,8 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/security"
+	"github.com/mqglobal/goso/gateway/internal/skill"
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 const (
@@ -163,7 +165,11 @@ func mapFSErr(name string, err error) *connector.InvokeResult {
 	}
 }
 
-func workspaceAbs() (string, error) {
+// workspaceAbs is the calling tenant's own folder, GOSO_WORKSPACE/<tenant>.
+// Every tenant, default included, gets a subfolder, so no tenant's files
+// sit where another tenant's paths can reach them. The tenant comes from the
+// tool call's context (the agent's tenant); unset means default.
+func workspaceAbs(ctx context.Context) (string, error) {
 	raw := strings.TrimSpace(os.Getenv("GOSO_WORKSPACE"))
 	if raw == "" {
 		return "", errNotConfigured
@@ -171,14 +177,28 @@ func workspaceAbs() (string, error) {
 	if security.HasDotDot(raw) {
 		return "", errPathEscape
 	}
-	abs, err := filepath.Abs(raw)
+	base, err := filepath.Abs(raw)
 	if err != nil {
 		return "", errPathEscape
 	}
-	if ev, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = ev
+	if ev, err := filepath.EvalSymlinks(base); err == nil {
+		base = ev
 	}
-	return abs, nil
+	tid := store.NormalizeTenant(skill.TenantFrom(ctx))
+	if strings.HasPrefix(tid, ".") || security.HasDotDot(tid) {
+		return "", errPathEscape
+	}
+	root := filepath.Join(base, tid)
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		return "", errNotConfigured
+	}
+	if ev, err := filepath.EvalSymlinks(root); err == nil {
+		root = ev
+	}
+	if err := confineUnder(base, root); err != nil {
+		return "", errPathEscape
+	}
+	return root, nil
 }
 
 func confineUnder(root, p string) error {
@@ -226,8 +246,8 @@ func canonPath(p string) string {
 	}
 }
 
-func jailPath(arg string) (abs string, rel string, err error) {
-	root, err := workspaceAbs()
+func jailPath(ctx context.Context, arg string) (abs string, rel string, err error) {
+	root, err := workspaceAbs(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -268,11 +288,11 @@ func jailPath(arg string) (abs string, rel string, err error) {
 	return canonCand, filepath.ToSlash(rel), nil
 }
 
-func readFile(args map[string]any) (*connector.InvokeResult, error) {
+func readFile(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !workspaceConfigured() {
 		return notConfigured(ToolReadFile), nil
 	}
-	abs, rel, err := jailPath(pathArg(args))
+	abs, rel, err := jailPath(ctx, pathArg(args))
 	if err != nil {
 		return mapFSErr(ToolReadFile, err), nil
 	}
@@ -302,7 +322,7 @@ func readFile(args map[string]any) (*connector.InvokeResult, error) {
 	}, nil
 }
 
-func writeFile(args map[string]any) (*connector.InvokeResult, error) {
+func writeFile(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !workspaceConfigured() {
 		return notConfigured(ToolWriteFile), nil
 	}
@@ -310,11 +330,11 @@ func writeFile(args map[string]any) (*connector.InvokeResult, error) {
 	if !ok {
 		return toolErr(ToolWriteFile, "error", "content is required"), nil
 	}
-	abs, rel, err := jailPath(pathArg(args))
+	abs, rel, err := jailPath(ctx, pathArg(args))
 	if err != nil {
 		return mapFSErr(ToolWriteFile, err), nil
 	}
-	root, err := workspaceAbs()
+	root, err := workspaceAbs(ctx)
 	if err != nil {
 		return mapFSErr(ToolWriteFile, err), nil
 	}
@@ -444,11 +464,11 @@ func fileMIME(name string) string {
 	return "application/octet-stream"
 }
 
-func listFiles(args map[string]any) (*connector.InvokeResult, error) {
+func listFiles(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !workspaceConfigured() {
 		return notConfigured(ToolListFiles), nil
 	}
-	abs, rel, err := jailPath(listPathArg(args))
+	abs, rel, err := jailPath(ctx, listPathArg(args))
 	if err != nil {
 		return mapFSErr(ToolListFiles, err), nil
 	}
@@ -504,7 +524,7 @@ func listFiles(args map[string]any) (*connector.InvokeResult, error) {
 	}, nil
 }
 
-func editFile(args map[string]any) (*connector.InvokeResult, error) {
+func editFile(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !workspaceConfigured() {
 		return notConfigured(ToolEdit), nil
 	}
@@ -519,7 +539,7 @@ func editFile(args map[string]any) (*connector.InvokeResult, error) {
 	if !ok {
 		return mapFSErr(ToolEdit, errNewRequired), nil
 	}
-	abs, rel, err := jailPath(pathArg(args))
+	abs, rel, err := jailPath(ctx, pathArg(args))
 	if err != nil {
 		return mapFSErr(ToolEdit, err), nil
 	}
@@ -560,11 +580,11 @@ func editFile(args map[string]any) (*connector.InvokeResult, error) {
 	}, nil
 }
 
-func sendFile(args map[string]any) (*connector.InvokeResult, error) {
+func sendFile(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
 	if !workspaceConfigured() {
 		return notConfigured(ToolSendFile), nil
 	}
-	abs, rel, err := jailPath(pathArg(args))
+	abs, rel, err := jailPath(ctx, pathArg(args))
 	if err != nil {
 		return mapFSErr(ToolSendFile, err), nil
 	}
@@ -609,11 +629,11 @@ func searchFile(ctx context.Context, args map[string]any) (*connector.InvokeResu
 	if q == "" {
 		return mapFSErr(ToolSearch, errQRequired), nil
 	}
-	abs, _, err := jailPath(listPathArg(args))
+	abs, _, err := jailPath(ctx, listPathArg(args))
 	if err != nil {
 		return mapFSErr(ToolSearch, err), nil
 	}
-	root, err := workspaceAbs()
+	root, err := workspaceAbs(ctx)
 	if err != nil {
 		return mapFSErr(ToolSearch, err), nil
 	}
@@ -744,11 +764,11 @@ func globFiles(ctx context.Context, args map[string]any) (*connector.InvokeResul
 	if _, err := filepath.Match(pattern, "x"); err != nil {
 		return mapFSErr(ToolGlob, errInvalidPattern), nil
 	}
-	root, err := workspaceAbs()
+	root, err := workspaceAbs(ctx)
 	if err != nil {
 		return mapFSErr(ToolGlob, err), nil
 	}
-	abs, _, err := jailPath(".")
+	abs, _, err := jailPath(ctx, ".")
 	if err != nil {
 		return mapFSErr(ToolGlob, err), nil
 	}

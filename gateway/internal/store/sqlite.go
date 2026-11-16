@@ -501,6 +501,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateTenantRegistry(); err != nil {
 		return err
 	}
+	if err := s.migrateAPIKeys(); err != nil {
+		return err
+	}
 	if err := s.migrateIngestConvert(); err != nil {
 		return err
 	}

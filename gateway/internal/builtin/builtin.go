@@ -292,15 +292,15 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 	case ToolSkillSearch:
 		return skillSearch(ctx, args)
 	case ToolReadFile:
-		return readFile(args)
+		return readFile(ctx, args)
 	case ToolWriteFile:
-		return writeFile(args)
+		return writeFile(ctx, args)
 	case ToolListFiles:
-		return listFiles(args)
+		return listFiles(ctx, args)
 	case ToolEdit:
-		return editFile(args)
+		return editFile(ctx, args)
 	case ToolSendFile:
-		return sendFile(args)
+		return sendFile(ctx, args)
 	case ToolSearch:
 		return searchFile(ctx, args)
 	case ToolGlob:

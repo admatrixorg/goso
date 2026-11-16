@@ -115,7 +115,7 @@ func TestInvoke_SandboxWorkspaceMountRO(t *testing.T) {
 	writeExecLogScript(t, dir, "docker", log, "")
 	t.Setenv("PATH", dir)
 	t.Setenv("GOSO_SANDBOX_IMAGE", "img")
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	abs, err := filepath.Abs(ws)
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +398,7 @@ for a in "$@"; do last=$a; done
 if [ -n "$last" ]; then : > "$last"; fi
 `)
 	t.Setenv("GOSO_FFMPEG", bin)
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	t.Setenv("GOSO_MEDIA", "")
 	res, err := Invoke(context.Background(), ToolMedia, map[string]any{"in": "in.wav", "out": "out.mp3"}, true)
 	if err != nil || res == nil || res.Status != "ok" {

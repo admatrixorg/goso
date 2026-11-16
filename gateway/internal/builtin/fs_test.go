@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/skill"
 )
 
 func TestInvoke_FSEmptyEnvNoTouch(t *testing.T) {
@@ -43,7 +44,7 @@ func TestInvoke_FSEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_FSRoundTrip(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolWriteFile, map[string]any{"path": "notes/hello.md", "content": "hi"}, false)
 	if err != nil || res == nil || res.Status != "ok" {
 		t.Fatalf("write %v %+v", err, res)
@@ -69,7 +70,7 @@ func TestInvoke_FSRoundTrip(t *testing.T) {
 func TestInvoke_FSEscapeRejected(t *testing.T) {
 	ws := t.TempDir()
 	other := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(other, "secret.txt"), []byte("nope"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ func TestInvoke_FSEscapeRejected(t *testing.T) {
 func TestInvoke_FSSymlinkEscape(t *testing.T) {
 	ws := t.TempDir()
 	other := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	secret := filepath.Join(other, "secret.txt")
 	if err := os.WriteFile(secret, []byte("nope"), 0o644); err != nil {
 		t.Fatal(err)
@@ -138,7 +139,7 @@ func TestInvoke_FSSymlinkEscape(t *testing.T) {
 
 func TestInvoke_FSReadCap(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	big := strings.Repeat("a", MaxReadBytes+1)
 	if err := os.WriteFile(filepath.Join(ws, "big.txt"), []byte(big), 0o644); err != nil {
 		t.Fatal(err)
@@ -164,7 +165,7 @@ func TestInvoke_FSReadCap(t *testing.T) {
 
 func TestInvoke_FSArgsAndDirectory(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolReadFile, map[string]any{"path": ""}, true)
 	if err != nil || res == nil || res.Status != "error" {
 		t.Fatalf("empty path %v %+v", err, res)
@@ -196,7 +197,7 @@ func TestInvoke_FSArgsAndDirectory(t *testing.T) {
 
 func TestInvoke_FSMissingAndAbsInside(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolReadFile, map[string]any{"path": "missing.md"}, true)
 	if err != nil || res == nil || res.Status != "not_found" {
 		t.Fatalf("missing %v %+v", err, res)
@@ -218,7 +219,7 @@ func TestInvoke_FSMissingAndAbsInside(t *testing.T) {
 
 func TestInvoke_ListFilesHappyAndJail(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +268,7 @@ func TestInvoke_ListFilesHappyAndJail(t *testing.T) {
 
 func TestInvoke_ListFilesEmptyDir(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolListFiles, map[string]any{}, false)
 	if err != nil || res == nil || res.Status != "ok" {
 		t.Fatalf("empty root %v %+v", err, res)
@@ -294,7 +295,7 @@ func TestInvoke_ListFilesEmptyDir(t *testing.T) {
 func TestInvoke_ListEditSendSymlinkEscape(t *testing.T) {
 	ws := t.TempDir()
 	other := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	secret := filepath.Join(other, "secret.txt")
 	if err := os.WriteFile(secret, []byte("nope"), 0o644); err != nil {
 		t.Fatal(err)
@@ -338,7 +339,7 @@ func TestInvoke_ListFilesEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_EditOneReplaceAndJail(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(ws, "t.md"), []byte("one two one"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +392,7 @@ func TestInvoke_EditEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_SendFileMetadataOnlyAndJail(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	body := []byte("hello png")
 	if err := os.WriteFile(filepath.Join(ws, "pic.png"), body, 0o644); err != nil {
 		t.Fatal(err)
@@ -439,7 +440,7 @@ func TestInvoke_SendFileEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_SearchHappyAndJail(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +498,7 @@ func TestInvoke_SearchHappyAndJail(t *testing.T) {
 
 func TestInvoke_SearchEmptyQNoWalk(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +539,7 @@ func TestInvoke_SearchEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_SearchCapBinaryAndLargeSkip(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	var b strings.Builder
 	for i := 0; i < 60; i++ {
 		b.WriteString("needle line\n")
@@ -575,7 +576,7 @@ func TestInvoke_SearchCapBinaryAndLargeSkip(t *testing.T) {
 func TestInvoke_SearchSymlinkEscape(t *testing.T) {
 	ws := t.TempDir()
 	other := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	secret := filepath.Join(other, "secret.txt")
 	if err := os.WriteFile(secret, []byte("needle"), 0o644); err != nil {
 		t.Fatal(err)
@@ -607,7 +608,7 @@ func TestInvoke_SearchSymlinkEscape(t *testing.T) {
 
 func TestInvoke_GlobHappyAndJail(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.Mkdir(filepath.Join(ws, "notes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +667,7 @@ func TestInvoke_GlobHappyAndJail(t *testing.T) {
 
 func TestInvoke_GlobEmptyPatternNoWalk(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(ws, "a.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +699,7 @@ func TestInvoke_GlobEmptyEnvNoTouch(t *testing.T) {
 
 func TestInvoke_GlobCap(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	for i := 0; i < maxListEnts+10; i++ {
 		name := filepath.Join(ws, fmt.Sprintf("f%03d.txt", i))
 		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
@@ -722,7 +723,7 @@ func TestInvoke_GlobCap(t *testing.T) {
 func TestInvoke_GlobSymlinkNoEscape(t *testing.T) {
 	ws := t.TempDir()
 	other := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(other, "secret.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +749,7 @@ func TestInvoke_GlobSymlinkNoEscape(t *testing.T) {
 
 func TestInvoke_SearchMissingPathNotFound(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolSearch, map[string]any{"q": "hello", "path": "nope"}, true)
 	if err != nil || res == nil || res.Status != "not_found" {
 		t.Fatalf("missing %v %+v", err, res)
@@ -757,7 +758,7 @@ func TestInvoke_SearchMissingPathNotFound(t *testing.T) {
 
 func TestInvoke_SearchSkipsFifo(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("needle"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -792,7 +793,7 @@ func TestInvoke_SearchSkipsFifo(t *testing.T) {
 
 func TestInvoke_GlobInvalidPattern(t *testing.T) {
 	ws := t.TempDir()
-	t.Setenv("GOSO_WORKSPACE", ws)
+	ws = useWorkspace(t, ws)
 	res, err := Invoke(context.Background(), ToolGlob, map[string]any{"pattern": "["}, true)
 	if err != nil || res == nil || res.Status != "error" {
 		t.Fatalf("invalid %v %+v", err, res)
@@ -811,5 +812,50 @@ func TestConfigured_SearchGlobWorkspace(t *testing.T) {
 	t.Setenv("GOSO_WORKSPACE", t.TempDir())
 	if !Configured(ToolSearch) || !Configured(ToolGlob) {
 		t.Fatal("workspace must configure search/glob")
+	}
+}
+
+// useWorkspace points GOSO_WORKSPACE at base and returns the default tenant's
+// folder inside it, which is where tool paths resolve for an untagged call.
+func useWorkspace(t *testing.T, base string) string {
+	t.Helper()
+	t.Setenv("GOSO_WORKSPACE", base)
+	ws := filepath.Join(base, "default")
+	if err := os.MkdirAll(ws, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	return ws
+}
+
+func TestWorkspaceIsPerTenant(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("GOSO_WORKSPACE", base)
+	minhAn := skill.WithTenant(context.Background(), "minh-an")
+	demo := skill.WithTenant(context.Background(), "demo-shop")
+	res, err := Invoke(minhAn, ToolWriteFile, map[string]any{"path": "plan.md", "content": "minh an only"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("write %v %+v", err, res)
+	}
+	if b, err := os.ReadFile(filepath.Join(base, "minh-an", "plan.md")); err != nil || string(b) != "minh an only" {
+		t.Fatalf("file not in tenant folder: %q %v", b, err)
+	}
+	// The other tenant cannot see it, by relative path, by climbing up, or by
+	// the absolute path of the first tenant's file.
+	for _, p := range []string{"plan.md", "../minh-an/plan.md", filepath.Join(base, "minh-an", "plan.md")} {
+		res, err = Invoke(demo, ToolReadFile, map[string]any{"path": p}, false)
+		if err != nil || res == nil || res.Status == "ok" {
+			t.Fatalf("other tenant read %q: %v %+v", p, err, res)
+		}
+	}
+	res, err = Invoke(demo, ToolListFiles, map[string]any{"path": "."}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("list %v %+v", err, res)
+	}
+	if strings.Contains(fmt.Sprint(res.Content), "plan.md") {
+		t.Fatalf("other tenant listed the file: %+v", res.Content)
+	}
+	res, err = Invoke(minhAn, ToolReadFile, map[string]any{"path": "plan.md"}, false)
+	if err != nil || res == nil || res.Status != "ok" {
+		t.Fatalf("owner read %v %+v", err, res)
 	}
 }

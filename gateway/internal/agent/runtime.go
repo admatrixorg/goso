@@ -160,7 +160,13 @@ func (rt *Runtime) attachExecutor() {
 				}
 			}
 		}
-		_, err := builtin.Invoke(ctx, req.Tool, req.Args, enabled)
+		tid := store.DefaultTenant
+		if rt.Store != nil && req.AgentID != "" {
+			if ag, err := rt.Store.GetAgent(req.AgentID); err == nil && ag != nil {
+				tid = store.NormalizeTenant(ag.TenantID)
+			}
+		}
+		_, err := builtin.Invoke(skill.WithTenant(ctx, tid), req.Tool, req.Args, enabled)
 		return err
 	}
 }
@@ -307,7 +313,9 @@ func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args m
 	if rt.Store != nil {
 		enabled = rt.Store.GetToolFlag(tool)
 	}
-	if (tool == builtin.ToolUseSkill || tool == builtin.ToolSkillSearch) && !skill.HasTenant(ctx) {
+	// Every built-in tool runs in the calling agent's tenant: skills read that
+	// tenant's skills, file tools use that tenant's workspace folder.
+	if !skill.HasTenant(ctx) {
 		tid := store.DefaultTenant
 		if rt.Store != nil && callMetaFrom(ctx).AgentID != "" {
 			if ag, err := rt.Store.GetAgent(callMetaFrom(ctx).AgentID); err == nil && ag != nil {

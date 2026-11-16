@@ -3,6 +3,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -49,10 +50,56 @@ var viewPrefixes = []string{
 }
 
 // Grant is a hashed issued API key that passed Accept. Secret is never stored here.
+// TenantID is the tenant the key was issued for; every request made with the
+// key runs inside that tenant.
 type Grant struct {
-	ID     string
-	Prefix string
-	Scopes []string
+	ID       string
+	Prefix   string
+	TenantID string
+	Scopes   []string
+}
+
+// tenantHeader mirrors tenant.Header (auth cannot import tenant).
+const tenantHeader = "X-Goso-Tenant"
+
+// defaultTenant mirrors store.DefaultTenant. A key issued for it is the
+// operator's own key and keeps the gateway-wide paths its scopes allow.
+const defaultTenant = "default"
+
+type grantKey struct{}
+
+// WithGrant stores the accepted key on ctx so tenant resolution can bind the
+// request to the key's tenant.
+func WithGrant(ctx context.Context, g Grant) context.Context {
+	return context.WithValue(ctx, grantKey{}, g)
+}
+
+// GrantFrom returns the key accepted for this request, if any.
+func GrantFrom(ctx context.Context) (Grant, bool) {
+	if ctx == nil {
+		return Grant{}, false
+	}
+	g, ok := ctx.Value(grantKey{}).(Grant)
+	return g, ok
+}
+
+// KeyTenant is the tenant a grant is bound to ("default" when unset).
+func (g Grant) KeyTenant() string {
+	t := strings.TrimSpace(g.TenantID)
+	if t == "" {
+		return defaultTenant
+	}
+	return t
+}
+
+// TenantMismatch reports a request whose tenant header names a tenant other
+// than the key's own. Such a request is refused, never silently rebound.
+func TenantMismatch(g Grant, r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	raw := strings.TrimSpace(r.Header.Get(tenantHeader))
+	return raw != "" && raw != g.KeyTenant()
 }
 
 // Has reports whether the grant includes scope (admin implies all).
@@ -140,8 +187,8 @@ func Require(cfg Config) func(http.Handler) http.Handler {
 			}
 			if cfg.Keys != nil {
 				if g, ok := cfg.Keys.Accept(got); ok {
-					if scopeAllows(g, r) {
-						next.ServeHTTP(w, r)
+					if !TenantMismatch(g, r) && scopeAllows(g, r) {
+						next.ServeHTTP(w, r.WithContext(WithGrant(r.Context(), g)))
 						return
 					}
 					w.Header().Set("Content-Type", "application/json")
@@ -201,10 +248,13 @@ func scopeAllows(g Grant, r *http.Request) bool {
 	if r == nil {
 		return false
 	}
+	path := r.URL.Path
+	if g.KeyTenant() != defaultTenant && gatewayWide(path) {
+		return false
+	}
 	if g.Has("admin") {
 		return true
 	}
-	path := r.URL.Path
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
 		if g.Has("read") && viewPathAllowed(path) {
@@ -232,6 +282,13 @@ func scopeAllows(g Grant, r *http.Request) bool {
 
 func privilegedWrite(path string) bool {
 	return hasPathPrefix(path, "/api/api-keys", "/v1/api-keys", "/api/tenants", "/v1/tenants", "/api/packages", "/v1/packages", "/api/system/backup", "/v1/system/backup", "/api/system/restore", "/v1/system/restore")
+}
+
+// gatewayWide paths see or change every tenant at once (all keys, all
+// tenants, packages, backup/restore, pairing). A key issued for a customer
+// tenant never reaches them, whatever its scopes.
+func gatewayWide(path string) bool {
+	return privilegedWrite(path) || pairingWritePath(path)
 }
 
 func pairingWritePath(path string) bool {

@@ -162,6 +162,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateTenantRegistry(); err != nil {
 		return fmt.Errorf("postgres migrate tenant registry: %w", err)
 	}
+	if err := s.migrateAPIKeys(); err != nil {
+		return fmt.Errorf("postgres migrate api keys: %w", err)
+	}
 	if err := s.migrateBodyTSV(); err != nil {
 		return fmt.Errorf("postgres migrate tsvector: %w", err)
 	}

@@ -139,6 +139,13 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	} else {
 		tenants = tenant.DefaultRegistry()
 	}
+	keys, err := apikey.Load(st)
+	if err != nil {
+		fatalf("api keys: %v", err)
+	}
+	if keys != nil {
+		apikey.SetDefault(keys)
+	}
 	gate := approval.New(0)
 	ev := eventstore.New(1024)
 	logs := logstore.New(1024)

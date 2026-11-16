@@ -15,13 +15,18 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
 func apiKeysServer(t *testing.T) (*apikey.Registry, *auditlog.Store, http.Handler) {
 	t.Helper()
 	reg := apikey.New()
 	al := auditlog.New(64)
-	h := NewRouter(Options{Store: store.New(), Version: "t", APIKeys: reg, Audit: al})
+	tenants := tenant.New()
+	if _, err := tenants.Create("acme", "Acme"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewRouter(Options{Store: store.New(), Version: "t", APIKeys: reg, Audit: al, Tenants: tenants})
 	return reg, al, h
 }
 

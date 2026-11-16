@@ -100,7 +100,11 @@ func TestVaultAPI_ForgedScopeAndSameTenantPermission(t *testing.T) {
 	if reader.Code != http.StatusForbidden {
 		t.Fatalf("read key wrote %d %s", reader.Code, reader.Body.String())
 	}
-	writer := put(h, "gk_write", "minh-an-legal", `{"title":"Header is not staff","body":"default-only"}`)
+	// A default-tenant key naming another tenant is refused (A1).
+	if crossed := put(h, "gk_write", "minh-an-legal", `{"title":"Header is not staff","body":"x"}`); crossed.Code != http.StatusForbidden {
+		t.Fatalf("write key crossed tenants %d %s", crossed.Code, crossed.Body.String())
+	}
+	writer := put(h, "gk_write", "", `{"title":"Header is not staff","body":"default-only"}`)
 	if writer.Code != http.StatusCreated {
 		t.Fatalf("write key %d %s", writer.Code, writer.Body.String())
 	}
