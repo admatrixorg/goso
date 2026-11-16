@@ -49,7 +49,7 @@ func (s *Service) putTenantAt(tenant, path, id string, body []byte) (*store.Vaul
 	if err != nil {
 		return nil, err
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(s.Root, dir); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {

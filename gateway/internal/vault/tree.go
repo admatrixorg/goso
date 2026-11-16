@@ -37,7 +37,7 @@ func (s *Service) EnsureIngestTree(tenant string) error {
 	if err != nil {
 		return err
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(s.Root, dir); err != nil {
 		return err
 	}
 	for _, rel := range ingestDirs {

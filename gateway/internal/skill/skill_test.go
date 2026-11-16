@@ -140,35 +140,43 @@ func TestList_SymlinkEscapeSkipped(t *testing.T) {
 	}
 }
 
-func TestLoad_WorkspaceJail(t *testing.T) {
+// The skills dir is its own root. It may sit beside GOSO_WORKSPACE (the
+// compose layout mounts /skills and /workspace as siblings) and still load,
+// while a symlink out of the skills root stays rejected.
+func TestLoad_SkillsDirBesideWorkspace(t *testing.T) {
 	ws := t.TempDir()
-	other := t.TempDir()
-	if err := os.Mkdir(filepath.Join(other, "x"), 0o755); err != nil {
+	skills := t.TempDir()
+	if err := os.Mkdir(filepath.Join(skills, "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(other, "x", "SKILL.md"), []byte("nope"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skills, "x", "SKILL.md"), []byte("yes"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outside, "leak"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "leak", "SKILL.md"), []byte("no"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "leak"), filepath.Join(skills, "leak")); err != nil {
+		t.Skip("symlink unsupported")
 	}
 	t.Setenv("GOSO_WORKSPACE", ws)
-	t.Setenv("GOSO_SKILLS_DIR", other)
-	if _, err := List(""); !errors.Is(err, ErrPathEscape) {
-		t.Fatalf("list outside workspace %v", err)
+	t.Setenv("GOSO_SKILLS_DIR", skills)
+	list, err := List("")
+	if err != nil {
+		t.Fatalf("list beside workspace %v", err)
 	}
-	if _, err := Load("", "x"); !errors.Is(err, ErrPathEscape) {
-		t.Fatalf("load outside workspace %v", err)
+	if len(list) != 1 || list[0].Name != "x" {
+		t.Fatalf("list %+v", list)
 	}
-
-	inside := filepath.Join(ws, "skills")
-	if err := os.MkdirAll(filepath.Join(inside, "in"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(inside, "in", "SKILL.md"), []byte("yes"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GOSO_SKILLS_DIR", inside)
-	doc, err := Load("", "in")
+	doc, err := Load("", "x")
 	if err != nil || doc.Body != "yes" {
 		t.Fatalf("%v %+v", err, doc)
+	}
+	if _, err := Load("", "leak"); !errors.Is(err, ErrPathEscape) {
+		t.Fatalf("load symlink out of skills root %v", err)
 	}
 }
 

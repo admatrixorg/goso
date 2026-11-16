@@ -182,7 +182,7 @@ func (s *Service) absPath(rel string) (string, error) {
 	if !underRoot(s.Root, p) {
 		return "", errors.New("path escape")
 	}
-	if err := security.Confine(p); err != nil {
+	if err := security.ConfineTo(s.Root, p); err != nil {
 		return "", err
 	}
 	return p, nil
@@ -208,7 +208,7 @@ func (s *Service) PutTenant(title, body, tenantID string) (*store.VaultDoc, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(s.Root, dir); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {

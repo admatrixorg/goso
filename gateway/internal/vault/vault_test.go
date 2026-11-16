@@ -214,19 +214,19 @@ func TestSync_SQLiteFTSHit(t *testing.T) {
 	}
 }
 
-func TestPut_WorkspaceAndDotDot(t *testing.T) {
+// The vault dir is its own root and may sit beside GOSO_WORKSPACE (the
+// compose layout mounts /vault and /workspace as siblings).
+func TestPut_VaultBesideWorkspaceAndDotDot(t *testing.T) {
 	ws := t.TempDir()
-	outside := t.TempDir()
 	t.Setenv("GOSO_WORKSPACE", ws)
-	svc := New(store.New(), outside)
-	if _, err := svc.Put("Nope", "body"); err == nil {
-		t.Fatal("expected outside workspace")
+	svc := New(store.New(), t.TempDir())
+	if _, err := svc.Put("Ok", "body"); err != nil {
+		t.Fatalf("put beside workspace %v", err)
 	}
-	inside := New(store.New(), filepath.Join(ws, "vault"))
-	if _, err := inside.Put("Ok", "hello"); err != nil {
-		t.Fatal(err)
+	if err := svc.EnsureIngestTree(store.DefaultTenant); err != nil {
+		t.Fatalf("ingest tree beside workspace %v", err)
 	}
-	if _, err := inside.absPath("../escape.md"); err == nil {
+	if _, err := svc.absPath("../escape.md"); err == nil {
 		t.Fatal("expected path escape")
 	}
 }
