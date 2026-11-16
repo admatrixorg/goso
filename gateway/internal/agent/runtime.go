@@ -188,12 +188,21 @@ func (rt *Runtime) ListTools(ctx context.Context, agentID string) ([]BoundTool, 
 	return out, nil
 }
 
+// peekConnector returns an enabled connector for tool listing. A disabled
+// connector is left out: its tools must not reach the model, and listing them
+// would start its MCP process for nothing.
 func peekConnector(reg *connector.Registry, name string) (connector.Connector, error) {
 	if reg == nil {
 		return nil, connector.ErrNotFound
 	}
-	c, _, err := reg.Peek(name)
-	return c, err
+	c, enabled, err := reg.Peek(name)
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, connector.ErrUnavailable
+	}
+	return c, nil
 }
 
 func (rt *Runtime) connectorNames(agentID string) []string {

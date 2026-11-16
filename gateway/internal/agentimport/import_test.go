@@ -467,7 +467,7 @@ func TestAddOnlyDoesNotOverwrite(t *testing.T) {
 	}
 }
 
-func TestAgentKeyTakenDoesNotTouchOtherTenant(t *testing.T) {
+func TestAgentKeyTakenByOtherTenantIsRenamed(t *testing.T) {
 	body := `{
 	  "agents": [{
 	    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00bb",
@@ -494,25 +494,35 @@ func TestAgentKeyTakenDoesNotTouchOtherTenant(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The key belongs to another tenant: the agent comes in under a
+			// renamed key and the other tenant's agent is left alone (N9).
 			sec := findSection(t, rep.Agents, srcTenant)
-			if sec.Inserted != 0 || sec.Reasons[reasonNativeExists] != 1 {
+			if sec.Inserted != 1 || sec.Skipped != 0 || sec.Rejected != 0 {
 				t.Fatalf("report %+v", sec)
 			}
+			wantKey := "minh-an-gap-key--" + store.NormalizeTenant(destTenant)
+			if len(rep.RenamedKeys) != 1 || rep.RenamedKeys[0].SourceKey != "minh-an-gap-key" || rep.RenamedKeys[0].DestKey != wantKey {
+				t.Fatalf("renamed %+v", rep.RenamedKeys)
+			}
 			if agentByKey(t, b.st, "minh-an-gap-key").ID != seed.ID {
-				t.Fatal("key collision created a second agent")
+				t.Fatal("source key no longer points at the other tenant's agent")
+			}
+			renamed := agentByKey(t, b.st, wantKey)
+			if renamed == nil || !store.SameTenant(renamed.TenantID, destTenant) {
+				t.Fatalf("renamed agent %+v", renamed)
 			}
 			got, err := b.st.GetAgent(seed.ID)
 			if err != nil || got.TenantID != otherDest || got.DisplayName != "Giu tenant B" || got.Instructions != keepText {
 				t.Fatalf("other tenant changed %+v", got)
 			}
-			if len(agentsIn(b.st, destTenant)) != 0 {
-				t.Fatal("dest gained an agent")
+			if len(agentsIn(b.st, destTenant)) != 1 {
+				t.Fatal("dest should hold the renamed agent")
 			}
 			rb, err := Rollback(b.st, destTenant, rbOpt(true))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if rb.Removed.Agents != 0 {
+			if rb.Removed.Agents != 1 {
 				t.Fatalf("rollback removed %d", rb.Removed.Agents)
 			}
 			if _, err := b.st.GetAgent(seed.ID); err != nil {
