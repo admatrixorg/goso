@@ -16,6 +16,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
+	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/channel"
 	"github.com/mqglobal/goso/gateway/internal/config"
 	"github.com/mqglobal/goso/gateway/internal/connector"
@@ -121,6 +122,8 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
 	chMgr := channel.NewManager()
 	chMgr.Telegram = tg
+	// The message tool writes through this process's running channel bots.
+	builtin.MessageSender = &channel.MessageTool{Store: st, Manager: chMgr}
 	dc := &channel.Discord{Store: st, LLM: provider, Meter: meter}
 	sl := &channel.Slack{Store: st, LLM: provider, Meter: meter}
 	fs := &channel.Feishu{Store: st, LLM: provider, Meter: meter}

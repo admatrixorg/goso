@@ -174,7 +174,8 @@ func (rt *Runtime) attachExecutor() {
 				tid = store.NormalizeTenant(ag.TenantID)
 			}
 		}
-		_, err := builtin.Invoke(skill.WithTenant(ctx, tid), req.Tool, req.Args, enabled)
+		ctx = builtin.WithCaller(skill.WithTenant(ctx, tid), req.AgentID, req.SessionID)
+		_, err := builtin.Invoke(ctx, req.Tool, req.Args, enabled)
 		return err
 	}
 }
@@ -312,15 +313,6 @@ func (rt *Runtime) CallTool(ctx context.Context, connectorName, tool string, arg
 }
 
 func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args map[string]any, start time.Time) (*CallResult, error) {
-	if builtin.RequiresApproval(tool) {
-		return rt.pendingApproval(ctx, traceID, builtin.ConnectorName, tool, args, map[string]any{
-			"requires_approval": true,
-		}, start), nil
-	}
-	enabled := false
-	if rt.Store != nil {
-		enabled = rt.Store.GetToolFlag(tool)
-	}
 	// Every built-in tool runs in the calling agent's tenant: skills read that
 	// tenant's skills, file tools use that tenant's workspace folder.
 	if !skill.HasTenant(ctx) {
@@ -332,7 +324,27 @@ func (rt *Runtime) callBuiltin(ctx context.Context, traceID, tool string, args m
 		}
 		ctx = skill.WithTenant(ctx, tid)
 	}
-	res, err := builtin.Invoke(ctx, tool, args, enabled)
+	meta := callMetaFrom(ctx)
+	ctx = builtin.WithCaller(ctx, meta.AgentID, meta.SessionID)
+	// Prepare refuses a bad call before it reaches the approval inbox and
+	// freezes the target the approver will see (message tool).
+	args, refusal := builtin.Prepare(ctx, tool, args)
+	var res *connector.InvokeResult
+	var err error
+	switch {
+	case refusal != nil:
+		res = refusal
+	case builtin.RequiresApproval(tool):
+		return rt.pendingApproval(ctx, traceID, builtin.ConnectorName, tool, args, map[string]any{
+			"requires_approval": true,
+		}, start), nil
+	default:
+		enabled := false
+		if rt.Store != nil {
+			enabled = rt.Store.GetToolFlag(tool)
+		}
+		res, err = builtin.Invoke(ctx, tool, args, enabled)
+	}
 	lat := time.Since(start)
 	if err != nil {
 		return rt.fail(traceID, builtin.ConnectorName, tool, start, err)
@@ -615,6 +627,7 @@ func (a runtimeTools) List(ctx context.Context, agentID string) ([]llm.ToolSpec,
 	out = append(out, pipeline.MemoryToolSpecs()...)
 	out = append(out, pipeline.SessionToolSpecs()...)
 	out = append(out, pipeline.VaultToolSpecs()...)
+	out = append(out, pipeline.OpsToolSpecs()...)
 	if a.rt.Store != nil && agentID != "" {
 		names := make([]string, 0, len(out))
 		for _, t := range out {
@@ -660,6 +673,9 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		}
 		out.Trace.Status = "ok"
 		return out, nil
+	}
+	if pipeline.IsOpsTool(call.Name) {
+		return a.callOps(ctx, agentID, call)
 	}
 	if pipeline.IsOrchestrationTool(call.Name) {
 		svc := &team.Service{Store: a.rt.Store, Chat: a.rt.chatText}
@@ -718,6 +734,69 @@ func (a runtimeTools) Call(ctx context.Context, agentID string, call llm.ToolCal
 		a.rt.Store.RecordToolUse(agentID, pipeline.AdvertiseName(conn, tool), failed)
 	}
 	return out, err
+}
+
+// SessionsSendTimeout bounds a background turn started by sessions_send.
+const SessionsSendTimeout = 5 * time.Minute
+
+type sessionsSendKey struct{}
+
+// startedBySessionsSend reports a turn that sessions_send started.
+func startedBySessionsSend(ctx context.Context) bool {
+	v, _ := ctx.Value(sessionsSendKey{}).(bool)
+	return v
+}
+
+// callOps runs cron / session_status / sessions_send for agentID. The tenant
+// comes from the agent row, the caller session from the turn.
+func (a runtimeTools) callOps(ctx context.Context, agentID string, call llm.ToolCall) (pipeline.CallOutcome, error) {
+	tid := store.DefaultTenant
+	if a.rt.Store != nil && agentID != "" {
+		if ag, err := a.rt.Store.GetAgent(agentID); err == nil && ag != nil {
+			tid = store.NormalizeTenant(ag.TenantID)
+		}
+	}
+	rt := a.rt
+	env := pipeline.OpsEnv{
+		Store:           rt.Store,
+		Tenant:          tid,
+		AgentID:         agentID,
+		CallerSessionID: callMetaFrom(ctx).SessionID,
+		Nested:          startedBySessionsSend(ctx),
+		Send: func(sessionID, message string) error {
+			// The target turn runs on its own clock: the calling turn must not
+			// wait on it, and must not cancel it by finishing first.
+			go func() {
+				bg, cancel := context.WithTimeout(context.WithValue(context.Background(), sessionsSendKey{}, true), SessionsSendTimeout)
+				defer cancel()
+				_, _ = rt.Chat(bg, sessionID, message)
+			}()
+			return nil
+		},
+	}
+	var body string
+	var err error
+	if rt.Store == nil {
+		err = errors.New("store required")
+	} else {
+		body, err = pipeline.DispatchOpsTool(env, call)
+	}
+	failed := err != nil
+	if rt.Store != nil {
+		rt.Store.RecordToolUse(agentID, call.Name, failed)
+	}
+	out := pipeline.CallOutcome{Content: body}
+	out.Trace.Tool = call.Name
+	if failed {
+		out.Trace.Status = "error"
+		out.Trace.Error = err.Error()
+		if out.Content == "" {
+			out.Content = err.Error()
+		}
+		return out, err
+	}
+	out.Trace.Status = "ok"
+	return out, nil
 }
 
 func (rt *Runtime) chatText(ctx context.Context, sessionID, message string) (string, error) {

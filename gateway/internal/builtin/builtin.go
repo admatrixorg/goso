@@ -6,13 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/skill"
@@ -56,9 +52,9 @@ type Spec struct {
 var catalog = []Spec{
 	{
 		Name:             ToolWebSearch,
-		Description:      "DuckDuckGo Instant Answer search. Fail-closed unless GOSO_WEB_SEARCH=ddg|1 and the UI flag is on.",
+		Description:      "Web search. Returns {provider, results:[{title,url,snippet}]}. Tries Brave, Exa, Tavily (API keys from env) in the GOSO_WEB_SEARCH order and falls back to DuckDuckGo Instant Answer. Fail-closed unless GOSO_WEB_SEARCH is set and the UI flag is on. Optional count 1-8.",
 		RequiresApproval: false,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"q":{"type":"string","description":"search query"},"count":{"type":"integer","minimum":1,"maximum":8}},"required":["q"]}`),
 	},
 	{
 		Name:             ToolWebFetch,
@@ -139,6 +135,18 @@ var catalog = []Spec{
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"]}`),
 	},
+	{
+		Name:             ToolDatetime,
+		Description:      "Current date and time. Optional timezone (IANA name, default Asia/Ho_Chi_Minh). Returns iso, date, time, weekday, utc_offset, unix. Read-only, no network.",
+		RequiresApproval: false,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"timezone":{"type":"string","description":"IANA timezone, e.g. Asia/Ho_Chi_Minh"}}}`),
+	},
+	{
+		Name:             ToolMessage,
+		Description:      "Send a text message to a chat on one of this agent's channels (Telegram, Zalo Bot, Lark). Omit channel and chat_id to write to the current conversation. Only channels of this tenant that are bound to this agent, enabled and running, and only chats that already talked to this agent. Requires approval.",
+		RequiresApproval: true,
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"channel":{"type":"string","description":"channel name <tenant>/<type>/<name>; default: current conversation"},"chat_id":{"type":"string","description":"chat id on that channel; default: current conversation"}},"required":["text"]}`),
+	},
 }
 
 // Catalog returns the builtin tool list (always advertised).
@@ -177,7 +185,11 @@ func Configured(name string) bool {
 	case ToolReadFile, ToolWriteFile, ToolListFiles, ToolEdit, ToolSendFile, ToolSearch, ToolGlob:
 		return workspaceConfigured()
 	case ToolWebSearch:
-		return WebSearchNetworkAllowed() && strings.TrimSpace(InstantAnswerBase) != ""
+		return webSearchConfigured()
+	case ToolDatetime:
+		return true
+	case ToolMessage:
+		return MessageSender != nil
 	case ToolWebFetch:
 		return true
 	case ToolUseSkill, ToolSkillSearch:
@@ -240,12 +252,6 @@ func Tools() []connector.Tool {
 	return out
 }
 
-// WebSearchNetworkAllowed is the env gate (independent of the UI flag).
-func WebSearchNetworkAllowed() bool {
-	v := strings.TrimSpace(strings.ToLower(os.Getenv("GOSO_WEB_SEARCH")))
-	return v == "ddg" || v == "1"
-}
-
 func notConfigured(name string) *connector.InvokeResult {
 	return &connector.InvokeResult{
 		Tool:      name,
@@ -256,7 +262,8 @@ func notConfigured(name string) *connector.InvokeResult {
 }
 
 // Invoke runs a builtin tool.
-// web_search networks only when the UI flag is on and GOSO_WEB_SEARCH=ddg|1.
+// web_search networks only when the UI flag is on and GOSO_WEB_SEARCH is set.
+// message needs a MessageSender (wired by serve) and always goes through approval.
 // web_fetch always runs; SSRF (security.CheckURL + GuardClient) is the only network policy.
 // Filesystem tools fail-closed unless GOSO_WORKSPACE is set; they never exec.
 // sandbox runs docker only when GOSO_SANDBOX_IMAGE is set and docker exists; else not_configured.
@@ -276,6 +283,10 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return webSearch(ctx, args)
 	case ToolWebFetch:
 		return webFetch(ctx, args)
+	case ToolDatetime:
+		return invokeDatetime(args)
+	case ToolMessage:
+		return invokeMessage(ctx, args)
 	case ToolUseSkill:
 		return useSkill(ctx, args)
 	case ToolSkillSearch:
@@ -435,146 +446,4 @@ func skillSearchQuery(args map[string]any) string {
 		}
 	}
 	return ""
-}
-
-func queryArg(args map[string]any) string {
-	if args == nil {
-		return ""
-	}
-	for _, k := range []string{"q", "query"} {
-		if v, ok := args[k]; ok {
-			if s, ok := v.(string); ok {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	return ""
-}
-
-func webSearch(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
-	q := queryArg(args)
-	if q == "" {
-		// Empty query is fail-closed (not_configured), no network.
-		return notConfigured(ToolWebSearch), nil
-	}
-	base := strings.TrimSpace(InstantAnswerBase)
-	if base == "" {
-		return notConfigured(ToolWebSearch), nil
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return notConfigured(ToolWebSearch), nil
-	}
-	qs := u.Query()
-	qs.Set("q", q)
-	qs.Set("format", "json")
-	qs.Set("no_html", "1")
-	qs.Set("skip_disambig", "1")
-	u.RawQuery = qs.Encode()
-
-	client := InstantAnswerClient
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("web_search %d", resp.StatusCode)
-	}
-	results, err := mapSearchHits(body)
-	if err != nil {
-		return nil, err
-	}
-	return &connector.InvokeResult{
-		Tool:      ToolWebSearch,
-		Connector: ConnectorName,
-		Status:    "ok",
-		Content: map[string]any{
-			"results": results,
-		},
-		Raw: body,
-	}, nil
-}
-
-func mapSearchHits(body []byte) ([]map[string]any, error) {
-	var ddg struct {
-		AbstractText  string            `json:"AbstractText"`
-		Abstract      string            `json:"Abstract"`
-		AbstractURL   string            `json:"AbstractURL"`
-		Answer        string            `json:"Answer"`
-		Heading       string            `json:"Heading"`
-		RelatedTopics []json.RawMessage `json:"RelatedTopics"`
-		Results       []json.RawMessage `json:"Results"`
-	}
-	if err := json.Unmarshal(body, &ddg); err != nil {
-		return nil, err
-	}
-	out := make([]map[string]any, 0, maxSearchHits)
-	snippet := strings.TrimSpace(ddg.AbstractText)
-	if snippet == "" {
-		snippet = strings.TrimSpace(ddg.Abstract)
-	}
-	if snippet == "" {
-		snippet = strings.TrimSpace(ddg.Answer)
-	}
-	title := strings.TrimSpace(ddg.Heading)
-	url := strings.TrimSpace(ddg.AbstractURL)
-	if title != "" || url != "" || snippet != "" {
-		if title == "" {
-			title = snippet
-		}
-		out = append(out, searchHit(title, url, snippet))
-	}
-	appendTopicHits(&out, ddg.Results)
-	appendTopicHits(&out, ddg.RelatedTopics)
-	return out, nil
-}
-
-func appendTopicHits(out *[]map[string]any, raw []json.RawMessage) {
-	for _, r := range raw {
-		if len(*out) >= maxSearchHits {
-			return
-		}
-		var item struct {
-			Text     string            `json:"Text"`
-			FirstURL string            `json:"FirstURL"`
-			Topics   []json.RawMessage `json:"Topics"`
-		}
-		if json.Unmarshal(r, &item) != nil {
-			continue
-		}
-		text := strings.TrimSpace(item.Text)
-		u := strings.TrimSpace(item.FirstURL)
-		if text != "" || u != "" {
-			title, snippet := splitTopicText(text)
-			*out = append(*out, searchHit(title, u, snippet))
-		}
-		if len(item.Topics) > 0 {
-			appendTopicHits(out, item.Topics)
-		}
-	}
-}
-
-func splitTopicText(text string) (title, snippet string) {
-	text = strings.TrimSpace(text)
-	if i := strings.Index(text, " - "); i > 0 {
-		return strings.TrimSpace(text[:i]), strings.TrimSpace(text[i+3:])
-	}
-	return text, text
-}
-
-func searchHit(title, u, snippet string) map[string]any {
-	return map[string]any{
-		"title":   title,
-		"url":     u,
-		"snippet": snippet,
-	}
 }
