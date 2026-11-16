@@ -211,6 +211,34 @@ func openMapper(st store.StoreIface, write bool) (mapper, error) {
 	return v.(*memMapper), nil
 }
 
+// AgentRefs returns the agents this tool imported into dest: GoClaw agent id
+// to goso agent id. It only reads. A store without the import map returns an
+// empty map. Other importers use it to find an agent whose key was renamed.
+func AgentRefs(st store.StoreIface, dest string) (map[string]string, error) {
+	out := map[string]string{}
+	if st == nil {
+		return out, nil
+	}
+	var rows []mapRow
+	err := withStoreLock(st, func() error {
+		m, err := openMapper(st, false)
+		if err != nil {
+			return err
+		}
+		rows, err = m.list(dest)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.Kind == kindAgent && row.SourceTable == tableAgents && row.Ref != "" {
+			out[row.SourceKey] = row.Ref
+		}
+	}
+	return out, nil
+}
+
 func mapTablePresent(db *sql.DB, pg bool) (bool, error) {
 	var n int
 	var err error
