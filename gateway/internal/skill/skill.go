@@ -320,7 +320,7 @@ func tenantDir(root, tenant string) (string, error) {
 	if !underRoot(root, dir) {
 		return "", ErrPathEscape
 	}
-	if err := security.Confine(dir); err != nil {
+	if err := security.ConfineTo(root, dir); err != nil {
 		return "", ErrPathEscape
 	}
 	return dir, nil
@@ -583,9 +583,6 @@ func resolveRoot() (string, error) {
 	if err != nil {
 		return "", ErrPathEscape
 	}
-	if err := security.Confine(abs); err != nil {
-		return "", ErrPathEscape
-	}
 	return abs, nil
 }
 
@@ -622,7 +619,7 @@ func confineFile(root, p string) error {
 	if !underRoot(root, p) {
 		return ErrPathEscape
 	}
-	if err := security.Confine(p); err != nil {
+	if err := security.ConfineTo(root, p); err != nil {
 		return ErrPathEscape
 	}
 	return nil

@@ -217,8 +217,8 @@ func resolveVaultFile(root, tenant, logical string) (string, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", errSymlink
 	}
-	if err := security.Confine(abs); err != nil {
-		return "", err
+	if err := security.ConfineTo(dir, abs); err != nil {
+		return "", errSymlink
 	}
 	return abs, nil
 }

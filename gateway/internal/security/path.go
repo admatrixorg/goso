@@ -110,6 +110,9 @@ func canon(p string) string {
 }
 
 // Confine rejects writes outside GOSO_WORKSPACE when that env is set.
+// It guards the agent's own file tools. Stores that own a separate root
+// (skills, vault) use ConfineTo with that root instead, so they can live
+// beside the workspace rather than inside it, out of reach of the fs tools.
 func Confine(path string) error {
 	if HasDotDot(path) {
 		return fmt.Errorf("path escape")
@@ -118,14 +121,29 @@ func Confine(path string) error {
 	if root == "" {
 		return nil
 	}
+	return confineTo(root, path, "outside workspace")
+}
+
+// ConfineTo rejects a path that resolves, after symlinks, outside root.
+func ConfineTo(root, path string) error {
+	if HasDotDot(path) {
+		return fmt.Errorf("path escape")
+	}
+	if strings.TrimSpace(root) == "" {
+		return fmt.Errorf("path escape")
+	}
+	return confineTo(root, path, "path escape")
+}
+
+func confineTo(root, path, msg string) error {
 	absRoot := canon(root)
 	absP := canon(path)
 	rel, err := filepath.Rel(absRoot, absP)
 	if err != nil {
-		return fmt.Errorf("outside workspace")
+		return fmt.Errorf("%s", msg)
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return fmt.Errorf("outside workspace")
+		return fmt.Errorf("%s", msg)
 	}
 	return nil
 }
