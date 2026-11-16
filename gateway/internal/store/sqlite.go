@@ -513,6 +513,12 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateAgentKeyScope(); err != nil {
 		return fmt.Errorf("migrate agent_key scope: %w", err)
 	}
+	if err := s.migrateAgentLinkTenant(); err != nil {
+		return fmt.Errorf("migrate agent_links tenant: %w", err)
+	}
+	if err := s.migrateHooks(); err != nil {
+		return fmt.Errorf("migrate hooks: %w", err)
+	}
 	return nil
 }
 

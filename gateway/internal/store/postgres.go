@@ -174,6 +174,12 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateAgentKeyScope(); err != nil {
 		return fmt.Errorf("postgres migrate agent_key scope: %w", err)
 	}
+	if err := s.migrateAgentLinkTenant(); err != nil {
+		return fmt.Errorf("postgres migrate agent_links tenant: %w", err)
+	}
+	if err := s.migrateHooks(); err != nil {
+		return fmt.Errorf("postgres migrate hooks: %w", err)
+	}
 	return nil
 }
 

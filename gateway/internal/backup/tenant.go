@@ -37,6 +37,7 @@ func PruneTenant(path, tenantID string) error {
 		{`DELETE FROM llm_providers WHERE tenant_id != ?`, []any{tenantID}},
 		{`DELETE FROM webhooks WHERE tenant_id != ?`, []any{tenantID}},
 		{`DELETE FROM webhook_jobs WHERE webhook_id NOT IN (SELECT id FROM webhooks)`, nil},
+		{`DELETE FROM hooks WHERE tenant_id != ?`, []any{tenantID}},
 		{`DELETE FROM kg_entities WHERE tenant_id != ?`, []any{tenantID}},
 		{`DELETE FROM kg_relations WHERE tenant_id != ?`, []any{tenantID}},
 		{`DELETE FROM cron_jobs WHERE session_id NOT IN (SELECT id FROM sessions)`, nil},

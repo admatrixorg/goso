@@ -14,6 +14,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
+	"github.com/mqglobal/goso/gateway/internal/hooks"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/observe"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
@@ -108,6 +109,9 @@ func New(st store.StoreIface, reg *connector.Registry, gate *approval.Gate, ev *
 		provider = llm.Echo{}
 	}
 	rt := &Runtime{Store: st, Registry: reg, Gate: gate, Events: ev, LLM: provider, Hooks: pipeline.NewDispatcher()}
+	if eng := hooks.NewEngine(st); eng != nil {
+		rt.Hooks.SetSource(eng)
+	}
 	rt.attachExecutor()
 	return rt
 }

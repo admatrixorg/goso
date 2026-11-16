@@ -184,13 +184,13 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	st.ForceSummarize = r.ForceSummarize
 	st.Provider = r.LLM
 	if isFirstUserTurn(r.Store, sessionID) {
-		r.Hooks.Fire(ctx, Event{Name: SessionStart, SessionID: st.SessionID, AgentID: st.AgentID})
+		r.Hooks.Fire(ctx, Event{Name: SessionStart, TenantID: st.TenantID, SessionID: st.SessionID, AgentID: st.AgentID})
 	}
 
 	if _, err := r.addTurnMessage(store.Message{SessionID: sessionID, Role: "user", Content: userText}); err != nil {
 		return nil, err
 	}
-	r.Hooks.Fire(ctx, Event{Name: UserPromptSubmit, SessionID: st.SessionID, AgentID: st.AgentID})
+	r.Hooks.Fire(ctx, Event{Name: UserPromptSubmit, TenantID: st.TenantID, SessionID: st.SessionID, AgentID: st.AgentID})
 
 	if err := r.loadHistory(st); err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	r.summarize(ctx, st)
 	// Channel writes stamp customer_key from the session. Web writes stay shared.
 	extractKG(r.Store, st.SessionID, st.Reply)
-	r.Hooks.Fire(ctx, Event{Name: Stop, SessionID: st.SessionID, AgentID: st.AgentID})
+	r.Hooks.Fire(ctx, Event{Name: Stop, TenantID: st.TenantID, SessionID: st.SessionID, AgentID: st.AgentID})
 	res = &Result{Reply: st.Reply, SessionID: sessionID, Trace: st.Traces, Usage: st.Usage}
 	return res, nil
 }
@@ -414,8 +414,9 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 	for _, call := range reply.ToolCalls {
 		conn, tool := ResolveCall(call)
 		args := cloneArgs(call.Arguments)
-		r.Hooks.Fire(ctx, Event{
+		gate := r.Hooks.Gate(ctx, Event{
 			Name:      PreToolUse,
+			TenantID:  st.TenantID,
 			SessionID: st.SessionID,
 			AgentID:   st.AgentID,
 			Tool:      tool,
@@ -424,7 +425,15 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 		})
 		_, toolSpan := observe.StartSpan(ctx, observe.KindTool, call.Name)
 		var out CallOutcome
-		if !isAdvertised(call, st.Tools) {
+		if gate.Block {
+			msg := strings.TrimSpace(gate.Message)
+			if msg == "" {
+				msg = "tool call blocked by hook"
+			}
+			out.Trace = ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: "blocked by hook: " + msg}
+			out.Content = out.Trace.Error
+			err = nil
+		} else if !isAdvertised(call, st.Tools) {
 			out.Trace = ToolTrace{Connector: conn, Tool: tool, Status: "error", Error: "tool not advertised"}
 			out.Content = out.Trace.Error
 			err = nil
@@ -463,6 +472,7 @@ func (r *Runner) actObserve(ctx context.Context, st *State, iter int, reply llm.
 		})
 		r.Hooks.Fire(ctx, Event{
 			Name:      PostToolUse,
+			TenantID:  st.TenantID,
 			SessionID: st.SessionID,
 			AgentID:   st.AgentID,
 			Tool:      tool,

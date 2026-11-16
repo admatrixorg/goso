@@ -54,7 +54,7 @@ func TestToolSpecsGating(t *testing.T) {
 	}
 }
 
-func TestDelegateSyncAsyncBidir(t *testing.T) {
+func TestDelegateSyncAsync(t *testing.T) {
 	st := store.New()
 	a, _ := st.CreateAgent(store.Agent{AgentKey: "from"})
 	b, _ := st.CreateAgent(store.Agent{AgentKey: "to"})
@@ -71,17 +71,16 @@ func TestDelegateSyncAsyncBidir(t *testing.T) {
 	out, err := svc.Dispatch(ctx, a.ID, llm.ToolCall{
 		Name: ToolDelegate,
 		Arguments: map[string]any{
-			"to_agent_id":   b.ID,
-			"message":       "ping",
-			"mode":          "sync",
-			"bidirectional": true,
+			"to_agent_id": b.ID,
+			"message":     "ping",
+			"mode":        "sync",
 		},
 	})
 	if err != nil || !strings.Contains(out, "echo: ping") {
 		t.Fatalf("sync %v %s", err, out)
 	}
-	if !st.HasAgentLink(a.ID, b.ID) || !st.HasAgentLink(b.ID, a.ID) {
-		t.Fatal("bidirectional links missing")
+	if st.HasAgentLink(a.ID, b.ID) || st.HasAgentLink(b.ID, a.ID) {
+		t.Fatal("delegate must not create links")
 	}
 	select {
 	case <-chatted:

@@ -350,11 +350,16 @@ func (s *Store) AddAgentLink(fromID, toID string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.agents[fromID]; !ok {
+	from, ok := s.agents[fromID]
+	if !ok {
 		return errors.New("from agent not found")
 	}
-	if _, ok := s.agents[toID]; !ok {
+	to, ok := s.agents[toID]
+	if !ok {
 		return errors.New("to agent not found")
+	}
+	if !SameTenant(from.TenantID, to.TenantID) {
+		return ErrCrossTenantLink
 	}
 	for _, id := range s.agentLinks[fromID] {
 		if id == toID {
