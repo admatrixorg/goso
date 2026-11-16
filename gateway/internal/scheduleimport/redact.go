@@ -57,7 +57,19 @@ func channelSame(got *store.ChannelConfig, want store.ChannelConfig) bool {
 	if got.DMPolicy != want.DMPolicy || got.GroupPolicy != want.GroupPolicy || got.RequireMention != want.RequireMention {
 		return false
 	}
-	return sameList(got.AllowFrom, want.AllowFrom)
+	return sameList(got.AllowFrom, want.AllowFrom) && sameSettings(got.Settings, want.Settings)
+}
+
+func sameSettings(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			return false
+		}
+	}
+	return true
 }
 
 func sameList(a, b []string) bool {

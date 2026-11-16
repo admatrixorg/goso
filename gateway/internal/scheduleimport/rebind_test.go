@@ -110,3 +110,41 @@ func TestRerunKeepsEditedChannel(t *testing.T) {
 		t.Fatalf("edited row changed %+v", got)
 	}
 }
+
+func zcrmRow(config string) ChannelRow {
+	off := false
+	return ChannelRow{ID: "ch-zp-1", TenantID: "minh-an", Name: "zcrm-shop", ChannelType: "zalo_personal", Config: []byte(config), Enabled: &off}
+}
+
+// A ZaloCRM bridge channel keeps the account it answers for and where to
+// reply. Rows imported before settings were kept get them on a rerun.
+func TestZCRMChannelKeepsBridgeSettings(t *testing.T) {
+	st := store.New()
+	opts := Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()}
+	if _, err := Import(st, &Export{ChannelInstances: []ChannelRow{zcrmRow(`{}`)}}, opts); err != nil {
+		t.Fatal(err)
+	}
+	const name = "minh-an/zalo-personal/zcrm-shop"
+	if cfg, err := st.GetChannelConfig(name); err != nil || len(cfg.Settings) != 0 {
+		t.Fatalf("setup %+v %v", cfg, err)
+	}
+	ex := &Export{ChannelInstances: []ChannelRow{zcrmRow(`{"account_id":"acc-1","crm_base_url":"https://crm.example.test","group_enabled":true}`)}}
+	got, err := Import(st, ex, opts)
+	if err != nil || got.Tenants[0].ChannelInstances.Rebound != 1 {
+		t.Fatalf("rerun %+v %v", got, err)
+	}
+	cfg, _ := st.GetChannelConfig(name)
+	want := map[string]string{"account_id": "acc-1", "crm_base_url": "https://crm.example.test", "group_enabled": "true"}
+	for k, v := range want {
+		if cfg.Settings[k] != v {
+			t.Fatalf("settings %v want %v", cfg.Settings, want)
+		}
+	}
+	if cfg.Enabled {
+		t.Fatal("imported channel turned on")
+	}
+	again, err := Import(st, ex, opts)
+	if err != nil || again.Tenants[0].ChannelInstances.Rebound != 0 || again.Tenants[0].ChannelInstances.Skipped != 1 {
+		t.Fatalf("third run %+v %v", again, err)
+	}
+}

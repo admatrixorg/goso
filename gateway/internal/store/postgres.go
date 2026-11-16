@@ -107,6 +107,7 @@ func (s *PostgresStore) migratePostgres() error {
 			return fmt.Errorf("postgres migrate: %w", err)
 		}
 	}
+	_, _ = s.db.db.Exec(`ALTER TABLE channel_config ADD COLUMN IF NOT EXISTS settings TEXT NOT NULL DEFAULT '{}'`)
 	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS model_override TEXT DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS provider_override TEXT DEFAULT ''`)
 	_, _ = s.db.db.Exec(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false`)

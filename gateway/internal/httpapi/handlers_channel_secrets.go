@@ -27,7 +27,7 @@ func handlePutChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.Han
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
-		if channel.WritableFields(catalog) == nil {
+		if channel.WritableFields(name) == nil {
 			if catalog == "zalo-personal" {
 				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")
 				return
@@ -47,7 +47,7 @@ func handlePutChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.Han
 			if !channelSecretKey(lk) {
 				continue
 			}
-			kind, ok := channel.FieldKind(catalog, lk)
+			kind, ok := channel.FieldKind(name, lk)
 			if !ok {
 				writeErr(w, http.StatusBadRequest, "unknown secret field")
 				return
@@ -96,7 +96,7 @@ func handleDeleteChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
-		fields := channel.WritableFields(catalog)
+		fields := channel.WritableFields(name)
 		if fields == nil {
 			if catalog == "zalo-personal" {
 				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")
@@ -107,7 +107,7 @@ func handleDeleteChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.
 		}
 		cleared := make([]string, 0, len(fields))
 		for _, field := range fields {
-			kind, ok := channel.FieldKind(catalog, field)
+			kind, ok := channel.FieldKind(name, field)
 			if !ok {
 				continue
 			}

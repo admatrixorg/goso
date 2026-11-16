@@ -125,6 +125,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	sl := &channel.Slack{Store: st, LLM: provider, Meter: meter}
 	fs := &channel.Feishu{Store: st, LLM: provider, Meter: meter}
 	wa := &channel.WhatsApp{Store: st, LLM: provider, Meter: meter}
+	zcrm := &channel.ZCRMBridge{Store: st, LLM: provider, Meter: meter}
 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)
@@ -149,7 +150,8 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		Registry: connReg, Gate: gate, Events: ev, Logs: logs, Runtime: rt, Meter: meter,
 		TG: tg.HandleUpdate, ZP: zp.HandleUpdate, ZO: zo.HandleUpdate,
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
-		LLM: llm.NewRegistry(), Pairing: pairing, Channels: chMgr, APIKeys: apikey.Default(),
+		ZCRM: zcrm.HandleUpdate,
+		LLM:  llm.NewRegistry(), Pairing: pairing, Channels: chMgr, APIKeys: apikey.Default(),
 		Tenants: tenants,
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
@@ -211,7 +213,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			Pairing:  pairing,
 			Keys:     apikey.Default(),
 			Bypass:   []string{"/healthz", "/api/webhooks/llm"},
-			SelfAuth: channel.TelegramSelfAuth,
+			SelfAuth: channelSelfAuth,
 		})(handler)
 	}
 	handler = obs.Middleware(handler)
@@ -223,6 +225,12 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 		DevMode:   devMode && adminToken == "" && viewToken == "",
 		RateLimit: rateLimit,
 	}
+}
+
+// channelSelfAuth lets a channel's own signed webhook call past the admin
+// token; its handler checks the signature.
+func channelSelfAuth(r *http.Request) bool {
+	return channel.TelegramSelfAuth(r) || channel.ZCRMSelfAuth(r)
 }
 
 func envTruthy(v string) bool {

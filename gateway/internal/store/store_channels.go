@@ -9,14 +9,17 @@ import (
 
 // ChannelConfig is non-secret per-catalog-name channel settings (SPEC 084).
 type ChannelConfig struct {
-	Name           string    `json:"name"`
-	Enabled        bool      `json:"enabled"`
-	AgentID        string    `json:"agent_id,omitempty"`
-	DMPolicy       string    `json:"dm_policy"`
-	GroupPolicy    string    `json:"group_policy"`
-	RequireMention bool      `json:"require_mention"`
-	AllowFrom      []string  `json:"allow_from,omitempty"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	Name           string   `json:"name"`
+	Enabled        bool     `json:"enabled"`
+	AgentID        string   `json:"agent_id,omitempty"`
+	DMPolicy       string   `json:"dm_policy"`
+	GroupPolicy    string   `json:"group_policy"`
+	RequireMention bool     `json:"require_mention"`
+	AllowFrom      []string `json:"allow_from,omitempty"`
+	// Settings holds a channel's own non-secret options, such as the ZaloCRM
+	// account a bridged Zalo channel answers for.
+	Settings  map[string]string `json:"settings,omitempty"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 // ChannelPairing is a hashed DM pairing request (not 077 view-token pairing).
@@ -38,6 +41,12 @@ func cloneChannelConfig(c *ChannelConfig) *ChannelConfig {
 	cp := *c
 	if c.AllowFrom != nil {
 		cp.AllowFrom = append([]string(nil), c.AllowFrom...)
+	}
+	if c.Settings != nil {
+		cp.Settings = make(map[string]string, len(c.Settings))
+		for k, v := range c.Settings {
+			cp.Settings[k] = v
+		}
 	}
 	return &cp
 }
