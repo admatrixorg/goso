@@ -84,18 +84,7 @@ var catalog = []Spec{
 		RequiresApproval: true,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"in":{"type":"string"},"out":{"type":"string"}}}`),
 	},
-	{
-		Name:             ToolImageGen,
-		Description:      "Image generation stub. Fail-closed not_configured unless GOSO_MEDIA*=1 and a test double is injected. Never calls a paid API.",
-		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string"}}}`),
-	},
-	{
-		Name:             ToolTTS,
-		Description:      "Text-to-speech stub. Fail-closed not_configured unless GOSO_MEDIA*=1 and a test double is injected. Never calls a paid API.",
-		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}}}`),
-	},
+	// image_gen and tts live in media_tools.go (mediaCatalog).
 	{
 		Name:             ToolUseSkill,
 		Description:      "Read a local SKILL.md by folder name for this agent's tenant. A tenant file overrides a shared root skill. Fail-closed unless GOSO_SKILLS_DIR is set. Never executes skill scripts.",
@@ -199,8 +188,8 @@ func Configured(name string) bool {
 		return browserBin() != ""
 	case ToolMedia:
 		return ffmpegBin() != ""
-	case ToolImageGen, ToolTTS:
-		return MediaEnvAllowed() && MediaInvoke != nil
+	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadAudio, ToolSTT:
+		return mediaToolConfigured(name)
 	default:
 		return false
 	}
@@ -272,8 +261,8 @@ func notConfigured(name string) *connector.InvokeResult {
 // Filesystem tools fail-closed unless GOSO_WORKSPACE is set; they never exec.
 // sandbox runs docker only when GOSO_SANDBOX_IMAGE is set and docker exists; else not_configured.
 // browser launches only when GOSO_BROWSER_BIN or CHROME_PATH is an existing file; else not_configured.
-// media runs ffmpeg when GOSO_FFMPEG (or PATH ffmpeg + GOSO_MEDIA=1) exists; image_gen/tts stay
-// not_configured unless GOSO_MEDIA*=1 and MediaInvoke is set.
+// media runs ffmpeg when GOSO_FFMPEG (or PATH ffmpeg + GOSO_MEDIA=1) exists. read_image,
+// read_document, read_audio/stt, create_image/image_gen and tts: see media_tools.go.
 func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled bool) (*connector.InvokeResult, error) {
 	name = strings.TrimSpace(name)
 	if !IsName(name) {
@@ -309,6 +298,8 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return invokeSandbox(ctx, args)
 	case ToolBrowser:
 		return invokeBrowser(ctx, args)
+	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadAudio, ToolSTT:
+		return invokeMediaTool(ctx, name, args, uiEnabled)
 	default:
 		if isMediaName(name) {
 			return invokeMedia(ctx, name, args)

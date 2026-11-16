@@ -10,6 +10,9 @@ type Message struct {
 	Content    string     `json:"content"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	// Images are inline image parts for one vision call (user turns only).
+	// Never serialized: session history stays text-only.
+	Images []ImagePart `json:"-"`
 }
 
 // Provider can generate a reply from a conversation.

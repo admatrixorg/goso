@@ -160,7 +160,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		Discord: dc.HandleUpdate, Slack: sl.HandleUpdate, Feishu: fs.HandleUpdate, WhatsApp: wa.HandleUpdate,
 		ZCRM: zcrm.HandleUpdate,
 		LLM:  llm.NewRegistry(), Pairing: pairing, Channels: chMgr, APIKeys: apikey.Default(),
-		Tenants: tenants,
+		Tenants: tenants, TTS: wireMedia(st),
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
 	obs.SetWsUp(true)
