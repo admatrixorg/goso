@@ -32,6 +32,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/mqglobal/goso/gateway/internal/agentimport"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -62,8 +63,9 @@ type Options struct {
 	// counts and does not call PutContextFile.
 	Apply bool
 	// AgentMap binds a GoClaw agent_id to a goso agent_key in DestTenant.
-	// When an id is absent, an agent whose id or agent_key equals that
-	// agent_id is used. The map does not create agents.
+	// When an id is absent, the agent goso-agent-import created for that
+	// agent_id in DestTenant is used, then an agent whose id or agent_key
+	// equals that agent_id. The map does not create agents.
 	AgentMap map[string]string
 	// Customers indexes user_id to a customer key. Missing ids use goclaw:<user_id>.
 	Customers map[string]string
@@ -320,6 +322,10 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		return nil, errConfig("tenant is required")
 	}
 	tally := &tally{log: opt.Log}
+	refs, err := agentimport.AgentRefs(st, dest)
+	if err != nil {
+		return tally.abort(!opt.Apply, errors.New("store"))
+	}
 	items := make([]item, 0, len(ex.Agents)+len(ex.Users))
 	denied := map[string]struct{}{}
 	agentN, userN := 0, 0
@@ -327,14 +333,14 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		if rememberDenied(denied, ids, row.TenantID) {
 			continue
 		}
-		items = append(items, classifyAgent(st, dest, source, opt.AgentMap, row))
+		items = append(items, classifyAgent(st, dest, source, opt.AgentMap, refs, row))
 		agentN++
 	}
 	for _, row := range ex.Users {
 		if rememberDenied(denied, ids, row.TenantID) {
 			continue
 		}
-		items = append(items, classifyUser(st, dest, source, opt.AgentMap, opt.Customers, row))
+		items = append(items, classifyUser(st, dest, source, opt.AgentMap, refs, opt.Customers, row))
 		userN++
 	}
 	markNatural(items)
@@ -444,7 +450,7 @@ func rememberDenied(denied, ids map[string]struct{}, tenant string) bool {
 	return true
 }
 
-func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string]string, row AgentFile) item {
+func classifyAgent(st store.StoreIface, dest, source string, agentMap, refs map[string]string, row AgentFile) item {
 	it := item{
 		kind:     "agent",
 		scope:    store.ContextScopeAgent,
@@ -469,7 +475,7 @@ func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string
 		it.reason = reasonTooLarge
 		return it
 	}
-	id, reason := resolveAgent(st, dest, agentMap, row.AgentID)
+	id, reason := resolveAgent(st, dest, agentMap, refs, row.AgentID)
 	if reason != "" {
 		it.reason = reason
 		return it
@@ -480,7 +486,7 @@ func classifyAgent(st store.StoreIface, dest, source string, agentMap map[string
 	return it
 }
 
-func classifyUser(st store.StoreIface, dest, source string, agentMap, customers map[string]string, row UserFile) item {
+func classifyUser(st store.StoreIface, dest, source string, agentMap, refs, customers map[string]string, row UserFile) item {
 	it := item{
 		kind:     "user",
 		scope:    store.ContextScopeUser,
@@ -507,7 +513,7 @@ func classifyUser(st store.StoreIface, dest, source string, agentMap, customers 
 		it.reason = reasonTooLarge
 		return it
 	}
-	if _, reason := resolveAgent(st, dest, agentMap, row.AgentID); reason != "" {
+	if _, reason := resolveAgent(st, dest, agentMap, refs, row.AgentID); reason != "" {
 		it.reason = reason
 		return it
 	}
@@ -598,14 +604,18 @@ func nameOK(name string) bool {
 	return true
 }
 
-func resolveAgent(st store.StoreIface, dest string, agentMap map[string]string, agentID string) (string, string) {
+// resolveAgent finds the goso agent for a GoClaw agent_id. An explicit
+// agentMap key wins, then the agent import map (refs), then an agent whose
+// id or agent_key equals agent_id.
+func resolveAgent(st store.StoreIface, dest string, agentMap, refs map[string]string, agentID string) (string, string) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" || len(agentID) > 128 || strings.ContainsAny(agentID, "\r\n\x00") {
 		return "", reasonInvalid
 	}
-	wantKey := ""
-	if agentMap != nil {
-		wantKey = strings.TrimSpace(agentMap[agentID])
+	wantKey := strings.TrimSpace(agentMap[agentID])
+	wantID := ""
+	if wantKey == "" {
+		wantID = strings.TrimSpace(refs[agentID])
 	}
 	other := false
 	for _, a := range st.ListAgents() {
@@ -613,8 +623,11 @@ func resolveAgent(st store.StoreIface, dest string, agentMap map[string]string, 
 			continue
 		}
 		match := strings.TrimSpace(a.ID) == agentID || strings.TrimSpace(a.AgentKey) == agentID
-		if wantKey != "" {
+		switch {
+		case wantKey != "":
 			match = strings.TrimSpace(a.AgentKey) == wantKey
+		case wantID != "":
+			match = strings.TrimSpace(a.ID) == wantID
 		}
 		if !match {
 			continue

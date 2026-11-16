@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/mqglobal/goso/gateway/internal/agentimport"
 	"github.com/mqglobal/goso/gateway/internal/contextfile"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/pipeline"
@@ -1200,4 +1201,52 @@ func openPostgres(t *testing.T) store.StoreIface {
 	}
 	t.Cleanup(func() { _ = pg.Close() })
 	return pg
+}
+
+// An agent whose key goso-agent-import renamed (the key was held by another
+// tenant) is found through the agent import map, with no --agent-map.
+func TestRenamedAgentFoundThroughImportMap(t *testing.T) {
+	st := store.New()
+	other, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Pháp chế", TenantID: otherDest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, err := agentimport.ReadExport(strings.NewReader(`{"agents":[{"id":"` + salesAgentID + `","tenant_id":"` + sourceTenant +
+		`","agent_key":"tu-van-sales","display_name":"Cố vấn Minh An","status":"active"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := agentimport.Import(st, agents, agentimport.Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
+		Deny: map[string]struct{}{"blocked-sample": {}}})
+	if err != nil || len(rep.RenamedKeys) != 1 {
+		t.Fatalf("agent import %+v %v", rep, err)
+	}
+	ex := &Export{Agents: []AgentFile{
+		{TenantID: sourceTenant, AgentID: salesAgentID, FileName: "SOUL.md", Content: soulText},
+		{TenantID: sourceTenant, AgentID: missingAgentID, FileName: "SOUL.md", Content: soulText},
+	}}
+	got, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := got.Agents[0]
+	if sec.Inserted != 1 || sec.Rejected != 1 || sec.Reasons[reasonAgentMissing] != 1 {
+		t.Fatalf("report %+v", sec)
+	}
+	var renamed *store.Agent
+	for _, a := range st.ListAgents() {
+		if a.AgentKey == rep.RenamedKeys[0].DestKey {
+			renamed = a
+		}
+	}
+	if renamed == nil {
+		t.Fatal("renamed agent missing")
+	}
+	f, err := st.GetContextFile(destTenant, store.ContextScopeAgent, renamed.ID, "SOUL.md")
+	if err != nil || f.Body != soulText {
+		t.Fatalf("context file %+v %v", f, err)
+	}
+	if _, err := st.GetContextFile(otherDest, store.ContextScopeAgent, other.ID, "SOUL.md"); err == nil {
+		t.Fatal("file written to the other tenant's agent")
+	}
 }
