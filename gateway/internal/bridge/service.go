@@ -398,17 +398,15 @@ func (s *Service) ensureGosoAgent(gosoTenant string, ag *Agent, model, system st
 			return cur.ID, nil
 		}
 	}
-	for _, cur := range st.ListAgents() {
-		if cur != nil && cur.AgentKey == key {
-			cur.Instructions = system
-			cur.Model = model
-			cur.LLMProvider = ag.ProviderID
-			cur.Enabled = agentActive(ag.Status)
-			if _, err := st.UpdateAgent(*cur); err != nil {
-				return "", unavailable("cannot update agent")
-			}
-			return cur.ID, nil
+	if cur := store.FindAgentByKey(st, gosoTenant, key); cur != nil {
+		cur.Instructions = system
+		cur.Model = model
+		cur.LLMProvider = ag.ProviderID
+		cur.Enabled = agentActive(ag.Status)
+		if _, err := st.UpdateAgent(*cur); err != nil {
+			return "", unavailable("cannot update agent")
 		}
+		return cur.ID, nil
 	}
 	created, err := st.CreateAgent(store.Agent{
 		TenantID:     gosoTenant,
@@ -420,10 +418,8 @@ func (s *Service) ensureGosoAgent(gosoTenant string, ag *Agent, model, system st
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrExists) {
-			for _, cur := range st.ListAgents() {
-				if cur != nil && cur.AgentKey == key {
-					return cur.ID, nil
-				}
+			if cur := store.FindAgentByKey(st, gosoTenant, key); cur != nil {
+				return cur.ID, nil
 			}
 		}
 		return "", unavailable("cannot create agent")

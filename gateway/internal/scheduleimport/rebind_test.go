@@ -12,11 +12,13 @@ import (
 
 const goclawSalesID = "019d568d-0000-7000-8000-000000000001"
 
-// importRenamedAgent imports a GoClaw agent whose key clashes with another
-// tenant's agent, so the agent importer renames it and records the mapping.
-func importRenamedAgent(t *testing.T, st store.StoreIface) *store.Agent {
+// importSharedKeyAgent imports a GoClaw agent whose key another tenant also
+// uses. agent_key is unique per tenant (N9), so the agent keeps its key and
+// the importer records the mapping; the other tenant's agent is never used.
+func importSharedKeyAgent(t *testing.T, st store.StoreIface) *store.Agent {
 	t.Helper()
-	if _, err := st.CreateAgent(store.Agent{AgentKey: "tu-van", DisplayName: "Other", TenantID: "other-co"}); err != nil {
+	other, err := st.CreateAgent(store.Agent{AgentKey: "tu-van", DisplayName: "Other", TenantID: "other-co"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	ex, err := agentimport.ReadExport(strings.NewReader(`{"agents":[{"id":"` + goclawSalesID +
@@ -25,16 +27,14 @@ func importRenamedAgent(t *testing.T, st store.StoreIface) *store.Agent {
 		t.Fatal(err)
 	}
 	rep, err := agentimport.Import(st, ex, agentimport.Options{SourceTenant: "minh-an", DestTenant: "minh-an", Apply: true, Deny: testDeny()})
-	if err != nil || len(rep.RenamedKeys) != 1 {
+	if err != nil {
 		t.Fatalf("agent import %+v %v", rep, err)
 	}
-	for _, a := range st.ListAgents() {
-		if a.AgentKey == rep.RenamedKeys[0].DestKey {
-			return a
-		}
+	a := store.FindAgentByKey(st, "minh-an", "tu-van")
+	if a == nil || a.ID == other.ID {
+		t.Fatalf("imported agent %+v", a)
 	}
-	t.Fatal("renamed agent missing")
-	return nil
+	return a
 }
 
 func tgRow() ChannelRow {
@@ -42,9 +42,9 @@ func tgRow() ChannelRow {
 	return ChannelRow{ID: "ch-tg-1", TenantID: "minh-an", Name: "shop-bot", ChannelType: "telegram", AgentID: goclawSalesID, Enabled: &off}
 }
 
-func TestChannelBindsRenamedAgentThroughImportMap(t *testing.T) {
+func TestChannelBindsSharedKeyAgentThroughImportMap(t *testing.T) {
 	st := store.New()
-	agent := importRenamedAgent(t, st)
+	agent := importSharedKeyAgent(t, st)
 	rep, err := Import(st, &Export{ChannelInstances: []ChannelRow{tgRow()}}, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestRerunRebindsChannelImportedWithoutAgent(t *testing.T) {
 	if cfg, _ := st.GetChannelConfig("minh-an/telegram/shop-bot"); cfg == nil || cfg.AgentID != "" {
 		t.Fatalf("setup %+v", cfg)
 	}
-	agent := importRenamedAgent(t, st)
+	agent := importSharedKeyAgent(t, st)
 	ex := &Export{ChannelInstances: []ChannelRow{tgRow()}}
 
 	dry, err := Import(st, ex, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny(), DryRun: true})
@@ -101,7 +101,7 @@ func TestRerunKeepsEditedChannel(t *testing.T) {
 	if err := st.PutChannelConfig(*cfg); err != nil {
 		t.Fatal(err)
 	}
-	importRenamedAgent(t, st)
+	importSharedKeyAgent(t, st)
 	rep, err := Import(st, &Export{ChannelInstances: []ChannelRow{tgRow()}}, Options{SourceTenant: "minh-an", DestTenant: "minh-an", Deny: testDeny()})
 	if err != nil || rep.Tenants[0].ChannelInstances.Rebound != 0 {
 		t.Fatalf("%+v %v", rep, err)

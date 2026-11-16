@@ -98,12 +98,10 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (z *ZaloPersonal) ensureAgent() *store.Agent {
-	for _, a := range z.Store.ListAgents() {
-		if a.AgentKey == "zalo-personal" {
-			return a
-		}
+	if a := store.FindAgentByKey(z.Store, store.DefaultTenant, "zalo-personal"); a != nil {
+		return a
 	}
-	a, _ := z.Store.CreateAgent(store.Agent{AgentKey: "zalo-personal", DisplayName: "Zalo Personal"})
+	a, _ := z.Store.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: "zalo-personal", DisplayName: "Zalo Personal"})
 	return a
 }
 

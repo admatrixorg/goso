@@ -158,12 +158,10 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (z *ZaloOA) ensureAgent() *store.Agent {
-	for _, a := range z.Store.ListAgents() {
-		if a.AgentKey == "zalo-oa" {
-			return a
-		}
+	if a := store.FindAgentByKey(z.Store, store.DefaultTenant, "zalo-oa"); a != nil {
+		return a
 	}
-	a, _ := z.Store.CreateAgent(store.Agent{AgentKey: "zalo-oa", DisplayName: "Zalo OA"})
+	a, _ := z.Store.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: "zalo-oa", DisplayName: "Zalo OA"})
 	return a
 }
 

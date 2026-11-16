@@ -171,6 +171,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateIngestConvert(); err != nil {
 		return fmt.Errorf("postgres migrate ingest convert: %w", err)
 	}
+	if err := s.migrateAgentKeyScope(); err != nil {
+		return fmt.Errorf("postgres migrate agent_key scope: %w", err)
+	}
 	return nil
 }
 
@@ -196,7 +199,7 @@ func (s *PostgresStore) HasVector() bool { return s.vector }
 var postgresSchema = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
 		id TEXT PRIMARY KEY,
-		agent_key TEXT NOT NULL UNIQUE,
+		agent_key TEXT NOT NULL,
 		display_name TEXT,
 		model TEXT,
 		llm_provider TEXT,

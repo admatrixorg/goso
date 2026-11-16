@@ -244,13 +244,11 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 }
 
 func (t *Telegram) ensureAgent() *store.Agent {
-	// Find existing telegram agent or create one.
-	for _, a := range t.Store.ListAgents() {
-		if a.AgentKey == "telegram" {
-			return a
-		}
+	// Find the default tenant's telegram agent or create one.
+	if a := store.FindAgentByKey(t.Store, store.DefaultTenant, "telegram"); a != nil {
+		return a
 	}
-	a, _ := t.Store.CreateAgent(store.Agent{AgentKey: "telegram", DisplayName: "Telegram Bot"})
+	a, _ := t.Store.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: "telegram", DisplayName: "Telegram Bot"})
 	return a
 }
 

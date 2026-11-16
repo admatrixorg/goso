@@ -5,7 +5,6 @@ package agentimport
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"unicode"
 
@@ -67,7 +66,7 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 			deniedSeen: map[string]struct{}{},
 		}
 		for _, a := range st.ListAgents() {
-			if a != nil && a.AgentKey != "" {
+			if a != nil && a.AgentKey != "" && store.SameTenant(a.TenantID, opt.DestTenant) {
 				im.keysNow[a.AgentKey] = store.NormalizeTenant(a.TenantID)
 			}
 		}
@@ -93,7 +92,6 @@ func Import(st store.StoreIface, exp *Export, opt Options) (*Report, error) {
 			SourceTenant:  opt.SourceTenant,
 			DestTenant:    opt.DestTenant,
 			DeniedTenants: len(im.deniedSeen),
-			RenamedKeys:   im.renamed,
 		})
 		return buildErr
 	})
@@ -117,11 +115,10 @@ type importer struct {
 	claimMem map[string]string
 	links    map[string]struct{}
 	seen     map[string]map[string]bool
-	// keysNow maps every agent_key in the store to the tenant that owns it.
-	// agent_key is unique across tenants, so a key another tenant holds is
-	// renamed on the way in rather than dropped (audit N9, 16/11).
+	// keysNow holds the agent_keys the destination tenant already uses.
+	// agent_key is unique per tenant (audit N9, 16/11), so the same key in
+	// another tenant is not a conflict and is not listed here.
 	keysNow    map[string]string
-	renamed    []KeyRename
 	deniedSeen map[string]struct{}
 }
 
@@ -202,15 +199,6 @@ func (im *importer) applyAgent(row rawRow) error {
 		im.skip(tableAgents, tenant, reasonNativeExists)
 		return nil
 	}
-	srcKey := key
-	if _, taken := im.keysNow[key]; taken {
-		destKey, ok := im.freeKey(key)
-		if !ok {
-			im.reject(tableAgents, tenant, reasonNativeExists)
-			return nil
-		}
-		key = destKey
-	}
 	deleted, bad := isDeleted(row)
 	if bad {
 		im.reject(tableAgents, tenant, reasonBadValue)
@@ -269,11 +257,8 @@ func (im *importer) applyAgent(row rawRow) error {
 		im.reject(tableAgents, tenant, reasonTooLarge)
 		return nil
 	}
-	im.agentKey[srcKey] = id
+	im.agentKey[key] = id
 	im.keysNow[key] = im.opt.DestTenant
-	if key != srcKey {
-		im.renamed = append(im.renamed, KeyRename{SourceTenant: tenant, SourceKey: srcKey, DestKey: key})
-	}
 	status := sourceStatus(row)
 	if !im.opt.Apply {
 		im.agentID[id] = "planned:" + id
@@ -971,24 +956,4 @@ func runeLen(s string) int {
 		n++
 	}
 	return n
-}
-
-// freeKey picks "<key>--<dest tenant>", then "<key>--<dest tenant>-2" and so
-// on, for a key another tenant already holds. It stays within the 100-rune
-// agent_key limit.
-func (im *importer) freeKey(key string) (string, bool) {
-	base := key + "--" + store.NormalizeTenant(im.opt.DestTenant)
-	for i := 1; i <= 50; i++ {
-		cand := base
-		if i > 1 {
-			cand = fmt.Sprintf("%s-%d", base, i)
-		}
-		if runeLen(cand) > 100 {
-			return "", false
-		}
-		if _, taken := im.keysNow[cand]; !taken {
-			return cand, true
-		}
-	}
-	return "", false
 }

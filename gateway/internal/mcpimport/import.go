@@ -564,7 +564,11 @@ func tenantReason(rowTenantID, dest, source string) string {
 	return ""
 }
 
+// resolveAgent finds ref as an agent id, then as an agent_key in dest.
+// agent_key is unique per tenant, so a key match in dest wins over the same
+// key in another tenant; a key held only by another tenant is reported.
 func resolveAgent(agents []*store.Agent, dest, ref string) (string, string) {
+	keyOther := false
 	var keyHit *store.Agent
 	for _, a := range agents {
 		if a == nil {
@@ -576,14 +580,20 @@ func resolveAgent(agents []*store.Agent, dest, ref string) (string, string) {
 			}
 			return "", "agent-other-tenant"
 		}
-		if a.AgentKey == ref && keyHit == nil {
-			keyHit = a
+		if a.AgentKey == ref {
+			if store.SameTenant(a.TenantID, dest) {
+				if keyHit == nil {
+					keyHit = a
+				}
+			} else {
+				keyOther = true
+			}
 		}
 	}
 	if keyHit != nil {
-		if store.SameTenant(keyHit.TenantID, dest) {
-			return keyHit.ID, ""
-		}
+		return keyHit.ID, ""
+	}
+	if keyOther {
 		return "", "agent-other-tenant"
 	}
 	return "", "agent-missing"

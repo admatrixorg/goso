@@ -827,8 +827,9 @@ func (s *Store) CreateAgent(a Agent) (*Agent, error) {
 			return nil, ErrLiteCap
 		}
 	}
+	// agent_key is unique per tenant, as in UNIQUE(tenant_id, agent_key).
 	for _, v := range s.agents {
-		if v.AgentKey == a.AgentKey {
+		if v.AgentKey == a.AgentKey && SameTenant(v.TenantID, a.TenantID) {
 			return nil, ErrExists
 		}
 	}

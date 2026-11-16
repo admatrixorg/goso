@@ -104,17 +104,6 @@ type Report struct {
 	Removed       *Removed    `json:"removed,omitempty"`
 	PostImport    *PostImport `json:"post_import,omitempty"`
 	DeniedTenants int         `json:"denied_tenants"`
-	// RenamedKeys lists agents whose agent_key another tenant already held.
-	// They were inserted under DestKey. Team members and links that name the
-	// source key still resolve to the renamed agent.
-	RenamedKeys []KeyRename `json:"renamed_keys,omitempty"`
-}
-
-// KeyRename is one agent inserted under a different agent_key.
-type KeyRename struct {
-	SourceTenant string `json:"source_tenant"`
-	SourceKey    string `json:"source_key"`
-	DestKey      string `json:"dest_key"`
 }
 
 // PostImport counts sessions, team tasks, and team or chat messages that
