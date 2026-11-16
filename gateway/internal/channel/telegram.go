@@ -5,6 +5,10 @@ package channel
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -86,8 +90,44 @@ type TelegramUpdate struct {
 	} `json:"message"`
 }
 
-// HandleUpdate handles POST /api/channels/telegram/webhook.
-func telegramWebhookAuthorized(r *http.Request) bool {
+// TelegramSecretHeader is the header Telegram sets on webhook calls when
+// setWebhook was given a secret_token.
+const TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token"
+
+const telegramWebhookPrefix = "/api/channels/telegram/webhook"
+
+// TelegramSelfAuth reports a Telegram webhook call that carries Telegram's
+// secret header. The gateway lets it past the admin token: Telegram cannot
+// send one. HandleUpdate then checks the secret against the bot's own.
+func TelegramSelfAuth(r *http.Request) bool {
+	if r.Method != http.MethodPost || r.Header.Get(TelegramSecretHeader) == "" {
+		return false
+	}
+	p := r.URL.Path
+	return p == telegramWebhookPrefix || strings.HasPrefix(p, telegramWebhookPrefix+"/")
+}
+
+// webhookSecret is the secret_token this bot gives Telegram. It is derived
+// from the bot token, so it changes when the token changes and needs no
+// storage. Empty when the bot has no token.
+func (t *Telegram) webhookSecret(token string) string {
+	if token == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte("goso telegram webhook\x00" + t.instance()))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// telegramWebhookAuthorized checks a webhook call. A call with Telegram's
+// secret header must match this bot's secret; it reached here without the
+// admin token. Any other call already passed the admin token and may also
+// need GOSO_TELEGRAM_WEBHOOK_SECRET.
+func (t *Telegram) telegramWebhookAuthorized(r *http.Request) bool {
+	if got := r.Header.Get(TelegramSecretHeader); got != "" {
+		want := t.webhookSecret(t.resolveToken())
+		return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+	}
 	sec := strings.TrimSpace(os.Getenv("GOSO_TELEGRAM_WEBHOOK_SECRET"))
 	if sec == "" {
 		return true
@@ -96,11 +136,12 @@ func telegramWebhookAuthorized(r *http.Request) bool {
 	if got == "" {
 		got = r.URL.Query().Get("secret")
 	}
-	return got == sec
+	return subtle.ConstantTimeCompare([]byte(got), []byte(sec)) == 1
 }
 
+// HandleUpdate handles POST /api/channels/telegram/webhook[/{tenant}/{inst}].
 func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	if !telegramWebhookAuthorized(r) {
+	if !t.telegramWebhookAuthorized(r) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
@@ -273,12 +314,19 @@ func (t *Telegram) sendMessage(ctx context.Context, chatID int64, text string) e
 		return fmt.Errorf("telegram: missing bot token")
 	}
 	body, _ := json.Marshal(map[string]any{"chat_id": chatID, "text": text})
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.telegram.org/bot"+token+"/sendMessage", bytes.NewReader(body))
+	base := t.APIBase
+	if base == "" {
+		base = "https://api.telegram.org"
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(base, "/")+"/bot"+token+"/sendMessage", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := t.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

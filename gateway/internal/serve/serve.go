@@ -206,11 +206,12 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
 		// Pairing exchange is an exact POST path inside Require (code is the secret).
 		handler = auth.Require(auth.Config{
-			Admin:   adminToken,
-			View:    viewToken,
-			Pairing: pairing,
-			Keys:    apikey.Default(),
-			Bypass:  []string{"/healthz", "/api/webhooks/llm"},
+			Admin:    adminToken,
+			View:     viewToken,
+			Pairing:  pairing,
+			Keys:     apikey.Default(),
+			Bypass:   []string{"/healthz", "/api/webhooks/llm"},
+			SelfAuth: channel.TelegramSelfAuth,
 		})(handler)
 	}
 	handler = obs.Middleware(handler)
