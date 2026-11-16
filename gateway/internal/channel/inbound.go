@@ -65,7 +65,11 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		writeOK(w)
 		return
 	}
-	sess := ensureLabeledSession(d.Store, agent.ID, agentKey+":"+dest)
+	sess := ensureLabeledSession(d.Store, agent, agentKey+":"+dest)
+	if sess == nil {
+		writeOKWarning(w, "session unavailable")
+		return
+	}
 
 	reply := answerTurn(r.Context(), d.Store, agent, sess, d.LLM, d.Meter, text)
 
@@ -117,12 +121,18 @@ func ensureNamedAgent(st store.StoreIface, key, display string) *store.Agent {
 	return a
 }
 
-func ensureLabeledSession(st store.StoreIface, agentID, label string) *store.Session {
+// ensureLabeledSession finds or creates the agent's session with label. The
+// session takes the agent's tenant: the store refuses a session whose tenant
+// differs from its agent's.
+func ensureLabeledSession(st store.StoreIface, agent *store.Agent, label string) *store.Session {
+	if st == nil || agent == nil {
+		return nil
+	}
 	for _, s := range st.ListSessions() {
-		if s.AgentID == agentID && s.Label == label {
+		if s.AgentID == agent.ID && s.Label == label {
 			return s
 		}
 	}
-	sess, _ := st.CreateSession(store.Session{AgentID: agentID, Label: label})
+	sess, _ := st.CreateSession(store.Session{AgentID: agent.ID, TenantID: agent.TenantID, Label: label})
 	return sess
 }

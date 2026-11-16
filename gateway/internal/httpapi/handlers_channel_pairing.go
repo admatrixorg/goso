@@ -21,7 +21,11 @@ func handleListChannelPairing(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		now := time.Now().UTC()
 		items := make([]map[string]any, 0)
+		tenant := requestTenant(r)
 		for _, p := range st.ListChannelPairings() {
+			if !pairingVisible(p, tenant) {
+				continue
+			}
 			status := p.Status
 			if status == "pending" && !p.ExpiresAt.IsZero() && !p.ExpiresAt.After(now) {
 				status = "expired"
@@ -43,6 +47,12 @@ func handleChannelPairingStatus(st store.StoreIface, approve bool) http.HandlerF
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		now := time.Now().UTC()
+		for _, p := range st.ListChannelPairings() {
+			if p != nil && p.ID == id && !pairingVisible(p, requestTenant(r)) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+		}
 		var err error
 		if approve {
 			err = channel.ApprovePairing(st, id, now)
@@ -63,4 +73,16 @@ func handleChannelPairingStatus(st store.StoreIface, approve bool) http.HandlerF
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
+}
+
+// pairingVisible hides a tenant bot's pairing requests from other tenants. A
+// pairing for the older single bot has no tenant and stays visible.
+func pairingVisible(p *store.ChannelPairing, tenant string) bool {
+	if p == nil {
+		return false
+	}
+	if owner, ok := channel.TenantOf(p.Channel); ok {
+		return store.SameTenant(owner, tenant)
+	}
+	return true
 }

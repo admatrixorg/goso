@@ -16,19 +16,19 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
+func handlePutChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimSpace(r.PathValue("name"))
-		if !channel.Known(name) {
-			writeErr(w, http.StatusNotFound, "not found")
+		name, ok := channelTarget(w, r)
+		if !ok {
 			return
 		}
+		catalog := channel.CatalogOf(name)
 		if store.LiteEnabled() {
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
-		if channel.WritableFields(name) == nil {
-			if name == "zalo-personal" {
+		if channel.WritableFields(catalog) == nil {
+			if catalog == "zalo-personal" {
 				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")
 				return
 			}
@@ -47,7 +47,7 @@ func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
 			if !channelSecretKey(lk) {
 				continue
 			}
-			kind, ok := channel.FieldKind(name, lk)
+			kind, ok := channel.FieldKind(catalog, lk)
 			if !ok {
 				writeErr(w, http.StatusBadRequest, "unknown secret field")
 				return
@@ -71,6 +71,9 @@ func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "no secret fields")
 			return
 		}
+		if _, owned := channel.TenantOf(name); owned {
+			mgr.Restart(name)
+		}
 		row := channelRowByName(st, name)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":         true,
@@ -82,20 +85,20 @@ func handlePutChannelSecrets(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
-func handleDeleteChannelSecrets(st store.StoreIface) http.HandlerFunc {
+func handleDeleteChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimSpace(r.PathValue("name"))
-		if !channel.Known(name) {
-			writeErr(w, http.StatusNotFound, "not found")
+		name, ok := channelTarget(w, r)
+		if !ok {
 			return
 		}
+		catalog := channel.CatalogOf(name)
 		if store.LiteEnabled() {
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
-		fields := channel.WritableFields(name)
+		fields := channel.WritableFields(catalog)
 		if fields == nil {
-			if name == "zalo-personal" {
+			if catalog == "zalo-personal" {
 				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")
 				return
 			}
@@ -104,7 +107,7 @@ func handleDeleteChannelSecrets(st store.StoreIface) http.HandlerFunc {
 		}
 		cleared := make([]string, 0, len(fields))
 		for _, field := range fields {
-			kind, ok := channel.FieldKind(name, field)
+			kind, ok := channel.FieldKind(catalog, field)
 			if !ok {
 				continue
 			}
@@ -113,6 +116,9 @@ func handleDeleteChannelSecrets(st store.StoreIface) http.HandlerFunc {
 				return
 			}
 			cleared = append(cleared, field)
+		}
+		if _, owned := channel.TenantOf(name); owned {
+			mgr.Reconcile()
 		}
 		row := channelRowByName(st, name)
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -126,6 +132,9 @@ func handleDeleteChannelSecrets(st store.StoreIface) http.HandlerFunc {
 }
 
 func channelRowByName(st store.StoreIface, name string) channel.Info {
+	if _, owned := channel.TenantOf(name); owned {
+		return overlayChannelRows(st, []channel.Info{channel.InstanceInfo(st, nil, name)})[0]
+	}
 	for _, c := range overlayChannelRows(st, channel.CatalogWith(st, nil)) {
 		if c.Name == name {
 			return c
@@ -136,30 +145,31 @@ func channelRowByName(st store.StoreIface, name string) channel.Info {
 
 func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimSpace(r.PathValue("name"))
-		if !channel.Known(name) {
-			writeErr(w, http.StatusNotFound, "not found")
+		name, ok := channelTarget(w, r)
+		if !ok {
 			return
 		}
 		if store.LiteEnabled() {
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
-		if name == "discord" || name == "slack" || name == "feishu" || name == "whatsapp" {
+		catalog := channel.CatalogOf(name)
+		_, owned := channel.TenantOf(name)
+		if catalog == "discord" || catalog == "slack" || catalog == "feishu" || catalog == "whatsapp" || (owned && catalog != "telegram") {
 			writeErr(w, http.StatusConflict, "parked")
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 		defer cancel()
-		switch name {
+		switch catalog {
 		case "telegram":
-			tg := &channel.Telegram{Store: st}
-			if mgr != nil && mgr.Telegram != nil {
-				tg = mgr.Telegram
+			tg := mgr.TelegramBot(name)
+			if tg == nil {
+				tg = &channel.Telegram{Store: st, Instance: name}
 			}
 			if err := tg.ProbeToken(ctx); err != nil {
 				if mgr != nil {
-					mgr.SetFailed("telegram", err.Error())
+					mgr.SetFailed(name, err.Error())
 				}
 				writeJSON(w, http.StatusBadGateway, map[string]any{
 					"ok":     false,
@@ -169,12 +179,13 @@ func handleTestChannel(st store.StoreIface, mgr *channel.Manager) http.HandlerFu
 				})
 				return
 			}
-			if mgr != nil {
+			// A tenant bot shows running only when its listener really runs.
+			if mgr != nil && (!owned || mgr.TelegramBot(name) != nil) {
 				mode := "poll"
-				if t := mgr.Transport("telegram"); t != "" {
+				if t := mgr.Transport(name); t != "" {
 					mode = t
 				}
-				mgr.SetRunning("telegram", mode)
+				mgr.SetRunning(name, mode)
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "health": "running"})
 		case "zalo-oa":

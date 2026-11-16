@@ -25,6 +25,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mqglobal/goso/gateway/internal/agentimport"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -134,6 +135,9 @@ type RowCounts struct {
 	Held         int `json:"held"`
 	NativeExists int `json:"native_exists"`
 	Written      int `json:"written"`
+	// Rebound counts channels imported earlier without their agent that now
+	// get it, because the agent importer's map finds the renamed agent.
+	Rebound int `json:"rebound,omitempty"`
 }
 
 // CredentialNote lists one channel instance whose credentials were not copied.
@@ -176,7 +180,11 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 	}
 	opt.DestTenant = dest
 	opt.SourceTenant = source
-	a := &acc{opt: opt, st: st, buckets: map[string]*bucket{}, denied: map[string]struct{}{}}
+	refs, err := agentimport.AgentRefs(st, dest)
+	if err != nil {
+		return nil, err
+	}
+	a := &acc{opt: opt, st: st, refs: refs, buckets: map[string]*bucket{}, denied: map[string]struct{}{}}
 	for _, row := range ex.CronJobs {
 		if err := a.cron(row); err != nil {
 			return nil, err
@@ -206,6 +214,8 @@ type acc struct {
 	creds   []CredentialNote
 	seen    map[string]struct{}
 	denied  map[string]struct{}
+	// refs maps a GoClaw agent id to the goso agent the agent importer made.
+	refs map[string]string
 }
 
 func (a *acc) bucket(tenant string) *bucket {
@@ -345,7 +355,7 @@ func (a *acc) channel(row ChannelRow) error {
 		return nil
 	}
 	cfg, extra := policyFrom(row.Config, blobs)
-	agentID, where := resolveAgent(a.st, a.opt.DestTenant, row.AgentID)
+	agentID, where := resolveAgent(a.st, a.opt.DestTenant, a.refs, row.AgentID)
 	switch where {
 	case "dest":
 		cfg.AgentID = agentID
@@ -371,6 +381,16 @@ func (a *acc) channel(row ChannelRow) error {
 		a.seen[key] = struct{}{}
 		got, gerr := a.st.GetChannelConfig(gosoID)
 		if gerr == nil && got != nil && !channelSame(got, cfg) {
+			if rebind(got, cfg) {
+				if !a.opt.DryRun {
+					got.AgentID = cfg.AgentID
+					if err := a.st.PutChannelConfig(*got); err != nil {
+						return err
+					}
+				}
+				b.ch.Rebound++
+				return nil
+			}
 			a.native(&b.ch, kindChannel, tenant, sourceID)
 			return nil
 		}
@@ -488,10 +508,32 @@ func credentialNote(tenant string, row ChannelRow, blobs []string) CredentialNot
 	return note
 }
 
-func resolveAgent(st store.StoreIface, dest, ref string) (string, string) {
+// rebind reports a channel this tool imported with no agent, still disabled and
+// otherwise unchanged, that can now take the agent want names.
+func rebind(got *store.ChannelConfig, want store.ChannelConfig) bool {
+	if got == nil || got.Enabled || got.AgentID != "" || want.AgentID == "" {
+		return false
+	}
+	cp := *got
+	cp.AgentID = want.AgentID
+	return channelSame(&cp, want)
+}
+
+// resolveAgent finds the goso agent for a GoClaw agent id. The agent importer's
+// map comes first, since it renames keys that clash across tenants; then a
+// goso agent with that id or key.
+func resolveAgent(st store.StoreIface, dest string, refs map[string]string, ref string) (string, string) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", "none"
+	}
+	if id := refs[ref]; id != "" {
+		if a, err := st.GetAgent(id); err == nil && a != nil {
+			if store.SameTenant(a.TenantID, dest) {
+				return a.ID, "dest"
+			}
+			return "", "other"
+		}
 	}
 	other := false
 	for _, a := range st.ListAgents() {

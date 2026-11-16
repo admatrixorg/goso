@@ -19,9 +19,12 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-// Telegram handles Telegram webhook updates.
+// Telegram handles one Telegram bot. Instance is the channel name it runs as:
+// empty or "telegram" for the older single bot, or "<tenant>/telegram/<name>"
+// for a bot owned by one tenant (see instance.go).
 type Telegram struct {
 	BotToken string
+	Instance string
 	Store    store.StoreIface
 	LLM      llm.Provider
 	Meter    *billing.Store
@@ -33,10 +36,24 @@ type Telegram struct {
 	onProbeFail  func(error)
 	pollStop     context.CancelFunc
 	pollCancelMu sync.Mutex
+	stopped      bool
 }
 
 // Name returns channel name.
 func (t *Telegram) Name() string { return "telegram" }
+
+// instance is the channel name used for config, secrets, pairing and health.
+func (t *Telegram) instance() string {
+	if t == nil || strings.TrimSpace(t.Instance) == "" {
+		return "telegram"
+	}
+	return strings.TrimSpace(t.Instance)
+}
+
+// tenantBot reports whether this bot belongs to one tenant.
+func (t *Telegram) tenantBot() (string, bool) {
+	return TenantOf(t.instance())
+}
 
 // Start begins poll or webhook registration. Implemented in live Start (SPEC 084).
 func (t *Telegram) Start(ctx context.Context, mgr *Manager) {
@@ -116,15 +133,20 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 	if chatID < 0 {
 		peer = "group"
 	}
+	name := t.instance()
 	var cfg *store.ChannelConfig
 	if t.Store != nil {
-		cfg, _ = t.Store.GetChannelConfig("telegram")
+		cfg, _ = t.Store.GetChannelConfig(name)
 	}
-	pol := MergePolicy("telegram", cfg)
+	tenant, owned := t.tenantBot()
+	if owned && (cfg == nil || !cfg.Enabled) {
+		return ""
+	}
+	pol := MergePolicy(name, cfg)
 	in := Inbound{Channel: "telegram", SenderID: fromID, ChatID: fmt.Sprintf("%d", chatID), PeerKind: peer, Text: text, Mention: strings.Contains(text, "@")}
 	paired := false
 	if t.Store != nil && fromID != "" {
-		paired = SenderPaired(t.Store, "telegram", fromID, time.Time{})
+		paired = SenderPaired(t.Store, name, fromID, time.Time{})
 	}
 	sendFn := t.Sender
 	if sendFn == nil {
@@ -134,17 +156,30 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 	case PolicyReject, PolicyNeedMention:
 		return ""
 	case PolicyNeedPairing:
-		if msg := OfferPairingCode(t.Store, "telegram", fromID, time.Time{}); msg != "" {
+		if msg := OfferPairingCode(t.Store, name, fromID, time.Time{}); msg != "" {
 			_ = sendFn(ctx, chatID, msg)
 		}
 		return ""
 	}
 
-	agent := t.ensureAgent()
-	if cfg != nil && cfg.AgentID != "" && t.Store != nil {
-		if a, err := t.Store.GetAgent(cfg.AgentID); err == nil {
-			agent = a
+	var agent *store.Agent
+	if owned {
+		// A tenant's bot answers only as the agent bound to it, and only when
+		// that agent is in the same tenant. It never creates an agent.
+		agent = boundAgent(t.Store, cfg, tenant)
+		if agent == nil {
+			return "no agent bound to " + name
 		}
+	} else {
+		agent = t.ensureAgent()
+		if cfg != nil && cfg.AgentID != "" && t.Store != nil {
+			if a, err := t.Store.GetAgent(cfg.AgentID); err == nil {
+				agent = a
+			}
+		}
+	}
+	if agent == nil {
+		return "no agent"
 	}
 	sight := Sighting{Channel: "telegram", Dest: fmt.Sprintf("%d", chatID), Kind: peer, SenderID: fromID}
 	if agent != nil {
@@ -155,7 +190,10 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 	if BufferIfNeeded(nil, agent, "telegram", fmt.Sprintf("%d", chatID)) {
 		return ""
 	}
-	sess := t.ensureSession(agent.ID, chatID)
+	sess := t.ensureSession(agent, chatID)
+	if sess == nil {
+		return "session unavailable"
+	}
 	reply := answerTurn(ctx, t.Store, agent, sess, t.LLM, t.Meter, text)
 	if err := sendFn(ctx, chatID, reply); err != nil {
 		return err.Error()
@@ -174,15 +212,21 @@ func (t *Telegram) ensureAgent() *store.Agent {
 	return a
 }
 
-func (t *Telegram) ensureSession(agentID string, chatID int64) *store.Session {
-	label := fmt.Sprintf("telegram:%d", chatID)
-	for _, s := range t.Store.ListSessions() {
-		if s.AgentID == agentID && s.Label == label {
-			return s
-		}
+func (t *Telegram) ensureSession(agent *store.Agent, chatID int64) *store.Session {
+	return ensureLabeledSession(t.Store, agent, fmt.Sprintf("%s:%d", t.instance(), chatID))
+}
+
+// boundAgent returns the agent bound to a tenant's channel, or nil when none
+// is bound, it is gone, or it belongs to another tenant.
+func boundAgent(st store.StoreIface, cfg *store.ChannelConfig, tenant string) *store.Agent {
+	if st == nil || cfg == nil || strings.TrimSpace(cfg.AgentID) == "" {
+		return nil
 	}
-	sess, _ := t.Store.CreateSession(store.Session{AgentID: agentID, Label: label})
-	return sess
+	a, err := st.GetAgent(cfg.AgentID)
+	if err != nil || a == nil || !store.SameTenant(a.TenantID, tenant) {
+		return nil
+	}
+	return a
 }
 
 func (t *Telegram) resolveToken() string {
@@ -192,7 +236,11 @@ func (t *Telegram) resolveToken() string {
 	if v := strings.TrimSpace(t.BotToken); v != "" {
 		return v
 	}
-	v, _, set := Credential(t.Store, "telegram", KindBot, []string{"GOSO_TELEGRAM_BOT_TOKEN"})
+	var env []string
+	if _, owned := t.tenantBot(); !owned {
+		env = []string{"GOSO_TELEGRAM_BOT_TOKEN"}
+	}
+	v, _, set := Credential(t.Store, t.instance(), KindBot, env)
 	if set {
 		return v
 	}
