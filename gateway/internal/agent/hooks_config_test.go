@@ -181,3 +181,27 @@ func TestConfiguredHTTPHookSignsAndNeverBreaksRun(t *testing.T) {
 		t.Fatalf("events %v", events)
 	}
 }
+
+// Channel turns (Telegram, Zalo, ...) run through the same runtime, so a
+// tenant's configured hooks apply to them too.
+func TestConfiguredBlockHookAppliesToChannelTurn(t *testing.T) {
+	st, _, sess, fake := hookFixture(t, "minh-an")
+	if _, err := st.CreateHook(store.Hook{TenantID: "minh-an", Event: "PreToolUse", HandlerType: "block", Config: `{"message":"kênh chỉ được trả lời"}`, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	hooks.Invalidate()
+	reg := connector.NewRegistry()
+	_ = reg.Register(fake)
+	scripted := toolThenDone()
+	rt := New(st, reg, approval.New(0), eventstore.New(64), scripted)
+	out, err := rt.ChatWithTurn(context.Background(), sess.ID, "Minh An hỏi qua Zalo", "", false, ChatTurn{Channel: true}, nil)
+	if err != nil || out.Reply != "done" {
+		t.Fatalf("channel turn broke: %v %+v", err, out)
+	}
+	if n := len(fake.Calls()); n != 0 {
+		t.Fatalf("blocked tool ran on a channel turn: %d", n)
+	}
+	if got := lastToolMessage(scripted); !strings.Contains(got, "kênh chỉ được trả lời") {
+		t.Fatalf("model saw %q", got)
+	}
+}
