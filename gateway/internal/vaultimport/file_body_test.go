@@ -31,9 +31,11 @@ func TestFileBodyMinhAn(t *testing.T) {
 				DestTenant:   destTenant,
 				VaultRoot:    vaultRoot,
 				Log:          bufLog{logBuf},
+				AgentMap:     map[string]string{"gc-agent-1": seedAgent(t, raw, "minh-an-tro-ly")},
 			}
 
 			src := t.TempDir()
+			writeSrc(t, src, "tenants/minh-an/notes/rieng.md", []byte("PERSONALFILEMARKER"))
 			writeSrc(t, src, "tenants/minh-an/notes/co-ban.md", []byte("FILEKHACMARKER"))
 			writeSrc(t, src, "tenants/minh-an/notes/trung.md", []byte("TEAMFILEMARKER"))
 			writeSrc(t, src, "tenants/minh-an/notes/tu-file.md", fileBodyRaw)
@@ -80,7 +82,7 @@ func TestFileBodyMinhAn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertFileBodyReport(t, dry, 3, 0, 1, 9)
+			assertFileBodyReport(t, dry, 5, 0, 1, 6)
 			if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
 				t.Fatal("dry-run wrote")
 			}
@@ -91,8 +93,8 @@ func TestFileBodyMinhAn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertFileBodyReport(t, first, 3, 0, 1, 9)
-			if cs.puts != 3 || cs.links != 1 || cs.resolves != 1 {
+			assertFileBodyReport(t, first, 5, 0, 1, 6)
+			if cs.puts != 5 || cs.links != 1 || cs.resolves != 1 {
 				t.Fatalf("writes puts=%d links=%d resolves=%d", cs.puts, cs.links, cs.resolves)
 			}
 			ver := mustDoc(t, raw, "notes/co-ban.md")
@@ -103,8 +105,20 @@ func TestFileBodyMinhAn(t *testing.T) {
 			if !strings.Contains(team.Body, "TEAMBODYMARKER") || strings.Contains(team.Body, "PERSONALBODYMARKER") || strings.Contains(team.Body, "TEAMFILEMARKER") {
 				t.Fatal("team collision lost")
 			}
+			// The personal doc that shared trung.md keeps its own row, for its
+			// agent only, at a qualified sibling path.
+			per2 := mustDoc(t, raw, "notes/trung~personal-minh-an-tro-ly.md")
+			if !strings.Contains(per2.Body, "PERSONALBODYMARKER") || per2.Scope != store.VaultScopeAgent || per2.AgentID != opt.AgentMap["gc-agent-1"] {
+				t.Fatalf("personal sibling %q %q", per2.Scope, per2.AgentID)
+			}
+			if team.Scope != store.VaultScopeTenant && team.Scope != "" {
+				t.Fatalf("team row scope %q", team.Scope)
+			}
+			if rieng := mustDoc(t, raw, "notes/rieng.md"); rieng.Scope != store.VaultScopeAgent || rieng.AgentID != opt.AgentMap["gc-agent-1"] {
+				t.Fatalf("personal row %q %q", rieng.Scope, rieng.AgentID)
+			}
 			for _, path := range []string{
-				"notes/thieu.md", "notes/lon.md", "notes/nhi.md", "notes/nul.md", "notes/rong.md", "notes/rieng.md", "notes/khac.md",
+				"notes/thieu.md", "notes/lon.md", "notes/nhi.md", "notes/nul.md", "notes/rong.md", "notes/khac.md",
 			} {
 				if _, err := raw.FindVaultDocByPath(destTenant, path); !errors.Is(err, store.ErrNotFound) {
 					t.Fatalf("rejected path stored %s", path)
@@ -123,7 +137,7 @@ func TestFileBodyMinhAn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertFileBodyReport(t, second, 0, 0, 4, 9)
+			assertFileBodyReport(t, second, 0, 0, 6, 6)
 			if cs.puts != 0 || cs.links != 0 || cs.resolves != 0 {
 				t.Fatal("second run wrote")
 			}
@@ -171,6 +185,11 @@ func fileBodyExport() *Export {
 	doc := func(id, tenant, scope, path, title string) Document {
 		return Document{ID: id, TenantID: tenant, Scope: scope, Path: path, Title: title, UpdatedAt: at}
 	}
+	personal := func(id, path, title string) Document {
+		d := doc(id, sourceTenant, "personal", path, title)
+		d.AgentID = "gc-agent-1"
+		return d
+	}
 	return &Export{
 		Documents: []Document{
 			doc("doc-ver", sourceTenant, "team", "tenants/minh-an/notes/co-ban.md", "Quy trinh Minh An"),
@@ -181,9 +200,9 @@ func fileBodyExport() *Export {
 			doc("doc-nul", sourceTenant, "team", "tenants/minh-an/notes/nul.md", "Nul Minh An"),
 			doc("doc-empty", sourceTenant, "team", "tenants/minh-an/notes/rong.md", "Rong Minh An"),
 			doc("doc-other", otherTenant, "team", "tenants/minh-an/notes/khac.md", "Khac tenant"),
-			doc("doc-personal", sourceTenant, "personal", "tenants/minh-an/notes/rieng.md", "Rieng Minh An"),
+			personal("doc-personal", "tenants/minh-an/notes/rieng.md", "Rieng Minh An"),
 			doc("doc-team", sourceTenant, "team", "tenants/minh-an/notes/trung.md", "Team Minh An"),
-			doc("doc-per2", sourceTenant, "personal", "tenants/minh-an/notes/trung.md", "Trung ca nhan"),
+			personal("doc-per2", "tenants/minh-an/notes/trung.md", "Trung ca nhan"),
 		},
 		Versions: []Version{
 			{DocID: "doc-ver", Version: 1, Content: "NOIDUNGBAN", CreatedAt: at},
@@ -231,22 +250,21 @@ func assertFileBodyReport(t *testing.T, rep *Report, inserted, updated, skipped,
 	if srcLinks.Input != srcLinks.Inserted+srcLinks.Updated+srcLinks.Skipped+srcLinks.Rejected {
 		t.Fatalf("source links %+v", srcLinks)
 	}
-	if otherLinks.Input != otherLinks.Rejected || otherLinks.Reasons["source-rejected"] != 1 {
+	if otherLinks.Input != otherLinks.Skipped || otherLinks.Reasons[reasonTenantMismatch] != 1 {
 		t.Fatalf("other links %+v", otherLinks)
 	}
-	if inserted == 3 {
-		if srcDocs.Inserted != 3 || srcDocs.Rejected != 7 || srcDocs.Reasons["path-missing"] != 1 ||
+	if inserted == 5 {
+		if srcDocs.Inserted != 5 || srcDocs.Rejected != 5 || srcDocs.Reasons["path-missing"] != 1 ||
 			srcDocs.Reasons[reasonTooLarge] != 1 || srcDocs.Reasons[reasonBinarySkipped] != 2 ||
-			srcDocs.Reasons[reasonEmptyBody] != 1 || srcDocs.Reasons["scope-personal-held"] != 2 ||
-			srcDocs.Reasons["scope-conflict"] != 0 {
+			srcDocs.Reasons[reasonEmptyBody] != 1 {
 			t.Fatalf("first source docs %+v", srcDocs)
 		}
-		if srcLinks.Inserted != 1 || srcLinks.Rejected != 1 || srcLinks.Reasons["outside-tenant"] != 1 {
+		if srcLinks.Inserted != 1 || srcLinks.Rejected != 1 || srcLinks.Reasons["target-rejected"] != 1 {
 			t.Fatalf("first source links %+v", srcLinks)
 		}
 	}
-	if skipped == 4 {
-		if srcDocs.Skipped != 3 || srcDocs.Reasons[reasonUnchanged] != 3 || srcLinks.Skipped != 1 {
+	if skipped == 6 {
+		if srcDocs.Skipped != 5 || srcDocs.Reasons[reasonUnchanged] != 5 || srcLinks.Skipped != 1 {
 			t.Fatalf("second source docs %+v links %+v", srcDocs, srcLinks)
 		}
 	}

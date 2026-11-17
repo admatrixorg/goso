@@ -175,15 +175,86 @@ func fileTextIntact(prefix, fileText string) bool {
 	if fileText == "" || !strings.HasPrefix(prefix, fileText) {
 		return false
 	}
-	rest := prefix[len(fileText):]
+	return trailerOnly(prefix[len(fileText):])
+}
+
+// trailerOnly reports that rest is empty, a newline, or the summary/meta
+// trailer composeBody writes. Any other text is a hand edit.
+func trailerOnly(rest string) bool {
+	if rest == "" || rest == "\n" {
+		return true
+	}
 	switch {
-	case rest == "" || rest == "\n":
-		return true
-	case strings.HasPrefix(rest, "\n---\n"), strings.HasPrefix(rest, "\n\n---\n"):
-		return true
+	case strings.HasPrefix(rest, "\n\n---\n"):
+		rest = rest[len("\n\n---\n"):]
+	case strings.HasPrefix(rest, "\n---\n"):
+		rest = rest[len("\n---\n"):]
 	default:
 		return false
 	}
+	if rest == "" {
+		return true
+	}
+	if !strings.HasSuffix(rest, "\n") {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(rest, "\n"), "\n") {
+		if !strings.HasPrefix(line, "summary: ") && !strings.HasPrefix(line, "meta: ") {
+			return false
+		}
+	}
+	return true
+}
+
+// fileRowIntact reports a file-sourced row that is unchanged since this
+// importer wrote it from srcID, even when the source file has changed since:
+// some cut of the stored prefix, before the importer's trailer, still hashes
+// to the marker sum (the sha256 of the file bytes at that time).
+func fileRowIntact(body, srcID string) bool {
+	prefix, src, sum, ok := splitImportMarker(body)
+	if !ok || src != srcID {
+		return false
+	}
+	match := func(text string) bool {
+		if text == "" {
+			return false
+		}
+		if hashBody(text) == sum {
+			return true
+		}
+		return strings.Contains(text, "\n") && hashBody(strings.ReplaceAll(text, "\n", "\r\n")) == sum
+	}
+	try := func(cut int) bool {
+		text := prefix[:cut]
+		if !trailerOnly(prefix[cut:]) {
+			return false
+		}
+		return match(text) || match(strings.TrimSuffix(text, "\n"))
+	}
+	if try(len(prefix)) {
+		return true
+	}
+	for i := 0; i < len(prefix); i++ {
+		if prefix[i] == '\n' && strings.HasPrefix(prefix[i:], "\n---\n") && try(i) {
+			return true
+		}
+	}
+	return false
+}
+
+// rowIntact reports a row this importer wrote from srcID that nobody has
+// edited since, whichever way its marker sum was made.
+func rowIntact(title, body, srcID string) bool {
+	return importUntouched(title, body, srcID) || fileRowIntact(body, srcID)
+}
+
+// markerSource is the source id named by the body's import marker.
+func markerSource(body string) string {
+	_, src, _, ok := splitImportMarker(body)
+	if !ok {
+		return ""
+	}
+	return src
 }
 
 func normalizeNewlines(s string) string {
