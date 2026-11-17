@@ -106,3 +106,25 @@ func TestProbeAndChat_SSRFBlocksLoopback(t *testing.T) {
 		t.Fatal("chat should fail SSRF")
 	}
 }
+
+func TestVersionedBase(t *testing.T) {
+	cases := map[string]string{
+		"https://generativelanguage.googleapis.com/v1beta/openai":  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+		"https://generativelanguage.googleapis.com/v1beta/openai/": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+		"https://open.bigmodel.cn/api/paas/v4":                     "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+		"https://example.test/v1beta":                              "https://example.test/v1beta/chat/completions",
+		"http://9router:20128/v1":                                  "http://9router:20128/v1/chat/completions",
+		"http://9router:20128":                                     "http://9router:20128/v1/chat/completions",
+		"https://api.groq.com/openai":                              "https://api.groq.com/openai/v1/chat/completions",
+		"https://openrouter.ai/api/":                               "https://openrouter.ai/api/v1/chat/completions",
+		"http://v1":                                                "http://v1/v1/chat/completions",
+	}
+	for in, want := range cases {
+		if got := chatCompletionsURL(in); got != want {
+			t.Errorf("chatCompletionsURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := modelsURL("https://generativelanguage.googleapis.com/v1beta/openai"); got != "https://generativelanguage.googleapis.com/v1beta/openai/models" {
+		t.Fatalf("gemini models url %q", got)
+	}
+}
