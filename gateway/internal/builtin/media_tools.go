@@ -6,15 +6,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -78,19 +75,20 @@ var (
 var mediaCatalog = []Spec{
 	{
 		Name:             ToolReadImage,
-		Description:      "Describe or answer a question about an image (workspace path or http(s) URL) with a vision model. Needs GOSO_VISION_PROVIDER or GOSO_VISION_BASE_URL and the tool enabled. Max 10MiB; png, jpeg, gif, webp.",
+		Description:      "Describe or answer a question about an image (workspace path or http(s) URL) with a vision model: the tenant's provider chain, else GOSO_VISION_PROVIDER / GOSO_VISION_BASE_URL. Max 10MiB; png, jpeg, gif, webp.",
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","description":"What to look for, e.g. 'Read the price on this label'."},"path":{"type":"string","description":"Image file in the workspace."},"url":{"type":"string","description":"Public http(s) image URL."}}}`),
 	},
 	{
 		Name:             ToolReadDocument,
-		Description:      "Extract text from a workspace file: .txt/.md in process; PDF, DOCX, XLSX, PPTX and scanned images through the Docling sidecar (GOSO_VAULT_DOCLING=1). Returns pages and a truncated flag. Read-only.",
+		Description:      "Extract text from a workspace file: .txt/.md in process; PDF and scanned images through the tenant's document provider chain (Gemini) when set, else the Docling sidecar (GOSO_VAULT_DOCLING=1), which is also the fallback; DOCX, XLSX, PPTX through Docling. Returns a truncated flag. Read-only.",
 		RequiresApproval: false,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Document file in the workspace."},"max_chars":{"type":"integer","description":"Text cap, default 50000, max 200000."}},"required":["path"]}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Document file in the workspace."},"prompt":{"type":"string","description":"Optional instruction for the document model, default: extract all text as Markdown."},"max_chars":{"type":"integer","description":"Text cap, default 50000, max 200000."}},"required":["path"]}`),
 	},
+	readVideoSpec,
 	{
 		Name:             ToolReadAudio,
-		Description:      "Transcribe a voice message or audio file (workspace path or http(s) URL) with an OpenAI-compatible /audio/transcriptions endpoint (GOSO_STT_URL). Language hint defaults to vi. Max 25MiB; ogg, mp3, m4a, wav, webm, flac.",
+		Description:      "Transcribe a voice message or audio file (workspace path or http(s) URL) with the tenant's audio provider chain, else an OpenAI-compatible /audio/transcriptions endpoint (GOSO_STT_URL). Language hint defaults to vi. Max 25MiB (50MiB through Gemini); ogg, mp3, m4a, wav, webm, flac.",
 		RequiresApproval: false,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"url":{"type":"string"},"language":{"type":"string","description":"ISO-639-1 hint, default vi."},"hint":{"type":"string","description":"Optional names or terms to spell correctly."}}}`),
 	},
@@ -102,15 +100,15 @@ var mediaCatalog = []Spec{
 	},
 	{
 		Name:             ToolCreateImage,
-		Description:      "Generate an image from a text prompt with an OpenAI-compatible /images/generations endpoint (GOSO_IMAGE_URL). Saves it under generated/images in the workspace and returns the path for send_file.",
+		Description:      "Generate an image from a text prompt with the tenant's image provider chain (chat models that return images, e.g. Gemini image models), else an OpenAI-compatible /images/generations endpoint (GOSO_IMAGE_URL). Saves it under generated/images in the workspace and returns the path for send_file.",
 		RequiresApproval: false,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string","description":"WxH, e.g. 1024x1024."},"filename":{"type":"string","description":"Short name without extension."}},"required":["prompt"]}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string"},"aspect_ratio":{"type":"string","description":"e.g. 1:1, 16:9, 9:16 (chain providers)."},"size":{"type":"string","description":"WxH, e.g. 1024x1024 (/images/generations)."},"filename":{"type":"string","description":"Short name without extension."}},"required":["prompt"]}`),
 	},
 	{
 		Name:             ToolImageGen,
 		Description:      "Legacy alias of create_image. Approval-gated.",
 		RequiresApproval: true,
-		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string"},"filename":{"type":"string"}},"required":["prompt"]}`),
+		InputSchema:      json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string"},"aspect_ratio":{"type":"string"},"size":{"type":"string"},"filename":{"type":"string"}},"required":["prompt"]}`),
 	},
 	{
 		Name:             ToolTTS,
@@ -141,12 +139,15 @@ func mediaToolConfigured(name string) bool {
 		return mediaDoubleOn() || (workspaceConfigured() && imageGenConfigured())
 	case ToolTTS:
 		return mediaDoubleOn() || (workspaceConfigured() && ttsService().Configured())
+	case ToolReadVideo:
+		return false // provider chain only: see ConfiguredForTenant
 	}
 	return false
 }
 
 // invokeMediaTool runs a media tool. Tools that call a paid provider also
-// need the UI flag (like web_search); read_document is local and does not.
+// need the UI flag (like web_search). read_document does not: it is local,
+// and it calls a provider only when the tenant set a document chain.
 func invokeMediaTool(ctx context.Context, name string, args map[string]any, uiEnabled bool) (*connector.InvokeResult, error) {
 	if (name == ToolImageGen || name == ToolTTS) && mediaDoubleOn() {
 		return invokeMedia(ctx, name, args)
@@ -160,6 +161,8 @@ func invokeMediaTool(ctx context.Context, name string, args map[string]any, uiEn
 	switch name {
 	case ToolReadImage:
 		return readImage(ctx, args)
+	case ToolReadVideo:
+		return readVideo(ctx, args)
 	case ToolReadAudio, ToolSTT:
 		return readAudio(ctx, name, args)
 	case ToolCreateImage, ToolImageGen:
@@ -374,6 +377,9 @@ func visionProvider() (llm.Provider, string) {
 }
 
 func readImage(ctx context.Context, args map[string]any) (*connector.InvokeResult, error) {
+	if chain := tenantChain(ctx, ToolReadImage); len(chain) > 0 {
+		return readImageChain(ctx, chain, args)
+	}
 	if !visionConfigured() {
 		return mediaNotConfigured(ToolReadImage, "set GOSO_VISION_PROVIDER or GOSO_VISION_BASE_URL"), nil
 	}
@@ -392,7 +398,7 @@ func readImage(ctx context.Context, args map[string]any) (*connector.InvokeResul
 	prompt, _ := stringArg(args, "prompt", "question")
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
-		prompt = "Describe this image in detail. Transcribe any visible text exactly."
+		prompt = defaultImagePrompt
 	}
 	if utf8.RuneCountInString(prompt) > maxPromptChars {
 		return toolErr(ToolReadImage, "error", "prompt too long"), nil
@@ -426,7 +432,11 @@ func readDocument(ctx context.Context, args map[string]any) (*connector.InvokeRe
 		return mapFSErr(ToolReadDocument, err), nil
 	}
 	defer f.Close()
+	chain := tenantChain(ctx, ToolReadDocument)
 	limit := vault.IngestMaxBytes()
+	if len(chain) > 0 && limit < MaxDocumentInBytes {
+		limit = MaxDocumentInBytes
+	}
 	if st.Size() > limit {
 		return toolErr(ToolReadDocument, "error", "too large"), nil
 	}
@@ -434,12 +444,40 @@ func readDocument(ctx context.Context, args map[string]any) (*connector.InvokeRe
 	if err != nil {
 		return toolErr(ToolReadDocument, "error", "read failed"), nil
 	}
+	maxChars := intArg(args, "max_chars", DefaultDocChars)
+	if maxChars < 1 {
+		maxChars = DefaultDocChars
+	}
+	if maxChars > MaxDocChars {
+		maxChars = MaxDocChars
+	}
+	// PDFs and scans go to the tenant's document chain first; local
+	// extraction (Docling) is the fallback when every provider fails.
+	var llmErr error
+	var attempts []chainAttempt
+	if mime := docChainMIME(data); len(chain) > 0 && mime != "" && len(data) <= MaxDocumentInBytes {
+		text, out, att, err := readDocumentChain(ctx, chain, rel, mime, data, args)
+		if err == nil {
+			clipped, total, truncated := clipRunes(text, maxChars)
+			return mediaOK(ToolReadDocument, withAttempts(out, map[string]any{
+				"path": rel, "mime": mime, "chars": total, "truncated": truncated, "text": clipped,
+			})), nil
+		}
+		llmErr, attempts = err, att
+	}
 	tenant := store.NormalizeTenant(skill.TenantFrom(ctx))
 	ex := vault.ExtractText(ctx, tenant, rel, data)
+	if ex.ErrorClass != "" && llmErr != nil {
+		return chainFailed(ToolReadDocument, "document read", attempts, llmErr), nil
+	}
 	switch ex.ErrorClass {
 	case "":
 	case vault.ClassNotConfigured:
-		return mediaNotConfigured(ToolReadDocument, "PDF/Office/image files need the Docling sidecar (GOSO_VAULT_DOCLING=1, GOSO_VAULT_DOCLING_URL)"), nil
+		hint := "PDF/Office/image files need the Docling sidecar (GOSO_VAULT_DOCLING=1, GOSO_VAULT_DOCLING_URL)"
+		if docChainMIME(data) != "" {
+			hint += " or a document provider chain (" + noChainHint(ToolReadDocument) + ")"
+		}
+		return mediaNotConfigured(ToolReadDocument, hint), nil
 	case vault.ClassUnsupported:
 		return toolErr(ToolReadDocument, "error", "unsupported file type"), nil
 	case vault.ClassTooLarge:
@@ -453,15 +491,8 @@ func readDocument(ctx context.Context, args map[string]any) (*connector.InvokeRe
 	default:
 		return toolErr(ToolReadDocument, "error", "extract failed"), nil
 	}
-	maxChars := intArg(args, "max_chars", DefaultDocChars)
-	if maxChars < 1 {
-		maxChars = DefaultDocChars
-	}
-	if maxChars > MaxDocChars {
-		maxChars = MaxDocChars
-	}
 	text, total, truncated := clipRunes(ex.Markdown, maxChars)
-	return mediaOK(ToolReadDocument, map[string]any{
+	content := map[string]any{
 		"path":      rel,
 		"mime":      ex.MIME,
 		"pages":     ex.PageCount,
@@ -469,7 +500,13 @@ func readDocument(ctx context.Context, args map[string]any) (*connector.InvokeRe
 		"chars":     total,
 		"truncated": truncated,
 		"text":      text,
-	}), nil
+	}
+	if llmErr != nil {
+		content["fallback"] = "local"
+		content["llm_error"] = llmErr.Error()
+		content["attempts"] = attempts
+	}
+	return mediaOK(ToolReadDocument, content), nil
 }
 
 func intArg(args map[string]any, key string, def int) int {
@@ -522,15 +559,27 @@ func sttEndpoint() string {
 }
 
 func readAudio(ctx context.Context, name string, args map[string]any) (*connector.InvokeResult, error) {
-	if !sttConfigured() {
-		return mediaNotConfigured(name, "set GOSO_STT_URL (and GOSO_STT_API_KEY)"), nil
+	chain := tenantChain(ctx, name)
+	if len(chain) == 0 && !sttConfigured() {
+		return mediaNotConfigured(name, "set GOSO_STT_URL (and GOSO_STT_API_KEY), or "+noChainHint(ToolReadAudio)), nil
+	}
+	lang, _ := stringArg(args, "language")
+	hint, _ := stringArg(args, "hint")
+	if len(chain) > 0 {
+		lang, err := audioLang(lang)
+		if err != nil {
+			return toolErr(name, "error", err.Error()), nil
+		}
+		hint = strings.TrimSpace(hint)
+		if utf8.RuneCountInString(hint) > 1000 {
+			return toolErr(name, "error", "hint too long"), nil
+		}
+		return readAudioChain(ctx, name, chain, args, lang, hint)
 	}
 	in, fail := loadMedia(ctx, name, args, MaxAudioInBytes)
 	if fail != nil {
 		return fail, nil
 	}
-	lang, _ := stringArg(args, "language")
-	hint, _ := stringArg(args, "hint")
 	tr, err := transcribe(ctx, in.data, lang, hint)
 	if err != nil {
 		return toolErr(name, "error", err.Error()), nil
@@ -551,13 +600,8 @@ type transcript struct {
 
 var langCode = regexp.MustCompile(`^[a-z]{2,3}$`)
 
-// transcribe sends one clip to the GOSO_STT_URL endpoint. Errors are short
-// and never carry the key or the endpoint.
-func transcribe(ctx context.Context, data []byte, lang, hint string) (transcript, error) {
-	mime, ext, ok := sniffAudio(data)
-	if !ok {
-		return transcript{}, errors.New("unsupported audio type")
-	}
+// audioLang normalises a language hint: "" → GOSO_STT_LANGUAGE, else vi.
+func audioLang(lang string) (string, error) {
 	lang = strings.ToLower(strings.TrimSpace(lang))
 	if lang == "" {
 		lang = strings.ToLower(envTrim("GOSO_STT_LANGUAGE"))
@@ -566,39 +610,38 @@ func transcribe(ctx context.Context, data []byte, lang, hint string) (transcript
 		lang = "vi"
 	}
 	if !langCode.MatchString(lang) {
-		return transcript{}, errors.New("language must be an ISO-639-1 code")
+		return "", errors.New("language must be an ISO-639-1 code")
 	}
-	model := envTrim("GOSO_STT_MODEL")
-	if model == "" {
-		model = "whisper-1"
+	return lang, nil
+}
+
+// transcribe sends one clip to the GOSO_STT_URL endpoint. Errors are short
+// and never carry the key or the endpoint.
+func transcribe(ctx context.Context, data []byte, lang, hint string) (transcript, error) {
+	mime, ext, ok := sniffAudio(data)
+	if !ok {
+		return transcript{}, errors.New("unsupported audio type")
+	}
+	lang, err := audioLang(lang)
+	if err != nil {
+		return transcript{}, err
 	}
 	hint = strings.TrimSpace(hint)
 	if utf8.RuneCountInString(hint) > 1000 {
 		return transcript{}, errors.New("hint too long")
 	}
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="audio`+ext+`"`)
-	h.Set("Content-Type", mime)
-	part, err := mw.CreatePart(h)
+	model := envTrim("GOSO_STT_MODEL")
+	if model == "" {
+		model = "whisper-1"
+	}
+	body, ct, err := transcriptionBody(model, lang, hint, mime, ext, data)
 	if err != nil {
-		return transcript{}, errors.New("encode failed")
-	}
-	_, _ = part.Write(data)
-	_ = mw.WriteField("model", model)
-	_ = mw.WriteField("language", lang)
-	_ = mw.WriteField("response_format", "json")
-	if hint != "" {
-		_ = mw.WriteField("prompt", hint)
-	}
-	if err := mw.Close(); err != nil {
 		return transcript{}, errors.New("encode failed")
 	}
 	var out struct {
 		Text string `json:"text"`
 	}
-	if err := postProvider(ctx, sttEndpoint(), envTrim("GOSO_STT_API_KEY"), mw.FormDataContentType(), body.Bytes(), 1<<20, &out); err != nil {
+	if err := postProvider(ctx, sttEndpoint(), envTrim("GOSO_STT_API_KEY"), ct, body, 1<<20, &out); err != nil {
 		return transcript{}, errors.New("transcription failed: " + err.Error())
 	}
 	return transcript{text: strings.TrimSpace(out.Text), lang: lang, model: model, mime: mime}, nil
@@ -675,8 +718,9 @@ func createImage(ctx context.Context, name string, args map[string]any) (*connec
 	if !workspaceConfigured() {
 		return mediaNotConfigured(name, "GOSO_WORKSPACE is not set"), nil
 	}
-	if !imageGenConfigured() {
-		return mediaNotConfigured(name, "set GOSO_IMAGE_URL (and GOSO_IMAGE_API_KEY)"), nil
+	chain := tenantChain(ctx, name)
+	if len(chain) == 0 && !imageGenConfigured() {
+		return mediaNotConfigured(name, "set GOSO_IMAGE_URL (and GOSO_IMAGE_API_KEY), or "+noChainHint(ToolCreateImage)), nil
 	}
 	prompt, _ := stringArg(args, "prompt")
 	prompt = strings.TrimSpace(prompt)
@@ -688,6 +732,12 @@ func createImage(ctx context.Context, name string, args map[string]any) (*connec
 	}
 	size, _ := stringArg(args, "size")
 	size = strings.TrimSpace(size)
+	if size != "" && !sizeRe.MatchString(size) {
+		return toolErr(name, "error", "size must look like 1024x1024"), nil
+	}
+	if len(chain) > 0 {
+		return createImageChain(ctx, name, chain, args, prompt, size)
+	}
 	if size == "" {
 		size = envTrim("GOSO_IMAGE_SIZE")
 	}
@@ -701,35 +751,9 @@ func createImage(ctx context.Context, name string, args map[string]any) (*connec
 	if model == "" {
 		model = "gpt-image-1"
 	}
-	payload, _ := json.Marshal(map[string]any{"model": model, "prompt": prompt, "n": 1, "size": size})
-	var out struct {
-		Data []struct {
-			B64JSON string `json:"b64_json"`
-			URL     string `json:"url"`
-		} `json:"data"`
-	}
-	if err := postProvider(ctx, imagesEndpoint(), envTrim("GOSO_IMAGE_API_KEY"), "application/json", payload, maxProviderJSON, &out); err != nil {
+	img, err := imagesGenerate(ctx, imagesEndpoint(), envTrim("GOSO_IMAGE_API_KEY"), nil, model, prompt, size)
+	if err != nil {
 		return toolErr(name, "error", "image generation failed: "+err.Error()), nil
-	}
-	if len(out.Data) == 0 {
-		return toolErr(name, "error", "image generation failed: empty response"), nil
-	}
-	var img []byte
-	switch {
-	case out.Data[0].B64JSON != "":
-		dec, err := base64.StdEncoding.DecodeString(out.Data[0].B64JSON)
-		if err != nil {
-			return toolErr(name, "error", "image generation failed: bad base64"), nil
-		}
-		img = dec
-	case out.Data[0].URL != "":
-		b, err := fetchMediaURL(ctx, out.Data[0].URL, MaxImageOutBytes)
-		if err != nil {
-			return toolErr(name, "error", "image download failed: "+err.Error()), nil
-		}
-		img = b
-	default:
-		return toolErr(name, "error", "image generation failed: no image"), nil
 	}
 	if len(img) > MaxImageOutBytes {
 		return toolErr(name, "error", "too large"), nil

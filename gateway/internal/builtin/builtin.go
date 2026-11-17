@@ -200,7 +200,7 @@ func Configured(name string) bool {
 		return browserBin() != ""
 	case ToolMedia:
 		return ffmpegBin() != ""
-	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadAudio, ToolSTT:
+	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadVideo, ToolReadAudio, ToolSTT:
 		return mediaToolConfigured(name)
 	default:
 		return false
@@ -309,7 +309,7 @@ func Invoke(ctx context.Context, name string, args map[string]any, uiEnabled boo
 		return invokeSandbox(ctx, args)
 	case ToolBrowser:
 		return invokeBrowser(ctx, args)
-	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadAudio, ToolSTT:
+	case ToolImageGen, ToolTTS, ToolCreateImage, ToolReadImage, ToolReadDocument, ToolReadVideo, ToolReadAudio, ToolSTT:
 		return invokeMediaTool(ctx, name, args, uiEnabled)
 	default:
 		if isMediaName(name) {
