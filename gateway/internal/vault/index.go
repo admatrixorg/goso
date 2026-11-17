@@ -168,6 +168,9 @@ func (ix *Indexer) Start(ctx context.Context) {
 			}
 		}
 	}()
+	go sweep(ctx, sweepFirstDelay, sweepInterval, func(ctx context.Context) (BackfillResult, error) {
+		return ix.Backfill(ctx, "", BackfillMax)
+	})
 }
 
 // Notify queues one doc. A full queue drops it; Backfill picks it up later.
