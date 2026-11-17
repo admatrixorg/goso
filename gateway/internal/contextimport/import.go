@@ -11,11 +11,19 @@
 //
 // agent_id selects an agent that already exists in the destination tenant
 // (see Options.AgentMap). The stored agent owner is that agent's id.
-// user_id is stored as the per-customer user_key. Goso user files are not
-// per agent, so two agents that disagree on the same user_id and file_name
-// are scope-conflict and neither body is written. The importer does not
-// create agents, users, memories, or vault rows, and it does not open a
-// database other than the one the caller passes.
+// A user row is stored per agent and user, like GoClaw: scope agent_user with
+// owner store.AgentUserOwner(agent id, user key), where the user key is the
+// per-customer key for user_id. Two agents may hold different bodies under
+// the same user and file name.
+//
+// Earlier runs stored user rows in the tenant-wide scope user. When the map
+// row for a source key still points there, the run writes the agent_user
+// file and then deletes that scope user file if its body still matches the
+// imported sum (Report.Migrated). A hand-edited copy is left in place and
+// counted in Report.LegacyKept. Dry-run counts both and changes nothing.
+//
+// The importer does not create agents, users, memories, or vault rows, and
+// it does not open a database other than the one the caller passes.
 //
 // Unknown JSON fields are ignored. A later run writes nothing when the
 // stored body and the source clocks already match.
@@ -377,6 +385,7 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 			return tally.abort(!opt.Apply, errors.New("store"))
 		}
 		owned := hasMap && mapped.Scope == it.scope && mapped.Owner == it.ownerID && mapped.Name == it.name
+		legacy := hasMap && it.scope == store.ContextScopeAgentUser && mapped.Scope == store.ContextScopeUser
 		if exists && (!owned || bodySum(prev.body) != mapped.Sum) {
 			// A hand edit no longer matches the imported sum, so it is kept.
 			tally.skip(it.kind, it.tenant, it.name, it.ownerKey, reasonNativeExists)
@@ -423,6 +432,11 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 				return tally.abort(false, errors.New("store"))
 			}
 		}
+		if legacy {
+			if err := tally.retire(st, dest, mapped, opt.Apply); err != nil {
+				return tally.abort(!opt.Apply, errors.New("store"))
+			}
+		}
 		_, existed := state.files[it.name]
 		state.files[it.name] = keptFile{body: it.body, created: it.created, updated: it.updated}
 		if existed {
@@ -439,6 +453,30 @@ func Import(st store.StoreIface, ex *Export, opt Options) (*Report, error) {
 		rep.DeniedTenants = len(denied)
 	}
 	return rep, nil
+}
+
+// retire removes the tenant-wide user file an earlier run wrote for a source
+// key that now lives in scope agent_user. Only a body that still matches the
+// imported sum is deleted. A missing file is ignored. Apply false counts.
+func (t *tally) retire(st store.StoreIface, dest string, old mapRow, apply bool) error {
+	f, err := st.GetContextFile(dest, old.Scope, old.Owner, old.Name)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if f == nil || !store.SameTenant(f.TenantID, dest) || bodySum(f.Body) != old.Sum {
+		t.legacyKept++
+		return nil
+	}
+	if apply {
+		if err := st.DeleteContextFile(dest, old.Scope, old.Owner, old.Name); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+	}
+	t.migrated++
+	return nil
 }
 
 // rememberDenied records a row tenant that is on the denylist and reports
@@ -472,7 +510,7 @@ func classifyAgent(st store.StoreIface, dest, source string, agentMap, refs map[
 	}
 	it.created = created
 	it.updated = updated
-	if len(it.body) > store.MaxContextFileBytes {
+	if len(it.body) > store.ContextLimits().FileBytes {
 		it.reason = reasonTooLarge
 		return it
 	}
@@ -490,7 +528,7 @@ func classifyAgent(st store.StoreIface, dest, source string, agentMap, refs map[
 func classifyUser(st store.StoreIface, dest, source string, agentMap, refs, customers map[string]string, row UserFile) item {
 	it := item{
 		kind:     "user",
-		scope:    store.ContextScopeUser,
+		scope:    store.ContextScopeAgentUser,
 		tenant:   clipTenant(row.TenantID),
 		ownerKey: clipOwner(row.UserID),
 		name:     strings.TrimSpace(row.FileName),
@@ -510,15 +548,21 @@ func classifyUser(st store.StoreIface, dest, source string, agentMap, refs, cust
 	}
 	it.created = created
 	it.updated = updated
-	if len(it.body) > store.MaxContextFileBytes {
+	if len(it.body) > store.ContextLimits().FileBytes {
 		it.reason = reasonTooLarge
 		return it
 	}
-	if _, reason := resolveAgent(st, dest, agentMap, refs, row.AgentID); reason != "" {
+	agent, reason := resolveAgent(st, dest, agentMap, refs, row.AgentID)
+	if reason != "" {
 		it.reason = reason
 		return it
 	}
-	it.ownerID = key
+	owner := store.AgentUserOwner(agent, key)
+	if _, _, ok := store.SplitAgentUserOwner(owner); !ok {
+		it.reason = reasonInvalid
+		return it
+	}
+	it.ownerID = owner
 	it.ownerKey = userID
 	it.natural = "user|" + strings.TrimSpace(row.AgentID) + "|" + userID + "|" + it.name
 	it.keep = true

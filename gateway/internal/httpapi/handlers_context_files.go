@@ -53,33 +53,50 @@ type contextFileBody struct {
 	TenantID string `json:"tenant_id"`
 }
 
-func contextOwnerFrom(scope, agentID, userKey string) (string, error) {
+// contextOwnerFrom returns the stored scope and owner for a request.
+// scope agent takes agent_id. scope user takes user_key and is the tenant-wide
+// file; with agent_id as well it is that agent's file for the user, the same
+// as scope agent_user, which needs both.
+func contextOwnerFrom(scope, agentID, userKey string) (string, string, error) {
 	scope = strings.ToLower(strings.TrimSpace(scope))
 	agentID = strings.TrimSpace(agentID)
 	userKey = strings.TrimSpace(userKey)
 	switch scope {
 	case store.ContextScopeAgent:
 		if agentID == "" || userKey != "" {
-			return "", store.ErrContextInvalid
+			return "", "", store.ErrContextInvalid
 		}
-		return agentID, nil
-	case store.ContextScopeUser:
-		if userKey == "" || agentID != "" || !store.UserKeyOK(userKey) {
-			return "", store.ErrContextInvalid
+		return scope, agentID, nil
+	case store.ContextScopeUser, store.ContextScopeAgentUser:
+		if userKey == "" || !store.UserKeyOK(userKey) {
+			return "", "", store.ErrContextInvalid
 		}
-		return userKey, nil
+		if agentID == "" {
+			if scope == store.ContextScopeAgentUser {
+				return "", "", store.ErrContextInvalid
+			}
+			return scope, userKey, nil
+		}
+		owner := store.AgentUserOwner(agentID, userKey)
+		if _, _, ok := store.SplitAgentUserOwner(owner); !ok {
+			return "", "", store.ErrContextInvalid
+		}
+		return store.ContextScopeAgentUser, owner, nil
 	default:
-		return "", store.ErrContextInvalid
+		return "", "", store.ErrContextInvalid
 	}
 }
 
 func readContextJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, store.MaxContextFileBytes+8192+1))
+	// JSON escaping can grow a body; twice the file cap plus the envelope
+	// leaves room for that and still bounds the read.
+	limit := int64(store.ContextLimits().FileBytes)*2 + 8192
+	raw, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return false
 	}
-	if len(raw) > store.MaxContextFileBytes+8192 {
+	if int64(len(raw)) > limit {
 		writeErr(w, http.StatusBadRequest, "context file too large")
 		return false
 	}
@@ -99,14 +116,14 @@ func handlePutContextFile(st store.StoreIface) http.HandlerFunc {
 		if !readContextJSON(w, r, &body) {
 			return
 		}
-		owner, err := contextOwnerFrom(body.Scope, body.AgentID, body.UserKey)
+		scope, owner, err := contextOwnerFrom(body.Scope, body.AgentID, body.UserKey)
 		if err != nil {
 			writeContextErr(w, "put", err)
 			return
 		}
 		saved, err := st.PutContextFile(store.ContextFile{
 			TenantID: requestTenant(r),
-			Scope:    body.Scope,
+			Scope:    scope,
 			OwnerID:  owner,
 			Name:     body.Name,
 			Body:     body.Body,
@@ -125,12 +142,11 @@ func handleGetContextFiles(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		owner, err := contextOwnerFrom(q.Get("scope"), q.Get("agent_id"), q.Get("user_key"))
+		scope, owner, err := contextOwnerFrom(q.Get("scope"), q.Get("agent_id"), q.Get("user_key"))
 		if err != nil {
 			writeContextErr(w, "get", err)
 			return
 		}
-		scope := strings.ToLower(strings.TrimSpace(q.Get("scope")))
 		name := strings.TrimSpace(q.Get("name"))
 		tid := requestTenant(r)
 		if name != "" {
@@ -160,7 +176,7 @@ func handleDeleteContextFile(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		owner, err := contextOwnerFrom(q.Get("scope"), q.Get("agent_id"), q.Get("user_key"))
+		scope, owner, err := contextOwnerFrom(q.Get("scope"), q.Get("agent_id"), q.Get("user_key"))
 		if err != nil {
 			writeContextErr(w, "delete", err)
 			return
@@ -170,7 +186,7 @@ func handleDeleteContextFile(st store.StoreIface) http.HandlerFunc {
 			writeContextErr(w, "delete", store.ErrContextInvalid)
 			return
 		}
-		if err := st.DeleteContextFile(requestTenant(r), strings.ToLower(strings.TrimSpace(q.Get("scope"))), owner, name); err != nil {
+		if err := st.DeleteContextFile(requestTenant(r), scope, owner, name); err != nil {
 			writeContextErr(w, "delete", err)
 			return
 		}

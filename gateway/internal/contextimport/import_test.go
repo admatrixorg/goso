@@ -233,6 +233,10 @@ func TestDuplicateLastWinsIsIdempotent(t *testing.T) {
 }
 
 func TestOwnerCapAndTooLarge(t *testing.T) {
+	// Operator caps tighter than the GoClaw-equal defaults.
+	t.Setenv("GOSO_CONTEXT_MAX_FILES", "16")
+	t.Setenv("GOSO_CONTEXT_MAX_BYTES", "65536")
+	t.Setenv("GOSO_CONTEXT_FILE_MAX_BYTES", "32768")
 	for name, open := range backends(t) {
 		t.Run(name, func(t *testing.T) {
 			st := open(t)
@@ -253,7 +257,7 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 			}
 			files = append(files, AgentFile{
 				TenantID: sourceTenant, AgentID: "tu-van-sales", FileName: "big.md",
-				Content: strings.Repeat("x", store.MaxContextFileBytes+1),
+				Content: strings.Repeat("x", store.ContextLimits().FileBytes+1),
 			})
 			rep, err := Import(st, &Export{Agents: files}, opt(t, Options{
 				SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
@@ -286,8 +290,8 @@ func TestOwnerCapAndTooLarge(t *testing.T) {
 			}
 
 			wide := &Export{Agents: []AgentFile{
-				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "a.md", Content: strings.Repeat("a", store.MaxContextFileBytes)},
-				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "b.md", Content: strings.Repeat("b", store.MaxContextFileBytes)},
+				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "a.md", Content: strings.Repeat("a", store.ContextLimits().FileBytes)},
+				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "b.md", Content: strings.Repeat("b", store.ContextLimits().FileBytes)},
 				{TenantID: sourceTenant, AgentID: "tu-van-bytes", FileName: "c.md", Content: "c"},
 			}}
 			// The 16 short files already fill the file-count cap, so replace
@@ -357,14 +361,20 @@ func TestInvalidRowsWriteNothing(t *testing.T) {
 	}
 }
 
-func TestUserFileConflictDoesNotOverwrite(t *testing.T) {
+// TestUserFilesArePerAgent is the case that was scope-conflict before: two
+// GoClaw agents hold different bodies for the same user and file name. Each
+// goso agent gets its own agent_user file, and the tenant-wide user file is
+// not touched.
+func TestUserFilesArePerAgent(t *testing.T) {
 	for name, open := range backends(t) {
 		t.Run(name, func(t *testing.T) {
 			st := open(t)
-			if _, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant}); err != nil {
+			sales, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant})
+			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := st.CreateAgent(store.Agent{AgentKey: "phap-che", DisplayName: "Pháp chế Minh An", TenantID: destTenant}); err != nil {
+			phap, err := st.CreateAgent(store.Agent{AgentKey: "phap-che", DisplayName: "Pháp chế Minh An", TenantID: destTenant})
+			if err != nil {
 				t.Fatal(err)
 			}
 			kept, err := st.PutContextFile(store.ContextFile{
@@ -377,13 +387,80 @@ func TestUserFileConflictDoesNotOverwrite(t *testing.T) {
 			ex := &Export{Users: []UserFile{
 				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: "ban mot"},
 				{TenantID: sourceTenant, AgentID: "phap-che", UserID: "lan", FileName: "USER.md", Content: "ban hai"},
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
+				{TenantID: sourceTenant, AgentID: "phap-che", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
 			}}
 			puts := &putCount{StoreIface: st}
+			dry, err := Import(puts, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !dry.DryRun || dry.Inserted != 4 || dry.Rejected != 0 || puts.n != 0 {
+				t.Fatalf("dry-run %+v puts %d", dry, puts.n)
+			}
 			rep, err := Import(puts, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if rep.Inserted != 0 || rep.Updated != 0 || rep.Rejected != 2 || puts.n != 0 {
+			if rep.Inserted != 4 || rep.Updated != 0 || rep.Rejected != 0 || puts.n != 4 {
+				t.Fatalf("apply %+v puts %d", rep, puts.n)
+			}
+			for _, want := range []struct{ agent, name, body string }{
+				{sales.ID, "USER.md", "ban mot"},
+				{phap.ID, "USER.md", "ban hai"},
+				{sales.ID, "NOTES.md", "cung mot"},
+				{phap.ID, "NOTES.md", "cung mot"},
+			} {
+				got, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(want.agent, "lan"), want.name)
+				if err != nil || got.Body != want.body || got.AgentID != want.agent || got.UserKey != "lan" {
+					t.Fatalf("%s %s: %+v %v", want.agent, want.name, got, err)
+				}
+			}
+			got, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md")
+			if err != nil || got.Body != "giu nguyen" || got.ID != kept.ID {
+				t.Fatalf("tenant user file %+v %v", got, err)
+			}
+			puts.n = 0
+			again, err := Import(puts, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 4 || puts.n != 0 || again.Migrated != 0 {
+				t.Fatalf("rerun %+v puts %d", again, puts.n)
+			}
+			for _, s := range again.Users {
+				if s.Reasons[reasonUnchanged] != 4 {
+					t.Fatalf("rerun reasons %+v", s)
+				}
+			}
+		})
+	}
+}
+
+// TestUserFileConflictOnOneGosoAgent keeps scope-conflict for the case that
+// is still ambiguous: two GoClaw agents mapped onto one goso agent with
+// different bodies for the same user and name.
+func TestUserFileConflictOnOneGosoAgent(t *testing.T) {
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st := open(t)
+			sales, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ex := &Export{Users: []UserFile{
+				{TenantID: sourceTenant, AgentID: "gc-a", UserID: "lan", FileName: "USER.md", Content: "ban mot"},
+				{TenantID: sourceTenant, AgentID: "gc-b", UserID: "lan", FileName: "USER.md", Content: "ban hai"},
+			}}
+			puts := &putCount{StoreIface: st}
+			rep, err := Import(puts, ex, opt(t, Options{
+				SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true,
+				AgentMap: map[string]string{"gc-a": "tu-van-sales", "gc-b": "tu-van-sales"},
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Inserted != 0 || rep.Rejected != 2 || puts.n != 0 {
 				t.Fatalf("conflict %+v puts %d", rep, puts.n)
 			}
 			for _, row := range rep.Rejections {
@@ -391,29 +468,96 @@ func TestUserFileConflictDoesNotOverwrite(t *testing.T) {
 					t.Fatalf("reason %+v", row)
 				}
 			}
-			got, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md")
-			if err != nil || got.Body != "giu nguyen" || got.ID != kept.ID {
-				t.Fatalf("stored %+v %v", got, err)
+			if _, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(sales.ID, "lan"), "USER.md"); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("conflict wrote a file: %v", err)
 			}
-			same := &Export{Users: []UserFile{
-				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
-				{TenantID: sourceTenant, AgentID: "phap-che", UserID: "lan", FileName: "NOTES.md", Content: "cung mot"},
+		})
+	}
+}
+
+// TestLegacyTenantUserRowsMigrate starts from what the old importer left:
+// tenant-wide user files plus map rows that point at them. A new run writes
+// agent_user files, removes the unedited tenant-wide copy, keeps an edited
+// one, and a second run changes nothing. Rollback then removes the new files.
+func TestLegacyTenantUserRowsMigrate(t *testing.T) {
+	for name, open := range backends(t) {
+		t.Run(name, func(t *testing.T) {
+			st := open(t)
+			sales, err := st.CreateAgent(store.Agent{AgentKey: "tu-van-sales", DisplayName: "Cố vấn Minh An", TenantID: destTenant})
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacy := func(user, file, body, sum string) {
+				t.Helper()
+				if _, err := st.PutContextFile(store.ContextFile{
+					TenantID: destTenant, Scope: store.ContextScopeUser, UserKey: user, Name: file, Body: body,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				maps, err := openMapper(st, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := maps.put(mapRow{
+					DestTenant: destTenant, SourceTable: "user_context_files",
+					SourceKey: "user|tu-van-sales|" + user + "|" + file,
+					Scope:     store.ContextScopeUser, Owner: user, Name: file, Sum: sum,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			legacy("lan", "USER.md", "Lan mua sỉ.", bodySum("Lan mua sỉ."))
+			// hoa's copy was edited by hand after the old import.
+			legacy("hoa", "USER.md", "Hoa sửa tay.", bodySum("Hoa ban đầu."))
+			ex := &Export{Users: []UserFile{
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "lan", FileName: "USER.md", Content: "Lan mua sỉ."},
+				{TenantID: sourceTenant, AgentID: "tu-van-sales", UserID: "hoa", FileName: "USER.md", Content: "Hoa ban đầu."},
 			}}
-			puts.n = 0
-			once, err := Import(puts, same, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+			dry, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if once.Inserted != 1 || once.Skipped != 1 || puts.n != 1 {
-				t.Fatalf("same body %+v puts %d", once, puts.n)
+			if dry.Inserted != 2 || dry.Migrated != 1 || dry.LegacyKept != 1 {
+				t.Fatalf("dry-run %+v", dry)
 			}
-			puts.n = 0
-			twice, err := Import(puts, same, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+			if _, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md"); err != nil {
+				t.Fatalf("dry-run removed the legacy row: %v", err)
+			}
+			rep, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if twice.Inserted != 0 || twice.Updated != 0 || twice.Skipped != 2 || puts.n != 0 {
-				t.Fatalf("rerun %+v puts %d", twice, puts.n)
+			if rep.Inserted != 2 || rep.Migrated != 1 || rep.LegacyKept != 1 {
+				t.Fatalf("apply %+v", rep)
+			}
+			if _, err := st.GetContextFile(destTenant, store.ContextScopeUser, "lan", "USER.md"); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("legacy row stayed: %v", err)
+			}
+			if got, err := st.GetContextFile(destTenant, store.ContextScopeUser, "hoa", "USER.md"); err != nil || got.Body != "Hoa sửa tay." {
+				t.Fatalf("edited legacy row %+v %v", got, err)
+			}
+			for user, body := range map[string]string{"lan": "Lan mua sỉ.", "hoa": "Hoa ban đầu."} {
+				got, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(sales.ID, user), "USER.md")
+				if err != nil || got.Body != body {
+					t.Fatalf("%s agent_user %+v %v", user, got, err)
+				}
+			}
+			again, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if again.Inserted != 0 || again.Updated != 0 || again.Skipped != 2 || again.Migrated != 0 || again.LegacyKept != 0 {
+				t.Fatalf("rerun %+v", again)
+			}
+			rolled, err := Rollback(st, destTenant, testDeny(t), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rolled.Deleted != 2 || rolled.Kept != 0 {
+				t.Fatalf("rollback %+v", rolled)
+			}
+			if got, err := st.GetContextFile(destTenant, store.ContextScopeUser, "hoa", "USER.md"); err != nil || got.Body != "Hoa sửa tay." {
+				t.Fatalf("rollback touched the edited row %+v %v", got, err)
 			}
 		})
 	}
@@ -442,7 +586,7 @@ func TestJSONLUsesTheSameColumns(t *testing.T) {
 	if err != nil || len(ag) != 1 || ag[0].Body != "tu jsonl" || !ag[0].CreatedAt.Equal(time.Date(2026, 3, 1, 4, 5, 6, 0, time.UTC)) {
 		t.Fatalf("agent %+v %v", ag, err)
 	}
-	lan, err := st.GetContextFile(destTenant, store.ContextScopeUser, cust("lan"), "USER.md")
+	lan, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(mustAgent(t, st, "tu-van-sales"), cust("lan")), "USER.md")
 	if err != nil || lan.Body != "lan jsonl" {
 		t.Fatalf("user %+v %v", lan, err)
 	}
@@ -747,11 +891,11 @@ func TestCustomerKeyMap(t *testing.T) {
 	if _, err := Import(st, ex, opt(t, Options{SourceTenant: sourceTenant, DestTenant: destTenant, Apply: true, Customers: links})); err != nil {
 		t.Fatal(err)
 	}
-	lan, err := st.GetContextFile(destTenant, store.ContextScopeUser, "zalo:s-lan", "USER.md")
+	lan, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(mustAgent(t, st, "tu-van-sales"), "zalo:s-lan"), "USER.md")
 	if err != nil || lan.Body != "mot" {
 		t.Fatalf("mapped %+v %v", lan, err)
 	}
-	hoa, err := st.GetContextFile(destTenant, store.ContextScopeUser, "hoa", "USER.md")
+	hoa, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(mustAgent(t, st, "tu-van-sales"), "hoa"), "USER.md")
 	if err != nil || hoa.Body != "hai" {
 		t.Fatalf("fallback %+v %v", hoa, err)
 	}
@@ -773,7 +917,7 @@ func TestGroupUserIDImportsVerbatim(t *testing.T) {
 		t.Fatal(err)
 	}
 	for k, want := range map[string]string{key: "nhom", "123456789": "dm"} {
-		got, err := st.GetContextFile(destTenant, store.ContextScopeUser, k, "USER.md")
+		got, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(mustAgent(t, st, "tu-van-sales"), k), "USER.md")
 		if err != nil || got.Body != want {
 			t.Fatalf("%s: %+v %v", k, got, err)
 		}
@@ -863,8 +1007,10 @@ func assertAbsent(t *testing.T, st store.StoreIface, seed seed) {
 		{store.ContextScopeAgent, seed.sales.ID, "AGENTS.md"},
 		{store.ContextScopeAgent, seed.sales.ID, "SOUL.md"},
 		{store.ContextScopeAgent, seed.phap.ID, "AGENTS.md"},
+		{store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("lan")), "USER.md"},
+		{store.ContextScopeAgentUser, store.AgentUserOwner(seed.phap.ID, cust("lan")), "NOTES.md"},
+		{store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("hoa")), "USER.md"},
 		{store.ContextScopeUser, cust("lan"), "USER.md"},
-		{store.ContextScopeUser, cust("lan"), "NOTES.md"},
 		{store.ContextScopeUser, cust("hoa"), "USER.md"},
 	} {
 		if _, err := st.GetContextFile(destTenant, owner.scope, owner.id, owner.name); !errors.Is(err, store.ErrNotFound) {
@@ -894,8 +1040,8 @@ func assertImported(t *testing.T, st store.StoreIface, seed seed) {
 	if _, err := st.GetContextFile(destTenant, store.ContextScopeAgent, seed.phap.ID, "SOUL.md"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("phap received the sales file")
 	}
-	lan, err := st.GetContextFile(destTenant, store.ContextScopeUser, cust("lan"), "USER.md")
-	if err != nil || lan.Body != lanNote || lan.UserKey != cust("lan") || lan.AgentID != "" || lan.TenantID != destTenant {
+	lan, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("lan")), "USER.md")
+	if err != nil || lan.Body != lanNote || lan.UserKey != cust("lan") || lan.AgentID != seed.sales.ID || lan.TenantID != destTenant {
 		t.Fatalf("lan %+v %v", lan, err)
 	}
 	if lan.ID == exportRowID {
@@ -907,16 +1053,22 @@ func assertImported(t *testing.T, st store.StoreIface, seed seed) {
 	if err != nil || !salesFile.CreatedAt.Equal(created) || !salesFile.UpdatedAt.Equal(updated) {
 		t.Fatalf("clock %+v %v", salesFile, err)
 	}
-	notes, err := st.GetContextFile(destTenant, store.ContextScopeUser, cust("lan"), "NOTES.md")
-	if err != nil || notes.Body != lanNotes || notes.UserKey != cust("lan") || notes.AgentID != "" {
+	notes, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(seed.phap.ID, cust("lan")), "NOTES.md")
+	if err != nil || notes.Body != lanNotes || notes.UserKey != cust("lan") || notes.AgentID != seed.phap.ID {
 		t.Fatalf("lan notes %+v %v", notes, err)
 	}
-	hoa, err := st.GetContextFile(destTenant, store.ContextScopeUser, cust("hoa"), "USER.md")
-	if err != nil || hoa.Body != hoaNote || hoa.UserKey != cust("hoa") {
+	hoa, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("hoa")), "USER.md")
+	if err != nil || hoa.Body != hoaNote || hoa.UserKey != cust("hoa") || hoa.AgentID != seed.sales.ID {
 		t.Fatalf("hoa %+v %v", hoa, err)
 	}
-	if _, err := st.GetContextFile(destTenant, store.ContextScopeUser, cust("lan"), "AGENTS.md"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("lan")), "AGENTS.md"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("user received an agent file")
+	}
+	if _, err := st.GetContextFile(destTenant, store.ContextScopeAgentUser, store.AgentUserOwner(seed.phap.ID, cust("lan")), "USER.md"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("phap received the sales user file")
+	}
+	if shared, err := st.ListContextFiles(destTenant, store.ContextScopeUser, cust("lan")); err != nil || len(shared) != 0 {
+		t.Fatalf("import wrote tenant-wide user files %+v %v", shared, err)
 	}
 	branch, err := st.ListContextFiles(otherDest, store.ContextScopeAgent, seed.branch.ID)
 	if err != nil || len(branch) != 0 {
@@ -1060,9 +1212,9 @@ func snapshot(t *testing.T, st store.StoreIface, seed seed) string {
 	write(store.ContextScopeAgent, seed.sales.ID, "AGENTS.md")
 	write(store.ContextScopeAgent, seed.sales.ID, "SOUL.md")
 	write(store.ContextScopeAgent, seed.phap.ID, "AGENTS.md")
-	write(store.ContextScopeUser, cust("lan"), "USER.md")
-	write(store.ContextScopeUser, cust("lan"), "NOTES.md")
-	write(store.ContextScopeUser, cust("hoa"), "USER.md")
+	write(store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("lan")), "USER.md")
+	write(store.ContextScopeAgentUser, store.AgentUserOwner(seed.phap.ID, cust("lan")), "NOTES.md")
+	write(store.ContextScopeAgentUser, store.AgentUserOwner(seed.sales.ID, cust("hoa")), "USER.md")
 	kept, err := st.GetContextFile(otherDest, store.ContextScopeAgent, seed.legal.ID, "AGENTS.md")
 	if err != nil {
 		t.Fatal(err)

@@ -15,15 +15,21 @@ import (
 // row. For each section, input = inserted + updated + skipped + rejected,
 // and the reason counts sum to skipped + rejected.
 type Report struct {
-	Inserted      int             `json:"inserted"`
-	Updated       int             `json:"updated"`
-	Skipped       int             `json:"skipped"`
-	Rejected      int             `json:"rejected"`
-	DryRun        bool            `json:"dry_run"`
-	DeniedTenants int             `json:"denied_tenants"`
-	Rejections    []Rejection     `json:"rejections,omitempty"`
-	Agents        []TenantSection `json:"agents"`
-	Users         []TenantSection `json:"users"`
+	Inserted      int  `json:"inserted"`
+	Updated       int  `json:"updated"`
+	Skipped       int  `json:"skipped"`
+	Rejected      int  `json:"rejected"`
+	DryRun        bool `json:"dry_run"`
+	DeniedTenants int  `json:"denied_tenants"`
+	// Migrated counts tenant-wide user files from an earlier run that this
+	// run replaced with agent_user files and removed (or would, on dry-run).
+	// LegacyKept counts such files left in place because they were edited.
+	// Neither is an export row, so they are outside the per-tenant balance.
+	Migrated   int             `json:"migrated"`
+	LegacyKept int             `json:"legacy_kept"`
+	Rejections []Rejection     `json:"rejections,omitempty"`
+	Agents     []TenantSection `json:"agents"`
+	Users      []TenantSection `json:"users"`
 }
 
 // Rejection is one dropped row. Name and Owner are the file name and the
@@ -108,8 +114,10 @@ type rowOutcome struct {
 }
 
 type tally struct {
-	log  Logger
-	rows []rowOutcome
+	log        Logger
+	rows       []rowOutcome
+	migrated   int
+	legacyKept int
 }
 
 func (t *tally) add(kind, tenant, action, reason, name, owner string) {
@@ -150,7 +158,7 @@ func (t *tally) abort(dry bool, err error) (*Report, error) {
 }
 
 func (t *tally) finish(dry bool, agents, users int) (*Report, error) {
-	rep := &Report{DryRun: dry, Agents: []TenantSection{}, Users: []TenantSection{}}
+	rep := &Report{DryRun: dry, Agents: []TenantSection{}, Users: []TenantSection{}, Migrated: t.migrated, LegacyKept: t.legacyKept}
 	agentN, userN := 0, 0
 	for _, row := range t.rows {
 		switch row.action {

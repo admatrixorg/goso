@@ -241,7 +241,7 @@ func (overCapList) ListContextFiles(tenant, scope, owner string) ([]*store.Conte
 	if scope != store.ContextScopeAgent {
 		return []*store.ContextFile{}, nil
 	}
-	out := make([]*store.ContextFile, store.MaxContextFilesPerOwner+1)
+	out := make([]*store.ContextFile, store.ContextLimits().FilesPerOwner+1)
 	for i := range out {
 		out[i] = &store.ContextFile{
 			TenantID: tenant, Scope: scope, AgentID: owner,
@@ -253,6 +253,7 @@ func (overCapList) ListContextFiles(tenant, scope, owner string) ([]*store.Conte
 
 func TestRun_ContextFilesOverCap(t *testing.T) {
 	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	t.Setenv("GOSO_CONTEXT_MAX_FILES", "16")
 	st := store.New()
 	ag, err := st.CreateAgent(store.Agent{
 		AgentKey: "tu-van-cap", DisplayName: "Cố vấn Minh An", TenantID: "minh-an-sales",
