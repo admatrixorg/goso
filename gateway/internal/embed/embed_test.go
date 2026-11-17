@@ -132,3 +132,33 @@ func TestFromEnv(t *testing.T) {
 		t.Fatalf("cfg %+v %v", cfg, err)
 	}
 }
+
+func TestClient_RetriesRateLimit(t *testing.T) {
+	old := retryBase
+	retryBase = time.Millisecond
+	t.Cleanup(func() { retryBase = old })
+
+	f := newFake(t, 3)
+	var limited atomic.Int32
+	limited.Store(2)
+	inner := f.Server.Config.Handler
+	f.Server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if limited.Add(-1) >= 0 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	})
+	c := New(Config{URL: f.URL + "/v1/", Model: "fake-embed", APIKey: fakeKey, Batch: 4, RPS: 1000})
+	vecs, err := c.Embed(context.Background(), []string{"a", "bb"})
+	if err != nil || len(vecs) != 2 {
+		t.Fatalf("retry failed: %v %d", err, len(vecs))
+	}
+
+	limited.Store(1 << 20)
+	_, err = c.Embed(context.Background(), []string{"a"})
+	if !errors.Is(err, ErrResponse) || !strings.Contains(err.Error(), "rate limited") || strings.Contains(err.Error(), fakeKey) {
+		t.Fatalf("permanent 429: %v", err)
+	}
+}

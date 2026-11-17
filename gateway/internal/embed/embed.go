@@ -187,10 +187,57 @@ func (c *Client) wait(ctx context.Context) error {
 	}
 }
 
+// maxAttempts bounds retries of a rate-limited (429) or unavailable (503)
+// batch; free-tier providers throttle long backfills.
+const maxAttempts = 6
+
+// retryBase is the first backoff; tests shorten it.
+var retryBase = 2 * time.Second
+
+// retryable is a 429 or 503 answer and how long the provider asked to wait.
+type retryable struct{ after time.Duration }
+
+func (r *retryable) Error() string { return "retryable" }
+
 func (c *Client) embedBatch(ctx context.Context, inputs []string) ([][]float32, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
+	backoff := retryBase
+	for attempt := 1; ; attempt++ {
+		vecs, err := c.embedOnce(ctx, inputs)
+		var rt *retryable
+		if !errors.As(err, &rt) {
+			return vecs, err
+		}
+		if attempt >= maxAttempts {
+			return nil, fmt.Errorf("%w: rate limited after %d attempts", ErrResponse, attempt)
+		}
+		d := backoff
+		if rt.after > d {
+			d = rt.after
+		}
+		if d > time.Minute {
+			d = time.Minute
+		}
+		backoff *= 2
+		c.pause(d)
+		if err := c.wait(ctx); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// pause pushes the shared limiter so concurrent batches also back off.
+func (c *Client) pause(d time.Duration) {
+	c.mu.Lock()
+	if at := time.Now().Add(d); at.After(c.next) {
+		c.next = at
+	}
+	c.mu.Unlock()
+}
+
+func (c *Client) embedOnce(ctx context.Context, inputs []string) ([][]float32, error) {
 	if err := c.wait(ctx); err != nil {
 		return nil, err
 	}
@@ -218,6 +265,13 @@ func (c *Client) embedBatch(ctx context.Context, inputs []string) ([][]float32, 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	if err != nil {
 		return nil, fmt.Errorf("%w: read failed", ErrResponse)
+	}
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+		after := time.Duration(0)
+		if secs, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && secs > 0 {
+			after = time.Duration(secs) * time.Second
+		}
+		return nil, &retryable{after: after}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		// The body is not echoed: some providers repeat the key in it.
