@@ -31,7 +31,9 @@ func (z *ZaloPersonal) Name() string { return "zalo-personal" }
 type ZaloPersonalUpdate struct {
 	ThreadID string `json:"thread_id"`
 	FromID   string `json:"from_id"`
-	Message  *struct {
+	// ThreadType is "group" (or 1) for a group thread; empty is a direct chat.
+	ThreadType string `json:"thread_type"`
+	Message    *struct {
 		Text string `json:"text"`
 	} `json:"message"`
 }
@@ -77,9 +79,10 @@ func (z *ZaloPersonal) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent := z.ensureAgent()
-	sess := z.ensureSession(agent.ID, threadID)
+	id := Identity{Instance: "zalo-personal", Peer: peerKind(upd.ThreadType), SenderID: from, ChatID: threadID}
+	sess := ensureChannelSession(z.Store, agent, id)
 
-	ctx := withContextUser(r.Context(), "zalo-personal", "direct", from, threadID)
+	ctx := withContextUser(r.Context(), id)
 	reply := answerTurn(ctx, z.Store, agent, sess, z.LLM, z.Meter, text)
 
 	sender := z.Sender
@@ -105,17 +108,6 @@ func (z *ZaloPersonal) ensureAgent() *store.Agent {
 	return a
 }
 
-func (z *ZaloPersonal) ensureSession(agentID, threadID string) *store.Session {
-	label := "zalo-personal:" + threadID
-	for _, s := range z.Store.ListSessions() {
-		if s.AgentID == agentID && s.Label == label {
-			return s
-		}
-	}
-	sess, _ := z.Store.CreateSession(store.Session{AgentID: agentID, Label: label})
-	return sess
-}
-
 func (z *ZaloPersonal) sendMessage(ctx context.Context, threadID, text string) error {
 	token := os.Getenv("GOSO_ZALO_PERSONAL_TOKEN")
 	if token == "" {
@@ -139,4 +131,13 @@ func (z *ZaloPersonal) sendMessage(ctx context.Context, threadID, text string) e
 		return fmt.Errorf("zalo personal send %d: %s", resp.StatusCode, string(b))
 	}
 	return nil
+}
+
+// ensureSession is the agent's session for a direct thread.
+func (z *ZaloPersonal) ensureSession(agentID, threadID string) *store.Session {
+	agent, err := z.Store.GetAgent(agentID)
+	if err != nil {
+		return nil
+	}
+	return ensureChannelSession(z.Store, agent, Identity{Instance: "zalo-personal", Peer: "direct", SenderID: threadID, ChatID: threadID})
 }

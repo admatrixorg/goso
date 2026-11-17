@@ -64,6 +64,8 @@ type LarkMessage struct {
 	ChatID    string
 	ChatType  string
 	ThreadID  string
+	// RootID is the first message of the topic (thread) this one is in.
+	RootID    string
 	SenderID  string
 	Text      string
 	Mentioned bool
@@ -76,6 +78,9 @@ type LarkMessage struct {
 const (
 	SettingAppID  = "app_id"
 	SettingDomain = "domain"
+	// SettingTopicSessionMode "enabled" gives each topic (thread) of a chat
+	// its own session, as GoClaw's topic_session_mode does.
+	SettingTopicSessionMode = "topic_session_mode"
 )
 
 const (
@@ -505,6 +510,7 @@ type larkEvent struct {
 			ChatID      string `json:"chat_id"`
 			ChatType    string `json:"chat_type"`
 			ThreadID    string `json:"thread_id"`
+			RootID      string `json:"root_id"`
 			MessageType string `json:"message_type"`
 			Content     string `json:"content"`
 			Mentions    []struct {
@@ -548,7 +554,7 @@ func (l *Lark) parseLarkEvent(payload []byte) (LarkMessage, bool) {
 	}
 	return LarkMessage{
 		MessageID: m.MessageID, ChatID: m.ChatID, ChatType: m.ChatType, ThreadID: m.ThreadID,
-		SenderID: ev.Event.Sender.SenderID.OpenID, Text: text, Mentioned: mentioned, Attachments: atts,
+		RootID: m.RootID, SenderID: ev.Event.Sender.SenderID.OpenID, Text: text, Mentioned: mentioned, Attachments: atts,
 	}, true
 }
 
@@ -741,11 +747,12 @@ func (l *Lark) ingest(m LarkMessage) {
 	if BufferIfNeeded(nil, agent, "feishu", m.ChatID) {
 		return
 	}
-	sess := ensureLabeledSession(l.Store, agent, name+":"+m.ChatID)
+	id := larkIdentity(name, cfg, m)
+	sess := ensureChannelSession(l.Store, agent, id)
 	if sess == nil {
 		return
 	}
-	turnCtx := withContextUser(ctx, name, peer, m.SenderID, m.ChatID)
+	turnCtx := withContextUser(ctx, id)
 	turnCtx, text := withInboundMedia(turnCtx, agent, name, m.Text, m.Attachments, l.mediaFetcher(m.MessageID))
 	reply, err := answerTurnErr(turnCtx, l.Store, agent, sess, l.LLM, l.Meter, text)
 	// A model error is never sent to the customer.
@@ -759,11 +766,30 @@ func (l *Lark) ingest(m LarkMessage) {
 	}
 }
 
+// larkIdentity is GoClaw's identity of a Lark message. Only chat_type
+// "group" is a group there. With topic_session_mode "enabled", a message in a
+// topic has the chat id "<chat_id>:topic:<root_id>", so the topic gets its
+// own session and, in a group, its own user key.
+func larkIdentity(name string, cfg *store.ChannelConfig, m LarkMessage) Identity {
+	id := Identity{Instance: name, Peer: "direct", SenderID: m.SenderID, ChatID: m.ChatID}
+	if m.ChatType == "group" {
+		id.Peer = "group"
+	}
+	if m.RootID != "" && cfg != nil && strings.TrimSpace(cfg.Settings[SettingTopicSessionMode]) == "enabled" {
+		id.ChatID = m.ChatID + ":topic:" + m.RootID
+	}
+	return id
+}
+
 // reply answers the message in place, so a group sees which message it
 // answers. A stale token is renewed once.
 func (l *Lark) reply(ctx context.Context, m LarkMessage, text string) error {
 	content, _ := json.Marshal(map[string]string{"text": text})
 	body := map[string]any{"msg_type": "text", "content": string(content)}
+	// A message inside a topic is answered inside that topic.
+	if m.ThreadID != "" {
+		body["reply_in_thread"] = true
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		base, token, err := l.accessToken(ctx, attempt > 0)
 		if err != nil {

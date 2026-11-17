@@ -37,9 +37,15 @@ type FeishuUpdate struct {
 	ChatID string `json:"chat_id"`
 	Text   string `json:"text"`
 	Event  *struct {
+		Sender *struct {
+			SenderID struct {
+				OpenID string `json:"open_id"`
+			} `json:"sender_id"`
+		} `json:"sender"`
 		Message *struct {
-			ChatID  string `json:"chat_id"`
-			Content string `json:"content"`
+			ChatID   string `json:"chat_id"`
+			ChatType string `json:"chat_type"`
+			Content  string `json:"content"`
 		} `json:"message"`
 	} `json:"event"`
 }
@@ -51,7 +57,14 @@ func (f *Feishu) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chatID, text := upd.ChatID, upd.Text
+	id := Identity{Instance: "feishu", Peer: "direct"}
+	if upd.Event != nil && upd.Event.Sender != nil {
+		id.SenderID = upd.Event.Sender.SenderID.OpenID
+	}
 	if upd.Event != nil && upd.Event.Message != nil {
+		if upd.Event.Message.ChatType == "group" {
+			id.Peer = "group"
+		}
 		if upd.Event.Message.ChatID != "" {
 			chatID = upd.Event.Message.ChatID
 		}
@@ -71,7 +84,7 @@ func (f *Feishu) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = f.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: f.Store, LLM: f.LLM, Meter: f.Meter, Sender: sender},
-		"feishu", "Feishu", chatID, "", text, nil, nil)
+		"feishu", "Feishu", chatID, id, text, nil, nil)
 }
 
 func (f *Feishu) sendMessage(ctx context.Context, chatID, text string) error {

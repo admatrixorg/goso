@@ -50,13 +50,13 @@ func resolveInboundLLM(st store.StoreIface, agent *store.Agent, fallback llm.Pro
 	return provider
 }
 
-// replyInbound answers one message of an older single-bot webhook. sender is
-// the sender id when the webhook gives one for a direct chat (it selects the
-// user context files), else "".
+// replyInbound answers one message of an older single-bot webhook. dest is
+// where the reply goes; id is GoClaw's identity of the message (session and
+// user key).
 //
 // atts are the message's files and fetch downloads them (nil, nil for a
 // webhook that carries no files).
-func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, sender, text string, atts []Attachment, fetch MediaFetcher) {
+func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest string, id Identity, text string, atts []Attachment, fetch MediaFetcher) {
 	if dest == "" || (text == "" && len(atts) == 0) {
 		writeOK(w)
 		return
@@ -72,21 +72,27 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 		writeOK(w)
 		return
 	}
-	sess := ensureLabeledSession(d.Store, agent, agentKey+":"+dest)
+	if id.Instance == "" {
+		id.Instance = agentKey
+	}
+	if id.ChatID == "" {
+		id.ChatID = dest
+	}
+	if id.ChatID != dest {
+		id.oldLabel = agentKey + ":" + dest
+	}
+	sess := ensureChannelSession(d.Store, agent, id)
 	if sess == nil {
 		writeOKWarning(w, "session unavailable")
 		return
 	}
 
-	ctx := r.Context()
-	if sender != "" {
-		ctx = withContextUser(ctx, agentKey, "direct", sender, dest)
-	}
+	ctx := withContextUser(r.Context(), id)
 	ctx, text = withInboundMedia(ctx, agent, agentKey, text, atts, fetch)
 	reply := answerTurn(ctx, d.Store, agent, sess, d.LLM, d.Meter, text)
 
 	if d.Sender != nil {
-		if err := d.Sender(r.Context(), dest, reply); err != nil {
+		if err := d.Sender(withSlackThread(r.Context(), id.ThreadKey), dest, reply); err != nil {
 			writeOKWarning(w, err.Error())
 			return
 		}
@@ -201,20 +207,4 @@ func ensureNamedAgent(st store.StoreIface, key, display string) *store.Agent {
 	}
 	a, _ := st.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: key, DisplayName: display})
 	return a
-}
-
-// ensureLabeledSession finds or creates the agent's session with label. The
-// session takes the agent's tenant: the store refuses a session whose tenant
-// differs from its agent's.
-func ensureLabeledSession(st store.StoreIface, agent *store.Agent, label string) *store.Session {
-	if st == nil || agent == nil {
-		return nil
-	}
-	for _, s := range st.ListSessions() {
-		if s.AgentID == agent.ID && s.Label == label {
-			return s
-		}
-	}
-	sess, _ := st.CreateSession(store.Session{AgentID: agent.ID, TenantID: agent.TenantID, Label: label})
-	return sess
 }

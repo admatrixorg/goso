@@ -58,7 +58,7 @@ func TestWhatsApp_CloudAPIHandleUpdate(t *testing.T) {
 		t.Fatalf("sent %q %q", sentDest, sentText)
 	}
 	sessions := st.ListSessions()
-	if len(sessions) != 1 || sessions[0].Label != "whatsapp:15551234567" {
+	if len(sessions) != 1 || sessions[0].Label != "whatsapp:15551234567@s.whatsapp.net" {
 		t.Fatalf("sessions %v", sessions)
 	}
 }

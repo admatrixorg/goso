@@ -143,7 +143,7 @@ var catalog = []Spec{
 	},
 	{
 		Name:             ToolMessage,
-		Description:      "Send a text message to a chat on one of this agent's channels (Telegram, Zalo Bot, Lark). Omit channel and chat_id to write to the current conversation. Only channels of this tenant that are bound to this agent, enabled and running, and only chats that already talked to this agent. Requires approval.",
+		Description:      "Send a text message to a chat on one of this agent's channels (Telegram, Zalo Bot, Lark, Zalo via ZaloCRM, Discord, Slack, WhatsApp). Omit channel and chat_id to write to the current conversation. Only channels of this tenant that are bound to this agent, enabled and running, and only chats that already talked to this agent. Requires approval.",
 		RequiresApproval: true,
 		InputSchema:      json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"channel":{"type":"string","description":"channel name <tenant>/<type>/<name>; default: current conversation"},"chat_id":{"type":"string","description":"chat id on that channel; default: current conversation"}},"required":["text"]}`),
 	},
