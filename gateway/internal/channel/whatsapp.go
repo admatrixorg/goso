@@ -183,7 +183,35 @@ func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = wa.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: wa.Store, LLM: wa.LLM, Meter: wa.Meter, Sender: sender},
-		"whatsapp", "WhatsApp", from, from, text, atts, wa.fetchMedia)
+		"whatsapp", "WhatsApp", from, whatsappIdentity("whatsapp", from), text, atts, wa.fetchMedia)
+}
+
+// whatsappJIDServer is the WhatsApp user server GoClaw's ids carry.
+const whatsappJIDServer = "@s.whatsapp.net"
+
+// whatsappIdentity is GoClaw's identity of a WhatsApp direct message. GoClaw
+// keys a person by their JID "<number>@s.whatsapp.net"; the Cloud API gives
+// the bare number (wa_id), so it is turned into that JID.
+func whatsappIdentity(name, waID string) Identity {
+	jid := whatsappJID(waID)
+	return Identity{Instance: name, Peer: "direct", SenderID: jid, ChatID: jid}
+}
+
+func whatsappJID(waID string) string {
+	waID = strings.TrimPrefix(strings.TrimSpace(waID), "+")
+	if waID == "" || strings.Contains(waID, "@") {
+		return waID
+	}
+	return waID + whatsappJIDServer
+}
+
+// whatsappNumber is the Cloud API recipient for a GoClaw JID or a number.
+func whatsappNumber(chat string) string {
+	chat = strings.TrimSpace(chat)
+	if i := strings.IndexByte(chat, '@'); i >= 0 {
+		chat = chat[:i]
+	}
+	return strings.TrimPrefix(chat, "+")
 }
 
 func (wa *WhatsApp) sendMessage(ctx context.Context, to, text string) error {
@@ -191,16 +219,5 @@ func (wa *WhatsApp) sendMessage(ctx context.Context, to, text string) error {
 	if token == "" {
 		return fmt.Errorf("whatsapp: missing access token")
 	}
-	base := wa.apiBase()
-	pnid := wa.PhoneNumberID
-	if pnid == "" {
-		pnid = "me"
-	}
-	endpoint := base + "/" + pnid + "/messages"
-	return postJSON(ctx, wa.HTTPClient, endpoint, "Authorization", "Bearer "+token, map[string]any{
-		"messaging_product": "whatsapp",
-		"to":                to,
-		"type":              "text",
-		"text":              map[string]string{"body": text},
-	})
+	return whatsappSend(ctx, wa.HTTPClient, wa.apiBase(), token, wa.PhoneNumberID, to, text)
 }

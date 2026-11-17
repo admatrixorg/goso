@@ -50,6 +50,19 @@ func WritableFields(name string) []string {
 			return []string{"app_secret"}
 		}
 		return nil
+	case "discord", "slack":
+		// Send-only for a tenant: the message tool posts with the bot token.
+		if owned {
+			return []string{"bot_token"}
+		}
+		return nil
+	case "whatsapp":
+		// Send-only for a tenant (Cloud API); the sending number is the
+		// "phone_number_id" setting.
+		if owned {
+			return []string{"access_token"}
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -84,6 +97,14 @@ func FieldKind(name, field string) (kind string, ok bool) {
 	case "feishu":
 		if owned && field == "app_secret" {
 			return KindAppSecret, true
+		}
+	case "discord", "slack":
+		if owned && field == "bot_token" {
+			return KindBot, true
+		}
+	case "whatsapp":
+		if owned && field == "access_token" {
+			return KindAccess, true
 		}
 	}
 	return "", false

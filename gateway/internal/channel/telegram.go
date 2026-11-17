@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -82,8 +83,12 @@ type TelegramUpdate struct {
 	UpdateID int64 `json:"update_id"`
 	Message  *struct {
 		MessageID int64 `json:"message_id"`
-		Chat      struct {
-			ID int64 `json:"id"`
+		// MessageThreadID is the forum topic, or the thread of a private chat.
+		MessageThreadID int64 `json:"message_thread_id"`
+		Chat            struct {
+			ID      int64  `json:"id"`
+			Type    string `json:"type"`
+			IsForum bool   `json:"is_forum"`
 		} `json:"chat"`
 		From *struct {
 			ID int64 `json:"id"`
@@ -283,10 +288,13 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 		fromID = fmt.Sprintf("%d", upd.Message.From.ID)
 	}
 	peer := "direct"
-	if chatID < 0 {
+	if telegramGroup(upd.Message.Chat.Type, chatID) {
 		peer = "group"
 	}
 	name := t.instance()
+	id := telegramIdentity(name, peer, fromID, chatID, upd.Message.Chat.IsForum, upd.Message.MessageThreadID)
+	// Replies go back into the topic or thread the message came from.
+	ctx = withTelegramThread(ctx, telegramReplyThread(id))
 	var cfg *store.ChannelConfig
 	if t.Store != nil {
 		cfg, _ = t.Store.GetChannelConfig(name)
@@ -343,11 +351,11 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 	if BufferIfNeeded(nil, agent, "telegram", fmt.Sprintf("%d", chatID)) {
 		return ""
 	}
-	sess := t.ensureSession(agent, chatID)
+	sess := ensureChannelSession(t.Store, agent, id)
 	if sess == nil {
 		return "session unavailable"
 	}
-	ctx = withContextUser(ctx, name, peer, fromID, fmt.Sprintf("%d", chatID))
+	ctx = withContextUser(ctx, id)
 	ctx, text = withInboundMedia(ctx, agent, "telegram", text, atts, t.fetchFile)
 	reply := answerTurn(ctx, t.Store, agent, sess, t.LLM, t.Meter, text)
 	if err := sendFn(ctx, chatID, reply); err != nil {
@@ -365,8 +373,66 @@ func (t *Telegram) ensureAgent() *store.Agent {
 	return a
 }
 
-func (t *Telegram) ensureSession(agent *store.Agent, chatID int64) *store.Session {
-	return ensureLabeledSession(t.Store, agent, fmt.Sprintf("%s:%d", t.instance(), chatID))
+// telegramGeneralTopic is the General topic of a forum group; Telegram sends
+// its messages without a message_thread_id.
+const telegramGeneralTopic = 1
+
+// telegramGroup reports a group chat: Telegram's chat type when it is given,
+// else the sign of the chat id.
+func telegramGroup(chatType string, chatID int64) bool {
+	switch chatType {
+	case "group", "supergroup":
+		return true
+	case "":
+		return chatID < 0
+	}
+	return false
+}
+
+// telegramIdentity is GoClaw's identity of a Telegram message: a forum group
+// has one session per topic (General when the message names none), a private
+// chat one per thread; a non-forum group ignores message_thread_id (it is a
+// reply chain there).
+func telegramIdentity(name, peer, fromID string, chatID int64, forum bool, thread int64) Identity {
+	id := Identity{Instance: name, Peer: peer, SenderID: fromID, ChatID: strconv.FormatInt(chatID, 10)}
+	switch {
+	case peer == "group" && forum:
+		id.TopicID = telegramGeneralTopic
+		if thread > 0 {
+			id.TopicID = int(thread)
+		}
+	case peer == "direct" && thread > 0:
+		id.DMThreadID = int(thread)
+	}
+	return id
+}
+
+// telegramReplyThread is the message_thread_id a reply carries: the topic or
+// private thread, none for the General topic (Telegram refuses it there).
+func telegramReplyThread(id Identity) int64 {
+	if id.TopicID > telegramGeneralTopic {
+		return int64(id.TopicID)
+	}
+	if id.DMThreadID > 0 {
+		return int64(id.DMThreadID)
+	}
+	return 0
+}
+
+type telegramThreadKey struct{}
+
+// withTelegramThread makes sendMessage post into a forum topic or private
+// thread; 0 leaves ctx as it is.
+func withTelegramThread(ctx context.Context, thread int64) context.Context {
+	if thread <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, telegramThreadKey{}, thread)
+}
+
+func telegramThreadFrom(ctx context.Context) int64 {
+	v, _ := ctx.Value(telegramThreadKey{}).(int64)
+	return v
 }
 
 // boundAgent returns the agent bound to a tenant's channel, or nil when none
@@ -425,7 +491,11 @@ func (t *Telegram) sendMessage(ctx context.Context, chatID int64, text string) e
 	if token == "" {
 		return fmt.Errorf("telegram: missing bot token")
 	}
-	body, _ := json.Marshal(map[string]any{"chat_id": chatID, "text": text})
+	payload := map[string]any{"chat_id": chatID, "text": text}
+	if thread := telegramThreadFrom(ctx); thread > 0 {
+		payload["message_thread_id"] = thread
+	}
+	body, _ := json.Marshal(payload)
 	base := t.APIBase
 	if base == "" {
 		base = "https://api.telegram.org"

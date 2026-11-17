@@ -9,7 +9,6 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/contextfile"
 	"github.com/mqglobal/goso/gateway/internal/llm"
-	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
 // TurnResult is what the agent runtime returned for one channel turn.
@@ -79,28 +78,9 @@ func customerReply(res TurnResult) string {
 }
 
 // ContextUserKey is the user key of user-scoped context files for one channel
-// message. It uses GoClaw's user_context_files.user_id format so files imported
-// from GoClaw match: the sender id for a direct chat (Telegram numeric user id,
-// Zalo uid, Lark open_id "ou_…") and "group:<instance>:<chat id>" for a group
-// chat, where <instance> is GoClaw's channel instance name — the last segment of
-// goso's "<tenant>/<catalog>/<name>", or the catalog name for an older single
-// bot. "" when the key would be invalid (store.UserKeyOK) or nothing is known.
+// message, in GoClaw's user_context_files.user_id format (see Identity.UserKey).
 func ContextUserKey(instance, peer, senderID, chatID string) string {
-	senderID = strings.TrimSpace(senderID)
-	chatID = strings.TrimSpace(chatID)
-	var key string
-	if peer == "group" {
-		if chatID == "" {
-			return ""
-		}
-		key = "group:" + goclawInstanceName(instance) + ":" + chatID
-	} else {
-		key = senderID
-	}
-	if !store.UserKeyOK(key) {
-		return ""
-	}
-	return key
+	return Identity{Instance: instance, Peer: peer, SenderID: senderID, ChatID: chatID}.UserKey()
 }
 
 // goclawInstanceName maps a goso channel name to GoClaw's instance name.
@@ -114,11 +94,11 @@ func goclawInstanceName(name string) string {
 
 // withContextUser attaches the context-file user key for this message when
 // context files are on and the key is valid.
-func withContextUser(ctx context.Context, instance, peer, senderID, chatID string) context.Context {
+func withContextUser(ctx context.Context, id Identity) context.Context {
 	if !contextfile.Enabled() {
 		return ctx
 	}
-	if key := ContextUserKey(instance, peer, senderID, chatID); key != "" {
+	if key := id.UserKey(); key != "" {
 		return contextfile.WithUser(ctx, key)
 	}
 	return ctx

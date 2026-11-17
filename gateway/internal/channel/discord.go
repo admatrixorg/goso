@@ -34,14 +34,36 @@ func (d *Discord) Name() string { return "discord" }
 //
 // or gateway wrap {"d":{"channel_id":"c1","content":"hello"}}.
 type DiscordUpdate struct {
+	discordMessage
+	D *discordMessage `json:"d"`
+}
+
+// discordMessage is the part of a MESSAGE_CREATE goso reads.
+type discordMessage struct {
 	ChannelID   string              `json:"channel_id"`
+	GuildID     string              `json:"guild_id"`
 	Content     string              `json:"content"`
 	Attachments []DiscordAttachment `json:"attachments"`
-	D           *struct {
-		ChannelID   string              `json:"channel_id"`
-		Content     string              `json:"content"`
-		Attachments []DiscordAttachment `json:"attachments"`
-	} `json:"d"`
+	Author      *discordAuthor      `json:"author"`
+}
+
+type discordAuthor struct {
+	ID  string `json:"id"`
+	Bot bool   `json:"bot"`
+}
+
+// discordIdentity is GoClaw's identity of a Discord message: the author's
+// id, the channel as the chat, a group when it is in a server (guild), whose
+// members each get a "guild:<guild>:user:<author>" user key.
+func discordIdentity(name string, m discordMessage) Identity {
+	id := Identity{Instance: name, Peer: "direct", ChatID: m.ChannelID, GuildID: m.GuildID}
+	if m.Author != nil {
+		id.SenderID = m.Author.ID
+	}
+	if m.GuildID != "" {
+		id.Peer = "group"
+	}
+	return id
 }
 
 // DiscordAttachment is one file of a Discord message.
@@ -77,25 +99,35 @@ func (d *Discord) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	channelID, text := upd.ChannelID, upd.Content
-	files := upd.Attachments
+	m := upd.discordMessage
 	if upd.D != nil {
 		if upd.D.ChannelID != "" {
-			channelID = upd.D.ChannelID
+			m.ChannelID = upd.D.ChannelID
 		}
 		if upd.D.Content != "" {
-			text = upd.D.Content
+			m.Content = upd.D.Content
 		}
 		if len(upd.D.Attachments) > 0 {
-			files = upd.D.Attachments
+			m.Attachments = upd.D.Attachments
 		}
+		if upd.D.GuildID != "" {
+			m.GuildID = upd.D.GuildID
+		}
+		if upd.D.Author != nil {
+			m.Author = upd.D.Author
+		}
+	}
+	// A bot's message (this bot's own replies included) is never answered.
+	if m.Author != nil && m.Author.Bot {
+		writeOK(w)
+		return
 	}
 	sender := d.Sender
 	if sender == nil {
 		sender = d.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: d.Store, LLM: d.LLM, Meter: d.Meter, Sender: sender},
-		"discord", "Discord", channelID, "", text, discordAttachments(files), d.fetchAttachment)
+		"discord", "Discord", m.ChannelID, discordIdentity("discord", m), m.Content, discordAttachments(m.Attachments), d.fetchAttachment)
 }
 
 func (d *Discord) sendMessage(ctx context.Context, channelID, text string) error {
@@ -106,10 +138,5 @@ func (d *Discord) sendMessage(ctx context.Context, channelID, text string) error
 	if token == "" {
 		return fmt.Errorf("discord: missing bot token")
 	}
-	base := d.APIBase
-	if base == "" {
-		base = "https://discord.com/api/v10"
-	}
-	url := strings.TrimRight(base, "/") + "/channels/" + channelID + "/messages"
-	return postJSON(ctx, d.HTTPClient, url, "Authorization", "Bot "+token, map[string]any{"content": text})
+	return discordSend(ctx, d.HTTPClient, d.APIBase, token, channelID, text)
 }

@@ -205,8 +205,9 @@ func TestMessageTool_DisabledNotRunningUnsupported(t *testing.T) {
 	slack := "tenant-a/slack/team"
 	openBot(t, f.st, slack, f.agentA.ID)
 	f.mgr.SetRunning(slack, "socket")
-	if _, bad := f.tool.Resolve(ctx, map[string]any{"text": "x", "channel": slack, "chat_id": "C1"}); !strings.Contains(refusal(t, bad), "not supported") {
-		t.Fatal("slack must be unsupported")
+	// Slack is send-only: without its bot token it is not running.
+	if _, bad := f.tool.Resolve(ctx, map[string]any{"text": "x", "channel": slack, "chat_id": "C1"}); !strings.Contains(refusal(t, bad), "not running") {
+		t.Fatal("slack without a token must not be running")
 	}
 
 	// Approved while enabled, disabled before the send: Send refuses.
@@ -277,10 +278,10 @@ func TestInstanceOfLabel_LongestPrefix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n, c := instanceOfLabel(st, "tenant-a", "tenant-a/telegram/shop-2:5"); n != "tenant-a/telegram/shop-2" || c != "5" {
+	if n, c := instanceOfLabel(st, "tenant-a", "", "tenant-a/telegram/shop-2:5"); n != "tenant-a/telegram/shop-2" || c != "5" {
 		t.Fatalf("%s %s", n, c)
 	}
-	if n, _ := instanceOfLabel(st, "tenant-b", "tenant-a/telegram/shop:5"); n != "" {
+	if n, _ := instanceOfLabel(st, "tenant-b", "", "tenant-a/telegram/shop:5"); n != "" {
 		t.Fatal("other tenant's instance matched")
 	}
 }

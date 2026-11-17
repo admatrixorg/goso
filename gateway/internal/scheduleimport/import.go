@@ -642,8 +642,9 @@ func policyFrom(raw json.RawMessage, blobs []string) (store.ChannelConfig, []str
 
 // settingKeys are GoClaw channel options goso keeps in a channel's settings:
 // which ZaloCRM account a bridged Zalo channel answers for, where ZaloCRM is,
-// and whether it answers in groups.
-var settingKeys = []string{"account_id", "crm_base_url", "group_enabled"}
+// whether it answers in groups, and whether a Lark chat gets one session per
+// topic.
+var settingKeys = []string{"account_id", "crm_base_url", "group_enabled", "topic_session_mode"}
 
 func settingValue(raw json.RawMessage) (string, bool) {
 	var s string

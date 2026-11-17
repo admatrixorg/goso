@@ -215,9 +215,10 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent := z.ensureAgent()
-	sess := z.ensureSession(agent.ID, userID)
+	id := Identity{Instance: "zalo-oa", Peer: "direct", SenderID: userID, ChatID: userID}
+	sess := ensureChannelSession(z.Store, agent, id)
 
-	ctx := withContextUser(r.Context(), "zalo-oa", "direct", userID, userID)
+	ctx := withContextUser(r.Context(), id)
 	ctx, text = withInboundMedia(ctx, agent, "zalo-oa", text, atts, z.fetchAttachment)
 	reply := answerTurn(ctx, z.Store, agent, sess, z.LLM, z.Meter, text)
 
@@ -242,17 +243,6 @@ func (z *ZaloOA) ensureAgent() *store.Agent {
 	}
 	a, _ := z.Store.CreateAgent(store.Agent{TenantID: store.DefaultTenant, AgentKey: "zalo-oa", DisplayName: "Zalo OA"})
 	return a
-}
-
-func (z *ZaloOA) ensureSession(agentID, userID string) *store.Session {
-	label := "zalo-oa:" + userID
-	for _, s := range z.Store.ListSessions() {
-		if s.AgentID == agentID && s.Label == label {
-			return s
-		}
-	}
-	sess, _ := z.Store.CreateSession(store.Session{AgentID: agentID, Label: label})
-	return sess
 }
 
 func (z *ZaloOA) sendMessage(ctx context.Context, userID, text string) error {

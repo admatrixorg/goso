@@ -122,13 +122,15 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	zo := &channel.ZaloOA{Store: st, LLM: provider, Meter: meter}
 	chMgr := channel.NewManager()
 	chMgr.Telegram = tg
-	// The message tool writes through this process's running channel bots.
-	builtin.MessageSender = &channel.MessageTool{Store: st, Manager: chMgr}
 	dc := &channel.Discord{Store: st, LLM: provider, Meter: meter}
 	sl := &channel.Slack{Store: st, LLM: provider, Meter: meter}
 	fs := &channel.Feishu{Store: st, LLM: provider, Meter: meter}
 	wa := &channel.WhatsApp{Store: st, LLM: provider, Meter: meter}
 	zcrm := &channel.ZCRMBridge{Store: st, LLM: provider, Meter: meter}
+	// The message tool writes through this process's running channel bots,
+	// the ZaloCRM bridge, and the send-only Discord, Slack and WhatsApp
+	// channels of each tenant.
+	builtin.MessageSender = &channel.MessageTool{Store: st, Manager: chMgr, Bridge: zcrm}
 
 	connReg := connector.NewRegistry()
 	loadConnectors(st, connReg)

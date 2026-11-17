@@ -175,8 +175,9 @@ With `GOSO_CONTEXT_FILES=1`, a channel turn reads the user context files of the 
 
 | Chat | `user_key` | Example |
 |---|---|---|
-| Direct message | sender id (Telegram user id, Zalo uid, Lark `open_id`) | `123456789`, `ou_abc123` |
+| Direct message | sender id (Telegram user id, Zalo uid, Lark `open_id`, Discord/Slack user id) | `123456789`, `ou_abc123` |
 | Group | `group:<instance>:<chat id>`, where `<instance>` is the last part of the channel name `<tenant>/<catalog>/<instance>`, or the catalog name for an older single bot | `group:minh-an-bot:-1001234567` |
+| Discord server channel | `guild:<guild id>:user:<author id>` (one key per member per server) | `guild:9001:user:4242` |
 
 Files a customer sends on a channel reach the turn too:
 
@@ -190,7 +191,21 @@ Files a customer sends on a channel reach the turn too:
 
 Limits: 10 MB for an image, 20 MB for any other file, 10 attachments per message, 60 s per download. A file that is too large or fails to download becomes `[sent media (kind) — skipped: reason]`, and the turn still runs. Without `GOSO_WORKSPACE` nothing is saved, but images still reach the model. Download links that carry a token (Telegram's file URL, Slack's private URL, WhatsApp's media URL) are never logged, saved or shown to the model; the Slack token is only sent to Slack's file hosts, and an auth header is dropped on any redirect. What each channel sends: Telegram (photo, document, voice, audio, video, round video, animation), Zalo OA (image, gif, file, audio, video, sticker), Zalo Bot (image with caption only; the platform sends no other media), Zalo personal through the ZaloCRM bridge (photo, file, voice, video, sticker), Lark/Feishu (image, file, audio, video, sticker, pictures inside a rich-text post), Discord, Slack and WhatsApp Cloud (image, document, audio/voice, video; WhatsApp stickers too). The legacy Feishu webhook and the legacy Zalo personal webhook stay text-only.
 
-Legacy Discord, Slack and Feishu webhooks carry no sender id and read no user file. `goso-context-import` stores GoClaw's `user_id` verbatim (including `group:` ids) unless `--customer-map` maps it.
+Chat ids and sessions follow GoClaw too, so a session imported from GoClaw (labelled with its GoClaw session key `agent:<agent>:<instance>:<peer>:<chat>`) is continued:
+
+| Channel | Chat id | Peer | Own session per |
+|---|---|---|---|
+| Telegram | chat id | group for `group`/`supergroup` | forum topic (`…:topic:<n>`, General is 1), private-chat thread (`…:thread:<n>`) |
+| Lark/Feishu | `chat_id`; `<chat_id>:topic:<root_id>` when the channel's `topic_session_mode` setting is `enabled` | group only for `chat_type` `group` | topic (with `topic_session_mode`) |
+| Zalo Bot (`zalo-oa` tenant channel) | chat id, else the sender | always direct | — |
+| Zalo via ZaloCRM bridge | ZaloCRM `conversationId` | group for group threads | — |
+| Discord | channel id | group in a server | — |
+| Slack | channel id | direct only for a message in an `im` channel | thread (`…:thread:<thread_ts>`) |
+| WhatsApp | `<number>@s.whatsapp.net` | direct | — |
+
+A WhatsApp id contains `@`, which a `user_key` may not, so WhatsApp turns read no user file. `goso-context-import` stores GoClaw's `user_id` verbatim (including `group:` ids) unless `--customer-map` maps it.
+
+The `message` tool sends on a tenant's Telegram, Zalo Bot, Lark, bridged Zalo (ZaloCRM), Discord, Slack and WhatsApp channels: only channels of the agent's own tenant that are bound to it, and only chats that already have a session with it. Discord and Slack need the channel's `bot_token` secret; WhatsApp needs `access_token` and the `phone_number_id` setting. On a bridged Zalo channel the agent can write only after ZaloCRM handed it the conversation (the lease of a customer message) since the gateway started.
 
 Xem thêm: `docs/RUNBOOK.md` (vận hành), `docs/RELEASE.md` (phát hành), `.env.example` (mẫu env).
 

@@ -381,11 +381,12 @@ func (z *ZaloBot) ingest(ev zaloBotEvent) {
 	if BufferIfNeeded(nil, agent, "zalo-oa", m.Chat.ID) {
 		return
 	}
-	sess := ensureLabeledSession(z.Store, agent, name+":"+m.Chat.ID)
+	id := zaloBotIdentity(name, m.From.ID, m.Chat.ID)
+	sess := ensureChannelSession(z.Store, agent, id)
 	if sess == nil {
 		return
 	}
-	turnCtx := withContextUser(ctx, name, peer, m.From.ID, m.Chat.ID)
+	turnCtx := withContextUser(ctx, id)
 	turnCtx, text := withInboundMedia(turnCtx, agent, "zalo-oa", zaloBotText(ev), zaloBotAttachments(ev), z.fetchPhoto)
 	reply, err := answerTurnErr(turnCtx, z.Store, agent, sess, z.LLM, z.Meter, text)
 	// A model error is never sent to the customer.
@@ -393,10 +394,20 @@ func (z *ZaloBot) ingest(ev zaloBotEvent) {
 		return
 	}
 	for _, part := range splitRunes(reply, zaloBotMaxText) {
-		if send(ctx, m.Chat.ID, part) != nil {
+		if send(ctx, id.ChatID, part) != nil {
 			return
 		}
 	}
+}
+
+// zaloBotIdentity is GoClaw's identity of a Zalo Bot message (its "zalo_oa"
+// channel): always a direct chat, keyed by the sender, in the chat the
+// message came from (the sender's own chat when none is given).
+func zaloBotIdentity(name, from, chat string) Identity {
+	if strings.TrimSpace(chat) == "" {
+		chat = from
+	}
+	return Identity{Instance: name, Peer: "direct", SenderID: from, ChatID: chat}
 }
 
 // splitRunes cuts s into pieces of at most n characters, at a line break or

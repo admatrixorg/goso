@@ -109,6 +109,8 @@ type ZCRMBridge struct {
 
 	mu     sync.Mutex
 	nonces map[string]time.Time
+	// leases is the latest agent lease per channel and conversation.
+	leases map[string]int64
 }
 
 func (b *ZCRMBridge) clock() time.Time {
@@ -394,11 +396,13 @@ func (b *ZCRMBridge) answer(c bridgeChannel, agent *store.Agent, ev ZCRMEvent) {
 		Channel: "zalo-personal", Dest: conv, Kind: peerKind(ev.Data.ThreadType),
 		SenderID: ev.Data.SenderUID, AgentID: agent.ID, TenantID: agent.TenantID,
 	})
-	sess := ensureLabeledSession(b.Store, agent, c.cfg.Name+":"+conv)
+	b.rememberLease(c.cfg.Name, conv, ev.Data.AgentLease)
+	id := zcrmIdentity(c.cfg.Name, ev)
+	sess := ensureChannelSession(b.Store, agent, id)
 	if sess == nil {
 		return
 	}
-	turnCtx := withContextUser(ctx, c.cfg.Name, peerKind(ev.Data.ThreadType), ev.Data.SenderUID, conv)
+	turnCtx := withContextUser(ctx, id)
 	turnCtx, text := withInboundMedia(turnCtx, agent, c.cfg.Name, bridgeText(ev), bridgeAttachments(ev), b.fetchMedia)
 	reply, err := answerTurnErr(turnCtx, b.Store, agent, sess, b.LLM, b.Meter, text)
 	if err != nil || strings.TrimSpace(reply) == "" {

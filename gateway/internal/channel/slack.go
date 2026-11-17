@@ -35,10 +35,14 @@ func (s *Slack) Name() string { return "slack" }
 //	{"event":{"type":"message","channel":"C1","text":"hello"}}
 type SlackUpdate struct {
 	Event *struct {
-		Type    string      `json:"type"`
-		Channel string      `json:"channel"`
-		Text    string      `json:"text"`
-		Files   []SlackFile `json:"files"`
+		Type        string      `json:"type"`
+		Channel     string      `json:"channel"`
+		ChannelType string      `json:"channel_type"`
+		User        string      `json:"user"`
+		BotID       string      `json:"bot_id"`
+		Text        string      `json:"text"`
+		ThreadTS    string      `json:"thread_ts"`
+		Files       []SlackFile `json:"files"`
 	} `json:"event"`
 	Channel string      `json:"channel"`
 	Text    string      `json:"text"`
@@ -108,6 +112,18 @@ func (s *Slack) fetchFile(ctx context.Context, a Attachment, limit int64) ([]byt
 	return fetchURL(ctx, s.HTTPClient, a.Ref, limit, "Authorization", "Bearer "+tok)
 }
 
+// slackIdentity is GoClaw's identity of a Slack event: the user as sender,
+// the channel as the chat, a direct chat only for a "message" event in an
+// "im" channel (an app_mention is always in a group), and a session per
+// thread when the message is in one.
+func slackIdentity(name, eventType, channelType, user, channel, threadTS string) Identity {
+	id := Identity{Instance: name, Peer: "group", SenderID: user, ChatID: channel, ThreadKey: threadTS}
+	if eventType != "app_mention" && channelType == "im" {
+		id.Peer = "direct"
+	}
+	return id
+}
+
 func (s *Slack) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	var upd SlackUpdate
 	if err := json.NewDecoder(r.Body).Decode(&upd); err != nil {
@@ -116,7 +132,13 @@ func (s *Slack) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID, text := upd.Channel, upd.Text
 	files := upd.Files
+	var evType, chType, user, thread string
 	if upd.Event != nil {
+		if upd.Event.BotID != "" {
+			// A bot's message (this bot's own replies included) is never answered.
+			writeOK(w)
+			return
+		}
 		if upd.Event.Channel != "" {
 			channelID = upd.Event.Channel
 		}
@@ -126,13 +148,14 @@ func (s *Slack) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		if len(upd.Event.Files) > 0 {
 			files = upd.Event.Files
 		}
+		evType, chType, user, thread = upd.Event.Type, upd.Event.ChannelType, upd.Event.User, upd.Event.ThreadTS
 	}
 	sender := s.Sender
 	if sender == nil {
 		sender = s.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: s.Store, LLM: s.LLM, Meter: s.Meter, Sender: sender},
-		"slack", "Slack", channelID, "", text, slackAttachments(files), s.fetchFile)
+		"slack", "Slack", channelID, slackIdentity("slack", evType, chType, user, channelID, thread), text, slackAttachments(files), s.fetchFile)
 }
 
 func (s *Slack) sendMessage(ctx context.Context, channelID, text string) error {
@@ -140,13 +163,5 @@ func (s *Slack) sendMessage(ctx context.Context, channelID, text string) error {
 	if token == "" {
 		return fmt.Errorf("slack: missing bot token")
 	}
-	base := s.APIBase
-	if base == "" {
-		base = "https://slack.com/api"
-	}
-	url := strings.TrimRight(base, "/") + "/chat.postMessage"
-	return postJSON(ctx, s.HTTPClient, url, "Authorization", "Bearer "+token, map[string]any{
-		"channel": channelID,
-		"text":    text,
-	})
+	return slackSend(ctx, s.HTTPClient, s.APIBase, token, channelID, slackThreadFrom(ctx), text)
 }
