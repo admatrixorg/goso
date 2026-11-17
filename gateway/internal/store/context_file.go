@@ -4,33 +4,112 @@ package store
 
 import (
 	"errors"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 )
 
-// Context-file scopes. One table covers both. These are instruction and note
-// documents, not memory rows and not vault knowledge.
+// Context-file scopes. One table covers all three. These are instruction and
+// note documents, not memory rows and not vault knowledge.
+//
+// ContextScopeAgentUser is one user's file for one agent (GoClaw's
+// user_context_files key: agent, user, name). Its owner_id is
+// AgentUserOwner(agentID, userKey). ContextScopeUser is the tenant-wide file
+// for a user key; a turn uses it only for names the agent has no per-user
+// file for.
 const (
-	ContextScopeAgent = "agent"
-	ContextScopeUser  = "user"
+	ContextScopeAgent     = "agent"
+	ContextScopeUser      = "user"
+	ContextScopeAgentUser = "agent_user"
 )
 
-// MaxContextFileBytes is the stored body cap for one file (32KiB).
-const MaxContextFileBytes = 32 * 1024
+// agentUserSep joins the agent id and the user key in an agent_user owner_id.
+// UserKeyOK never accepts it, and an agent id that contains it is refused.
+const agentUserSep = "/"
 
-// MaxContextFilesPerOwner and MaxContextBytesPerOwner bound one
-// (tenant, scope, owner). A write that would pass either limit is refused
-// and leaves the previous rows unchanged. Chat refuses the same set instead
-// of truncating it.
+// AgentUserOwner is the owner_id of an agent_user file.
+func AgentUserOwner(agentID, userKey string) string {
+	return strings.TrimSpace(agentID) + agentUserSep + strings.TrimSpace(userKey)
+}
+
+// SplitAgentUserOwner returns the agent id and user key of an agent_user
+// owner_id. ok is false for anything AgentUserOwner would not build from a
+// valid agent id and user key.
+func SplitAgentUserOwner(owner string) (agentID, userKey string, ok bool) {
+	i := strings.LastIndex(owner, agentUserSep)
+	if i <= 0 || i == len(owner)-1 {
+		return "", "", false
+	}
+	agentID, userKey = owner[:i], owner[i+1:]
+	if !contextAgentIDOK(agentID) || strings.Contains(agentID, agentUserSep) || !UserKeyOK(userKey) {
+		return "", "", false
+	}
+	return agentID, userKey, true
+}
+
+// Context caps. GoClaw keeps context files in TEXT columns and puts every
+// stored agent and per-user file into the prompt without a count or total
+// limit; its only bound on one file is the 512 KiB RPC frame. Goso matches
+// that by default and lets an operator tighten it:
+//
+//	GOSO_CONTEXT_FILE_MAX_BYTES  one body (default 512 KiB; 0 or invalid = default)
+//	GOSO_CONTEXT_MAX_FILES       files per owner (default 0 = no limit)
+//	GOSO_CONTEXT_MAX_BYTES       body bytes per owner (default 0 = no limit)
+//
+// An owner is one (tenant, scope, owner_id). A write that would pass a limit
+// is refused and leaves the previous rows unchanged. Chat refuses the same set
+// instead of truncating it.
 const (
-	MaxContextFilesPerOwner = 16
-	MaxContextBytesPerOwner = 64 * 1024
+	DefaultContextFileMaxBytes  = 512 << 10
+	DefaultContextFilesPerOwner = 0
+	DefaultContextBytesPerOwner = 0
 )
+
+// ContextCaps is the limit set in force. Zero FilesPerOwner or BytesPerOwner
+// is no limit. FileBytes is always positive.
+type ContextCaps struct {
+	FileBytes     int
+	FilesPerOwner int
+	BytesPerOwner int
+}
+
+// ContextLimits reads the caps from the environment on each call.
+func ContextLimits() ContextCaps {
+	c := ContextCaps{
+		FileBytes:     envCap("GOSO_CONTEXT_FILE_MAX_BYTES", DefaultContextFileMaxBytes),
+		FilesPerOwner: envCap("GOSO_CONTEXT_MAX_FILES", DefaultContextFilesPerOwner),
+		BytesPerOwner: envCap("GOSO_CONTEXT_MAX_BYTES", DefaultContextBytesPerOwner),
+	}
+	if c.FileBytes <= 0 {
+		c.FileBytes = DefaultContextFileMaxBytes
+	}
+	return c
+}
+
+func envCap(name string, def int) int {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	return n
+}
+
+func (c ContextCaps) over(count, total int) bool {
+	if c.FilesPerOwner > 0 && count > c.FilesPerOwner {
+		return true
+	}
+	return c.BytesPerOwner > 0 && total > c.BytesPerOwner
+}
 
 // ErrContextInvalid is a rejected scope, name, owner, or empty body.
-// ErrContextTooLarge is one body over MaxContextFileBytes.
+// ErrContextTooLarge is one body over ContextLimits().FileBytes.
 // ErrContextOwnerCap is too many files or too many bytes for one owner.
 // None of these errors carries the body.
 var (
@@ -40,8 +119,9 @@ var (
 )
 
 // ContextFile is one named instruction, persona, or note file.
-// OwnerID is the agent id (scope agent) or the user key (scope user).
-// AgentID and UserKey are filled on the way out so callers do not guess.
+// OwnerID is the agent id (scope agent), the user key (scope user), or
+// AgentUserOwner (scope agent_user). AgentID and UserKey are filled on the
+// way out so callers do not guess.
 type ContextFile struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenant_id"`
@@ -84,15 +164,20 @@ func normalizeContextFile(in ContextFile) (ContextFile, error) {
 			f.OwnerID = strings.TrimSpace(f.AgentID)
 		case ContextScopeUser:
 			f.OwnerID = strings.TrimSpace(f.UserKey)
+		case ContextScopeAgentUser:
+			a, u := strings.TrimSpace(f.AgentID), strings.TrimSpace(f.UserKey)
+			if a != "" && u != "" {
+				f.OwnerID = AgentUserOwner(a, u)
+			}
 		}
 	}
-	if f.Scope != ContextScopeAgent && f.Scope != ContextScopeUser {
+	if !ContextScopeOK(f.Scope) {
 		return ContextFile{}, ErrContextInvalid
 	}
 	if !contextNameOK(f.Name) || !contextOwnerOK(f.Scope, f.OwnerID) || f.Body == "" {
 		return ContextFile{}, ErrContextInvalid
 	}
-	if len(f.Body) > MaxContextFileBytes {
+	if len(f.Body) > ContextLimits().FileBytes {
 		return ContextFile{}, ErrContextTooLarge
 	}
 	f.AgentID = ""
@@ -116,14 +201,44 @@ func contextNameOK(name string) bool {
 	return true
 }
 
-func contextOwnerOK(scope, owner string) bool {
-	if owner == "" || len(owner) > 128 {
+// ContextScopeOK reports agent, user, or agent_user.
+func ContextScopeOK(scope string) bool {
+	switch scope {
+	case ContextScopeAgent, ContextScopeUser, ContextScopeAgentUser:
+		return true
+	default:
 		return false
 	}
-	if scope == ContextScopeUser {
+}
+
+func contextAgentIDOK(id string) bool {
+	return id != "" && len(id) <= 128 && !strings.ContainsAny(id, "\x00")
+}
+
+func contextOwnerOK(scope, owner string) bool {
+	switch scope {
+	case ContextScopeUser:
 		return UserKeyOK(owner)
+	case ContextScopeAgentUser:
+		_, _, ok := SplitAgentUserOwner(owner)
+		return ok
+	default:
+		return contextAgentIDOK(owner)
 	}
-	return !strings.ContainsAny(owner, "\x00")
+}
+
+// contextOwnerAgent is the agent that must exist in the file's tenant before
+// a write: the owner for scope agent, the agent half for scope agent_user.
+func contextOwnerAgent(f ContextFile) string {
+	switch f.Scope {
+	case ContextScopeAgent:
+		return f.OwnerID
+	case ContextScopeAgentUser:
+		a, _, _ := SplitAgentUserOwner(f.OwnerID)
+		return a
+	default:
+		return ""
+	}
 }
 
 func contextFileKey(tenant, scope, owner, name string) string {
@@ -150,7 +265,7 @@ func contextOwnerFits(files []ContextFile, name, body string) error {
 		count++
 		total += len(body)
 	}
-	if count > MaxContextFilesPerOwner || total > MaxContextBytesPerOwner {
+	if ContextLimits().over(count, total) {
 		return ErrContextOwnerCap
 	}
 	return nil
@@ -168,7 +283,7 @@ func ContextFilesOverCap(files []*ContextFile) error {
 		count++
 		total += len(f.Body)
 	}
-	if count > MaxContextFilesPerOwner || total > MaxContextBytesPerOwner {
+	if ContextLimits().over(count, total) {
 		return ErrContextOwnerCap
 	}
 	return nil
@@ -186,15 +301,18 @@ func presentContext(f *ContextFile) *ContextFile {
 		cp.AgentID = cp.OwnerID
 	case ContextScopeUser:
 		cp.UserKey = cp.OwnerID
+	case ContextScopeAgentUser:
+		cp.AgentID, cp.UserKey, _ = SplitAgentUserOwner(cp.OwnerID)
 	}
 	return &cp
 }
 
 func (s *Store) contextOwnerLocked(f ContextFile) error {
-	if f.Scope != ContextScopeAgent {
+	id := contextOwnerAgent(f)
+	if id == "" {
 		return nil
 	}
-	a, ok := s.agents[f.OwnerID]
+	a, ok := s.agents[id]
 	if !ok || a == nil || !SameTenant(a.TenantID, f.TenantID) {
 		return ErrNotFound
 	}

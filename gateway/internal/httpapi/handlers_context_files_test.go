@@ -201,6 +201,7 @@ func TestContextFilesHTTP_StoreFailure(t *testing.T) {
 
 func TestContextFilesHTTP_OwnerCap(t *testing.T) {
 	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	t.Setenv("GOSO_CONTEXT_MAX_FILES", "16")
 	st := store.New()
 	ag, err := st.CreateAgent(store.Agent{
 		AgentKey: "tu-van-http-cap", DisplayName: "Cố vấn Minh An",
@@ -217,7 +218,7 @@ func TestContextFilesHTTP_OwnerCap(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		return rec
 	}
-	for i := 1; i <= store.MaxContextFilesPerOwner; i++ {
+	for i := 1; i <= store.ContextLimits().FilesPerOwner; i++ {
 		rec := put(fmt.Sprintf("n%02d.md", i), "Minh An ghi chu.")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("file %d: %d %s", i, rec.Code, rec.Body.String())
@@ -231,7 +232,7 @@ func TestContextFilesHTTP_OwnerCap(t *testing.T) {
 		t.Fatalf("17th stored: %v", err)
 	}
 	listed, err := st.ListContextFiles("default", store.ContextScopeAgent, ag.ID)
-	if err != nil || len(listed) != store.MaxContextFilesPerOwner {
+	if err != nil || len(listed) != store.ContextLimits().FilesPerOwner {
 		t.Fatalf("rows %v %d", err, len(listed))
 	}
 }
@@ -239,7 +240,7 @@ func TestContextFilesHTTP_OwnerCap(t *testing.T) {
 type httpOverCap struct{ store.StoreIface }
 
 func (httpOverCap) ListContextFiles(tenant, scope, owner string) ([]*store.ContextFile, error) {
-	out := make([]*store.ContextFile, store.MaxContextFilesPerOwner+1)
+	out := make([]*store.ContextFile, store.ContextLimits().FilesPerOwner+1)
 	for i := range out {
 		out[i] = &store.ContextFile{
 			TenantID: tenant, Scope: scope, AgentID: owner,
@@ -260,6 +261,7 @@ func (c *callCount) Chat(context.Context, []llm.Message) (string, error) {
 
 func TestContextFilesHTTP_ChatOverCap(t *testing.T) {
 	t.Setenv("GOSO_CONTEXT_FILES", "1")
+	t.Setenv("GOSO_CONTEXT_MAX_FILES", "16")
 	inner := store.New()
 	ag, err := inner.CreateAgent(store.Agent{
 		AgentKey: "tu-van-chat-cap", DisplayName: "Cố vấn Minh An",

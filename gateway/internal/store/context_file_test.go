@@ -185,7 +185,7 @@ func TestContextFile_TenantAndUserIsolation(t *testing.T) {
 			}
 			if _, err := s.PutContextFile(ContextFile{
 				TenantID: "minh-an-sales", Scope: ContextScopeAgent, AgentID: sales.ID,
-				Name: "AGENTS.md", Body: strings.Repeat("a", MaxContextFileBytes+1),
+				Name: "AGENTS.md", Body: strings.Repeat("a", ContextLimits().FileBytes+1),
 			}); !errors.Is(err, ErrContextTooLarge) {
 				t.Fatalf("oversize: %v", err)
 			}
@@ -222,7 +222,17 @@ func minhAnSized(n int) string {
 	return prefix + strings.Repeat("x", n-len(prefix))
 }
 
+// setTightCaps sets the operator caps this test checks: 16 files and 64 KiB
+// per owner, 32 KiB per file.
+func setTightCaps(t *testing.T) {
+	t.Helper()
+	t.Setenv("GOSO_CONTEXT_MAX_FILES", "16")
+	t.Setenv("GOSO_CONTEXT_MAX_BYTES", "65536")
+	t.Setenv("GOSO_CONTEXT_FILE_MAX_BYTES", "32768")
+}
+
 func TestContextFile_OwnerCap(t *testing.T) {
+	setTightCaps(t)
 	for name, s := range contextStores(t) {
 		t.Run(name, func(t *testing.T) {
 			ag, err := s.CreateAgent(Agent{
@@ -231,7 +241,7 @@ func TestContextFile_OwnerCap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for i := 1; i <= MaxContextFilesPerOwner; i++ {
+			for i := 1; i <= ContextLimits().FilesPerOwner; i++ {
 				if _, err := s.PutContextFile(ContextFile{
 					TenantID: "minh-an-sales", Scope: ContextScopeAgent, AgentID: ag.ID,
 					Name: fmt.Sprintf("n%02d.md", i), Body: "Minh An ghi chu.",
@@ -249,7 +259,7 @@ func TestContextFile_OwnerCap(t *testing.T) {
 				t.Fatalf("17th file was stored: %v", err)
 			}
 			listed, err := s.ListContextFiles("minh-an-sales", ContextScopeAgent, ag.ID)
-			if err != nil || len(listed) != MaxContextFilesPerOwner {
+			if err != nil || len(listed) != ContextLimits().FilesPerOwner {
 				t.Fatalf("list after refused write: %v %d", err, len(listed))
 			}
 			if _, err := s.PutContextFile(ContextFile{
@@ -287,7 +297,7 @@ func TestContextFile_OwnerCap(t *testing.T) {
 				t.Fatalf("update wrote past the cap: %v before %d after %d", err, len(before.Body), len(after.Body))
 			}
 
-			full := minhAnSized(MaxContextFileBytes)
+			full := minhAnSized(ContextLimits().FileBytes)
 			for _, n := range []string{"full-a.md", "full-b.md"} {
 				if _, err := s.PutContextFile(ContextFile{
 					TenantID: "minh-an-sales", Scope: ContextScopeUser, UserKey: "hoa",

@@ -9,10 +9,11 @@ import (
 )
 
 func (s *SQLiteStore) agentContextOwner(f ContextFile) error {
-	if f.Scope != ContextScopeAgent {
+	id := contextOwnerAgent(f)
+	if id == "" {
 		return nil
 	}
-	a, err := s.GetAgent(f.OwnerID)
+	a, err := s.GetAgent(id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return ErrNotFound
