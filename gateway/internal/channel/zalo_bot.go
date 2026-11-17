@@ -55,6 +55,7 @@ const (
 	zaloBotAPIBase       = "https://bot-api.zaloplatforms.com"
 	zaloBotWebhookPrefix = "/api/channels/zalo-oa/bot/"
 	zaloBotTextEvent     = "message.text.received"
+	zaloBotImageEvent    = "message.image.received"
 	// zaloBotMaxText is the longest text one sendMessage takes.
 	zaloBotMaxText  = 2000
 	zaloBotPollWait = 30
@@ -242,7 +243,42 @@ type zaloBotEvent struct {
 		} `json:"chat"`
 		Text      string `json:"text"`
 		MessageID string `json:"message_id"`
+		// An image message carries the picture URL and its caption.
+		PhotoURL string `json:"photo_url"`
+		Photo    string `json:"photo"`
+		Caption  string `json:"caption"`
 	} `json:"message"`
+}
+
+// zaloBotAttachments returns the picture of an image event. The bot API
+// sends only images; other media never reach the webhook.
+func zaloBotAttachments(ev zaloBotEvent) []Attachment {
+	if ev.EventName != zaloBotImageEvent || ev.Message == nil {
+		return nil
+	}
+	ref := strings.TrimSpace(ev.Message.PhotoURL)
+	if ref == "" {
+		ref = strings.TrimSpace(ev.Message.Photo)
+	}
+	if ref == "" {
+		return nil
+	}
+	return []Attachment{{Kind: MediaImage, Ref: ref}}
+}
+
+// zaloBotText is the words of a text message or an image's caption.
+func zaloBotText(ev zaloBotEvent) string {
+	if ev.Message == nil {
+		return ""
+	}
+	if ev.EventName == zaloBotImageEvent {
+		return ev.Message.Caption
+	}
+	return ev.Message.Text
+}
+
+func (z *ZaloBot) fetchPhoto(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+	return fetchURL(ctx, z.HTTPClient, a.Ref, limit, "", "")
 }
 
 // decodeZaloBotEvents reads one event, a list, or either wrapped in
@@ -269,11 +305,11 @@ func decodeZaloBotEvents(b []byte) []zaloBotEvent {
 
 // dispatch answers a text message once, in the background.
 func (z *ZaloBot) dispatch(ev zaloBotEvent) {
-	if ev.EventName != zaloBotTextEvent || ev.Message == nil || ev.Message.From.IsBot {
+	if (ev.EventName != zaloBotTextEvent && ev.EventName != zaloBotImageEvent) || ev.Message == nil || ev.Message.From.IsBot {
 		return
 	}
 	m := ev.Message
-	if strings.TrimSpace(m.Text) == "" || m.Chat.ID == "" || !z.firstSight(m.MessageID) {
+	if (strings.TrimSpace(zaloBotText(ev)) == "" && len(zaloBotAttachments(ev)) == 0) || m.Chat.ID == "" || !z.firstSight(m.MessageID) {
 		return
 	}
 	run := z.run
@@ -326,7 +362,7 @@ func (z *ZaloBot) ingest(ev zaloBotEvent) {
 	if send == nil {
 		send = z.sendMessage
 	}
-	in := Inbound{Channel: "zalo-oa", SenderID: m.From.ID, ChatID: m.Chat.ID, PeerKind: peer, Text: m.Text, Mention: strings.Contains(m.Text, "@")}
+	in := Inbound{Channel: "zalo-oa", SenderID: m.From.ID, ChatID: m.Chat.ID, PeerKind: peer, Text: zaloBotText(ev), Mention: strings.Contains(zaloBotText(ev), "@")}
 	paired := m.From.ID != "" && SenderPaired(z.Store, name, m.From.ID, time.Time{})
 	switch CheckPolicy("zalo-oa", MergePolicy(name, cfg), in, paired) {
 	case PolicyReject, PolicyNeedMention:
@@ -350,7 +386,8 @@ func (z *ZaloBot) ingest(ev zaloBotEvent) {
 		return
 	}
 	turnCtx := withContextUser(ctx, name, peer, m.From.ID, m.Chat.ID)
-	reply, err := answerTurnErr(turnCtx, z.Store, agent, sess, z.LLM, z.Meter, m.Text)
+	turnCtx, text := withInboundMedia(turnCtx, agent, "zalo-oa", zaloBotText(ev), zaloBotAttachments(ev), z.fetchPhoto)
+	reply, err := answerTurnErr(turnCtx, z.Store, agent, sess, z.LLM, z.Meter, text)
 	// A model error is never sent to the customer.
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return

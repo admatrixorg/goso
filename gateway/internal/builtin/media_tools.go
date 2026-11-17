@@ -529,11 +529,35 @@ func readAudio(ctx context.Context, name string, args map[string]any) (*connecto
 	if fail != nil {
 		return fail, nil
 	}
-	mime, ext, ok := sniffAudio(in.data)
-	if !ok {
-		return toolErr(name, "error", "unsupported audio type"), nil
-	}
 	lang, _ := stringArg(args, "language")
+	hint, _ := stringArg(args, "hint")
+	tr, err := transcribe(ctx, in.data, lang, hint)
+	if err != nil {
+		return toolErr(name, "error", err.Error()), nil
+	}
+	return mediaOK(name, map[string]any{
+		"text":     tr.text,
+		"language": tr.lang,
+		"model":    tr.model,
+		"source":   in.source,
+		"mime":     tr.mime,
+		"bytes":    len(in.data),
+	}), nil
+}
+
+type transcript struct {
+	text, lang, model, mime string
+}
+
+var langCode = regexp.MustCompile(`^[a-z]{2,3}$`)
+
+// transcribe sends one clip to the GOSO_STT_URL endpoint. Errors are short
+// and never carry the key or the endpoint.
+func transcribe(ctx context.Context, data []byte, lang, hint string) (transcript, error) {
+	mime, ext, ok := sniffAudio(data)
+	if !ok {
+		return transcript{}, errors.New("unsupported audio type")
+	}
 	lang = strings.ToLower(strings.TrimSpace(lang))
 	if lang == "" {
 		lang = strings.ToLower(envTrim("GOSO_STT_LANGUAGE"))
@@ -541,17 +565,16 @@ func readAudio(ctx context.Context, name string, args map[string]any) (*connecto
 	if lang == "" {
 		lang = "vi"
 	}
-	if !regexp.MustCompile(`^[a-z]{2,3}$`).MatchString(lang) {
-		return toolErr(name, "error", "language must be an ISO-639-1 code"), nil
+	if !langCode.MatchString(lang) {
+		return transcript{}, errors.New("language must be an ISO-639-1 code")
 	}
 	model := envTrim("GOSO_STT_MODEL")
 	if model == "" {
 		model = "whisper-1"
 	}
-	hint, _ := stringArg(args, "hint")
 	hint = strings.TrimSpace(hint)
 	if utf8.RuneCountInString(hint) > 1000 {
-		return toolErr(name, "error", "hint too long"), nil
+		return transcript{}, errors.New("hint too long")
 	}
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -560,9 +583,9 @@ func readAudio(ctx context.Context, name string, args map[string]any) (*connecto
 	h.Set("Content-Type", mime)
 	part, err := mw.CreatePart(h)
 	if err != nil {
-		return toolErr(name, "error", "encode failed"), nil
+		return transcript{}, errors.New("encode failed")
 	}
-	_, _ = part.Write(in.data)
+	_, _ = part.Write(data)
 	_ = mw.WriteField("model", model)
 	_ = mw.WriteField("language", lang)
 	_ = mw.WriteField("response_format", "json")
@@ -570,22 +593,15 @@ func readAudio(ctx context.Context, name string, args map[string]any) (*connecto
 		_ = mw.WriteField("prompt", hint)
 	}
 	if err := mw.Close(); err != nil {
-		return toolErr(name, "error", "encode failed"), nil
+		return transcript{}, errors.New("encode failed")
 	}
 	var out struct {
 		Text string `json:"text"`
 	}
 	if err := postProvider(ctx, sttEndpoint(), envTrim("GOSO_STT_API_KEY"), mw.FormDataContentType(), body.Bytes(), 1<<20, &out); err != nil {
-		return toolErr(name, "error", "transcription failed: "+err.Error()), nil
+		return transcript{}, errors.New("transcription failed: " + err.Error())
 	}
-	return mediaOK(name, map[string]any{
-		"text":     strings.TrimSpace(out.Text),
-		"language": lang,
-		"model":    model,
-		"source":   in.source,
-		"mime":     mime,
-		"bytes":    len(in.data),
-	}), nil
+	return transcript{text: strings.TrimSpace(out.Text), lang: lang, model: model, mime: mime}, nil
 }
 
 // postProvider POSTs to a provider endpoint through the SSRF guard and decodes
@@ -793,6 +809,12 @@ func slugName(s, def string) string {
 // saveGenerated writes a new file at generated/<kind>/<slug>-<time>-<rand><ext>
 // inside the tenant workspace. It never overwrites (O_EXCL) or follows links.
 func saveGenerated(ctx context.Context, kind, filename, def, ext string, data []byte) (string, error) {
+	return saveUnder(ctx, generatedDir+"/"+kind, filename, def, ext, data)
+}
+
+// saveUnder writes a new file at <dir>/<slug>-<time>-<rand><ext> inside the
+// tenant workspace, with saveGenerated's guarantees.
+func saveUnder(ctx context.Context, dir, filename, def, ext string, data []byte) (string, error) {
 	root, err := workspaceAbs(ctx)
 	if err != nil {
 		return "", err
@@ -802,18 +824,18 @@ func saveGenerated(ctx context.Context, kind, filename, def, ext string, data []
 		return "", err
 	}
 	name := slugName(filename, def) + "-" + time.Now().UTC().Format("20060102-150405") + "-" + hex.EncodeToString(rnd[:]) + ext
-	abs, rel, err := jailPath(ctx, generatedDir+"/"+kind+"/"+name)
+	abs, rel, err := jailPath(ctx, dir+"/"+name)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Dir(abs)
-	if err := confineUnder(root, dir); err != nil {
+	parent := filepath.Dir(abs)
+	if err := confineUnder(root, parent); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", err
 	}
-	if ev, err := filepath.EvalSymlinks(dir); err != nil {
+	if ev, err := filepath.EvalSymlinks(parent); err != nil {
 		return "", errPathEscape
 	} else if err := confineUnder(root, ev); err != nil {
 		return "", err

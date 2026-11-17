@@ -25,6 +25,8 @@ type ZaloOA struct {
 	LLM         llm.Provider
 	Meter       *billing.Store
 	Sender      func(ctx context.Context, userID string, text string) error
+	// HTTPClient downloads received attachments (nil: a default client).
+	HTTPClient *http.Client
 }
 
 func (z *ZaloOA) Name() string { return "zalo-oa" }
@@ -37,8 +39,82 @@ type ZaloOAUpdate struct {
 	} `json:"sender"`
 	UserID  string `json:"user_id"`
 	Message *struct {
-		Text string `json:"text"`
+		Text        string             `json:"text"`
+		Attachments []ZaloOAAttachment `json:"attachments"`
 	} `json:"message"`
+}
+
+// ZaloOAAttachment is one attachment of an OA message (user_send_image,
+// user_send_file, user_send_audio, user_send_video, user_send_gif,
+// user_send_sticker). Its payload URL is a public CDN link.
+type ZaloOAAttachment struct {
+	Type    string `json:"type"`
+	Payload struct {
+		URL       string `json:"url"`
+		Thumbnail string `json:"thumbnail"`
+		Name      string `json:"name"`
+		Size      any    `json:"size"`
+		Type      string `json:"type"`
+		ID        string `json:"id"`
+	} `json:"payload"`
+}
+
+// zaloOAAttachments maps OA attachments. A sticker becomes a note: it is
+// a picture with no words, so it is not downloaded.
+func zaloOAAttachments(list []ZaloOAAttachment) []Attachment {
+	var out []Attachment
+	for _, a := range list {
+		ref := strings.TrimSpace(a.Payload.URL)
+		var kind string
+		switch strings.ToLower(a.Type) {
+		case "image", "gif":
+			kind = MediaImage
+			if ref == "" {
+				ref = strings.TrimSpace(a.Payload.Thumbnail)
+			}
+		case "file":
+			kind = MediaDocument
+		case "audio", "voice":
+			kind = MediaVoice
+		case "video":
+			kind = MediaVideo
+		case "sticker":
+			out = append(out, Attachment{Kind: MediaSticker, Note: "[sticker]"})
+			continue
+		default:
+			continue
+		}
+		if ref == "" {
+			continue
+		}
+		out = append(out, Attachment{Kind: kind, Name: a.Payload.Name, Size: anySize(a.Payload.Size), Ref: ref})
+	}
+	return out
+}
+
+// anySize reads a size that platforms send as a number or a string.
+func anySize(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case string:
+		var x int64
+		for _, c := range strings.TrimSpace(n) {
+			if c < '0' || c > '9' {
+				return 0
+			}
+			x = x*10 + int64(c-'0')
+			if x > 1<<40 {
+				return 0
+			}
+		}
+		return x
+	}
+	return 0
+}
+
+func (z *ZaloOA) fetchAttachment(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+	return fetchURL(ctx, z.HTTPClient, a.Ref, limit, "", "")
 }
 
 func oaWebhookAuthorized(r *http.Request, sec string) bool {
@@ -96,10 +172,12 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		userID = upd.Sender.ID
 	}
 	var text string
+	var atts []Attachment
 	if upd.Message != nil {
 		text = upd.Message.Text
+		atts = zaloOAAttachments(upd.Message.Attachments)
 	}
-	if userID == "" || text == "" {
+	if userID == "" || (text == "" && len(atts) == 0) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -140,6 +218,7 @@ func (z *ZaloOA) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	sess := z.ensureSession(agent.ID, userID)
 
 	ctx := withContextUser(r.Context(), "zalo-oa", "direct", userID, userID)
+	ctx, text = withInboundMedia(ctx, agent, "zalo-oa", text, atts, z.fetchAttachment)
 	reply := answerTurn(ctx, z.Store, agent, sess, z.LLM, z.Meter, text)
 
 	sender := z.Sender

@@ -53,8 +53,11 @@ func resolveInboundLLM(st store.StoreIface, agent *store.Agent, fallback llm.Pro
 // replyInbound answers one message of an older single-bot webhook. sender is
 // the sender id when the webhook gives one for a direct chat (it selects the
 // user context files), else "".
-func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, sender, text string) {
-	if dest == "" || text == "" {
+//
+// atts are the message's files and fetch downloads them (nil, nil for a
+// webhook that carries no files).
+func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKey, displayName, dest, sender, text string, atts []Attachment, fetch MediaFetcher) {
+	if dest == "" || (text == "" && len(atts) == 0) {
 		writeOK(w)
 		return
 	}
@@ -79,6 +82,7 @@ func replyInbound(w http.ResponseWriter, r *http.Request, d inboundDeps, agentKe
 	if sender != "" {
 		ctx = withContextUser(ctx, agentKey, "direct", sender, dest)
 	}
+	ctx, text = withInboundMedia(ctx, agent, agentKey, text, atts, fetch)
 	reply := answerTurn(ctx, d.Store, agent, sess, d.LLM, d.Meter, text)
 
 	if d.Sender != nil {
@@ -176,6 +180,7 @@ func answerTurnDirect(ctx context.Context, st store.StoreIface, agent *store.Age
 	for _, m := range history {
 		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content})
 	}
+	msgs = pipeline.AttachTurnImages(ctx, provider, msgs)
 	reply, usage, err := llm.ChatUsage(ctx, provider, msgs)
 	if err != nil {
 		return "", err
