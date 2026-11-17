@@ -686,6 +686,7 @@ type Store struct {
 	contextFiles    map[string]*ContextFile
 	ingestJobs      map[string]*IngestJob
 	hooks           map[string]*Hook
+	toolSettings    map[string]*ToolSettings // tenant\x00tool -> settings
 	seq             int64
 }
 

@@ -523,6 +523,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("migrate hooks: %w", err)
 	}
+	if err := s.migrateToolSettings(); err != nil {
+		return fmt.Errorf("migrate tool settings: %w", err)
+	}
 	if err := s.migrateVaultAccess(); err != nil {
 		return err
 	}

@@ -180,6 +180,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("postgres migrate hooks: %w", err)
 	}
+	if err := s.migrateToolSettings(); err != nil {
+		return fmt.Errorf("postgres migrate tool settings: %w", err)
+	}
 	if err := s.migrateVaultAccess(); err != nil {
 		return fmt.Errorf("postgres migrate vault access: %w", err)
 	}

@@ -253,7 +253,7 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 				"description":       bt.Tool.Description,
 				"requires_approval": bt.Tool.RequiresApproval,
 				"enabled":           enabled,
-				"configured":        toolConfigured(bt.Connector, bt.Tool.Name),
+				"configured":        toolConfigured(requestTenant(r), bt.Connector, bt.Tool.Name),
 				"granted":           bt.Connector == builtin.ConnectorName || linked[bt.Connector],
 			}
 			out = append(out, item)
@@ -279,7 +279,7 @@ func handleListAgentTools(opt Options) http.HandlerFunc {
 				"description":       spec.Description,
 				"requires_approval": spec.RequiresApproval,
 				"enabled":           enabled,
-				"configured":        builtin.Configured(spec.Name),
+				"configured":        builtin.ConfiguredForTenant(requestTenant(r), spec.Name),
 				"granted":           true,
 			})
 		}
@@ -676,9 +676,9 @@ func connectorPublic(st store.StoreIface, rec *store.ConnectorRecord) map[string
 	}
 }
 
-func toolConfigured(connectorName, toolName string) bool {
+func toolConfigured(tenant, connectorName, toolName string) bool {
 	if connectorName == builtin.ConnectorName {
-		return builtin.Configured(toolName)
+		return builtin.ConfiguredForTenant(tenant, toolName)
 	}
 	return connectorName != ""
 }

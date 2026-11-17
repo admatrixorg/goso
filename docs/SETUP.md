@@ -263,3 +263,38 @@ Tìm kiếm vector (tuỳ chọn):
 - `handler_type: "block"` (chỉ `PreToolUse`): chặn tool khớp; model nhận kết quả `blocked by hook: <config.message>`.
 - Secret được mã hoá bằng `GOSO_MASTER_KEY` (thiếu key mà gửi secret thì 400). GET chỉ trả `has_secret`; `"secret": ""` khi PATCH để xoá.
 - Hook được nạp theo tenant lúc chạy, cache 30 giây, ghi qua API thì cache trong process bị xoá ngay.
+
+## Chuỗi provider cho tool media (theo tenant)
+
+`read_image`, `read_document`, `read_video`, `read_audio` (alias `stt`) và `create_image` (alias `image_gen`) dùng chuỗi provider của tenant trước; tenant chưa cấu hình thì rơi về biến môi trường `GOSO_VISION_*`, `GOSO_STT_*`, `GOSO_IMAGE_*`, Docling như cũ. `read_video` chỉ chạy bằng chuỗi.
+
+- `GET /api/tools/builtin/settings`: mọi tool có chuỗi của tenant, kèm `source` (`tenant` | `env` | `none`).
+- `GET/PUT/DELETE /api/tools/builtin/{tool}/settings` (alias `/v1/...`). DELETE đưa tool về env. Tạo, sửa, xoá ghi audit (entity `builtin_tool_settings`, chỉ tên provider/model).
+- Thân PUT:
+
+```json
+{"providers":[
+  {"provider":"gemini-shop","model":"gemini-2.5-flash","params":{"api":"gemini"}},
+  {"provider":"openrouter-shop","model":"google/gemini-2.5-flash","timeout":120,"max_retries":2,"enabled":true}
+]}
+```
+
+- `provider`: provider env (`OPENAI_API_KEY`, ...) hoặc provider đã lưu, đang bật, **cùng tenant** (`POST /api/providers`). Provider tenant khác hoặc không tồn tại → 400; provider đang tắt → lưu được, có `warnings`, chuỗi bỏ qua nó. Key nằm trong secret của provider; `params` chứa `key`/`token`/`secret`/`password`/`authorization`... bị từ chối.
+- Tối đa 10 provider. `timeout` giây (mặc định 600, tối đa 900), `max_retries` (mặc định 1, tối đa 5): chỉ 429, 5xx, lỗi mạng mới thử lại cùng provider; lỗi khác chuyển sang provider kế. Thiếu `enabled` = bật. Kết quả có `provider`, `model`, và `fallback_from` khi đã chuyển provider.
+- Gemini native (`generateContent`) khi `params.api` = `gemini` hoặc base URL là `generativelanguage.googleapis.com` (base `.../v1beta/openai` tự đổi về `.../v1beta`). File > 14 MB (video, audio, PDF) đi qua Gemini File API rồi bị xoá sau lượt gọi. Còn lại dùng `/chat/completions` OpenAI-compatible.
+- `params` khác: `image_model` (create_image), `aspect_ratio`, `size`, `temperature`, `max_tokens`, `language` (read_audio), `api: "images"` (ép `/images/generations`), `api: "transcriptions"` (ép `/audio/transcriptions`; model `whisper*`/`*transcribe*` tự dùng).
+- `create_image`: Gemini trả ảnh inline, OpenRouter qua `modalities:["image","text"]` (đọc `message.images`), `gpt-image*`/`dall-e*` qua `/images/generations`. Ảnh lưu ở `generated/images/` trong workspace tenant.
+- `read_document`: PDF và ảnh scan qua chuỗi (≤ 20 MB, không cần bật tool trên agent); chuỗi lỗi thì dùng Docling nếu bật (`fallback: "local"`, kèm `llm_error`). `.txt`/`.md` vẫn đọc tại chỗ.
+- `read_video`: mp4/mov/webm/mkv/avi ≤ 100 MB. Tool mặc định tắt trên agent: `PATCH /api/agents/{id}/tools/read_video {"enabled":true}`.
+
+### Nhập từ GoClaw
+
+```bash
+go run ./cmd/goso-tool-settings-import \
+  --export goclaw-tools.json --source-tenant <goclaw-tenant-id> --tenant <goso-tenant> \
+  --db "$GOSO_DATABASE_URL" --deny-file deny.txt \
+  --map gemini=gemini-shop --map openrouter=openrouter-shop [--env-provider openai] \
+  [--overwrite] [--apply]
+```
+
+`goclaw-tools.json` = `{"builtin_tools":[...],"builtin_tool_tenant_configs":[...],"llm_providers":[{"id","tenant_id","name"}]}` xuất từ DB GoClaw. Mặc định chạy thử (`--dry-run`), in báo cáo JSON: tool nào insert/update/skip, `unmapped_providers` (provider GoClaw chưa có ở tenant goso), cảnh báo, phần không nhập. Cấu hình tenant thắng cấu hình global; `provider_id` tra qua `llm_providers`; entry GoClaw thiếu `enabled` giữ trạng thái tắt; param chứa key bị bỏ. Tool đã có cấu hình bị bỏ qua trừ khi `--overwrite`.
