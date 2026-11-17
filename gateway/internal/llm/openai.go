@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -218,20 +219,31 @@ func readOpenAIStreamOrJSON(resp *http.Response, onDelta StreamHandler) (Reply, 
 // chatCompletionsURL joins BaseURL with the chat completions path.
 // If BaseURL already ends with /v1, append /chat/completions only (no /v1/v1).
 func chatCompletionsURL(base string) string {
+	return versionedBase(base) + "/chat/completions"
+}
+
+// versionedPart matches an API version path segment: v1, v2, v1beta, v1alpha2.
+var versionedPart = regexp.MustCompile(`^v[0-9]+([a-z]+[0-9]*)?$`)
+
+// versionedBase returns base with an API version in its path. A base that
+// already names one (…/v1, …/v1beta, or Gemini's …/v1beta/openai) is kept;
+// otherwise /v1 is added (http://host:port, https://api.groq.com/openai).
+func versionedBase(base string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(base, "/v1") {
-		return base + "/chat/completions"
+	parts := strings.Split(base, "/")
+	n := len(parts)
+	if n > 3 && versionedPart.MatchString(parts[n-1]) {
+		return base
 	}
-	return base + "/v1/chat/completions"
+	if n > 4 && parts[n-1] == "openai" && versionedPart.MatchString(parts[n-2]) {
+		return base
+	}
+	return base + "/v1"
 }
 
 // modelsURL joins BaseURL with the OpenAI-compat models path.
 func modelsURL(base string) string {
-	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(base, "/v1") {
-		return base + "/models"
-	}
-	return base + "/v1/models"
+	return versionedBase(base) + "/models"
 }
 
 func openaiMessages(messages []Message) []map[string]any {

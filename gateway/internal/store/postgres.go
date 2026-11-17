@@ -16,6 +16,9 @@ import (
 
 const postgresPingTimeout = 3 * time.Second
 
+// postgresMigrateLockTimeout bounds the wait for another process's migration.
+const postgresMigrateLockTimeout = 2 * time.Minute
+
 // PostgresStore is StoreIface on Postgres 16. Embeds the SQL method set.
 // Lexical recall and body search use a generated tsvector (config simple)
 // and a GIN index on memories, vault_docs, and kg_entities (SPEC 154).
@@ -49,11 +52,37 @@ func OpenPostgres(dsn string) (*PostgresStore, error) {
 	}
 	inner := &SQLiteStore{db: &sqlHandle{db: db, pg: true}, pg: true}
 	s := &PostgresStore{SQLiteStore: inner}
-	if err := s.migratePostgres(); err != nil {
+	if err := s.migrateLocked(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+// migrateLockKey is the advisory lock that serialises schema migration on
+// one database. Two processes migrating at once (the gateway starting while
+// an importer opens the database, or parallel test packages) otherwise
+// deadlock on ALTER TABLE.
+const migrateLockKey int64 = 0x60500001
+
+// migrateLocked runs migratePostgres while holding migrateLockKey on a
+// dedicated connection. The lock is per database, so schemas in one database
+// also wait for each other; migration is short and idempotent.
+func (s *PostgresStore) migrateLocked() error {
+	ctx, cancel := context.WithTimeout(context.Background(), postgresMigrateLockTimeout)
+	defer cancel()
+	conn, err := s.db.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres migrate lock: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("postgres migrate lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrateLockKey)
+	}()
+	return s.migratePostgres()
 }
 
 // OpenPostgresReadOnly connects without running migrations. The session is
