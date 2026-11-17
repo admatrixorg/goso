@@ -14,10 +14,17 @@ SPEC 152 (`docs/qa/152-vault-import-file-body/`) is the file-body follow-up. Fla
 | `--vault-dir` | Optional. Also writes `t/<tenant>/` files |
 | `--src-dir` | Source workspace. Required when a kept document has no version row. The export path is joined onto this directory. A missing regular file is `path-missing` |
 | `--keep-prefix` | Store the path with the root still attached. Default strips the root |
-| `--include-personal` | Import `scope=personal`. Default holds those documents (`scope-personal-held`, once) |
+| `--include-personal` | Default `true`: import `scope=personal` for the mapped agent. `--include-personal=false` holds them (`scope-personal-held`) |
+| `--personal-scope` | `agent` (default): the owning agent in every chat, the audience GoClaw gives a personal row. `personal`: that agent, never in a channel thread |
+| `--max-binary-bytes` | Cap for one attachment. `0` uses `GOSO_VAULT_INGEST_MAX_BYTES` (20 MiB) |
+| `--adopt-orphans` | Reuse an untouched imported row whose GoClaw document is gone from the export. Only with a full-tenant export |
 | `--dry-run` | Counts and rejections only. No write |
 
-A document with a version row still takes its body from that row. A document with no version row takes its body from the file, and the trailer `sum` is sha256 of the file bytes. Over 1 MiB is `too-large`. Non-UTF-8 or a NUL byte is `binary-skipped`. An empty file is `empty-body`. None of those write a row. The report `docs` and `links` arrays are per source tenant, and each tenant's `input` equals `inserted + updated + skipped + rejected`.
+Several GoClaw rows can share one path (shared, team, personal of several agents). Every row is kept: the widest audience keeps the path, each narrower row is stored at `name~<goclaw scope>-<agent key or team id>.ext`. A re-run that changes a document's scope updates the row in place when the new audience covers the old one, and otherwise deletes the old file and row before writing the new row.
+
+Doc reasons: `path-taken` is a row at the path that this importer does not own (a goso document, a hand edit, or a row of a GoClaw document not in this run). `path-collision` is two export paths that clean to the same stored path. Link reasons: a link whose source document belongs to another tenant or root is skipped with that document's reason (`tenant-mismatch`, `foreign-tenant`, `outside-root`). `source-rejected` and `target-rejected` mean that document was rejected in this run. `outside-tenant` is a target in another tenant or root.
+
+A document with a version row still takes its body from that row. A document with no version row takes its body from the file, and the trailer `sum` is sha256 of the file bytes. Over 1 MiB is `too-large`. Non-UTF-8 or a NUL byte at a `.md`/`.txt` path is `binary-skipped`; at any other path the file is an attachment, as in GoClaw: its bytes are copied to `t/<tenant>/<path>` and the row is a note at `<path>.md` with name, type, size and sha256. No text is extracted. An empty file is `empty-body`. None of those write a row. The report `docs` and `links` arrays are per source tenant, and each tenant's `input` equals `inserted + updated + skipped + rejected`.
 
 ## Head
 

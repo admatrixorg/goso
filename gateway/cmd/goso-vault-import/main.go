@@ -36,14 +36,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	dbPath := fs.String("db", "", "local SQLite file or loopback Postgres DSN")
 	vaultDir := fs.String("vault-dir", "", "optional vault root; writes t/<tenant>/ files when set")
 	keepPrefix := fs.Bool("keep-prefix", false, "store the path with the root prefix kept (default strips the root)")
-	srcDir := fs.String("src-dir", "", "source workspace; required when a kept document has no vault_versions row. Missing file: path-missing. Over 1MiB: too-large. Non-UTF-8 or NUL: binary-skipped. Empty file: empty-body")
-	includePersonal := fs.Bool("include-personal", false, "import scope=personal docs as personal scope of the mapped agent (default holds them)")
+	srcDir := fs.String("src-dir", "", "source workspace; required when a kept document has no vault_versions row. Missing file: path-missing. Over 1MiB: too-large. Non-UTF-8 or NUL at a .md/.txt path: binary-skipped; at any other path: attachment (bytes stored, note row). Empty file: empty-body")
+	includePersonal := fs.Bool("include-personal", true, "import scope=personal docs for their mapped agent; --include-personal=false holds them as scope-personal-held")
+	personalScope := fs.String("personal-scope", vaultimport.PersonalScopeAgent, "goso scope of a GoClaw personal doc: agent (that agent in every chat, as in GoClaw) or personal (that agent, never in a channel thread)")
+	adoptOrphans := fs.Bool("adopt-orphans", false, "reuse an untouched imported row whose GoClaw doc is gone from the export (only with a full-tenant export)")
+	maxBinary := fs.Int64("max-binary-bytes", 0, "cap for one attachment copied from --src-dir (0 = GOSO_VAULT_INGEST_MAX_BYTES, default 20 MiB)")
 	dry := fs.Bool("dry-run", false, "report counts and rejections without writing")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if strings.TrimSpace(*exportPath) == "" || strings.TrimSpace(*source) == "" || strings.TrimSpace(*root) == "" || strings.TrimSpace(*dest) == "" || strings.TrimSpace(*dbPath) == "" {
-		fmt.Fprintln(stderr, "usage: goso-vault-import --export file.json --source-tenant id --root tenants/<tenant>|/app/workspace|. --dest-tenant id --db path [--vault-dir dir] [--src-dir dir] [--keep-prefix] [--include-personal] [--dry-run]")
+		fmt.Fprintln(stderr, "usage: goso-vault-import --export file.json --source-tenant id --root tenants/<tenant>|/app/workspace|. --dest-tenant id --db path [--vault-dir dir] [--src-dir dir] [--keep-prefix] [--include-personal=false] [--personal-scope agent|personal] [--max-binary-bytes n] [--adopt-orphans] [--dry-run]")
 		return 2
 	}
 	f, err := os.Open(*exportPath)
@@ -77,17 +80,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	rep, err := vaultimport.Import(st, ex, vaultimport.Options{
-		AgentMap:        agentMap,
-		TeamMap:         teamMap,
-		SourceTenant:    *source,
-		Root:            *root,
-		DestTenant:      *dest,
-		VaultRoot:       *vaultDir,
-		KeepPrefix:      *keepPrefix,
-		SrcDir:          *srcDir,
-		IncludePersonal: *includePersonal,
-		DryRun:          *dry,
-		Log:             stderrLog{w: stderr},
+		AgentMap:       agentMap,
+		TeamMap:        teamMap,
+		SourceTenant:   *source,
+		Root:           *root,
+		DestTenant:     *dest,
+		VaultRoot:      *vaultDir,
+		KeepPrefix:     *keepPrefix,
+		SrcDir:         *srcDir,
+		HoldPersonal:   !*includePersonal,
+		PersonalScope:  *personalScope,
+		MaxBinaryBytes: *maxBinary,
+		AdoptOrphans:   *adoptOrphans,
+		DryRun:         *dry,
+		Log:            stderrLog{w: stderr},
 	})
 	if err != nil {
 		var cfg *vaultimport.ConfigError
