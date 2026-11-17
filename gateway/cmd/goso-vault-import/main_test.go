@@ -183,3 +183,55 @@ func TestCLIRefusesRemoteDatabase(t *testing.T) {
 		t.Fatalf("stderr %s", stderr.String())
 	}
 }
+
+func TestCLIPersonalFlags(t *testing.T) {
+	dir := t.TempDir()
+	exportPath := filepath.Join(dir, "export.json")
+	body := `{
+	  "vault_documents": [
+	    {"id":"p","tenant_id":"11111111-1111-4111-8111-111111111111","scope":"personal","agent_id":"gc-agent-unmapped","path":"tenants/minh-an/notes/rieng.md","title":"Rieng","updated_at":"2026-03-01T04:05:06Z"}
+	  ],
+	  "vault_versions": [
+	    {"doc_id":"p","version":1,"content":"PERSONALMARKER","created_at":"2026-03-01T04:05:06Z"}
+	  ],
+	  "vault_links": []
+	}`
+	if err := os.WriteFile(exportPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{
+		"--export", exportPath,
+		"--source-tenant", "11111111-1111-4111-8111-111111111111",
+		"--root", "tenants/minh-an",
+		"--dest-tenant", "minh-an",
+		"--db", filepath.Join(dir, "goso.db"),
+		"--dry-run",
+	}
+	// Default imports personal docs; with no agent map this one is
+	// agent-unmapped, never widened.
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if code := run(args, stdout, stderr); code != 0 {
+		t.Fatalf("exit %d %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"agent-unmapped": 1`) {
+		t.Fatalf("default stdout %s", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--include-personal=false"), stdout, stderr); code != 0 {
+		t.Fatalf("hold exit %d %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"scope-personal-held": 1`) {
+		t.Fatalf("hold stdout %s", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--personal-scope", "everyone"), stdout, stderr); code != 1 || !strings.Contains(stderr.String(), "personal scope") {
+		t.Fatalf("bad scope exit %d %s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(append(args, "--max-binary-bytes", "-1"), stdout, stderr); code != 1 || !strings.Contains(stderr.String(), "max binary bytes") {
+		t.Fatalf("bad cap exit %d %s", code, stderr.String())
+	}
+}
