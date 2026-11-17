@@ -67,6 +67,9 @@ type LarkMessage struct {
 	SenderID  string
 	Text      string
 	Mentioned bool
+	// Attachments are the message's image, file, audio or video; each Ref
+	// is a resource key of this message.
+	Attachments []Attachment
 }
 
 // SettingAppID and SettingDomain are a Lark channel's settings.
@@ -523,13 +526,11 @@ func (l *Lark) parseLarkEvent(payload []byte) (LarkMessage, bool) {
 		return LarkMessage{}, false
 	}
 	m := ev.Event.Message
-	if m.MessageType != "text" || m.ChatID == "" || ev.Event.Sender.SenderType != "user" {
+	if m.ChatID == "" || ev.Event.Sender.SenderType != "user" {
 		return LarkMessage{}, false
 	}
-	var content struct {
-		Text string `json:"text"`
-	}
-	if json.Unmarshal([]byte(m.Content), &content) != nil {
+	rawText, atts, ok := larkContent(m.MessageType, m.Content)
+	if !ok {
 		return LarkMessage{}, false
 	}
 	l.mu.Lock()
@@ -541,14 +542,130 @@ func (l *Lark) parseLarkEvent(payload []byte) (LarkMessage, bool) {
 			mentioned = true
 		}
 	}
-	text := strings.Join(strings.Fields(larkMentionKey.ReplaceAllString(content.Text, "")), " ")
-	if text == "" {
+	text := strings.Join(strings.Fields(larkMentionKey.ReplaceAllString(rawText, "")), " ")
+	if text == "" && len(atts) == 0 {
 		return LarkMessage{}, false
 	}
 	return LarkMessage{
 		MessageID: m.MessageID, ChatID: m.ChatID, ChatType: m.ChatType, ThreadID: m.ThreadID,
-		SenderID: ev.Event.Sender.SenderID.OpenID, Text: text, Mentioned: mentioned,
+		SenderID: ev.Event.Sender.SenderID.OpenID, Text: text, Mentioned: mentioned, Attachments: atts,
 	}, true
+}
+
+// larkContent reads a message's content JSON by its type: text, image,
+// file, audio, media (video), sticker or post (rich text with pictures).
+// ok is false for a type it does not read.
+func larkContent(msgType, content string) (text string, atts []Attachment, ok bool) {
+	var c struct {
+		Text     string          `json:"text"`
+		ImageKey string          `json:"image_key"`
+		FileKey  string          `json:"file_key"`
+		FileName string          `json:"file_name"`
+		Title    string          `json:"title"`
+		Content  json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal([]byte(content), &c) != nil {
+		return "", nil, false
+	}
+	switch msgType {
+	case "text":
+		return c.Text, nil, true
+	case "image":
+		if c.ImageKey == "" {
+			return "", nil, false
+		}
+		return "", []Attachment{{Kind: MediaImage, Ref: c.ImageKey}}, true
+	case "file", "audio", "media":
+		if c.FileKey == "" {
+			return "", nil, false
+		}
+		kind := map[string]string{"file": MediaDocument, "audio": MediaVoice, "media": MediaVideo}[msgType]
+		return "", []Attachment{{Kind: kind, Name: c.FileName, Ref: c.FileKey}}, true
+	case "sticker":
+		return "", []Attachment{{Kind: MediaSticker, Note: "[sticker]"}}, true
+	case "post":
+		return larkPost(content)
+	}
+	return "", nil, false
+}
+
+// larkPost flattens a rich-text post into its words and pictures. The post
+// is either {"title","content"} or that wrapped in a language key.
+func larkPost(content string) (string, []Attachment, bool) {
+	type node struct {
+		Tag      string `json:"tag"`
+		Text     string `json:"text"`
+		ImageKey string `json:"image_key"`
+	}
+	type post struct {
+		Title   string   `json:"title"`
+		Content [][]node `json:"content"`
+	}
+	var p post
+	if json.Unmarshal([]byte(content), &p) != nil || (p.Title == "" && len(p.Content) == 0) {
+		var langs map[string]post
+		if json.Unmarshal([]byte(content), &langs) != nil {
+			return "", nil, false
+		}
+		for _, v := range langs {
+			if v.Title != "" || len(v.Content) > 0 {
+				p = v
+				break
+			}
+		}
+	}
+	var lines []string
+	if t := strings.TrimSpace(p.Title); t != "" {
+		lines = append(lines, t)
+	}
+	var atts []Attachment
+	for _, para := range p.Content {
+		var line []string
+		for _, n := range para {
+			switch n.Tag {
+			case "text", "a", "md":
+				if t := strings.TrimSpace(n.Text); t != "" {
+					line = append(line, t)
+				}
+			case "img":
+				if n.ImageKey != "" {
+					atts = append(atts, Attachment{Kind: MediaImage, Ref: n.ImageKey})
+				}
+			}
+		}
+		if len(line) > 0 {
+			lines = append(lines, strings.Join(line, " "))
+		}
+	}
+	return strings.Join(lines, "\n"), atts, true
+}
+
+// mediaFetcher downloads this message's resources with the tenant token.
+// A stale token is renewed once. The token never reaches an error.
+func (l *Lark) mediaFetcher(messageID string) MediaFetcher {
+	return func(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+		if messageID == "" || strings.ContainsAny(messageID+a.Ref, "/?#") {
+			return nil, errMediaNoRef
+		}
+		typ := "file"
+		if a.Kind == MediaImage {
+			typ = "image"
+		}
+		var lastErr error
+		for attempt := 0; attempt < 2; attempt++ {
+			base, token, err := l.accessToken(ctx, attempt > 0)
+			if err != nil {
+				return nil, errors.New("download failed: no access token")
+			}
+			u := base + "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/resources/" + url.PathEscape(a.Ref) + "?type=" + typ
+			data, err := fetchURL(ctx, l.HTTPClient, u, limit, "Authorization", "Bearer "+token)
+			if err == nil || errors.Is(err, errMediaTooLarge) {
+				return data, err
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
 }
 
 // dispatchEvent answers a text message once, in the background.
@@ -629,7 +746,8 @@ func (l *Lark) ingest(m LarkMessage) {
 		return
 	}
 	turnCtx := withContextUser(ctx, name, peer, m.SenderID, m.ChatID)
-	reply, err := answerTurnErr(turnCtx, l.Store, agent, sess, l.LLM, l.Meter, m.Text)
+	turnCtx, text := withInboundMedia(turnCtx, agent, name, m.Text, m.Attachments, l.mediaFetcher(m.MessageID))
+	reply, err := answerTurnErr(turnCtx, l.Store, agent, sess, l.LLM, l.Meter, text)
 	// A model error is never sent to the customer.
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return

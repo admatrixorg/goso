@@ -231,7 +231,7 @@ func TestReplyInboundRecallsPerCustomer(t *testing.T) {
 	d := inboundDeps{Store: st, LLM: rec}
 	run := func(dest, text string) {
 		w := httptest.NewRecorder()
-		replyInbound(w, httptest.NewRequest("POST", "/x", nil), d, "slack", "Slack", dest, "", text)
+		replyInbound(w, httptest.NewRequest("POST", "/x", nil), d, "slack", "Slack", dest, "", text, nil, nil)
 		if w.Code != 200 {
 			t.Fatalf("status %d", w.Code)
 		}

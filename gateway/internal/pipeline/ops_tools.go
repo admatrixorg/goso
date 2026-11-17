@@ -47,6 +47,12 @@ type OpsEnv struct {
 	Nested bool
 	// Now is the clock (tests); nil means time.Now.
 	Now func() time.Time
+	// RunCron fires a job now, in the background; it returns cron.ErrRunning
+	// when the job is already running. Nil leaves action=run not_configured.
+	RunCron func(job *store.CronJob) error
+	// FromCron is true when this turn was started by a cron job. Such a turn
+	// may not run a job, so jobs cannot start each other in a loop.
+	FromCron bool
 }
 
 // OpsToolSpecs are always advertised.
@@ -54,9 +60,9 @@ func OpsToolSpecs() []llm.ToolSpec {
 	return []llm.ToolSpec{
 		{
 			Name: ToolCron,
-			Description: "Schedule messages to yourself. action=list shows this agent's jobs; action=add {spec, message, session_id?} creates a job that posts message into a session of yours (default: this one) on schedule; action=remove {job_id}. " +
+			Description: "Schedule messages to yourself. action=list shows this agent's jobs; action=add {spec, message, session_id?} creates a job that posts message into a session of yours (default: this one) on schedule; action=remove {job_id}; action=run {job_id} fires one of your jobs now (even if disabled; it runs in the background and its reply lands in the job's session). " +
 				"spec is every:Nm|every:Nh or a 5-field cron 'min hour dom month dow' evaluated in UTC (Asia/Ho_Chi_Minh is UTC+7, so 09:00 there is '0 2 * * *'). Fields take *, a number or */n. Shortest schedule 5 minutes; max 20 jobs per tenant. Not available in customer channel conversations.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["list","add","remove"]},"spec":{"type":"string"},"message":{"type":"string"},"session_id":{"type":"string"},"job_id":{"type":"string"}},"required":["action"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["list","add","remove","run"]},"spec":{"type":"string"},"message":{"type":"string"},"session_id":{"type":"string"},"job_id":{"type":"string"}},"required":["action"]}`),
 		},
 		{
 			Name:        ToolSessionStatus,
@@ -213,9 +219,35 @@ func dispatchCron(env OpsEnv, args map[string]any) (string, error) {
 		return cronAdd(env, args)
 	case "remove", "delete":
 		return cronRemove(env, args)
+	case "run":
+		return cronRun(env, args)
 	default:
-		return opsErr("action must be list, add or remove")
+		return opsErr("action must be list, add, remove or run")
 	}
+}
+
+func cronRun(env OpsEnv, args map[string]any) (string, error) {
+	if env.FromCron {
+		return opsErr("a turn started by a cron job cannot run a cron job")
+	}
+	id := argString(args, "job_id", "id")
+	if id == "" {
+		return opsErr("job_id is required")
+	}
+	job, err := env.Store.GetCronJob(id)
+	if err != nil || !env.ownJob(job) {
+		return opsErr("job not found")
+	}
+	if env.RunCron == nil {
+		return opsErr("not_configured: running a job now is not available here")
+	}
+	if err := env.RunCron(job); err != nil {
+		if errors.Is(err, cron.ErrRunning) {
+			return opsErr("job is already running")
+		}
+		return opsErr("job could not start")
+	}
+	return opsJSON(map[string]any{"ran": true, "job_id": job.ID, "started": "in the background"})
 }
 
 type cronItem struct {

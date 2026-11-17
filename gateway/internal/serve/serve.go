@@ -166,11 +166,12 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 		Tenants: tenants, TTS: wireMedia(st),
 	}).(*http.ServeMux)
 	httpapi.RegisterWS(mux, st, provider)
+	rt.CronFire = httpapi.FireSessionChat(rt, st, provider, meter)
 	obs.SetWsUp(true)
 	obs.Register(mux)
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())
-		go cron.Loop(context.Background(), st, httpapi.FireSessionChat(rt, st, provider, meter))
+		go cron.Loop(context.Background(), st, rt.CronFire)
 		if heartbeat.Enabled() {
 			go heartbeat.Loop(context.Background(), obs)
 		}

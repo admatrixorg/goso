@@ -234,7 +234,7 @@ func (b *ZCRMBridge) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		writeOK(w)
 		return
 	}
-	if strings.TrimSpace(ev.Data.ConversationID) == "" || bridgeText(ev) == "" {
+	if strings.TrimSpace(ev.Data.ConversationID) == "" || (bridgeText(ev) == "" && len(bridgeAttachments(ev)) == 0) {
 		writeOK(w)
 		return
 	}
@@ -281,14 +281,109 @@ func settingTrue(v string) bool {
 }
 
 // bridgeText is what the agent reads for one message. Text is passed as is;
-// other kinds become a short note so the agent knows something arrived.
+// a media message gives its caption (its file is handed over by
+// bridgeAttachments); any other kind becomes a short note so the agent knows
+// something arrived.
 func bridgeText(ev ZCRMEvent) string {
 	content := strings.TrimSpace(ev.Data.Content)
 	kind := strings.ToLower(strings.TrimSpace(ev.Data.ContentType))
 	if kind == "" || kind == "text" {
 		return content
 	}
+	if bridgeMediaKind(kind) != "" {
+		if m, ok := bridgeMedia(content); ok && (m.url != "" || kind == "sticker" || kind == "chat.sticker") {
+			return m.caption
+		}
+	}
 	return "[" + kind + "]"
+}
+
+// bridgeMediaKind maps a bridge contentType to an attachment kind, "" for
+// a kind that carries no file.
+func bridgeMediaKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "photo", "image", "gif", "chat.photo":
+		return MediaImage
+	case "voice", "audio", "chat.voice":
+		return MediaVoice
+	case "video", "chat.video.msg":
+		return MediaVideo
+	case "file", "doc", "document", "share.file":
+		return MediaDocument
+	case "sticker", "chat.sticker":
+		return MediaSticker
+	}
+	return ""
+}
+
+type bridgeFile struct {
+	url, name, caption string
+	size               int64
+}
+
+// bridgeMedia reads a media message's content: a JSON object with the file
+// link (href, url or fileUrl; thumb as a fallback for pictures), its name
+// and caption, or a bare link.
+func bridgeMedia(content string) (bridgeFile, bool) {
+	content = strings.TrimSpace(content)
+	if strings.HasPrefix(content, "http://") || strings.HasPrefix(content, "https://") {
+		return bridgeFile{url: content}, true
+	}
+	var raw struct {
+		Href        string `json:"href"`
+		URL         string `json:"url"`
+		FileURL     string `json:"fileUrl"`
+		Thumb       string `json:"thumb"`
+		Title       string `json:"title"`
+		FileName    string `json:"fileName"`
+		Description string `json:"description"`
+		Caption     string `json:"caption"`
+		Size        any    `json:"size"`
+		FileSize    any    `json:"fileSize"`
+		Params      any    `json:"params"`
+	}
+	if json.Unmarshal([]byte(content), &raw) != nil {
+		return bridgeFile{}, false
+	}
+	f := bridgeFile{url: firstNonEmpty(raw.Href, raw.URL, raw.FileURL, raw.Thumb), name: firstNonEmpty(raw.FileName, raw.Title), caption: strings.TrimSpace(firstNonEmpty(raw.Caption, raw.Description))}
+	f.size = anySize(raw.FileSize)
+	if f.size == 0 {
+		f.size = anySize(raw.Size)
+	}
+	if p, ok := raw.Params.(map[string]any); ok && f.size == 0 {
+		f.size = anySize(p["fileSize"])
+	}
+	return f, true
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v = strings.TrimSpace(v); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// bridgeAttachments returns the file of a media message. A sticker is a
+// note only.
+func bridgeAttachments(ev ZCRMEvent) []Attachment {
+	kind := bridgeMediaKind(ev.Data.ContentType)
+	if kind == "" {
+		return nil
+	}
+	if kind == MediaSticker {
+		return []Attachment{{Kind: MediaSticker, Note: "[sticker]"}}
+	}
+	f, ok := bridgeMedia(ev.Data.Content)
+	if !ok || f.url == "" {
+		return nil
+	}
+	return []Attachment{{Kind: kind, Name: f.name, Size: f.size, Ref: f.url}}
+}
+
+func (b *ZCRMBridge) fetchMedia(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+	return fetchURL(ctx, b.HTTPClient, a.Ref, limit, "", "")
 }
 
 func (b *ZCRMBridge) answer(c bridgeChannel, agent *store.Agent, ev ZCRMEvent) {
@@ -304,7 +399,8 @@ func (b *ZCRMBridge) answer(c bridgeChannel, agent *store.Agent, ev ZCRMEvent) {
 		return
 	}
 	turnCtx := withContextUser(ctx, c.cfg.Name, peerKind(ev.Data.ThreadType), ev.Data.SenderUID, conv)
-	reply, err := answerTurnErr(turnCtx, b.Store, agent, sess, b.LLM, b.Meter, bridgeText(ev))
+	turnCtx, text := withInboundMedia(turnCtx, agent, c.cfg.Name, bridgeText(ev), bridgeAttachments(ev), b.fetchMedia)
+	reply, err := answerTurnErr(turnCtx, b.Store, agent, sess, b.LLM, b.Meter, text)
 	if err != nil || strings.TrimSpace(reply) == "" {
 		return
 	}
