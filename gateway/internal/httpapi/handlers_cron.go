@@ -24,6 +24,60 @@ func registerCronRoutes(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "POST /api/cron", handleCreateCron(opt.Store))
 	aliasAPI(mux, "PATCH /api/cron/{id}", handlePatchCron(opt.Store))
 	aliasAPI(mux, "DELETE /api/cron/{id}", handleDeleteCron(opt.Store))
+	aliasAPI(mux, "POST /api/cron/{id}/run", handleRunCron(opt.Store, FireSessionChat(opt.Runtime, opt.Store, opt.Provider, opt.Meter)))
+}
+
+// handleRunCron fires one job of the caller's tenant now, even when it is
+// disabled or not due. By default it answers 202 at once and the job runs
+// in the background; ?wait=1 waits and reports the outcome. A job already
+// running is refused with 409.
+func handleRunCron(st store.StoreIface, fire cron.FireFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if st == nil {
+			writeErr(w, http.StatusInternalServerError, "store required")
+			return
+		}
+		id := strings.TrimSpace(r.PathValue("id"))
+		if id == "" {
+			writeErr(w, http.StatusBadRequest, "id is required")
+			return
+		}
+		job, err := cronJobVisible(st, id, requestTenant(r))
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "job not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if v := r.URL.Query().Get("wait"); v == "1" || v == "true" {
+			err := cron.RunJob(r.Context(), st, job, fire)
+			if errors.Is(err, cron.ErrRunning) {
+				writeErr(w, http.StatusConflict, err.Error())
+				return
+			}
+			out := map[string]any{"ok": err == nil, "ran": true, "id": job.ID}
+			if err != nil {
+				// The error can carry provider details; only say that it failed.
+				out["error"] = "job run failed"
+			}
+			if fresh, gerr := st.GetCronJob(job.ID); gerr == nil && fresh != nil {
+				out["job"] = publicCron(fresh)
+			}
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		if err := cron.StartJob(st, job, fire); err != nil {
+			if errors.Is(err, cron.ErrRunning) {
+				writeErr(w, http.StatusConflict, err.Error())
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "ran": true, "id": job.ID})
+	}
 }
 
 func handleListCron(st store.StoreIface) http.HandlerFunc {

@@ -5,8 +5,10 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -50,10 +52,90 @@ type WhatsAppUpdate struct {
 					Text *struct {
 						Body string `json:"body"`
 					} `json:"text"`
+					Image    *WhatsAppMedia `json:"image"`
+					Document *WhatsAppMedia `json:"document"`
+					Audio    *WhatsAppMedia `json:"audio"`
+					Video    *WhatsAppMedia `json:"video"`
+					Sticker  *WhatsAppMedia `json:"sticker"`
 				} `json:"messages"`
 			} `json:"value"`
 		} `json:"changes"`
 	} `json:"entry"`
+}
+
+// WhatsAppMedia is the media object of an image, document, audio, video or
+// sticker message. The bytes are fetched from the Graph API by id.
+type WhatsAppMedia struct {
+	ID       string `json:"id"`
+	MIMEType string `json:"mime_type"`
+	Caption  string `json:"caption"`
+	Filename string `json:"filename"`
+	Voice    bool   `json:"voice"`
+}
+
+// whatsappAttachment maps one media object; ok is false when there is none.
+func whatsappAttachment(kind string, m *WhatsAppMedia) (Attachment, bool) {
+	if m == nil || strings.TrimSpace(m.ID) == "" {
+		return Attachment{}, false
+	}
+	if kind == MediaAudio && m.Voice {
+		kind = MediaVoice
+	}
+	if kind == MediaAudio && strings.Contains(strings.ToLower(m.MIMEType), "ogg") {
+		kind = MediaVoice
+	}
+	return Attachment{Kind: kind, Name: m.Filename, MIME: m.MIMEType, Ref: m.ID}, true
+}
+
+func (wa *WhatsApp) token() string {
+	if wa.AccessToken != "" {
+		return wa.AccessToken
+	}
+	return os.Getenv("GOSO_WHATSAPP_ACCESS_TOKEN")
+}
+
+func (wa *WhatsApp) apiBase() string {
+	if wa.APIBase != "" {
+		return strings.TrimRight(wa.APIBase, "/")
+	}
+	return "https://graph.facebook.com/v21.0"
+}
+
+// fetchMedia resolves a media id to its short-lived download URL, then
+// downloads it. Both calls carry the access token, so the download URL must
+// be https (or on the configured API host) and the token is dropped on
+// redirect. Errors never include either URL.
+func (wa *WhatsApp) fetchMedia(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+	tok := wa.token()
+	if tok == "" {
+		return nil, errors.New("download failed: missing access token")
+	}
+	if strings.ContainsAny(a.Ref, "/?#") {
+		return nil, errMediaNoRef
+	}
+	base := wa.apiBase()
+	meta, err := fetchURL(ctx, wa.HTTPClient, base+"/"+url.PathEscape(a.Ref), 64<<10, "Authorization", "Bearer "+tok)
+	if err != nil {
+		return nil, err
+	}
+	var info struct {
+		URL      string `json:"url"`
+		FileSize int64  `json:"file_size"`
+	}
+	if json.Unmarshal(meta, &info) != nil || info.URL == "" {
+		return nil, errMediaFetch
+	}
+	if info.FileSize > limit {
+		return nil, errMediaTooLarge
+	}
+	u, err := url.Parse(info.URL)
+	if err != nil {
+		return nil, errMediaNoRef
+	}
+	if b, berr := url.Parse(base); u.Scheme != "https" && (berr != nil || u.Host != b.Host) {
+		return nil, errors.New("download blocked")
+	}
+	return fetchURL(ctx, wa.HTTPClient, info.URL, limit, "Authorization", "Bearer "+tok)
 }
 
 func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +145,7 @@ func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var from, text, pnid string
+	var atts []Attachment
 	for _, e := range upd.Entry {
 		for _, ch := range e.Changes {
 			if ch.Value.Metadata.PhoneNumberID != "" {
@@ -75,7 +158,18 @@ func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 				if m.Text != nil {
 					text = m.Text.Body
 				}
-				if from != "" && text != "" {
+				for _, it := range []struct {
+					kind string
+					m    *WhatsAppMedia
+				}{{MediaImage, m.Image}, {MediaDocument, m.Document}, {MediaAudio, m.Audio}, {MediaVideo, m.Video}, {MediaSticker, m.Sticker}} {
+					if a, ok := whatsappAttachment(it.kind, it.m); ok {
+						atts = append(atts, a)
+						if text == "" && it.m.Caption != "" {
+							text = it.m.Caption
+						}
+					}
+				}
+				if from != "" && (text != "" || len(atts) > 0) {
 					break
 				}
 			}
@@ -89,27 +183,21 @@ func (wa *WhatsApp) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		sender = wa.sendMessage
 	}
 	replyInbound(w, r, inboundDeps{Store: wa.Store, LLM: wa.LLM, Meter: wa.Meter, Sender: sender},
-		"whatsapp", "WhatsApp", from, from, text)
+		"whatsapp", "WhatsApp", from, from, text, atts, wa.fetchMedia)
 }
 
 func (wa *WhatsApp) sendMessage(ctx context.Context, to, text string) error {
-	token := wa.AccessToken
-	if token == "" {
-		token = os.Getenv("GOSO_WHATSAPP_ACCESS_TOKEN")
-	}
+	token := wa.token()
 	if token == "" {
 		return fmt.Errorf("whatsapp: missing access token")
 	}
-	base := wa.APIBase
-	if base == "" {
-		base = "https://graph.facebook.com/v21.0"
-	}
+	base := wa.apiBase()
 	pnid := wa.PhoneNumberID
 	if pnid == "" {
 		pnid = "me"
 	}
-	url := strings.TrimRight(base, "/") + "/" + pnid + "/messages"
-	return postJSON(ctx, wa.HTTPClient, url, "Authorization", "Bearer "+token, map[string]any{
+	endpoint := base + "/" + pnid + "/messages"
+	return postJSON(ctx, wa.HTTPClient, endpoint, "Authorization", "Bearer "+token, map[string]any{
 		"messaging_product": "whatsapp",
 		"to":                to,
 		"type":              "text",

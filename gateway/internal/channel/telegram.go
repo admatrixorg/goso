@@ -10,9 +10,11 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -86,8 +88,111 @@ type TelegramUpdate struct {
 		From *struct {
 			ID int64 `json:"id"`
 		} `json:"from"`
-		Text string `json:"text"`
+		Text      string              `json:"text"`
+		Caption   string              `json:"caption"`
+		Photo     []TelegramPhotoSize `json:"photo"`
+		Document  *TelegramFile       `json:"document"`
+		Voice     *TelegramFile       `json:"voice"`
+		Audio     *TelegramFile       `json:"audio"`
+		Video     *TelegramFile       `json:"video"`
+		VideoNote *TelegramFile       `json:"video_note"`
+		Animation *TelegramFile       `json:"animation"`
 	} `json:"message"`
+}
+
+// TelegramPhotoSize is one size of a sent photo.
+type TelegramPhotoSize struct {
+	FileID   string `json:"file_id"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FileSize int64  `json:"file_size"`
+}
+
+// TelegramFile is a document, voice note, audio, video or animation.
+type TelegramFile struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MIMEType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+}
+
+// telegramAttachments lists a message's media: the largest photo size, then
+// any document, voice, audio, video, round video or animation. Stickers are
+// left out, as GoClaw does.
+func telegramAttachments(upd TelegramUpdate) []Attachment {
+	m := upd.Message
+	if m == nil {
+		return nil
+	}
+	var out []Attachment
+	if len(m.Photo) > 0 {
+		best := m.Photo[0]
+		for _, p := range m.Photo[1:] {
+			if p.Width*p.Height > best.Width*best.Height || (p.Width*p.Height == best.Width*best.Height && p.FileSize > best.FileSize) {
+				best = p
+			}
+		}
+		if best.FileID != "" {
+			out = append(out, Attachment{Kind: MediaImage, Size: best.FileSize, Ref: best.FileID})
+		}
+	}
+	for _, it := range []struct {
+		kind string
+		f    *TelegramFile
+	}{{MediaDocument, m.Document}, {MediaVoice, m.Voice}, {MediaAudio, m.Audio}, {MediaVideo, m.Video}, {MediaVideo, m.VideoNote}, {MediaVideo, m.Animation}} {
+		if it.f == nil || it.f.FileID == "" {
+			continue
+		}
+		kind := it.kind
+		if kind == MediaDocument {
+			// A file sent "as document" is still classified by its content later.
+			if k := mediaKindFromMIME(it.f.MIMEType); k == MediaAudio || k == MediaVideo {
+				kind = k
+			}
+		}
+		out = append(out, Attachment{Kind: kind, Name: it.f.FileName, MIME: it.f.MIMEType, Size: it.f.FileSize, Ref: it.f.FileID})
+	}
+	return out
+}
+
+func (t *Telegram) apiBase() string {
+	if t.APIBase != "" {
+		return strings.TrimRight(t.APIBase, "/")
+	}
+	return "https://api.telegram.org"
+}
+
+// fetchFile downloads a Telegram file: getFile gives its path, then the file
+// endpoint serves it. Both URLs carry the bot token, so they never reach a
+// log, an error or the model.
+func (t *Telegram) fetchFile(ctx context.Context, a Attachment, limit int64) ([]byte, error) {
+	token := t.resolveToken()
+	if token == "" {
+		return nil, errors.New("download failed: missing bot token")
+	}
+	base := t.apiBase()
+	meta, err := fetchURL(ctx, t.HTTPClient, base+"/bot"+token+"/getFile?file_id="+url.QueryEscape(a.Ref), 64<<10, "", "")
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			FilePath string `json:"file_path"`
+			FileSize int64  `json:"file_size"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(meta, &res) != nil || !res.OK || res.Result.FilePath == "" {
+		return nil, errMediaFetch
+	}
+	p := res.Result.FilePath
+	if strings.Contains(p, "..") || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "?#\\") {
+		return nil, errMediaNoRef
+	}
+	if res.Result.FileSize > limit {
+		return nil, errMediaTooLarge
+	}
+	return fetchURL(ctx, t.HTTPClient, base+"/file/bot"+token+"/"+p, limit, "", "")
 }
 
 // TelegramSecretHeader is the header Telegram sets on webhook calls when
@@ -161,10 +266,17 @@ func (t *Telegram) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
-	if upd.Message == nil || upd.Message.Text == "" {
+	if upd.Message == nil {
 		return ""
 	}
 	text := upd.Message.Text
+	if text == "" {
+		text = upd.Message.Caption
+	}
+	atts := telegramAttachments(upd)
+	if text == "" && len(atts) == 0 {
+		return ""
+	}
 	chatID := upd.Message.Chat.ID
 	fromID := ""
 	if upd.Message.From != nil {
@@ -236,6 +348,7 @@ func (t *Telegram) ingest(ctx context.Context, upd TelegramUpdate) string {
 		return "session unavailable"
 	}
 	ctx = withContextUser(ctx, name, peer, fromID, fmt.Sprintf("%d", chatID))
+	ctx, text = withInboundMedia(ctx, agent, "telegram", text, atts, t.fetchFile)
 	reply := answerTurn(ctx, t.Store, agent, sess, t.LLM, t.Meter, text)
 	if err := sendFn(ctx, chatID, reply); err != nil {
 		return err.Error()

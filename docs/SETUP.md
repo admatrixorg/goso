@@ -165,6 +165,8 @@ Tenant lifecycle (SPEC 151) uses the same database as the rest of the gateway. A
 
 Scheduled chat (SPEC 054) lives in SQLite `cron_jobs` and an in-process 1-minute ticker. `GET/POST/DELETE /api/cron` (aliased at `/v1/cron`). Specs: `every:Nm|Nh` or optional 5-field (`*`, decimal, `*/n`) evaluated in **UTC**. Cap 20 jobs. Empty list is a no-op. Failed fires are retried next tick. No OS crontab and no extra env.
 
+Run a job now: `POST /api/cron/{id}/run` (also `/v1/cron/{id}/run`). It runs the job of the caller's tenant at once, even when the job is disabled or not due; another tenant's job is 404. The default answer is `202 {"ok":true,"ran":true,"id":…}` and the job runs in the background. `?wait=1` waits and answers `200` with `ok`, the job's fresh `last_run`, and `error: "job run failed"` when it failed. A job already running (by hand or by the ticker) is `409`. Like a scheduled run, success stamps `last_run` (so the next scheduled run counts from now) and failure sets `last_error`. The agent's `cron` tool has the same thing as `action=run {job_id}`: it fires one of the agent's own jobs in the background. It is refused in a customer channel conversation and in a turn that a cron job started.
+
 Optional router9 e2e (`scripts/e2e-router9.sh`, SPEC 055): if `GOSO_ROUTER9_BASE_URL` is unset or `GET /v1/models` is not HTTP 200, the script **skips with exit 0**. If the router is up, it starts an **ephemeral** gateway (`--port 0`; does not bind `:8082` `:8091` `:3000` `:18080` `:18088`), then `POST /api/chat` with the admin Bearer (`GOSO_ADMIN_TOKEN` or `GOSO_E2E_TOKEN`) and catalog default model `ocg/deepseek-v4-flash` (`GOSO_ROUTER9_MODEL` overrides). Asserts HTTP 200 and a non-empty `reply`. No keys are hardcoded. Not part of `make verify`.
 
 Channel turns (Telegram, Zalo OA, Zalo Bot, Zalo personal and the ZaloCRM bridge, Lark/Feishu, WhatsApp, Discord, Slack) run on the full agent runtime, the same pipeline as `POST /api/chat`: tools and connectors, context files, hooks, approvals, history summary and customer-scoped memory. The channel guardrail closes the system prompt. The customer never sees an approval id or a loop-limit marker: a turn that waits for an operator approval with nothing else to say answers "Mình đã ghi nhận yêu cầu, nhân viên sẽ kiểm tra và phản hồi bạn sớm." An archived channel session and a disabled agent still answer, as before. A model error is still not sent to the customer.
@@ -175,6 +177,18 @@ With `GOSO_CONTEXT_FILES=1`, a channel turn reads the user context files of the 
 |---|---|---|
 | Direct message | sender id (Telegram user id, Zalo uid, Lark `open_id`) | `123456789`, `ou_abc123` |
 | Group | `group:<instance>:<chat id>`, where `<instance>` is the last part of the channel name `<tenant>/<catalog>/<instance>`, or the catalog name for an older single bot | `group:minh-an-bot:-1001234567` |
+
+Files a customer sends on a channel reach the turn too:
+
+| Kind | What the agent gets |
+|---|---|
+| Image | The picture goes to the model as image input when the turn's provider accepts images (OpenAI-compatible and Anthropic); up to 5 per message, pictures larger than 1600 px are scaled down for the model. The original is saved in the tenant's workspace (`GOSO_WORKSPACE/<tenant>/.uploads/`) and the text says `<media:image path=".uploads/…">`, so `read_image` can read it when the model cannot. |
+| Voice / audio | Saved, then transcribed before the turn when `GOSO_STT_URL` is set: `<media:voice …>` followed by `<transcript>…</transcript>`. Without STT the text says `[Voice message not transcribed: speech-to-text is not configured]`. |
+| Document | Saved; the text gives the path and says to use `read_document`. A small text file (txt, md, csv, json, …) is also put inline in `<file name="…">…</file>`, up to 50,000 characters. |
+| Video | Saved; the agent is told it cannot watch it and should ask what it shows. |
+| Sticker | `[sticker]` (Telegram stickers are ignored). |
+
+Limits: 10 MB for an image, 20 MB for any other file, 10 attachments per message, 60 s per download. A file that is too large or fails to download becomes `[sent media (kind) — skipped: reason]`, and the turn still runs. Without `GOSO_WORKSPACE` nothing is saved, but images still reach the model. Download links that carry a token (Telegram's file URL, Slack's private URL, WhatsApp's media URL) are never logged, saved or shown to the model; the Slack token is only sent to Slack's file hosts, and an auth header is dropped on any redirect. What each channel sends: Telegram (photo, document, voice, audio, video, round video, animation), Zalo OA (image, gif, file, audio, video, sticker), Zalo Bot (image with caption only; the platform sends no other media), Zalo personal through the ZaloCRM bridge (photo, file, voice, video, sticker), Lark/Feishu (image, file, audio, video, sticker, pictures inside a rich-text post), Discord, Slack and WhatsApp Cloud (image, document, audio/voice, video; WhatsApp stickers too). The legacy Feishu webhook and the legacy Zalo personal webhook stay text-only.
 
 Legacy Discord, Slack and Feishu webhooks carry no sender id and read no user file. `goso-context-import` stores GoClaw's `user_id` verbatim (including `group:` ids) unless `--customer-map` maps it.
 

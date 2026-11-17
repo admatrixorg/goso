@@ -13,6 +13,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/approval"
 	"github.com/mqglobal/goso/gateway/internal/builtin"
 	"github.com/mqglobal/goso/gateway/internal/connector"
+	"github.com/mqglobal/goso/gateway/internal/cron"
 	"github.com/mqglobal/goso/gateway/internal/eventstore"
 	"github.com/mqglobal/goso/gateway/internal/hooks"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -92,6 +93,9 @@ type Runtime struct {
 	Memory    pipeline.StageFunc
 	Summarize pipeline.StageFunc
 	Observer  *observe.Observer
+	// CronFire runs a cron job's message as a chat turn (the ticker's fire
+	// func). Nil leaves the cron tool's run action not_configured.
+	CronFire cron.FireFunc
 }
 
 // New constructs a Runtime. Missing deps are allocated empty.
@@ -767,6 +771,7 @@ func (a runtimeTools) callOps(ctx context.Context, agentID string, call llm.Tool
 		AgentID:         agentID,
 		CallerSessionID: callMetaFrom(ctx).SessionID,
 		Nested:          startedBySessionsSend(ctx),
+		FromCron:        cron.JobFrom(ctx) != "",
 		Send: func(sessionID, message string) error {
 			// The target turn runs on its own clock: the calling turn must not
 			// wait on it, and must not cancel it by finishing first.
@@ -777,6 +782,9 @@ func (a runtimeTools) callOps(ctx context.Context, agentID string, call llm.Tool
 			}()
 			return nil
 		},
+	}
+	if fire := rt.CronFire; fire != nil {
+		env.RunCron = func(job *store.CronJob) error { return cron.StartJob(rt.Store, job, fire) }
 	}
 	var body string
 	var err error

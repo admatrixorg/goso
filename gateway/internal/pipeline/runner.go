@@ -195,6 +195,7 @@ func (r *Runner) Run(ctx context.Context, sessionID, userText string, mode Mode)
 	if err := r.loadHistory(st); err != nil {
 		return nil, err
 	}
+	st.Messages = AttachTurnImages(ctx, r.LLM, st.Messages)
 	st.RecallNote, _ = r.recall(st, userText)
 	r.attachPrompt(st)
 	if r.Tools != nil {

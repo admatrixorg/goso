@@ -11,12 +11,20 @@ type ImagePart struct {
 	Data []byte
 }
 
+// ImageAccepter is implemented by a provider outside this package that
+// encodes Message.Images (tests, wrappers).
+type ImageAccepter interface {
+	AcceptsImages() bool
+}
+
 // SupportsImages reports whether p encodes Message.Images on the wire.
 // Echo and other providers would silently drop the image.
 func SupportsImages(p Provider) bool {
-	switch p.(type) {
+	switch v := p.(type) {
 	case *OpenAI, *Anthropic:
 		return true
+	case ImageAccepter:
+		return v.AcceptsImages()
 	}
 	return false
 }
