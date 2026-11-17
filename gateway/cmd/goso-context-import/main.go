@@ -34,6 +34,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "default: dry-run, writes nothing. --apply writes. --apply together with --dry-run is an error.")
 		fmt.Fprintln(stderr, "--deny-file is required (or GOSO_TENANT_DENYLIST). A missing, empty, or malformed file stops before any work.")
 		fmt.Fprintln(stderr, "--rollback counts mapped files for --tenant. --rollback --apply deletes only those whose body is unchanged.")
+		fmt.Fprintln(stderr, "user rows land in scope agent_user (that agent's file for the user). A rerun moves unchanged tenant-wide copies from older imports there (report: migrated); edited copies stay (report: legacy_kept).")
 	}
 	exportPath := fs.String("export", "", "JSON or JSONL export of agent_context_files and user_context_files")
 	source := fs.String("source-tenant", "", "export tenant_id to keep; other tenants are rejected")

@@ -105,7 +105,7 @@ func TestCLIDryRunIsDefaultAndRerunWritesNothing(t *testing.T) {
 	if err != nil || got.Body != "Chiết khấu tối đa của Minh An là 9 phần trăm." {
 		t.Fatalf("stored %+v %v", got, err)
 	}
-	lan, err := st.GetContextFile("minh-an", store.ContextScopeUser, "lan", "USER.md")
+	lan, err := st.GetContextFile("minh-an", store.ContextScopeAgentUser, store.AgentUserOwner(ag.ID, "lan"), "USER.md")
 	if err != nil || lan.Body != "Lan chỉ nhận báo giá một dòng." {
 		t.Fatalf("user %+v %v", lan, err)
 	}

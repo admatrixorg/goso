@@ -185,8 +185,9 @@ func openMapper(st store.StoreIface, write bool) (mapper, error) {
 			return &sqlMapper{db: db, pg: pg}, nil
 		}
 	}
-	key := fmt.Sprintf("%p", st)
-	v, _ := memMaps.LoadOrStore(key, &memMapper{})
+	// Key on the store value itself. A "%p" string let a new store at a
+	// freed address inherit an old store's rows, which made tests flaky.
+	v, _ := memMaps.LoadOrStore(st, &memMapper{})
 	return v.(*memMapper), nil
 }
 
