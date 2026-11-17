@@ -388,26 +388,85 @@ func (s *SQLiteStore) searchVaultInstr(tenant, q string, v VaultViewer) ([]Vault
 	return out, nil
 }
 
+// ReResolveVaultLinks points every wikilink at the doc it names now: a
+// case-insensitive title match in the link's tenant (first by path), else a
+// doc id in that tenant, else nothing. It reads links and doc titles once and
+// writes only the links whose target changed. Every vault write calls it, so
+// a per-link query here made each write cost two queries per link in the
+// whole database.
 func (s *SQLiteStore) ReResolveVaultLinks() error {
-	rows, err := s.db.Query(`SELECT l.from_id, l.raw, d.tenant_id FROM vault_links l JOIN vault_docs d ON d.id = l.from_id`)
+	type docKey struct{ tenant, key string }
+	byTitle := make(map[docKey]string)
+	byID := make(map[docKey]bool)
+	docs, err := s.db.Query(`SELECT id, title, tenant_id FROM vault_docs ORDER BY tenant_id, path`)
 	if err != nil {
 		return err
 	}
-	type pair struct{ from, raw, tenant string }
-	var all []pair
-	for rows.Next() {
-		var p pair
-		if err := rows.Scan(&p.from, &p.raw, &p.tenant); err != nil {
-			continue
+	for docs.Next() {
+		var id, title string
+		var tenant sql.NullString
+		if err := docs.Scan(&id, &title, &tenant); err != nil {
+			docs.Close()
+			return err
 		}
-		all = append(all, p)
+		t := NormalizeTenant(tenant.String)
+		k := docKey{t, strings.ToLower(title)}
+		if _, ok := byTitle[k]; !ok {
+			byTitle[k] = id
+		}
+		byID[docKey{t, id}] = true
+	}
+	if err := docs.Err(); err != nil {
+		docs.Close()
+		return err
+	}
+	docs.Close()
+
+	rows, err := s.db.Query(`SELECT l.from_id, l.raw, l.to_id, d.tenant_id FROM vault_links l JOIN vault_docs d ON d.id = l.from_id`)
+	if err != nil {
+		return err
+	}
+	type change struct{ from, raw, to string }
+	var changes []change
+	for rows.Next() {
+		var from, raw string
+		var to, tenant sql.NullString
+		if err := rows.Scan(&from, &raw, &to, &tenant); err != nil {
+			rows.Close()
+			return err
+		}
+		t := NormalizeTenant(tenant.String)
+		want := ""
+		if inner := strings.TrimSpace(vaultInner(raw)); inner != "" {
+			if id, ok := byTitle[docKey{t, strings.ToLower(inner)}]; ok {
+				want = id
+			} else if byID[docKey{t, inner}] {
+				want = inner
+			}
+		}
+		if want != to.String {
+			changes = append(changes, change{from, raw, want})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	rows.Close()
-	for _, p := range all {
-		toID := s.resolveVaultInner(p.tenant, vaultInner(p.raw))
-		_, _ = s.db.Exec(`UPDATE vault_links SET to_id=? WHERE from_id=? AND raw=?`, toID, p.from, p.raw)
+	if len(changes) == 0 {
+		return nil
 	}
-	return nil
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, c := range changes {
+		if _, err := tx.Exec(`UPDATE vault_links SET to_id=? WHERE from_id=? AND raw=?`, c.to, c.from, c.raw); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // normalizeVaultDocAccess validates the scope fields of a write. An empty
