@@ -21,13 +21,13 @@ const (
 
 // ProviderInfo is a public listing row. Never includes api_key.
 type ProviderInfo struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	BaseURL string `json:"base_url"`
-	Model   string `json:"model"`
-	KeySet  bool   `json:"key_set"`
-	Source  string `json:"source"`
-	Enabled bool   `json:"enabled"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	BaseURL      string `json:"base_url"`
+	Model        string `json:"model"`
+	KeySet       bool   `json:"key_set"`
+	Source       string `json:"source"`
+	Enabled      bool   `json:"enabled"`
 	ID           string `json:"id,omitempty"`
 	DisplayName  string `json:"display_name,omitempty"`
 	ProviderType string `json:"provider_type,omitempty"`
