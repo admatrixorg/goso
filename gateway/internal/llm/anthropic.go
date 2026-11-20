@@ -58,7 +58,7 @@ func (a *Anthropic) call(ctx context.Context, messages []Message, stream bool, o
 	if a.APIKey == "" {
 		return "", Usage{}, fmt.Errorf("anthropic: missing API key")
 	}
-	base := a.BaseURL
+	base := rewriteLoopbackURL(a.BaseURL)
 	if base == "" {
 		base = "https://api.anthropic.com"
 	}

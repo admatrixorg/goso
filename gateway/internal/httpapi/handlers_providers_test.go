@@ -420,3 +420,55 @@ func TestProviders_TestErrorNeverLeaksKey(t *testing.T) {
 		t.Fatalf("want redacted failure %+v", tr)
 	}
 }
+
+func TestProviders_CreateGoClawOpenAICompat(t *testing.T) {
+	clearLLMEnv(t)
+	master, err := secrets.RandomKeyHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOSO_MASTER_KEY", master)
+	st := store.New()
+	h := providerRouter(t, st)
+	body := `{"name":"acme","display_name":"Acme","provider_type":"openai_compat","api_base":"https://api.openai.com/v1","api_key":"sk-test","enabled":true}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"type":"openai-compat"`) {
+		t.Fatalf("want openai-compat, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"provider_type":"openai-compat"`) {
+		t.Fatalf("missing provider_type alias: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"api_base":"https://api.openai.com/v1"`) {
+		t.Fatalf("missing api_base alias: %s", w.Body.String())
+	}
+}
+
+func TestProviders_ModelsAndVerifyRoutes(t *testing.T) {
+	clearLLMEnv(t)
+	st := store.New()
+	h := providerRouter(t, st)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/providers/echo/models", nil))
+	if w.Code != 200 {
+		t.Fatalf("models %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"id":"echo"`) {
+		t.Fatalf("echo model: %s", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers/echo/verify", strings.NewReader(`{"model":"echo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("verify %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"valid":true`) {
+		t.Fatalf("verify body %s", w.Body.String())
+	}
+}

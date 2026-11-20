@@ -95,6 +95,7 @@ Environment:
   GOSO_OPENAI_API_KEY      OpenAI key (optional)
   GOSO_OPENROUTER_API_KEY  Named OpenAI-compat (also GROQ, DEEPSEEK, GEMINI, MISTRAL, XAI, MINIMAX, DASHSCOPE)
   GOSO_ROUTER9_BASE_URL    Construct named provider router9 when set (key optional)
+  GOSO_LOOPBACK_HOST       Rewrite localhost/127.0.0.1/::1 in LLM base URLs (compose: host.docker.internal)
   GOSO_WEB_SEARCH          builtin web_search: 1 = brave,exa,tavily,ddg; or a list (tavily,ddg); ddg = DuckDuckGo only (empty = not_configured)
   GOSO_BRAVE_API_KEY       Brave Search key for web_search (keyless providers are skipped)
   GOSO_EXA_API_KEY         Exa search key for web_search

@@ -68,10 +68,29 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 		if provider == nil {
 			provider = llm.Echo{}
 		}
+		goclawOK := false
 		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				return
+			}
+			var probe struct {
+				Type string `json:"type"`
+				Op   string `json:"op"`
+			}
+			if err := json.Unmarshal(msg, &probe); err != nil {
+				_ = conn.WriteJSON(wsFrame{Op: "error", Payload: jsonRaw(`{"error":"invalid json"}`)})
+				continue
+			}
+			if probe.Type == "req" {
+				var now bool
+				var err error
+				now, err = handleGoClawReq(r.Context(), conn, st, provider, msg, goclawOK)
+				if err != nil {
+					return
+				}
+				goclawOK = now
+				continue
 			}
 			var frame wsFrame
 			if err := json.Unmarshal(msg, &frame); err != nil {

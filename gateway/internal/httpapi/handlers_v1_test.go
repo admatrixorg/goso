@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -69,8 +70,8 @@ func TestV1DoesNotInventCRUD(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/agents/"+a.ID, nil))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("GET /v1/agents/{id} must not be invented, got %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /v1/agents/{id} %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -115,5 +116,43 @@ func assertSameGET(t *testing.T, h http.Handler, apiPath, v1Path string) {
 	}
 	if wAPI.Body.String() != wV1.Body.String() {
 		t.Fatalf("GET %s vs %s body mismatch\n%s\n%s", apiPath, v1Path, wAPI.Body.String(), wV1.Body.String())
+	}
+}
+
+func TestV1CreateAgentAcceptsProviderField(t *testing.T) {
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	body := `{"agent_key":"desk","display_name":"Desk","provider":"echo","model":"echo","agent_description":"hi"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("POST /v1/agents %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"agent_key":"desk"`) {
+		t.Fatalf("body %s", w.Body.String())
+	}
+}
+
+func TestV1ListAgentsIncludesGoClawStatus(t *testing.T) {
+	_, h := newTestServer()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/agents", strings.NewReader(`{"agent_key":"chatbot","display_name":"Bot"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/agents", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"status":"active"`) {
+		t.Fatalf("missing status=active %s", body)
+	}
+	if !strings.Contains(body, `"agent_key":"chatbot"`) {
+		t.Fatalf("missing agent_key %s", body)
 	}
 }
