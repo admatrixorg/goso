@@ -226,7 +226,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			View:     viewToken,
 			Pairing:  pairing,
 			Keys:     apikey.Default(),
-			Bypass:   []string{"/healthz", "/api/webhooks/llm"},
+			Bypass:   []string{"/healthz", "/ws", "/api/webhooks/llm"},
 			SelfAuth: channelSelfAuth,
 		})(handler)
 	}

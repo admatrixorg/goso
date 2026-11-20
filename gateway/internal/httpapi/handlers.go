@@ -214,11 +214,12 @@ func routerBase(opt Options) *http.ServeMux {
 	})
 
 	// Agents
-	mux.HandleFunc("POST /api/agents", handleCreateAgent(st, ev, al))
+	aliasAPI(mux, "POST /api/agents", handleCreateAgent(st, ev, al))
 	aliasAPI(mux, "GET /api/agents", handleListAgents(st))
-	mux.HandleFunc("GET /api/agents/{id}", handleGetAgent(st))
-	mux.HandleFunc("PATCH /api/agents/{id}", handlePatchAgent(st, ev, al))
-	mux.HandleFunc("DELETE /api/agents/{id}", handleDeleteAgent(st, ev, al))
+	aliasAPI(mux, "GET /api/agents/{id}", handleGetAgent(st))
+	aliasAPI(mux, "PATCH /api/agents/{id}", handlePatchAgent(st, ev, al))
+	aliasAPI(mux, "PUT /api/agents/{id}", handlePatchAgent(st, ev, al))
+	aliasAPI(mux, "DELETE /api/agents/{id}", handleDeleteAgent(st, ev, al))
 
 	// Sessions
 	mux.HandleFunc("POST /api/sessions", handleCreateSession(st))
@@ -290,7 +291,9 @@ func handleCreateAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.S
 			DisplayName       string `json:"display_name"`
 			Model             string `json:"model"`
 			LLMProvider       string `json:"llm_provider"`
+			Provider          string `json:"provider"`
 			Instructions      string `json:"instructions"`
+			AgentDescription  string `json:"agent_description"`
 			OrchestrationMode string `json:"orchestration_mode"`
 			Enabled           *bool  `json:"enabled"`
 		}
@@ -309,6 +312,12 @@ func handleCreateAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.S
 			return
 		}
 		body.LLMProvider = strings.TrimSpace(body.LLMProvider)
+		if body.LLMProvider == "" {
+			body.LLMProvider = strings.TrimSpace(body.Provider)
+		}
+		if strings.TrimSpace(body.Instructions) == "" {
+			body.Instructions = strings.TrimSpace(body.AgentDescription)
+		}
 		if rejectUnknownProvider(w, st, body.LLMProvider, body.Model) {
 			return
 		}
@@ -357,7 +366,7 @@ func handleCreateAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.S
 			Action: "create", Entity: "agent", EntityID: a.ID,
 			After: auditMeta(true, map[string]any{"agent_key": a.AgentKey, "enabled": a.Enabled}),
 		})
-		writeJSON(w, http.StatusCreated, a)
+		writeJSON(w, http.StatusCreated, publicAgentView(a, false, false))
 	}
 }
 
@@ -367,9 +376,10 @@ func handleListAgents(st store.StoreIface) http.HandlerFunc {
 		if list == nil {
 			list = []*store.Agent{}
 		}
-		out := make([]*store.Agent, 0, len(list))
+		defaultKey := firstEnabledAgentKey(list)
+		out := make([]publicAgent, 0, len(list))
 		for _, a := range list {
-			out = append(out, agentListView(a))
+			out = append(out, publicAgentView(a, true, a.AgentKey == defaultKey))
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"agents": out})
 	}
@@ -384,6 +394,38 @@ func agentListView(a *store.Agent) *store.Agent {
 	return &cp
 }
 
+// publicAgent is the GoClaw UI shape. Chat filters status==="active".
+type publicAgent struct {
+	store.Agent
+	Status    string `json:"status"`
+	Provider  string `json:"provider,omitempty"`
+	IsDefault bool   `json:"is_default"`
+}
+
+func publicAgentView(a *store.Agent, hideInstructions, isDefault bool) publicAgent {
+	if a == nil {
+		return publicAgent{}
+	}
+	cp := *a
+	if hideInstructions {
+		cp.Instructions = ""
+	}
+	status := "disabled"
+	if cp.Enabled {
+		status = "active"
+	}
+	return publicAgent{Agent: cp, Status: status, Provider: cp.LLMProvider, IsDefault: isDefault}
+}
+
+func firstEnabledAgentKey(list []*store.Agent) string {
+	for _, a := range list {
+		if a != nil && a.Enabled {
+			return a.AgentKey
+		}
+	}
+	return ""
+}
+
 func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -392,7 +434,7 @@ func handleGetAgent(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, a)
+		writeJSON(w, http.StatusOK, publicAgentView(a, false, false))
 	}
 }
 
@@ -408,7 +450,9 @@ func handlePatchAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.St
 			OrchestrationMode *string `json:"orchestration_mode"`
 			Model             *string `json:"model"`
 			LLMProvider       *string `json:"llm_provider"`
+			Provider          *string `json:"provider"`
 			Instructions      *string `json:"instructions"`
+			AgentDescription  *string `json:"agent_description"`
 			Enabled           *bool   `json:"enabled"`
 			IfUpdatedAt       *string `json:"if_updated_at"`
 		}
@@ -447,14 +491,23 @@ func handlePatchAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.St
 		if body.Model != nil {
 			upd.Model = *body.Model
 		}
-		if body.LLMProvider != nil {
-			upd.LLMProvider = strings.TrimSpace(*body.LLMProvider)
+		if body.LLMProvider != nil || body.Provider != nil {
+			p := ""
+			if body.LLMProvider != nil {
+				p = strings.TrimSpace(*body.LLMProvider)
+			}
+			if p == "" && body.Provider != nil {
+				p = strings.TrimSpace(*body.Provider)
+			}
+			upd.LLMProvider = p
 			if rejectUnknownProvider(w, st, upd.LLMProvider, upd.Model) {
 				return
 			}
 		}
 		if body.Instructions != nil {
 			upd.Instructions = *body.Instructions
+		} else if body.AgentDescription != nil {
+			upd.Instructions = *body.AgentDescription
 		}
 		if body.Enabled != nil {
 			upd.Enabled = *body.Enabled
@@ -486,7 +539,7 @@ func handlePatchAgent(st store.StoreIface, ev *eventstore.Store, al *auditlog.St
 			Before: auditMeta(true, map[string]any{"enabled": cur.Enabled}),
 			After:  auditMeta(true, map[string]any{"enabled": a.Enabled}),
 		})
-		writeJSON(w, http.StatusOK, a)
+		writeJSON(w, http.StatusOK, publicAgentView(a, false, false))
 	}
 }
 

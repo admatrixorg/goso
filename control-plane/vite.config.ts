@@ -1,20 +1,34 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      "/healthz": { target: "http://127.0.0.1:8080", changeOrigin: true },
-      "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
-      "/ws": { target: "ws://127.0.0.1:8080", ws: true, changeOrigin: true },
-      // Optional CORS-free path to goso-crm (default http://127.0.0.1:8082).
-      // Set VITE_GOSOCRM_API_URL=/crm-api or leave unset to use this prefix.
-      "/crm-api": {
-        target: "http://127.0.0.1:8082",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/crm-api/, ""),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const backendPort = env.VITE_BACKEND_PORT || "8080";
+  const backendHost = env.VITE_BACKEND_HOST || "127.0.0.1";
+  const target = "http://" + backendHost + ":" + backendPort;
+
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
     },
-  },
+    server: {
+      port: 3000,
+      proxy: {
+        "/ws": { target, ws: true, changeOrigin: true },
+        "/v1": { target, changeOrigin: true, timeout: 30000 },
+        "/api": { target, changeOrigin: true, timeout: 30000 },
+        "/health": { target, changeOrigin: true },
+        "/healthz": { target, changeOrigin: true },
+      },
+    },
+    build: {
+      outDir: "dist",
+      emptyOutDir: true,
+    },
+  };
 });

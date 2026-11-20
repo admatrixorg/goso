@@ -1,0 +1,21 @@
+/* Ontology radius. --radius.base is 0.75rem. Cards and dialogs use --radius-lg. */
+:root {
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xs: 3px;
+  --radius-2xl: var(--radius-xl);
+  --radius-card: var(--radius-lg);
+  --radius-modal: var(--radius-lg);
+  --radius-full: 999px;
+
+  --border-width: 1px;
+  --border-card: 1px solid var(--border);
+  --border-divider: 1px solid var(--border);
+  --focus-ring: 0 0 0 3px color-mix(in oklch, var(--ring) 45%, transparent);
+
+  --shadow-none: none;
+  --shadow-modal: 0 20px 60px oklch(0 0 0 / 0.28);
+}

@@ -22,7 +22,14 @@ const mime = {
 };
 
 function shouldProxy(pathname) {
-  return pathname === "/healthz" || pathname === "/metrics" || pathname.startsWith("/api") || pathname.startsWith("/ws");
+  return (
+    pathname === "/healthz" ||
+    pathname === "/health" ||
+    pathname === "/metrics" ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/v1") ||
+    pathname.startsWith("/ws")
+  );
 }
 
 function proxy(req, res) {

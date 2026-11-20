@@ -1,0 +1,35 @@
+/* Inter for UI, JetBrains Mono for code. Page title matches PageHeader (text-2xl). */
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: var(--font-sans);
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --fs-page-title: 1.5rem;
+  --fs-metric-xl: 30px;
+  --fs-metric-lg: 26px;
+  --fs-metric-md: 22px;
+  --fs-metric-sm: 20px;
+  --fs-section: 14.5px;
+  --fs-card-title: 0.875rem;
+  --fs-body: 0.875rem;
+  --fs-table: 0.8125rem;
+  --fs-meta: 0.75rem;
+  --fs-micro: 0.75rem;
+  --fs-badge: 0.75rem;
+  --fs-caption: 0.6875rem;
+  --fs-eyebrow: 0.625rem;
+  --text-2xs: 10px;
+  --text-xs-plus: 11px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --ls-metric: -.5px;
+  --ls-title: -.025em;
+  --ls-eyebrow: .06em;
+  --ls-eyebrow-wide: .08em;
+
+  --num-tabular: tabular-nums;
+}

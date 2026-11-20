@@ -22,8 +22,11 @@ func registerProviderRoutes(mux *http.ServeMux, opt Options) {
 	aliasAPI(mux, "GET /api/providers", handleListProviders(opt))
 	aliasAPI(mux, "POST /api/providers", handleCreateProvider(opt))
 	aliasAPI(mux, "PATCH /api/providers/{name}", handlePatchProvider(opt))
+	aliasAPI(mux, "PUT /api/providers/{name}", handlePatchProvider(opt))
 	aliasAPI(mux, "DELETE /api/providers/{name}/key", handleDeleteProviderKey(opt))
 	aliasAPI(mux, "POST /api/providers/{name}/test", handleTestProvider(opt))
+	aliasAPI(mux, "GET /api/providers/{name}/models", handleListProviderModels(opt))
+	aliasAPI(mux, "POST /api/providers/{name}/verify", handleVerifyProvider(opt))
 }
 
 func handleListProviders(opt Options) http.HandlerFunc {
@@ -42,7 +45,7 @@ func mergeProviderInfosTenant(opt Options, tid string) []llm.ProviderInfo {
 				continue
 			}
 		}
-		out = append(out, inf)
+		out = append(out, inf.WithGoClawAliases())
 	}
 	return out
 }
@@ -59,7 +62,7 @@ func mergeProviderInfos(opt Options) []llm.ProviderInfo {
 	}
 	out := make([]llm.ProviderInfo, 0, len(env)+4)
 	for _, inf := range env {
-		out = append(out, inf)
+		out = append(out, inf.WithGoClawAliases())
 	}
 	if opt.Store != nil {
 		for _, row := range opt.Store.ListLLMProviders() {
@@ -81,7 +84,7 @@ func mergeProviderInfos(opt Options) []llm.ProviderInfo {
 				KeySet:  keySet,
 				Source:  llm.SourceSQLite,
 				Enabled: row.Enabled,
-			})
+			}.WithGoClawAliases())
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -91,19 +94,22 @@ func mergeProviderInfos(opt Options) []llm.ProviderInfo {
 func publicProvider(opt Options, name string) llm.ProviderInfo {
 	for _, inf := range mergeProviderInfos(opt) {
 		if inf.Name == name {
-			return inf
+			return inf.WithGoClawAliases()
 		}
 	}
-	return llm.ProviderInfo{Name: name, Source: llm.SourceSQLite}
+	return llm.ProviderInfo{Name: name, Source: llm.SourceSQLite}.WithGoClawAliases()
 }
 
 type providerWrite struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	BaseURL string `json:"base_url"`
-	Model   string `json:"model"`
-	APIKey  string `json:"api_key"`
-	Enabled *bool  `json:"enabled"`
+	Name         string `json:"name"`
+	DisplayName  string `json:"display_name"`
+	Type         string `json:"type"`
+	ProviderType string `json:"provider_type"`
+	BaseURL      string `json:"base_url"`
+	APIBase      string `json:"api_base"`
+	Model        string `json:"model"`
+	APIKey       string `json:"api_key"`
+	Enabled      *bool  `json:"enabled"`
 }
 
 func handleCreateProvider(opt Options) http.HandlerFunc {
@@ -118,15 +124,18 @@ func handleCreateProvider(opt Options) http.HandlerFunc {
 			return
 		}
 		body.Name = strings.TrimSpace(body.Name)
-		body.Type = strings.TrimSpace(body.Type)
-		body.BaseURL = strings.TrimSpace(body.BaseURL)
+		if body.Name == "" {
+			body.Name = strings.TrimSpace(body.DisplayName)
+		}
+		body.Type = llm.CanonicalType(firstNonEmpty(body.Type, body.ProviderType))
+		body.BaseURL = firstNonEmpty(body.BaseURL, body.APIBase)
 		body.Model = strings.TrimSpace(body.Model)
 		key := strings.TrimSpace(body.APIKey)
 		if body.Name == "" {
 			writeErr(w, http.StatusBadRequest, "name is required")
 			return
 		}
-		if !llm.ValidType(body.Type) {
+		if body.Type == "" {
 			writeErr(w, http.StatusBadRequest, "unknown type")
 			return
 		}
@@ -209,29 +218,39 @@ func handlePatchProvider(opt Options) http.HandlerFunc {
 			return
 		}
 		var body struct {
-			Type    *string `json:"type"`
-			BaseURL *string `json:"base_url"`
-			Model   *string `json:"model"`
-			APIKey  *string `json:"api_key"`
-			Enabled *bool   `json:"enabled"`
+			Type         *string `json:"type"`
+			ProviderType *string `json:"provider_type"`
+			BaseURL      *string `json:"base_url"`
+			APIBase      *string `json:"api_base"`
+			Model        *string `json:"model"`
+			APIKey       *string `json:"api_key"`
+			Enabled      *bool   `json:"enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 		upd := *cur
+		rawType := ""
 		if body.Type != nil {
-			t := strings.TrimSpace(*body.Type)
-			if t != "" && !llm.ValidType(t) {
+			rawType = strings.TrimSpace(*body.Type)
+		}
+		if rawType == "" && body.ProviderType != nil {
+			rawType = strings.TrimSpace(*body.ProviderType)
+		}
+		if rawType != "" {
+			c := llm.CanonicalType(rawType)
+			if c == "" {
 				writeErr(w, http.StatusBadRequest, "unknown type")
 				return
 			}
-			if t != "" {
-				upd.Type = t
-			}
+			upd.Type = c
 		}
 		if body.BaseURL != nil {
 			upd.BaseURL = strings.TrimSpace(*body.BaseURL)
+		}
+		if (upd.BaseURL == "" || body.BaseURL == nil) && body.APIBase != nil {
+			upd.BaseURL = strings.TrimSpace(*body.APIBase)
 		}
 		if body.Model != nil {
 			upd.Model = strings.TrimSpace(*body.Model)
@@ -386,4 +405,78 @@ func resolveProvider(opt Options, name, tid string) (llm.Provider, bool) {
 		return nil, false
 	}
 	return p, true
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func handleListProviderModels(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		p, ok := resolveProvider(opt, name, requestTenant(r))
+		if !ok {
+			writeErr(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		res := llm.Probe(ctx, p, "models")
+		models := make([]map[string]string, 0)
+		seen := map[string]bool{}
+		for _, id := range res.Models {
+			id = strings.TrimSpace(id)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			models = append(models, map[string]string{"id": id, "name": id})
+		}
+		if inf := publicProvider(opt, name); inf.Model != "" && !seen[inf.Model] {
+			models = append([]map[string]string{{"id": inf.Model, "name": inf.Model}}, models...)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"models": models})
+	}
+}
+
+func handleVerifyProvider(opt Options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(r.PathValue("name"))
+		var body struct {
+			Model string `json:"model"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+		p, ok := resolveProvider(opt, name, requestTenant(r))
+		if !ok {
+			writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "provider not found"})
+			return
+		}
+		model := strings.TrimSpace(body.Model)
+		if model != "" {
+			resolved, err := llm.Resolve(opt.Store, name, model, p)
+			if err == nil {
+				p = resolved
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		res := llm.Probe(ctx, p, "chat")
+		out := map[string]any{"valid": res.OK}
+		if !res.OK {
+			errMsg := strings.TrimSpace(res.Error)
+			if errMsg == "" {
+				errMsg = "verification failed"
+			}
+			out["error"] = errMsg
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
 }

@@ -62,6 +62,27 @@ func APIKeySecretName(name string) string {
 }
 
 // ValidType reports whether typ is one of the four configure types.
+
+// CanonicalType maps UI/GoClaw type names onto the four persisted types.
+// Empty means the input is not a known type.
+func CanonicalType(typ string) string {
+	t := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(typ), "-", "_"))
+	switch t {
+	case "echo":
+		return TypeEcho
+	case "anthropic", "anthropic_native":
+		return TypeAnthropic
+	case "router9":
+		return TypeRouter9
+	case "openai_compat", "openai", "custom", "openrouter", "groq", "deepseek", "mistral", "xai",
+		"novita", "cohere", "perplexity", "dashscope", "bailian", "yescale", "zai", "zai_coding",
+		"byteplus", "byteplus_coding", "kimi_coding", "ollama", "ollama_cloud", "gemini_native",
+		"vertex", "minimax_native":
+		return TypeOpenAICompat
+	default:
+		return ""
+	}
+}
 func ValidType(typ string) bool {
 	switch strings.TrimSpace(typ) {
 	case TypeOpenAICompat, TypeAnthropic, TypeEcho, TypeRouter9:
@@ -75,7 +96,7 @@ func ValidType(typ string) bool {
 func Build(name, typ, baseURL, model, apiKey string) (Provider, error) {
 	name = strings.TrimSpace(name)
 	typ = strings.TrimSpace(typ)
-	baseURL = strings.TrimSpace(baseURL)
+	baseURL = rewriteLoopbackURL(strings.TrimSpace(baseURL))
 	model = strings.TrimSpace(model)
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -148,6 +169,7 @@ func probeModels(ctx context.Context, p Provider) TestResult {
 		return TestResult{OK: true, LatencyMS: time.Since(start).Milliseconds(), Models: []string{"echo"}}
 	}
 	base, key, client, anthropic := httpMeta(p)
+	base = rewriteLoopbackURL(base)
 	if base == "" {
 		return TestResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: "no base_url"}
 	}

@@ -28,6 +28,26 @@ type ProviderInfo struct {
 	KeySet  bool   `json:"key_set"`
 	Source  string `json:"source"`
 	Enabled bool   `json:"enabled"`
+	ID           string `json:"id,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+	ProviderType string `json:"provider_type,omitempty"`
+	APIBase      string `json:"api_base,omitempty"`
+}
+
+func (p ProviderInfo) WithGoClawAliases() ProviderInfo {
+	if p.ID == "" {
+		p.ID = p.Name
+	}
+	if p.DisplayName == "" {
+		p.DisplayName = p.Name
+	}
+	if p.ProviderType == "" {
+		p.ProviderType = p.Type
+	}
+	if p.APIBase == "" {
+		p.APIBase = p.BaseURL
+	}
+	return p
 }
 
 // Registry holds available providers based on env.
@@ -65,10 +85,11 @@ func NewRegistry() *Registry {
 			if u == "" {
 				continue
 			}
-			base = u
+			base = rewriteLoopbackURL(u)
 		} else if key == "" {
 			continue
 		}
+		base = rewriteLoopbackURL(base)
 		model := strings.TrimSpace(os.Getenv(spec.EnvModel))
 		if model == "" {
 			model = spec.Model

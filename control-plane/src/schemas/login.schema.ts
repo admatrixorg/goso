@@ -1,0 +1,19 @@
+import { z } from "zod";
+
+export const tokenFormSchema = z.object({
+  userId: z.string().min(1, "Required"),
+  token: z.string().min(1, "Required"),
+});
+
+export const pairingFormSchema = z.object({
+  userId: z.string().min(1, "Required"),
+});
+
+export const emailFormSchema = z.object({
+  email: z.string().email("Invalid email"),
+  password: z.string().min(1, "Required"),
+});
+
+export type TokenFormData = z.infer<typeof tokenFormSchema>;
+export type PairingFormData = z.infer<typeof pairingFormSchema>;
+export type EmailFormData = z.infer<typeof emailFormSchema>;

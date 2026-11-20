@@ -89,7 +89,7 @@ func (o *OpenAI) complete(ctx context.Context, messages []Message, tools []ToolS
 	if o.APIKey == "" && !o.AllowEmptyKey {
 		return Reply{}, Usage{}, fmt.Errorf("%s: missing API key", o.Name())
 	}
-	base := o.BaseURL
+	base := rewriteLoopbackURL(o.BaseURL)
 	if base == "" {
 		base = "https://api.openai.com"
 	}
