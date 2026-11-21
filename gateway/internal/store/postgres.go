@@ -215,6 +215,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateVaultAccess(); err != nil {
 		return fmt.Errorf("postgres migrate vault access: %w", err)
 	}
+	if err := s.MigrateBrain(); err != nil {
+		return fmt.Errorf("postgres migrate brain: %w", err)
+	}
 	s.migrateVaultVectors()
 	return nil
 }

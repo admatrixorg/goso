@@ -529,6 +529,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateVaultAccess(); err != nil {
 		return err
 	}
+	if err := s.MigrateBrain(); err != nil {
+		return err
+	}
 	return nil
 }
 
