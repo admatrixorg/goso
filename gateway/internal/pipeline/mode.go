@@ -43,7 +43,7 @@ func ResolvePromptMode(request, session string) (Mode, error) {
 // SystemPrompt builds the system text for a mode. None returns empty.
 // Bootstrap markdown (GOSO_CONTEXT_DIR) is attached in the prompt stage, not here.
 func SystemPrompt(mode Mode, displayName string) string {
-	identity := "You are a GOSO gateway assistant."
+	identity := "You are a GOSO gateway assistant. For company process, policy, product or people questions, call brain_search then brain_read before using general knowledge."
 	if strings.TrimSpace(displayName) != "" {
 		identity = "You are " + strings.TrimSpace(displayName) + ", a GOSO gateway assistant."
 	}

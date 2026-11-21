@@ -17,6 +17,7 @@ import { registerTeamTools } from "./register-team-tools.js";
 import { registerTraceTools } from "./register-trace-tools.js";
 import { registerChannelTools } from "./register-channel-tools.js";
 import { registerMemoryTools } from "./register-memory-tools.js";
+import { registerBrainTools } from "./register-brain-tools.js";
 import { logger } from "../lib/logger.js";
 
 export function registerAllTools(server: McpServer, client: GosoClient): void {
@@ -33,5 +34,6 @@ export function registerAllTools(server: McpServer, client: GosoClient): void {
   registerTraceTools(server, client);
   registerChannelTools(server, client);
   registerMemoryTools(server, client);
+  registerBrainTools(server, client);
   logger.info("All MCP tools registered");
 }

@@ -17,6 +17,7 @@ import { teamEndpoints } from "./endpoints/team-endpoints.js";
 import { traceEndpoints } from "./endpoints/trace-endpoints.js";
 import { channelEndpoints } from "./endpoints/channel-endpoints.js";
 import { memoryEndpoints } from "./endpoints/memory-endpoints.js";
+import { brainEndpoints } from "./endpoints/brain-endpoints.js";
 
 export interface GosoClientOptions {
   baseUrl: string;
@@ -41,6 +42,7 @@ export class GosoClient {
   public traces: ReturnType<typeof traceEndpoints>;
   public channels: ReturnType<typeof channelEndpoints>;
   public memory: ReturnType<typeof memoryEndpoints>;
+  public brain: ReturnType<typeof brainEndpoints>;
 
   constructor(options: GosoClientOptions) {
     this.http = new HttpClient(options);
@@ -58,5 +60,6 @@ export class GosoClient {
     this.traces = traceEndpoints(this.http);
     this.channels = channelEndpoints(this.http);
     this.memory = memoryEndpoints(this.http);
+    this.brain = brainEndpoints(this.http);
   }
 }
