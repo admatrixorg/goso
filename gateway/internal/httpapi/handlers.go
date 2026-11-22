@@ -195,7 +195,6 @@ func NewRouter(opt Options) http.Handler {
 	registerApprovalRoutes(mux, opt)
 	registerImportExportRoutes(mux, opt)
 	registerTTSRoutes(mux, opt)
-	registerBrainRoutes(mux, opt)
 	return mux
 }
 
