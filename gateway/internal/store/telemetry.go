@@ -8,71 +8,71 @@ import (
 
 // ActivityRow is one persisted audit row in the GoClaw shape.
 type ActivityRow struct {
-	ID          string `json:"id"`
-	TenantID    string `json:"-"`
-	ActorType   string `json:"actor_type"`
-	ActorID     string `json:"actor_id"`
-	Action      string `json:"action"`
-	EntityType  string `json:"entity_type"`
-	EntityID    string `json:"entity_id,omitempty"`
-	Details     string `json:"details,omitempty"`
-	IPAddress   string `json:"ip_address,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	ID         string `json:"id"`
+	TenantID   string `json:"-"`
+	ActorType  string `json:"actor_type"`
+	ActorID    string `json:"actor_id"`
+	Action     string `json:"action"`
+	EntityType string `json:"entity_type"`
+	EntityID   string `json:"entity_id,omitempty"`
+	Details    string `json:"details,omitempty"`
+	IPAddress  string `json:"ip_address,omitempty"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // TraceRow is one persisted run trace.
 type TraceRow struct {
-	ID               string `json:"id"`
-	TenantID         string `json:"-"`
-	AgentID          string `json:"agent_id,omitempty"`
-	UserID           string `json:"user_id,omitempty"`
-	SessionKey       string `json:"session_key,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	StartTime        string `json:"start_time"`
-	EndTime          string `json:"end_time,omitempty"`
-	DurationMS       int `json:"duration_ms"`
-	Name             string `json:"name,omitempty"`
-	Channel          string `json:"channel,omitempty"`
-	InputPreview     string `json:"input_preview,omitempty"`
-	OutputPreview    string `json:"output_preview,omitempty"`
-	TotalInputTokens int `json:"total_input_tokens"`
-	TotalOutputTokens int `json:"total_output_tokens"`
-	TotalCost        float64 `json:"total_cost"`
-	SpanCount        int `json:"span_count"`
-	LLMCallCount     int `json:"llm_call_count"`
-	ToolCallCount    int `json:"tool_call_count"`
-	Status           string `json:"status"`
-	Error            string `json:"error,omitempty"`
-	TeamID           string `json:"team_id,omitempty"`
-	ParentTraceID    string `json:"parent_trace_id,omitempty"`
-	CreatedAt        string `json:"created_at"`
+	ID                string  `json:"id"`
+	TenantID          string  `json:"-"`
+	AgentID           string  `json:"agent_id,omitempty"`
+	UserID            string  `json:"user_id,omitempty"`
+	SessionKey        string  `json:"session_key,omitempty"`
+	RunID             string  `json:"run_id,omitempty"`
+	StartTime         string  `json:"start_time"`
+	EndTime           string  `json:"end_time,omitempty"`
+	DurationMS        int     `json:"duration_ms"`
+	Name              string  `json:"name,omitempty"`
+	Channel           string  `json:"channel,omitempty"`
+	InputPreview      string  `json:"input_preview,omitempty"`
+	OutputPreview     string  `json:"output_preview,omitempty"`
+	TotalInputTokens  int     `json:"total_input_tokens"`
+	TotalOutputTokens int     `json:"total_output_tokens"`
+	TotalCost         float64 `json:"total_cost"`
+	SpanCount         int     `json:"span_count"`
+	LLMCallCount      int     `json:"llm_call_count"`
+	ToolCallCount     int     `json:"tool_call_count"`
+	Status            string  `json:"status"`
+	Error             string  `json:"error,omitempty"`
+	TeamID            string  `json:"team_id,omitempty"`
+	ParentTraceID     string  `json:"parent_trace_id,omitempty"`
+	CreatedAt         string  `json:"created_at"`
 }
 
 // SpanRow is one persisted span inside a trace.
 type SpanRow struct {
-	ID             string `json:"id"`
-	TenantID       string `json:"-"`
-	TraceID        string `json:"trace_id"`
-	ParentSpanID   string `json:"parent_span_id,omitempty"`
-	AgentID        string `json:"agent_id,omitempty"`
-	SpanType       string `json:"span_type"`
-	Name           string `json:"name,omitempty"`
-	StartTime      string `json:"start_time"`
-	EndTime        string `json:"end_time,omitempty"`
-	DurationMS     int `json:"duration_ms"`
-	Status         string `json:"status"`
-	Error          string `json:"error,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Provider       string `json:"provider,omitempty"`
-	InputTokens    int `json:"input_tokens"`
-	OutputTokens   int `json:"output_tokens"`
-	TotalCost      float64 `json:"total_cost"`
-	FinishReason   string `json:"finish_reason,omitempty"`
-	ToolName       string `json:"tool_name,omitempty"`
-	ToolCallID     string `json:"tool_call_id,omitempty"`
-	InputPreview   string `json:"input_preview,omitempty"`
-	OutputPreview  string `json:"output_preview,omitempty"`
-	Level          string `json:"level,omitempty"`
+	ID            string  `json:"id"`
+	TenantID      string  `json:"-"`
+	TraceID       string  `json:"trace_id"`
+	ParentSpanID  string  `json:"parent_span_id,omitempty"`
+	AgentID       string  `json:"agent_id,omitempty"`
+	SpanType      string  `json:"span_type"`
+	Name          string  `json:"name,omitempty"`
+	StartTime     string  `json:"start_time"`
+	EndTime       string  `json:"end_time,omitempty"`
+	DurationMS    int     `json:"duration_ms"`
+	Status        string  `json:"status"`
+	Error         string  `json:"error,omitempty"`
+	Model         string  `json:"model,omitempty"`
+	Provider      string  `json:"provider,omitempty"`
+	InputTokens   int     `json:"input_tokens"`
+	OutputTokens  int     `json:"output_tokens"`
+	TotalCost     float64 `json:"total_cost"`
+	FinishReason  string  `json:"finish_reason,omitempty"`
+	ToolName      string  `json:"tool_name,omitempty"`
+	ToolCallID    string  `json:"tool_call_id,omitempty"`
+	InputPreview  string  `json:"input_preview,omitempty"`
+	OutputPreview string  `json:"output_preview,omitempty"`
+	Level         string  `json:"level,omitempty"`
 }
 
 // TimelineRow is one run timeline entry.
@@ -230,8 +230,8 @@ func (s *SQLiteStore) ListActivity(tenant, action, entityType, actorID string, l
 	}
 	where, args := activityWhere(tenant, action, entityType, actorID)
 	var total int
-	_ = s.db.QueryRow(`SELECT count(*) FROM activity_logs` + where, args...).Scan(&total)
-	rows, err := s.db.Query(`SELECT id, tenant_id, actor_type, actor_id, action, entity_type, entity_id, details, ip_address, created_at FROM activity_logs` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+	_ = s.db.QueryRow(`SELECT count(*) FROM activity_logs`+where, args...).Scan(&total)
+	rows, err := s.db.Query(`SELECT id, tenant_id, actor_type, actor_id, action, entity_type, entity_id, details, ip_address, created_at FROM activity_logs`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return []*ActivityRow{}, total
@@ -300,8 +300,8 @@ func (s *SQLiteStore) ListTraces(tenant, agentID, status string, limit, offset i
 		args = append(args, strings.TrimSpace(status))
 	}
 	var total int
-	_ = s.db.QueryRow(`SELECT count(*) FROM traces` + w, args...).Scan(&total)
-	rows, err := s.db.Query(`SELECT ` + traceColumns + ` FROM traces` + w + ` ORDER BY start_time DESC LIMIT ? OFFSET ?`,
+	_ = s.db.QueryRow(`SELECT count(*) FROM traces`+w, args...).Scan(&total)
+	rows, err := s.db.Query(`SELECT `+traceColumns+` FROM traces`+w+` ORDER BY start_time DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return []*TraceRow{}, total
@@ -317,7 +317,7 @@ func (s *SQLiteStore) ListTraces(tenant, agentID, status string, limit, offset i
 }
 
 func (s *SQLiteStore) GetTrace(tenant, id string) (*TraceRow, error) {
-	row := s.db.QueryRow(`SELECT ` + traceColumns + ` FROM traces WHERE id=? AND tenant_id=?`,
+	row := s.db.QueryRow(`SELECT `+traceColumns+` FROM traces WHERE id=? AND tenant_id=?`,
 		strings.TrimSpace(id), NormalizeTenant(tenant))
 	t, err := scanTraceRow(row)
 	if err != nil {
@@ -333,7 +333,7 @@ func (s *SQLiteStore) InsertSpan(sp SpanRow) error {
 	if sp.ID == "" {
 		sp.ID = "sp_" + newID()
 	}
-	_, err := s.db.Exec(`INSERT INTO spans(` + spanColumns + `) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.db.Exec(`INSERT INTO spans(`+spanColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		sp.ID, sp.TenantID, sp.TraceID, sp.ParentSpanID, sp.AgentID, sp.SpanType, sp.Name,
 		sp.StartTime, sp.EndTime, sp.DurationMS, sp.Status, sp.Error, sp.Model, sp.Provider,
 		sp.InputTokens, sp.OutputTokens, sp.TotalCost, sp.FinishReason, sp.ToolName,
@@ -342,7 +342,7 @@ func (s *SQLiteStore) InsertSpan(sp SpanRow) error {
 }
 
 func (s *SQLiteStore) ListSpans(tenant, traceID string) []*SpanRow {
-	rows, err := s.db.Query(`SELECT ` + spanColumns + ` FROM spans WHERE trace_id=? ORDER BY start_time`, strings.TrimSpace(traceID))
+	rows, err := s.db.Query(`SELECT `+spanColumns+` FROM spans WHERE trace_id=? ORDER BY start_time`, strings.TrimSpace(traceID))
 	if err != nil {
 		return []*SpanRow{}
 	}

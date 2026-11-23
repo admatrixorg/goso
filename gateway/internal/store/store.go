@@ -67,7 +67,7 @@ type TeamTask struct {
 	Priority         int      `json:"priority"`
 	AssigneeAgentID  string   `json:"assignee_agent_id,omitempty"`
 	OwnerAgentID     string   `json:"owner_agent_id,omitempty"`
-	AssigneeUserID  string   `json:"assignee_user_id,omitempty"`
+	AssigneeUserID   string   `json:"assignee_user_id,omitempty"`
 	CreatedByAgentID string   `json:"created_by_agent_id,omitempty"`
 	ParentID         string   `json:"parent_id,omitempty"`
 	UserID           string   `json:"user_id,omitempty"`

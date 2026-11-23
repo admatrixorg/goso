@@ -384,7 +384,7 @@ func wsTeamTaskView(t *store.TeamTask) map[string]any {
 		"followup_count": t.FollowupCount, "followup_max": t.FollowupMax,
 		"followup_message": t.FollowupMessage, "followup_channel": t.FollowupChannel,
 		"followup_chat_id": t.FollowupChatID,
-		"created_at": t.CreatedAt, "updated_at": t.UpdatedAt,
+		"created_at":       t.CreatedAt, "updated_at": t.UpdatedAt,
 		"comment_count": t.CommentCount, "attachment_count": t.AttachmentCount,
 	}
 }
