@@ -215,6 +215,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateAuthSessions(); err != nil {
 		return fmt.Errorf("postgres migrate auth sessions: %w", err)
 	}
+	if err := s.migrateExtras(); err != nil {
+		return fmt.Errorf("postgres migrate extras: %w", err)
+	}
 	if err := s.migrateToolSettings(); err != nil {
 		return fmt.Errorf("postgres migrate tool settings: %w", err)
 	}

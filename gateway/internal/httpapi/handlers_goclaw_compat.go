@@ -13,6 +13,9 @@ import (
 
 func registerGoClawCompatRoutes(mux *http.ServeMux, opt Options) {
 	st := opt.Store
+	mux.HandleFunc("GET /v1/agents/{id}/kg/graph", handleRealKGGraph(st))
+	mux.HandleFunc("GET /v1/agents/{id}/kg/stats", handleRealKGStats(st))
+	mux.HandleFunc("GET /v1/agents/{id}/kg/entities", handleRealKGEntities(st))
 	mux.HandleFunc("GET /v1/vault/documents", remapJSON(handleListVaultDocs(st), func(m map[string]any) map[string]any {
 		docs := m["docs"]
 		if docs == nil {
@@ -41,11 +44,6 @@ func registerGoClawCompatRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /v1/system-configs", handleGoClawSystemConfigs(st))
 	mux.HandleFunc("GET /v1/tools/builtin", emptyList("tools"))
 	mux.HandleFunc("GET /v1/system/backup/s3/config", handleGoClawBackupS3())
-	mux.HandleFunc("GET /v1/mcp/servers", emptyList("servers"))
-	mux.HandleFunc("GET /v1/cli-credentials", emptyList("binaries"))
-	mux.HandleFunc("GET /v1/agents/{id}/kg/graph", handleGoClawKGGraph())
-	mux.HandleFunc("GET /v1/agents/{id}/kg/stats", handleGoClawKGStats())
-	mux.HandleFunc("GET /v1/agents/{id}/kg/entities", handleGoClawKGEntities())
 	mux.HandleFunc("GET /v1/agents/{id}/episodic", handleGoClawEpisodic(st))
 	mux.HandleFunc("GET /v1/agents/{id}/evolution/metrics", handleGoClawEvoMetrics(st))
 	mux.HandleFunc("GET /v1/agents/{id}/evolution/suggestions", handleEvolution(st))
@@ -200,24 +198,6 @@ func handleGoClawSystemConfigs(st store.StoreIface) http.HandlerFunc {
 func handleGoClawBackupS3() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "env_owned": false})
-	}
-}
-
-func handleGoClawKGGraph() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"nodes": []any{}, "edges": []any{}})
-	}
-}
-
-func handleGoClawKGStats() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"entities": 0, "relations": 0})
-	}
-}
-
-func handleGoClawKGEntities() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, []any{})
 	}
 }
 

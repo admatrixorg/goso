@@ -181,6 +181,7 @@ func NewRouter(opt Options) http.Handler {
 	registerPairingRoutes(mux, opt.Pairing)
 	registerAuthLoginRoutes(mux, opt.Store)
 	registerUserDirectoryRoutes(mux, opt.Store)
+	registerExtrasRoutes(mux, opt.Store)
 	registerGoClawCompatRoutes(mux, opt)
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)

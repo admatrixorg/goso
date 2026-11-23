@@ -529,6 +529,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateAuthSessions(); err != nil {
 		return fmt.Errorf("migrate auth sessions: %w", err)
 	}
+	if err := s.migrateExtras(); err != nil {
+		return fmt.Errorf("migrate extras: %w", err)
+	}
 	if err := s.migrateToolSettings(); err != nil {
 		return fmt.Errorf("migrate tool settings: %w", err)
 	}

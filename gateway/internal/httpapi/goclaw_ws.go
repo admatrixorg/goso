@@ -128,7 +128,9 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"agents": agents})
 	case "quota.usage":
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"enabled": false, "entries": []any{}})
-	case "cron.list", "cron.create", "cron.toggle", "cron.delete", "cron.run", "cron.runs", "channels.status", "agents.files.list", "agents.files.get", "agents.files.set", "heartbeat.get", "heartbeat.set", "heartbeat.toggle", "heartbeat.test", "heartbeat.logs", "heartbeat.checklist.get", "heartbeat.checklist.set", "heartbeat.targets", "config.permissions.list", "config.permissions.grant", "config.permissions.revoke", "config.permissions.check":
+	case "heartbeat.get", "heartbeat.set", "heartbeat.toggle", "heartbeat.test", "heartbeat.logs", "heartbeat.checklist.get", "heartbeat.checklist.set", "heartbeat.targets":
+		return authed, wsHeartbeat(conn, st, req, wsIdentity(state))
+	case "cron.list", "cron.create", "cron.toggle", "cron.delete", "cron.run", "cron.runs", "channels.status", "agents.files.list", "agents.files.get", "agents.files.set", "config.permissions.list", "config.permissions.grant", "config.permissions.revoke", "config.permissions.check":
 		return authed, handleGoClawExtra(conn, st, req)
 	case "teams.list", "teams.get", "teams.create", "teams.update", "teams.delete", "teams.members.add", "teams.members.remove", "teams.tasks.list", "teams.tasks.create", "teams.tasks.update", "config.get", "config.patch", "config.apply", "config.defaults", "skills.list", "skills.get", "exec.approval.list", "exec.approval.approve", "exec.approval.deny", "usage.get", "usage.summary", "pairing.list", "pairing.approve", "pairing.deny", "pairing.revoke", "logs.tail", "sessions.patch", "sessions.reset", "agents.links.list", "agents.links.create", "agents.links.update", "agents.links.delete", "cron.update", "chat.behavior.preview":
 		return authed, handleGoClawMore(conn, st, req)
@@ -184,4 +186,11 @@ func wsScopeTenant(state *wsConnState) string {
 		return ""
 	}
 	return state.Identity.TenantID
+}
+
+func wsIdentity(state *wsConnState) *auth.Identity {
+	if state == nil {
+		return nil
+	}
+	return state.Identity
 }
