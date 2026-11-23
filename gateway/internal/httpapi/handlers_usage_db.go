@@ -11,7 +11,6 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-
 // usageSummaryStore returns the usage capability for the router store. The
 // compat summary handler runs inside the same mux, so one package pointer
 // carries the store it needs.
@@ -113,17 +112,17 @@ func handleUsageEventBreakdown(st store.StoreIface) http.HandlerFunc {
 		rows := make([]map[string]any, 0, len(raw))
 		for _, row := range raw {
 			rows = append(rows, map[string]any{
-				"key":          row["key"],
-				"event_type":   "llm_call",
-				"resource_type": groupBy,
-				"resource_name": row["key"],
-				"source":       row["key"],
-				"calls":        row["request_count"],
-				"errors":       row["error_count"],
-				"input_tokens": row["input_tokens"],
-				"output_tokens": row["output_tokens"],
-				"total_tokens": toFloat(row["input_tokens"]) + toFloat(row["output_tokens"]),
-				"cost_usd":     row["total_cost"],
+				"key":             row["key"],
+				"event_type":      "llm_call",
+				"resource_type":   groupBy,
+				"resource_name":   row["key"],
+				"source":          row["key"],
+				"calls":           row["request_count"],
+				"errors":          row["error_count"],
+				"input_tokens":    row["input_tokens"],
+				"output_tokens":   row["output_tokens"],
+				"total_tokens":    toFloat(row["input_tokens"]) + toFloat(row["output_tokens"]),
+				"cost_usd":        row["total_cost"],
 				"avg_duration_ms": row["avg_duration_ms"],
 			})
 		}

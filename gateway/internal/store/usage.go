@@ -7,60 +7,60 @@ import (
 
 // UsageEvent is one billable metering row.
 type UsageEvent struct {
-	ID             string `json:"id"`
-	TenantID       string `json:"-"`
-	EventTime      string `json:"event_time"`
-	BucketHour     string `json:"bucket_hour"`
-	EventType      string `json:"event_type"`
-	ResourceType   string `json:"resource_type"`
-	ResourceName   string `json:"resource_name"`
-	ResourceID     string `json:"resource_id,omitempty"`
-	Source         string `json:"source,omitempty"`
-	AgentID        string `json:"agent_id,omitempty"`
-	TeamID         string `json:"team_id,omitempty"`
-	TraceID        string `json:"trace_id,omitempty"`
-	SpanID         string `json:"span_id,omitempty"`
-	RunID          string `json:"run_id,omitempty"`
-	SessionKey     string `json:"session_key,omitempty"`
-	Channel        string `json:"channel,omitempty"`
-	Provider       string `json:"provider,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Status         string `json:"status,omitempty"`
-	InputTokens    int `json:"input_tokens"`
-	OutputTokens   int `json:"output_tokens"`
-	TotalTokens    int `json:"total_tokens"`
-	CostUSD        float64 `json:"cost_usd"`
-	DurationMS     int `json:"duration_ms"`
-	CallCount      int `json:"call_count"`
-	ErrorCount     int `json:"error_count"`
-	Metadata       string `json:"metadata,omitempty"`
-	CreatedAt      string `json:"created_at"`
+	ID           string  `json:"id"`
+	TenantID     string  `json:"-"`
+	EventTime    string  `json:"event_time"`
+	BucketHour   string  `json:"bucket_hour"`
+	EventType    string  `json:"event_type"`
+	ResourceType string  `json:"resource_type"`
+	ResourceName string  `json:"resource_name"`
+	ResourceID   string  `json:"resource_id,omitempty"`
+	Source       string  `json:"source,omitempty"`
+	AgentID      string  `json:"agent_id,omitempty"`
+	TeamID       string  `json:"team_id,omitempty"`
+	TraceID      string  `json:"trace_id,omitempty"`
+	SpanID       string  `json:"span_id,omitempty"`
+	RunID        string  `json:"run_id,omitempty"`
+	SessionKey   string  `json:"session_key,omitempty"`
+	Channel      string  `json:"channel,omitempty"`
+	Provider     string  `json:"provider,omitempty"`
+	Model        string  `json:"model,omitempty"`
+	Status       string  `json:"status,omitempty"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	TotalTokens  int     `json:"total_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+	DurationMS   int     `json:"duration_ms"`
+	CallCount    int     `json:"call_count"`
+	ErrorCount   int     `json:"error_count"`
+	Metadata     string  `json:"metadata,omitempty"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 // UsageCapPolicy is one spend or token ceiling.
 type UsageCapPolicy struct {
-	ID             string `json:"id"`
-	TenantID       string `json:"-"`
-	AgentID        string `json:"agent_id,omitempty"`
-	ProviderID     string `json:"provider_id,omitempty"`
-	ProviderType   string `json:"provider_type,omitempty"`
-	ModelID        string `json:"model_id,omitempty"`
-	Window         string `json:"window"`
-	MaxTokens      int64 `json:"max_tokens"`
-	MaxCostMicros  int64 `json:"max_cost_micros"`
-	Enabled        bool `json:"enabled"`
-	Priority       int `json:"priority"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID            string `json:"id"`
+	TenantID      string `json:"-"`
+	AgentID       string `json:"agent_id,omitempty"`
+	ProviderID    string `json:"provider_id,omitempty"`
+	ProviderType  string `json:"provider_type,omitempty"`
+	ModelID       string `json:"model_id,omitempty"`
+	Window        string `json:"window"`
+	MaxTokens     int64  `json:"max_tokens"`
+	MaxCostMicros int64  `json:"max_cost_micros"`
+	Enabled       bool   `json:"enabled"`
+	Priority      int    `json:"priority"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // PricingCatalogEntry is one model price row.
 type PricingCatalogEntry struct {
-	ID              string `json:"id"`
-	ModelID         string `json:"model_id"`
+	ID               string `json:"id"`
+	ModelID          string `json:"model_id"`
 	CanonicalModelID string `json:"canonical_model_id,omitempty"`
-	Pricing         string `json:"pricing"`
-	SyncedAt        string `json:"synced_at"`
+	Pricing          string `json:"pricing"`
+	SyncedAt         string `json:"synced_at"`
 }
 
 // UsageStore is the metering, cap and pricing capability.
@@ -179,7 +179,7 @@ func (s *SQLiteStore) InsertUsageEvent(e UsageEvent) error {
 	if e.CallCount == 0 {
 		e.CallCount = 1
 	}
-	_, err := s.db.Exec(`INSERT INTO usage_events(` + usageEventColumns + `) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.db.Exec(`INSERT INTO usage_events(`+usageEventColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, e.TenantID, e.EventTime, e.BucketHour, e.EventType, e.ResourceType, e.ResourceName,
 		e.ResourceID, e.Source, e.AgentID, e.TeamID, e.TraceID, e.SpanID, e.RunID, e.SessionKey,
 		e.Channel, e.Provider, e.Model, e.Status, e.InputTokens, e.OutputTokens, e.TotalTokens,
@@ -227,8 +227,8 @@ func (s *SQLiteStore) ListUsageEvents(tenant, agentID, provider, model, channel,
 		}
 	}
 	var total int
-	_ = s.db.QueryRow(`SELECT count(*) FROM usage_events` + w, args...).Scan(&total)
-	rows, err := s.db.Query(`SELECT ` + usageEventColumns + ` FROM usage_events` + w + ` ORDER BY event_time DESC LIMIT ? OFFSET ?`,
+	_ = s.db.QueryRow(`SELECT count(*) FROM usage_events`+w, args...).Scan(&total)
+	rows, err := s.db.Query(`SELECT `+usageEventColumns+` FROM usage_events`+w+` ORDER BY event_time DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return []*UsageEvent{}, total
@@ -247,7 +247,7 @@ func (s *SQLiteStore) ListUsageEvents(tenant, agentID, provider, model, channel,
 func (s *SQLiteStore) UsageTotals(tenant, from, to string) map[string]float64 {
 	w, args := usageWhere(tenant, from, to)
 	var calls, inTok, outTok, totTok, cost, errors, dur int64
-	_ = s.db.QueryRow(`SELECT coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(total_tokens),0), coalesce(sum(cost_usd),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0) FROM usage_events` + w, args...).
+	_ = s.db.QueryRow(`SELECT coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(total_tokens),0), coalesce(sum(cost_usd),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0) FROM usage_events`+w, args...).
 		Scan(&calls, &inTok, &outTok, &totTok, &cost, &errors, &dur)
 	out := map[string]float64{
 		"requests": float64(calls), "input_tokens": float64(inTok), "output_tokens": float64(outTok),
@@ -278,7 +278,7 @@ func usageGroupColumn(groupBy string) string {
 func (s *SQLiteStore) UsageBreakdown(tenant, groupBy, from, to string) []map[string]any {
 	w, args := usageWhere(tenant, from, to)
 	col := usageGroupColumn(groupBy)
-	rows, err := s.db.Query(`SELECT ` + col + `, coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0), coalesce(sum(cost_usd),0) FROM usage_events` + w + ` GROUP BY ` + col + ` ORDER BY 2 DESC LIMIT 50`, args...)
+	rows, err := s.db.Query(`SELECT `+col+`, coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0), coalesce(sum(cost_usd),0) FROM usage_events`+w+` GROUP BY `+col+` ORDER BY 2 DESC LIMIT 50`, args...)
 	if err != nil {
 		return []map[string]any{}
 	}
@@ -305,7 +305,7 @@ func (s *SQLiteStore) UsageBreakdown(tenant, groupBy, from, to string) []map[str
 
 func (s *SQLiteStore) UsageSeries(tenant, groupBy, from, to string) []map[string]any {
 	w, args := usageWhere(tenant, from, to)
-	rows, err := s.db.Query(`SELECT bucket_hour, coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0), coalesce(sum(cost_usd),0) FROM usage_events` + w + ` GROUP BY bucket_hour ORDER BY bucket_hour LIMIT 500`, args...)
+	rows, err := s.db.Query(`SELECT bucket_hour, coalesce(sum(call_count),0), coalesce(sum(input_tokens),0), coalesce(sum(output_tokens),0), coalesce(sum(error_count),0), coalesce(sum(duration_ms),0), coalesce(sum(cost_usd),0) FROM usage_events`+w+` GROUP BY bucket_hour ORDER BY bucket_hour LIMIT 500`, args...)
 	if err != nil {
 		return []map[string]any{}
 	}
@@ -336,7 +336,7 @@ func (s *SQLiteStore) UsageSeries(tenant, groupBy, from, to string) []map[string
 const usageCapColumns = `id, tenant_id, agent_id, provider_id, provider_type, model_id, window_key, max_tokens, max_cost_micros, enabled, priority, created_at, updated_at`
 
 func (s *SQLiteStore) ListUsageCapPolicies(tenant string) []*UsageCapPolicy {
-	rows, err := s.db.Query(`SELECT ` + usageCapColumns + ` FROM usage_cap_policies WHERE tenant_id=? ORDER BY priority, created_at`, NormalizeTenant(tenant))
+	rows, err := s.db.Query(`SELECT `+usageCapColumns+` FROM usage_cap_policies WHERE tenant_id=? ORDER BY priority, created_at`, NormalizeTenant(tenant))
 	if err != nil {
 		return []*UsageCapPolicy{}
 	}
