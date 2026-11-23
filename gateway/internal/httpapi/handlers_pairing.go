@@ -4,20 +4,22 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"errors"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/auth"
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
-func registerPairingRoutes(mux *http.ServeMux, p *auth.Pairing) {
+func registerPairingRoutes(mux *http.ServeMux, p *auth.Pairing, st store.StoreIface) {
 	if p == nil {
 		p = auth.NewPairing()
 	}
 	aliasAPI(mux, "POST /api/pairing", handleCreatePairing(p))
-	aliasAPI(mux, "POST /api/pairing/exchange", handleExchangePairing(p))
+	aliasAPI(mux, "POST /api/pairing/exchange", handleExchangePairing(p, st))
 }
 
 func handleCreatePairing(p *auth.Pairing) http.HandlerFunc {
@@ -36,12 +38,13 @@ func handleCreatePairing(p *auth.Pairing) http.HandlerFunc {
 	}
 }
 
-func handleExchangePairing(p *auth.Pairing) http.HandlerFunc {
+func handleExchangePairing(p *auth.Pairing, st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Code string `json:"code"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		rawBody, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		if err := json.Unmarshal(rawBody, &body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
@@ -65,6 +68,9 @@ func handleExchangePairing(p *auth.Pairing) http.HandlerFunc {
 		}
 		if ex.Minted {
 			out["expires_at"] = ex.ExpiresAt.Format("2006-01-02T15:04:05Z")
+		}
+		if dev, derr := pairDeviceFromBody(st, requestTenant(r), rawBody, ex.Role); derr == nil && dev != nil {
+			out["device_id"] = dev.ID
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
