@@ -170,6 +170,61 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	httpapi.RegisterWS(mux, st, provider)
 	rt.CronFire = httpapi.FireSessionChat(rt, st, provider, meter)
 	obs.SetWsUp(true)
+	observe.DBTraceSource = func(tenantID string, limit, offset int) ([]map[string]any, int) {
+		x := store.Telemetry(st)
+		if x == nil {
+			return nil, 0
+		}
+		rows, total := x.ListTraces(tenantID, "", "", limit, offset)
+		out := make([]map[string]any, 0, len(rows))
+		for _, t := range rows {
+			out = append(out, map[string]any{
+				"id": t.ID, "agent_id": t.AgentID, "user_id": t.UserID, "session_key": t.SessionKey,
+				"run_id": t.RunID, "start_time": t.StartTime, "end_time": t.EndTime,
+				"duration_ms": t.DurationMS, "name": t.Name, "channel": t.Channel,
+				"input_preview": t.InputPreview, "output_preview": t.OutputPreview,
+				"total_input_tokens": t.TotalInputTokens, "total_output_tokens": t.TotalOutputTokens,
+				"total_cost": t.TotalCost, "span_count": t.SpanCount, "llm_call_count": t.LLMCallCount,
+				"tool_call_count": t.ToolCallCount, "status": t.Status, "error": t.Error,
+				"team_id": t.TeamID, "parent_trace_id": t.ParentTraceID, "created_at": t.CreatedAt,
+			})
+		}
+		return out, total
+	}
+	observe.DBTraceDetail = func(tenantID, id string) (map[string]any, []map[string]any, bool) {
+		x := store.Telemetry(st)
+		if x == nil {
+			return nil, nil, false
+		}
+		tr, err := x.GetTrace(tenantID, id)
+		if err != nil || tr == nil {
+			return nil, nil, false
+		}
+		spans := make([]map[string]any, 0, 8)
+		for _, sp := range x.ListSpans(tenantID, id) {
+			spans = append(spans, map[string]any{
+				"id": sp.ID, "trace_id": sp.TraceID, "parent_span_id": sp.ParentSpanID,
+				"agent_id": sp.AgentID, "span_type": sp.SpanType, "name": sp.Name,
+				"start_time": sp.StartTime, "end_time": sp.EndTime, "duration_ms": sp.DurationMS,
+				"status": sp.Status, "error": sp.Error, "model": sp.Model, "provider": sp.Provider,
+				"input_tokens": sp.InputTokens, "output_tokens": sp.OutputTokens,
+				"total_cost": sp.TotalCost, "finish_reason": sp.FinishReason,
+				"tool_name": sp.ToolName, "tool_call_id": sp.ToolCallID,
+				"input_preview": sp.InputPreview, "output_preview": sp.OutputPreview,
+			})
+		}
+		out := map[string]any{
+			"id": tr.ID, "agent_id": tr.AgentID, "user_id": tr.UserID, "session_key": tr.SessionKey,
+			"run_id": tr.RunID, "start_time": tr.StartTime, "end_time": tr.EndTime,
+			"duration_ms": tr.DurationMS, "name": tr.Name, "channel": tr.Channel,
+			"input_preview": tr.InputPreview, "output_preview": tr.OutputPreview,
+			"total_input_tokens": tr.TotalInputTokens, "total_output_tokens": tr.TotalOutputTokens,
+			"total_cost": tr.TotalCost, "span_count": tr.SpanCount, "llm_call_count": tr.LLMCallCount,
+			"tool_call_count": tr.ToolCallCount, "status": tr.Status, "error": tr.Error,
+			"created_at": tr.CreatedAt,
+		}
+		return out, spans, true
+	}
 	obs.Register(mux)
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())

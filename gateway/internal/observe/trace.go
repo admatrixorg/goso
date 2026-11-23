@@ -274,9 +274,29 @@ func modelOf(p llm.Provider) string {
 }
 
 // HandleTraces serves GET /api/traces with search, filters, time range, and pagination.
+
+// DBTraceSource returns UI shaped traces from the persistent store. When set,
+// GET /api/traces lists those rows instead of the in process ring buffer.
+var DBTraceSource func(tenant string, limit, offset int) ([]map[string]any, int)
+
+// DBTraceDetail returns one persisted trace with its spans.
+var DBTraceDetail func(tenant, id string) (map[string]any, []map[string]any, bool)
+
 func (o *Observer) HandleTraces(w http.ResponseWriter, r *http.Request) {
 	q := parseListQuery(r)
 	want := tenant.Resolve(r)
+	if DBTraceSource != nil {
+		rows, total := DBTraceSource(want, q.Limit, q.Offset)
+		if len(rows) > 0 || total > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": rows, "traces": rows, "total": total, "offset": q.Offset,
+				"limit": q.Limit, "truncated": q.Offset+len(rows) < total,
+				"error_groups": []any{}, "spans": []any{},
+			})
+			return
+		}
+	}
 	traces := o.publicTraces(want)
 	trees := o.publicTrees(want)
 	items := filterItems(buildItems(trees, traces), q)
@@ -307,6 +327,15 @@ func (o *Observer) HandleTraceDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	want := tenant.Resolve(r)
+	if DBTraceDetail != nil {
+		if tr, spans, ok := DBTraceDetail(want, id); ok {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"trace": tr, "trace_id": id, "spans": spans, "item": tr, "truncated": false,
+			})
+			return
+		}
+	}
 	tree, ok := o.lookupTree(id, want)
 	if !ok {
 		http.NotFound(w, r)

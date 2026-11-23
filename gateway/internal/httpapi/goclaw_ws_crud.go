@@ -66,7 +66,7 @@ func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	case "sessions.preview":
 		return wsSessionPreview(conn, st, req, tenant)
 	case "run.timeline.get":
-		return writeGoClaw(conn, req.ID, map[string]any{"items": []any{}})
+		return wsRunTimeline(conn, st, req, tenant)
 	case "browser.pairing.status":
 		return writeGoClaw(conn, req.ID, map[string]any{"status": "not_configured", "paired": false})
 	case "chat_behavior.preview":
@@ -523,4 +523,20 @@ func wsTeamTaskAttachmentDelete(conn *websocket.Conn, st store.StoreIface, req g
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "attachment not found")
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+}
+
+func wsRunTimeline(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		RunID  string `json:"runId"`
+		RunID2 string `json:"run_id"`
+		Limit  int    `json:"limit"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	runID := firstNonEmpty(p.RunID, p.RunID2)
+	x := store.Telemetry(st)
+	if x == nil || runID == "" {
+		return writeGoClaw(conn, req.ID, map[string]any{"items": []any{}, "total": 0})
+	}
+	rows := x.ListRunTimeline(tenant, runID, p.Limit)
+	return writeGoClaw(conn, req.ID, map[string]any{"items": rows, "total": len(rows)})
 }

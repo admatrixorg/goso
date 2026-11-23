@@ -157,6 +157,33 @@ func Router(st store.StoreIface, version string) http.Handler {
 // NewRouter builds the mux with optional connector/approval/event/billing deps.
 func NewRouter(opt Options) http.Handler {
 	opt.defaults()
+	if x := store.Telemetry(opt.Store); x != nil {
+		activitySink = func(rec auditlog.Record, r *http.Request) {
+			actor := strings.TrimSpace(rec.Actor)
+			if actor == "" {
+				actor = "system"
+			}
+			tenantID := store.DefaultTenant
+			if r != nil {
+				tenantID = requestTenant(r)
+			}
+			details := ""
+			if len(rec.After) > 0 {
+				if b, err := json.Marshal(rec.After); err == nil {
+					details = string(b)
+				}
+			}
+			created := rec.TS.UTC().Format(time.RFC3339)
+			if rec.TS.IsZero() {
+				created = time.Now().UTC().Format(time.RFC3339)
+			}
+			_ = x.InsertActivity(store.ActivityRow{
+				TenantID: tenantID, ActorType: "operator", ActorID: actor, Action: rec.Action,
+				EntityType: rec.Entity, EntityID: rec.EntityID, Details: details,
+				IPAddress: rec.IP, CreatedAt: created,
+			})
+		}
+	}
 	mux := routerBase(opt)
 	registerChannels(mux, opt)
 	registerWebhookRoutes(mux, opt)
