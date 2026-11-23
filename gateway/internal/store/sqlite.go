@@ -523,6 +523,22 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("migrate hooks: %w", err)
 	}
+	if err := s.migrateAuthUsers(); err != nil {
+		return fmt.Errorf("migrate auth users: %w", err)
+	}
+	if err := s.migrateAuthSessions(); err != nil {
+		return fmt.Errorf("migrate auth sessions: %w", err)
+	}
+	if err := s.migrateExtras(); err != nil {
+		return fmt.Errorf("migrate extras: %w", err)
+	}
+
+	if err := s.migrateTeamTaskExtras(); err != nil {
+		return fmt.Errorf("migrate team task extras: %w", err)
+	}
+	if err := s.migrateWorkstations(); err != nil {
+		return fmt.Errorf("migrate workstations: %w", err)
+	}
 	if err := s.migrateToolSettings(); err != nil {
 		return fmt.Errorf("migrate tool settings: %w", err)
 	}

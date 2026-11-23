@@ -69,7 +69,7 @@ export function TeamCard({ team, onClick, onDelete }: TeamCardProps) {
           <Users className="h-4.5 w-4.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <span className="truncate text-sm font-semibold">{team.name}</span>
+          <span className="block truncate text-sm font-semibold">{team.name}</span>
         </div>
         {(team.settings as Record<string, unknown>)?.version != null && (
           <Badge variant="outline" className="shrink-0 text-2xs">

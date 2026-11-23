@@ -143,7 +143,7 @@ export function VaultPage() {
             </Button>
           )}
           <FileArchive className="h-4 w-4 text-indigo-500 shrink-0" />
-          <span className="text-sm font-semibold mr-auto">{t("title")}</span>
+          <span className="whitespace-nowrap text-sm font-semibold mr-auto">{t("title")}</span>
 
           <select value={selectedAgent} onChange={(e) => handleAgentChange(e.target.value)}
             className="text-base md:text-sm border rounded px-2 py-1 bg-background h-7">

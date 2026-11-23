@@ -866,3 +866,28 @@ func TestRequire_IssuedAPIKeyScopes(t *testing.T) {
 		t.Fatalf("unknown issued %d", w.Code)
 	}
 }
+
+func TestRequire_AuthLoginExactPath(t *testing.T) {
+	h := Require(Config{Admin: "admin-077", Bypass: []string{"/healthz"}})(okHandler())
+
+	ex := httptest.NewRequest("POST", "/v1/auth/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, ex)
+	if w.Code != 200 {
+		t.Fatalf("exact POST login 200, got %d", w.Code)
+	}
+
+	extra := httptest.NewRequest("POST", "/v1/auth/login/extra", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, extra)
+	if w.Code != 401 {
+		t.Fatalf("suffix login 401, got %d", w.Code)
+	}
+
+	get := httptest.NewRequest("GET", "/v1/auth/login", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, get)
+	if w.Code != 401 {
+		t.Fatalf("GET login 401, got %d", w.Code)
+	}
+}

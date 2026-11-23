@@ -25,7 +25,7 @@ func handleGoClawChat(ctx context.Context, conn *websocket.Conn, st store.StoreI
 	case "chat.session.status":
 		return writeGoClaw(conn, req.ID, map[string]any{"isRunning": false})
 	case "sessions.list":
-		return goclawSessionsList(conn, st, req)
+		return goclawSessionsList(conn, st, req, wsScopeTenant(wsStateFromCtx(ctx)))
 	case "sessions.delete":
 		return goclawSessionsDelete(conn, st, req)
 	case "teams.tasks.active-by-session":
@@ -116,7 +116,7 @@ func goclawChatSend(ctx context.Context, conn *websocket.Conn, st store.StoreIfa
 			p.AgentID = parts[1]
 		}
 	}
-	agent := findAgentByIDOrKey(st, p.AgentID, store.DefaultTenant)
+	agent := findAgentByIDOrKey(st, p.AgentID, wsIdentityTenant(wsStateFromCtx(ctx)))
 	if agent == nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "agent not found")
 	}
@@ -204,7 +204,7 @@ func goclawChatHistory(conn *websocket.Conn, st store.StoreIface, req goclawReq)
 	return writeGoClaw(conn, req.ID, map[string]any{"messages": out})
 }
 
-func goclawSessionsList(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func goclawSessionsList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tid string) error {
 	var p struct {
 		AgentID string `json:"agentId"`
 		Channel string `json:"channel"`
@@ -212,7 +212,7 @@ func goclawSessionsList(conn *websocket.Conn, st store.StoreIface, req goclawReq
 	if len(req.Params) > 0 {
 		_ = json.Unmarshal(req.Params, &p)
 	}
-	agent := findAgentByIDOrKey(st, p.AgentID, store.DefaultTenant)
+	agent := findAgentByIDOrKey(st, p.AgentID, tid)
 	prefix := ""
 	if agent != nil {
 		prefix = "agent:" + agent.AgentKey + ":"
@@ -226,6 +226,9 @@ func goclawSessionsList(conn *websocket.Conn, st store.StoreIface, req goclawReq
 	}
 	for _, s := range st.ListSessions() {
 		if s == nil || s.Label == "" {
+			continue
+		}
+		if tid != "" && !store.SameTenant(s.TenantID, tid) {
 			continue
 		}
 		if prefix != "" && !strings.HasPrefix(s.Label, prefix) {

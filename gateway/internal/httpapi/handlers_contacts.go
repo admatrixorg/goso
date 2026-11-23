@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/channel"
@@ -17,7 +18,9 @@ import (
 
 type contactView struct {
 	channel.PublicContact
-	Agent string `json:"agent,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	FirstSeenAt string `json:"first_seen_at,omitempty"`
+	LastSeenAt  string `json:"last_seen_at,omitempty"`
 }
 
 func registerContactsRoutes(mux *http.ServeMux, opt Options) {
@@ -182,6 +185,12 @@ func writeContactErr(w http.ResponseWriter, err error) bool {
 
 func decorateContact(st store.StoreIface, row channel.PublicContact) contactView {
 	v := contactView{PublicContact: row}
+	if !row.FirstSeen.IsZero() {
+		v.FirstSeenAt = row.FirstSeen.UTC().Format(time.RFC3339)
+	}
+	if !row.LastSeen.IsZero() {
+		v.LastSeenAt = row.LastSeen.UTC().Format(time.RFC3339)
+	}
 	if strings.TrimSpace(row.AgentID) == "" || st == nil {
 		return v
 	}

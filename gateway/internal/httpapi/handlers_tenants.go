@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
 
@@ -49,7 +50,7 @@ func handleTenantContext(reg *tenant.Registry) http.HandlerFunc {
 func handleListTenants(reg *tenant.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		rows := reg.List(q)
+		rows := visibleTenants(reg, r, reg.List(q))
 		if rows == nil {
 			rows = []tenant.Public{}
 		}
@@ -77,6 +78,10 @@ func handleListTenants(reg *tenant.Registry) http.HandlerFunc {
 func handleGetTenant(reg *tenant.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.PathValue("id"))
+		if !tenantReadable(reg, r, id) {
+			writeErr(w, http.StatusNotFound, "tenant not found")
+			return
+		}
 		row, err := reg.Get(id)
 		if writeTenantErr(w, err) {
 			return
@@ -278,4 +283,44 @@ func guardDeactivatedTenant(reg *tenant.Registry, next http.Handler) http.Handle
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// visibleTenants keeps tenants a signed-in user may see: every tenant for an
+// owner or an operator token, memberships only for anyone else.
+func visibleTenants(reg *tenant.Registry, r *http.Request, rows []tenant.Public) []tenant.Public {
+	who, ok := auth.IdentityFrom(r.Context())
+	if !ok || who.IsOwner() || reg == nil {
+		return rows
+	}
+	out := make([]tenant.Public, 0, len(rows))
+	for _, row := range rows {
+		full, err := reg.Get(row.ID)
+		if err != nil {
+			continue
+		}
+		for _, m := range full.Members {
+			if (who.Email != "" && strings.EqualFold(m.Subject, who.Email)) || (who.UserID != "" && m.Subject == who.UserID) {
+				out = append(out, row)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func tenantReadable(reg *tenant.Registry, r *http.Request, id string) bool {
+	who, ok := auth.IdentityFrom(r.Context())
+	if !ok || who.IsOwner() || reg == nil {
+		return true
+	}
+	full, err := reg.Get(id)
+	if err != nil {
+		return false
+	}
+	for _, m := range full.Members {
+		if (who.Email != "" && strings.EqualFold(m.Subject, who.Email)) || (who.UserID != "" && m.Subject == who.UserID) {
+			return true
+		}
+	}
+	return false
 }

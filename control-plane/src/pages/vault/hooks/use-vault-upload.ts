@@ -27,7 +27,7 @@ export function useVaultUpload() {
         if (opts?.teamId) form.append("team_id", opts.teamId);
         for (const f of files) form.append("files", f);
 
-        const result = await http.upload<UploadResult>("/v1/vault/upload", form);
+        const result = await http.upload<UploadResult>("/api/vault/upload", form);
         await queryClient.invalidateQueries({ queryKey: [VAULT_KEY] });
         toast.success(i18n.t("vault:toast.uploadSuccess", { count: result.count }));
         return result;

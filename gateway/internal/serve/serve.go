@@ -174,6 +174,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())
 		go cron.Loop(context.Background(), st, rt.CronFire)
+		go heartbeatLoop(context.Background(), st, rt.CronFire)
 		if heartbeat.Enabled() {
 			go heartbeat.Loop(context.Background(), obs)
 		}
@@ -218,6 +219,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
+	handler = httpapi.RequireRole(handler)
 	if adminToken != "" || viewToken != "" || !devMode {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
 		// Pairing exchange is an exact POST path inside Require (code is the secret).
@@ -226,6 +228,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 			View:     viewToken,
 			Pairing:  pairing,
 			Keys:     apikey.Default(),
+			Sessions: sessionGate{st: st},
 			Bypass:   []string{"/healthz", "/ws", "/api/webhooks/llm"},
 			SelfAuth: channelSelfAuth,
 		})(handler)
@@ -281,4 +284,25 @@ func ChannelTurnRunner(rt *agent.Runtime) channel.TurnRunner {
 		}
 		return res, nil
 	}
+}
+
+type sessionGate struct{ st store.StoreIface }
+
+func (g sessionGate) Accept(token string) (auth.Identity, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return auth.Identity{}, false
+	}
+	sessions := store.AuthSessions(g.st)
+	if sessions == nil {
+		return auth.Identity{}, false
+	}
+	sess, err := sessions.LookupAuthSession(token)
+	if err != nil || sess == nil {
+		return auth.Identity{}, false
+	}
+	return auth.Identity{
+		UserID: sess.UserID, Email: sess.Email, TenantID: sess.TenantID,
+		Role: sess.Role, Owner: strings.EqualFold(sess.Role, "owner"),
+	}, true
 }
