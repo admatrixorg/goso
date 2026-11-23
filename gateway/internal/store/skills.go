@@ -7,27 +7,28 @@ import (
 
 // SkillRow is one registered skill.
 type SkillRow struct {
-	ID           string`json:"id"`
-	TenantID     string`json:"-"`
-	Name         string`json:"name"`
-	Slug         string`json:"slug"`
-	Description  string`json:"description"`
-	OwnerID      string`json:"owner_id,omitempty"`
-	Visibility   string`json:"visibility"`
-	Version      int   `json:"version"`
-	Status       string`json:"status"`
-	FilePath     string`json:"file_path,omitempty"`
-	FileSize     int64 `json:"file_size"`
-	FileHash     string`json:"file_hash,omitempty"`
-	Tags         string`json:"tags,omitempty"`
-	Deps         string`json:"deps,omitempty"`
-	Frontmatter  string`json:"frontmatter,omitempty"`
-	IsSystem     bool  `json:"is_system"`
-	Enabled      bool  `json:"enabled"`
-	CreatedAt    string`json:"created_at,omitempty"`
-	UpdatedAt    string`json:"updated_at,omitempty"`
-	AgentGrants  int   `json:"agent_grants"`
+	ID          string `json:"id"`
+	TenantID    string `json:"-"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	OwnerID     string `json:"owner_id,omitempty"`
+	Visibility  string `json:"visibility"`
+	Version     int    `json:"version"`
+	Status      string `json:"status"`
+	FilePath    string `json:"file_path,omitempty"`
+	FileSize    int64  `json:"file_size"`
+	FileHash    string `json:"file_hash,omitempty"`
+	Tags        string `json:"tags,omitempty"`
+	Deps        string `json:"deps,omitempty"`
+	Frontmatter string `json:"frontmatter,omitempty"`
+	IsSystem    bool   `json:"is_system"`
+	Enabled     bool   `json:"enabled"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+	AgentGrants int    `json:"agent_grants"`
 }
+
 // SkillGrant is one agent's permission on a skill.
 type SkillGrant struct {
 	ID            string `json:"id"`
@@ -42,12 +43,12 @@ type SkillGrant struct {
 
 // SkillEvolution is one skill's improvement settings.
 type SkillEvolution struct {
-	TenantID         string `json:"-"`
-	SkillID          string `json:"skill_id"`
-	Enabled          bool   `json:"enabled"`
-	AutoApply        bool   `json:"auto_apply"`
-	MinSampleSize    int    `json:"min_sample_size"`
-	UpdatedAt        string `json:"updated_at,omitempty"`
+	TenantID      string `json:"-"`
+	SkillID       string `json:"skill_id"`
+	Enabled       bool   `json:"enabled"`
+	AutoApply     bool   `json:"auto_apply"`
+	MinSampleSize int    `json:"min_sample_size"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // SkillStore is the skill registry, grant and evolution capability.
@@ -150,7 +151,7 @@ func scanSkillRow(sc scanner) (*SkillRow, error) {
 }
 
 func (s *SQLiteStore) ListSkillRows(tenant string) []*SkillRow {
-	rows, err := s.db.Query(`SELECT ` + skillColumns + ` FROM skills WHERE tenant_id=? ORDER BY is_system DESC, name`, NormalizeTenant(tenant))
+	rows, err := s.db.Query(`SELECT `+skillColumns+` FROM skills WHERE tenant_id=? ORDER BY is_system DESC, name`, NormalizeTenant(tenant))
 	if err != nil {
 		return []*SkillRow{}
 	}
@@ -166,7 +167,7 @@ func (s *SQLiteStore) ListSkillRows(tenant string) []*SkillRow {
 
 func (s *SQLiteStore) GetSkillRow(tenant, idOrSlug string) (*SkillRow, error) {
 	want := strings.TrimSpace(idOrSlug)
-	row := s.db.QueryRow(`SELECT ` + skillColumns + ` FROM skills WHERE tenant_id=? AND (id=? OR slug=? OR name=?)`,
+	row := s.db.QueryRow(`SELECT `+skillColumns+` FROM skills WHERE tenant_id=? AND (id=? OR slug=? OR name=?)`,
 		NormalizeTenant(tenant), want, want, want)
 	r, err := scanSkillRow(row)
 	if err != nil {
@@ -199,7 +200,7 @@ func (s *SQLiteStore) PutSkillRow(in SkillRow) (*SkillRow, error) {
 		in.ID = "sk_" + newID()
 		in.CreatedAt = now
 		in.UpdatedAt = now
-		_, err := s.db.Exec(`INSERT INTO skills(` + skillColumns + `) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		_, err := s.db.Exec(`INSERT INTO skills(`+skillColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			in.ID, in.TenantID, in.Name, in.Slug, in.Description, in.OwnerID, in.Visibility,
 			in.Version, in.Status, in.FilePath, in.FileSize, in.FileHash, in.Tags, in.Deps,
 			in.Frontmatter, boolInt(in.IsSystem), boolInt(in.Enabled), in.CreatedAt, in.UpdatedAt)
@@ -237,7 +238,7 @@ func (s *SQLiteStore) DeleteSkillRow(tenant, id string) error {
 const skillGrantColumns = `id, tenant_id, skill_id, agent_id, pinned_version, granted_by, can_manage, created_at`
 
 func (s *SQLiteStore) ListSkillGrants(tenant, skillID string) []*SkillGrant {
-	rows, err := s.db.Query(`SELECT ` + skillGrantColumns + ` FROM skill_agent_grants WHERE tenant_id=? AND skill_id=?`, NormalizeTenant(tenant), strings.TrimSpace(skillID))
+	rows, err := s.db.Query(`SELECT `+skillGrantColumns+` FROM skill_agent_grants WHERE tenant_id=? AND skill_id=?`, NormalizeTenant(tenant), strings.TrimSpace(skillID))
 	if err != nil {
 		return []*SkillGrant{}
 	}
@@ -256,7 +257,7 @@ func (s *SQLiteStore) ListSkillGrants(tenant, skillID string) []*SkillGrant {
 }
 
 func (s *SQLiteStore) ListAgentSkillGrants(tenant, agentID string) []*SkillGrant {
-	rows, err := s.db.Query(`SELECT ` + skillGrantColumns + ` FROM skill_agent_grants WHERE tenant_id=? AND agent_id=?`, NormalizeTenant(tenant), strings.TrimSpace(agentID))
+	rows, err := s.db.Query(`SELECT `+skillGrantColumns+` FROM skill_agent_grants WHERE tenant_id=? AND agent_id=?`, NormalizeTenant(tenant), strings.TrimSpace(agentID))
 	if err != nil {
 		return []*SkillGrant{}
 	}
@@ -285,7 +286,7 @@ func (s *SQLiteStore) PutSkillGrant(g SkillGrant) (*SkillGrant, error) {
 	if g.CreatedAt == "" {
 		g.CreatedAt = formatTime(time.Now().UTC())
 	}
-	_, err := s.db.Exec(`INSERT INTO skill_agent_grants(` + skillGrantColumns + `) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(skill_id, agent_id) DO UPDATE SET pinned_version=excluded.pinned_version, can_manage=excluded.can_manage`,
+	_, err := s.db.Exec(`INSERT INTO skill_agent_grants(`+skillGrantColumns+`) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(skill_id, agent_id) DO UPDATE SET pinned_version=excluded.pinned_version, can_manage=excluded.can_manage`,
 		g.ID, g.TenantID, g.SkillID, g.AgentID, g.PinnedVersion, g.GrantedBy, boolInt(g.CanManage), g.CreatedAt)
 	if err != nil {
 		return nil, err

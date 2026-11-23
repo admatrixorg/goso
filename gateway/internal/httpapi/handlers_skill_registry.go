@@ -68,7 +68,7 @@ func skillRowsForPage(st store.StoreIface, tenant string) []map[string]any {
 		out = append(out, map[string]any{
 			"id": name, "name": name, "slug": name,
 			"description": skillDescriptionFromDisk(tenant, name),
-			"source": "filesystem", "visibility": "tenant", "version": 1,
+			"source":      "filesystem", "visibility": "tenant", "version": 1,
 			"is_system": false, "status": "active", "enabled": true,
 			"manager_agents": []any{}, "missing_deps": []any{},
 		})
