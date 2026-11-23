@@ -13,6 +13,7 @@ import (
 
 func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, who *auth.Identity) error {
 	tenant := tenantOfIdentity(who)
+	tnt := wsTenantFilter(who)
 	switch req.Method {
 	case "agents.create":
 		return wsAgentCreate(conn, st, req, tenant)
@@ -29,21 +30,21 @@ func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	case "channels.instances.delete":
 		return wsChannelInstanceDelete(conn, st, req, tenant)
 	case "teams.tasks.get", "teams.tasks.get-light":
-		return wsTeamTaskGet(conn, st, req)
+		return wsTeamTaskGet(conn, st, req, tnt)
 	case "teams.tasks.assign":
-		return wsTeamTaskPatch(conn, st, req, "assign")
+		return wsTeamTaskPatch(conn, st, req, "assign", tnt, tenant)
 	case "teams.tasks.approve":
-		return wsTeamTaskPatch(conn, st, req, "approve")
+		return wsTeamTaskPatch(conn, st, req, "approve", tnt, tenant)
 	case "teams.tasks.reject":
-		return wsTeamTaskPatch(conn, st, req, "reject")
+		return wsTeamTaskPatch(conn, st, req, "reject", tnt, tenant)
 	case "teams.tasks.comment":
 		return wsTeamTaskComment(conn, st, req, who)
 	case "teams.tasks.comments":
-		return writeGoClaw(conn, req.ID, map[string]any{"comments": []any{}})
+		return wsTeamTaskComments(conn, st, req, tenant, tnt)
 	case "teams.tasks.events":
-		return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+		return wsTeamTaskEvents(conn, st, req, tenant, tnt, true)
 	case "teams.events.list":
-		return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+		return wsTeamTaskEvents(conn, st, req, tenant, tnt, false)
 	case "teams.scopes":
 		return writeGoClaw(conn, req.ID, map[string]any{"scopes": []any{}})
 	case "teams.workspace.list":
@@ -250,7 +251,7 @@ func wsChannelInstanceDelete(conn *websocket.Conn, st store.StoreIface, req gocl
 	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
 }
 
-func wsTeamTaskGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamTaskGet(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TaskID  string `json:"taskId"`
 		TaskID2 string `json:"id"`
@@ -261,13 +262,13 @@ func wsTeamTaskGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) err
 		return writeGoClawErr(conn, req.ID, "INVALID", "task is required")
 	}
 	t, err := st.GetTeamTask(id)
-	if err != nil || t == nil {
+	if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
 	}
 	return writeGoClaw(conn, req.ID, wsTeamTaskView(t))
 }
 
-func wsTeamTaskPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq, action string) error {
+func wsTeamTaskPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq, action string, tnt, tenant string) error {
 	var p struct {
 		TaskID   string `json:"taskId"`
 		TaskID2  string `json:"id"`
@@ -280,8 +281,12 @@ func wsTeamTaskPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq, a
 		return writeGoClawErr(conn, req.ID, "INVALID", "task is required")
 	}
 	t, err := st.GetTeamTask(id)
-	if err != nil || t == nil {
+	if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	eventKind := "teams.tasks." + action
+	if xt := store.TeamTasks(st); xt != nil {
+		_, _ = xt.PutTeamTaskEvent(store.TeamTaskEvent{TenantID: tenant, TaskID: t.ID, Kind: eventKind, Actor: "api"})
 	}
 	switch action {
 	case "assign":
@@ -318,7 +323,14 @@ func wsTeamTaskComment(conn *websocket.Conn, st store.StoreIface, req goclawReq,
 	}
 	from := "system"
 	if who != nil {
-		from = firstNonEmpty(who.UserID, who.Email, "system")
+		from = firstNonEmpty(who.Email, who.UserID, "system")
+	}
+	if xt := store.TeamTasks(st); xt != nil {
+		row, cerr := xt.PutTeamTaskComment(store.TeamTaskComment{TenantID: tenantOfIdentity(who), TaskID: t.ID, Author: from, Body: body})
+		if cerr != nil {
+			return writeGoClawErr(conn, req.ID, "INVALID", cerr.Error())
+		}
+		return writeGoClaw(conn, req.ID, map[string]any{"ok": true, "comment": row})
 	}
 	msg := store.TeamMessage{TeamID: t.TeamID, FromAgentID: from, Body: body}
 	if _, err := st.CreateTeamMessage(msg); err != nil {
@@ -369,3 +381,38 @@ func wsSessionPreview(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"session": sess, "messages": out})
 }
+
+
+func wsTeamTaskComments(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant, tnt string) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		TaskID2 string `json:"id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	if xt := store.TeamTasks(st); xt != nil && id != "" {
+		rows := xt.ListTeamTaskComments(tenant, id)
+		return writeGoClaw(conn, req.ID, map[string]any{"comments": rows, "total": len(rows)})
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"comments": []any{}})
+}
+
+func wsTeamTaskEvents(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant, tnt string, scoped bool) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		TaskID2 string `json:"id"`
+		TeamID  string `json:"teamId"`
+		Limit   int    `json:"limit"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	taskID := ""
+	if scoped {
+		taskID = firstNonEmpty(p.TaskID, p.TaskID2)
+	}
+	if xt := store.TeamTasks(st); xt != nil {
+		rows := xt.ListTeamTaskEvents(tenant, taskID, p.Limit)
+		return writeGoClaw(conn, req.ID, map[string]any{"events": rows, "total": len(rows)})
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+}
+

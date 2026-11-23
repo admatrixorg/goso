@@ -11,6 +11,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
@@ -40,31 +41,32 @@ func registerGoClawExtraDeps(opt Options) {
 	}
 }
 
-func handleGoClawMore(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func handleGoClawMore(conn *websocket.Conn, st store.StoreIface, req goclawReq, who *auth.Identity) error {
+	tnt := wsTenantFilter(who)
 	if st == nil {
 		st = wsD.Store
 	}
 	switch req.Method {
 	case "teams.list":
-		return wsTeamsList(conn, st, req)
+		return wsTeamsList(conn, st, req, tnt)
 	case "teams.get":
-		return wsTeamGet(conn, st, req)
+		return wsTeamGet(conn, st, req, tnt)
 	case "teams.create":
-		return wsTeamCreate(conn, st, req)
+		return wsTeamCreate(conn, st, req, tnt)
 	case "teams.update":
-		return wsTeamUpdate(conn, st, req)
+		return wsTeamUpdate(conn, st, req, tnt)
 	case "teams.delete":
-		return wsTeamDelete(conn, st, req)
+		return wsTeamDelete(conn, st, req, tnt)
 	case "teams.members.add":
-		return wsTeamMemberAdd(conn, st, req)
+		return wsTeamMemberAdd(conn, st, req, tnt)
 	case "teams.members.remove":
-		return wsTeamMemberRemove(conn, st, req)
+		return wsTeamMemberRemove(conn, st, req, tnt)
 	case "teams.tasks.list":
-		return wsTeamTasksList(conn, st, req)
+		return wsTeamTasksList(conn, st, req, tnt)
 	case "teams.tasks.create":
-		return wsTeamTaskCreate(conn, st, req)
+		return wsTeamTaskCreate(conn, st, req, tnt)
 	case "teams.tasks.update":
-		return wsTeamTaskUpdate(conn, st, req)
+		return wsTeamTaskUpdate(conn, st, req, tnt)
 	case "config.get":
 		return wsConfigGet(conn, st, req)
 	case "config.patch", "config.apply":
@@ -110,6 +112,37 @@ func handleGoClawMore(conn *websocket.Conn, st store.StoreIface, req goclawReq) 
 	}
 }
 
+
+// wsTenantFilter returns the tenant a caller is limited to. Empty means the
+// operator token or an owner, who may read every tenant.
+func wsTenantFilter(who *auth.Identity) string {
+	if who == nil || who.IsOwner() {
+		return ""
+	}
+	return who.TenantID
+}
+
+func wsTeamAllowed(st store.StoreIface, teamID, tenant string) bool {
+	if tenant == "" {
+		return true
+	}
+	if st == nil {
+		return false
+	}
+	t, err := st.GetTeam(teamID)
+	if err != nil || t == nil {
+		return false
+	}
+	return store.SameTenant(t.TenantID, tenant)
+}
+
+func wsTaskAllowed(st store.StoreIface, task *store.TeamTask, tenant string) bool {
+	if task == nil {
+		return false
+	}
+	return wsTeamAllowed(st, task.TeamID, tenant)
+}
+
 func wsTeamView(t *store.Team, members []*store.TeamMember, agents map[string]*store.Agent) map[string]any {
 	lead := ""
 	if t != nil && t.LeadAgentID != "" {
@@ -150,12 +183,15 @@ func wsAgentIndex(st store.StoreIface) map[string]*store.Agent {
 	return idx
 }
 
-func wsTeamsList(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamsList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	out := []map[string]any{}
 	if st != nil {
 		agents := wsAgentIndex(st)
 		for _, t := range st.ListTeams() {
 			if t == nil {
+				continue
+			}
+			if tnt != "" && !store.SameTenant(t.TenantID, tnt) {
 				continue
 			}
 			members, _ := st.ListTeamMembers(t.ID)
@@ -165,7 +201,7 @@ func wsTeamsList(conn *websocket.Conn, st store.StoreIface, req goclawReq) error
 	return writeGoClaw(conn, req.ID, map[string]any{"teams": out})
 }
 
-func wsTeamGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamGet(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		ID string `json:"id"`
 	}
@@ -174,14 +210,14 @@ func wsTeamGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	t, err := st.GetTeam(strings.TrimSpace(p.ID))
-	if err != nil || t == nil {
+	if err != nil || t == nil || !wsTeamAllowed(st, t.ID, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	members, _ := st.ListTeamMembers(t.ID)
 	return writeGoClaw(conn, req.ID, wsTeamView(t, members, wsAgentIndex(st)))
 }
 
-func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		Name        string `json:"name"`
 		LeadAgentID string `json:"lead_agent_id"`
@@ -193,7 +229,11 @@ func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 	if st == nil || name == "" {
 		return writeGoClawErr(conn, req.ID, "INVALID", "name is required")
 	}
-	t, err := st.CreateTeam(store.Team{TenantID: tenant.Default, Name: name, LeadAgentID: lead})
+	owner := tnt
+	if owner == "" {
+		owner = tenant.Default
+	}
+	t, err := st.CreateTeam(store.Team{TenantID: owner, Name: name, LeadAgentID: lead})
 	if err != nil {
 		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
 	}
@@ -204,7 +244,7 @@ func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 	return writeGoClaw(conn, req.ID, wsTeamView(t, members, wsAgentIndex(st)))
 }
 
-func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		ID          string `json:"id"`
 		Name        string `json:"name"`
@@ -215,7 +255,7 @@ func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	t, err := st.GetTeam(strings.TrimSpace(p.ID))
-	if err != nil || t == nil {
+	if err != nil || t == nil || !wsTeamAllowed(st, t.ID, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	if strings.TrimSpace(p.Name) != "" {
@@ -232,12 +272,15 @@ func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 	return writeGoClaw(conn, req.ID, wsTeamView(updated, members, wsAgentIndex(st)))
 }
 
-func wsTeamDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	if st == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
+	}
+	if !wsTeamAllowed(st, strings.TrimSpace(p.ID), tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	if err := st.DeleteTeam(strings.TrimSpace(p.ID)); err != nil {
@@ -246,7 +289,7 @@ func wsTeamDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
 }
 
-func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TeamID  string `json:"teamId"`
 		TeamID2 string `json:"team_id"`
@@ -260,6 +303,9 @@ func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq) e
 	if st == nil || tid == "" || aid == "" {
 		return writeGoClawErr(conn, req.ID, "INVALID", "team and agent are required")
 	}
+	if !wsTeamAllowed(st, tid, tnt) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
+	}
 	role := strings.TrimSpace(p.Role)
 	if role == "" {
 		role = "member"
@@ -271,7 +317,7 @@ func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq) e
 	return writeGoClaw(conn, req.ID, map[string]any{"team_id": m.TeamID, "agent_id": m.AgentID, "role": m.Role})
 }
 
-func wsTeamMemberRemove(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamMemberRemove(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TeamID  string `json:"teamId"`
 		TeamID2 string `json:"team_id"`
@@ -283,6 +329,9 @@ func wsTeamMemberRemove(conn *websocket.Conn, st store.StoreIface, req goclawReq
 	aid := firstNonEmpty(p.AgentID, p.AgentID2)
 	if st == nil {
 		return writeGoClawErr(conn, req.ID, "UNAVAILABLE", "store unavailable")
+	}
+	if !wsTeamAllowed(st, tid, tnt) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	if err := st.RemoveTeamMember(tid, aid); err != nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "member not found")
@@ -300,7 +349,7 @@ func wsTeamTaskView(t *store.TeamTask) map[string]any {
 	}
 }
 
-func wsTeamTasksList(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamTasksList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TeamID  string `json:"teamId"`
 		TeamID2 string `json:"team_id"`
@@ -309,16 +358,19 @@ func wsTeamTasksList(conn *websocket.Conn, st store.StoreIface, req goclawReq) e
 	_ = json.Unmarshal(req.Params, &p)
 	tid := firstNonEmpty(p.TeamID, p.TeamID2)
 	out := []map[string]any{}
-	if st != nil {
+	if st != nil && (tid == "" || wsTeamAllowed(st, tid, tnt)) {
 		tasks, _ := st.ListTeamTasks(tid, strings.TrimSpace(p.Status))
 		for _, t := range tasks {
+			if !wsTaskAllowed(st, t, tnt) {
+				continue
+			}
 			out = append(out, wsTeamTaskView(t))
 		}
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"tasks": out})
 }
 
-func wsTeamTaskCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamTaskCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TeamID   string `json:"teamId"`
 		TeamID2  string `json:"team_id"`
@@ -331,6 +383,9 @@ func wsTeamTaskCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) 
 	if st == nil || tid == "" || strings.TrimSpace(p.Title) == "" {
 		return writeGoClawErr(conn, req.ID, "INVALID", "team and title are required")
 	}
+	if !wsTeamAllowed(st, tid, tnt) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
+	}
 	status := strings.TrimSpace(p.Status)
 	if status == "" {
 		status = "todo"
@@ -342,7 +397,7 @@ func wsTeamTaskCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) 
 	return writeGoClaw(conn, req.ID, wsTeamTaskView(t))
 }
 
-func wsTeamTaskUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsTeamTaskUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		TaskID   string `json:"taskId"`
 		TaskID2  string `json:"id"`
@@ -356,7 +411,7 @@ func wsTeamTaskUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq) 
 		return writeGoClawErr(conn, req.ID, "INVALID", "task is required")
 	}
 	t, err := st.GetTeamTask(id)
-	if err != nil || t == nil {
+	if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
 	}
 	if strings.TrimSpace(p.Status) != "" {

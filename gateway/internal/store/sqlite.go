@@ -532,6 +532,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateExtras(); err != nil {
 		return fmt.Errorf("migrate extras: %w", err)
 	}
+
+	if err := s.migrateTeamTaskExtras(); err != nil {
+		return fmt.Errorf("migrate team task extras: %w", err)
+	}
 	if err := s.migrateWorkstations(); err != nil {
 		return fmt.Errorf("migrate workstations: %w", err)
 	}
