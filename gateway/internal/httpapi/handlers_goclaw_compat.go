@@ -155,6 +155,36 @@ func channelInstanceView(cfg *store.ChannelConfig) map[string]any {
 
 func handleGoClawUsageSummary(meter *billing.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// The usage page reads current and previous windows with token, cost and
+		// duration counters. The billing meter stays the fallback for tenants
+		// whose rows predate the usage_events table.
+		if x := store.Usage(nil); x != nil {
+			_ = x
+		}
+		if st, ok := usageSummaryStore(r); ok {
+			from, to := usageRange(r)
+			cur := st.UsageTotals(requestTenant(r), from, to)
+			prev := map[string]float64{"requests": 0}
+			if ft, err1 := time.Parse(time.RFC3339, from); err1 == nil {
+				if tt, err2 := time.Parse(time.RFC3339, to); err2 == nil {
+					span := tt.Sub(ft)
+					prev = st.UsageTotals(requestTenant(r), ft.Add(-span).Format(time.RFC3339), ft.Format(time.RFC3339))
+				}
+			}
+			shape := func(m map[string]float64) map[string]any {
+				return map[string]any{
+					"requests": m["requests"], "input_tokens": m["input_tokens"],
+					"output_tokens": m["output_tokens"], "cost": m["cost"], "errors": m["errors"],
+					"unique_users": 0, "llm_calls": m["requests"], "tool_calls": 0,
+					"avg_duration_ms": m["avg_duration_ms"], "total_tokens": m["total_tokens"],
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"current": shape(cur), "previous": shape(prev), "summary": shape(cur),
+				"byAgent": map[string]any{}, "totalRecords": int(cur["requests"]),
+			})
+			return
+		}
 		rec := httptest.NewRecorder()
 		handleUsage(meter)(rec, r)
 		var raw map[string]any
