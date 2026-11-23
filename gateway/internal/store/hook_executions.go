@@ -82,7 +82,7 @@ func (s *SQLiteStore) InsertHookExecution(e HookExecution) error {
 	if e.Decision == "" {
 		e.Decision = "allow"
 	}
-	_, err := s.db.Exec(`INSERT INTO hook_executions(` + hookExecColumns + `) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.db.Exec(`INSERT INTO hook_executions(`+hookExecColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, e.TenantID, e.HookID, e.HookName, e.SessionID, e.Event, e.InputHash,
 		e.Decision, e.DurationMS, e.Retry, e.DedupKey, e.Error, e.CreatedAt)
 	return err
@@ -101,8 +101,8 @@ func (s *SQLiteStore) ListHookExecutions(tenant, hookID, event, decision string,
 		}
 	}
 	var total int
-	_ = s.db.QueryRow(`SELECT count(*) FROM hook_executions` + w, args...).Scan(&total)
-	rows, err := s.db.Query(`SELECT ` + hookExecColumns + ` FROM hook_executions` + w + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+	_ = s.db.QueryRow(`SELECT count(*) FROM hook_executions`+w, args...).Scan(&total)
+	rows, err := s.db.Query(`SELECT `+hookExecColumns+` FROM hook_executions`+w+` ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return []*HookExecution{}, total
