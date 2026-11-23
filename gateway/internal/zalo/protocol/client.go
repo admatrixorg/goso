@@ -67,6 +67,7 @@ type Session struct {
 	UserAgent string
 	Language  string
 	SecretKey string
+	Services  *ServiceMap
 	BaseURL   *url.URL
 	Jar       http.CookieJar
 	HTTP      *http.Client
