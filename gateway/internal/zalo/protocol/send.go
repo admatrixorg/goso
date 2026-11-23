@@ -103,9 +103,9 @@ func (s *Session) SendMessage(ctx context.Context, threadID string, kind ThreadT
 		return nil, fmt.Errorf("zalo personal: send http %d", resp.StatusCode)
 	}
 	var envelope struct {
-		ErrorCode int             `json:"error_code"`
-		ErrorMessage string       `json:"error_message"`
-		Data      json.RawMessage `json:"data"`
+		ErrorCode    int             `json:"error_code"`
+		ErrorMessage string          `json:"error_message"`
+		Data         json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("zalo personal: send reply is not json")
