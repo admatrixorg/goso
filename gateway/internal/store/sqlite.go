@@ -540,6 +540,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateTeamTasksExt(); err != nil {
 		return fmt.Errorf("migrate team tasks ext: %w", err)
 	}
+
+	if err := s.migrateTelemetry(); err != nil {
+		return fmt.Errorf("migrate telemetry: %w", err)
+	}
 	if err := s.backfillTaskSubject(); err != nil {
 		return fmt.Errorf("backfill task subject: %w", err)
 	}
