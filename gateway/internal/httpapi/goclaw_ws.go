@@ -99,8 +99,6 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 		})
 	case "tenants.mine", "tenants.list", "tenants.get", "tenants.create", "tenants.users.list", "tenants.users.add", "tenants.users.remove":
 		return authed, handleGoClawTenants(conn, req, state.Identity)
-	case "brain.pages", "brain.search", "brain.get", "brain.graph", "wiki.list", "wiki.search", "wiki.get", "wiki.graph":
-		return authed, handleGoClawBrain(conn, req, st, wsIdentityTenant(state))
 	case "health":
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"status": "ok", "version": "0.1.0", "uptime": 0, "database": "sqlite"})
 	case "status":
