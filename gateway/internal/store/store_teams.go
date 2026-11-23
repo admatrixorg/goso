@@ -216,8 +216,19 @@ func (s *Store) TeamOfAgent(agentID string) (*Team, error) {
 	return nil, ErrNotFound
 }
 
+func (s *Store) DeleteTeamTask(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.teamTasks[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.teamTasks, id)
+	return nil
+}
+
 func (s *Store) CreateTeamTask(t TeamTask) (*TeamTask, error) {
-	t.Title = strings.TrimSpace(t.Title)
+	t.Title = strings.TrimSpace(firstNonEmptyStr(t.Title, t.Subject))
+	t.Subject = strings.TrimSpace(firstNonEmptyStr(t.Subject, t.Title))
 	t.TeamID = strings.TrimSpace(t.TeamID)
 	t.Status = strings.ToLower(strings.TrimSpace(t.Status))
 	if t.Title == "" || t.TeamID == "" {
@@ -226,8 +237,10 @@ func (s *Store) CreateTeamTask(t TeamTask) (*TeamTask, error) {
 	if t.Status == "" {
 		t.Status = "todo"
 	}
-	if !validTaskStatus(t.Status) {
-		return nil, errors.New("status must be todo, doing, or done")
+	if st, ok := NormalizeTeamTaskStatus(t.Status); ok {
+		t.Status = st
+	} else {
+		return nil, errors.New("unknown task status")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -288,10 +301,11 @@ func (s *Store) UpdateTeamTask(t TeamTask) (*TeamTask, error) {
 		cur.Title = title
 	}
 	if st := strings.ToLower(strings.TrimSpace(t.Status)); st != "" {
-		if !validTaskStatus(st) {
-			return nil, errors.New("status must be todo, doing, or done")
+		v, ok := NormalizeTeamTaskStatus(st)
+		if !ok {
+			return nil, errors.New("unknown task status")
 		}
-		cur.Status = st
+		cur.Status = v
 	}
 	if t.AssigneeAgentID != "" {
 		if _, ok := s.agents[t.AssigneeAgentID]; !ok {

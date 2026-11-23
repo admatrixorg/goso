@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -213,18 +214,22 @@ func (s *SQLiteStore) TeamOfAgent(agentID string) (*Team, error) {
 	return s.GetTeam(teamID)
 }
 
+const teamTaskColumns = `id, team_id, title, subject, description, status, priority, assignee_agent_id, owner_agent_id,
+	assignee_user_id, created_by_agent_id, parent_id, user_id, channel, chat_id, task_type, task_number, identifier,
+	result, blocked_by, progress_percent, progress_step, followup_at, followup_count, followup_max, followup_message,
+	followup_channel, followup_chat_id, metadata, tenant_id, created_at, updated_at`
+
 func (s *SQLiteStore) CreateTeamTask(t TeamTask) (*TeamTask, error) {
-	t.Title = strings.TrimSpace(t.Title)
+	t.Title = strings.TrimSpace(firstNonEmptyStr(t.Title, t.Subject))
+	t.Subject = strings.TrimSpace(firstNonEmptyStr(t.Subject, t.Title))
 	t.TeamID = strings.TrimSpace(t.TeamID)
-	t.Status = strings.ToLower(strings.TrimSpace(t.Status))
+	st, ok := NormalizeTeamTaskStatus(t.Status)
+	if !ok {
+		st = "todo"
+	}
+	t.Status = st
 	if t.Title == "" || t.TeamID == "" {
 		return nil, errors.New("team_id and title are required")
-	}
-	if t.Status == "" {
-		t.Status = "todo"
-	}
-	if !validTaskStatus(t.Status) {
-		return nil, errors.New("status must be todo, doing, or done")
 	}
 	if _, err := s.GetTeam(t.TeamID); err != nil {
 		return nil, errors.New("team not found")
@@ -234,14 +239,61 @@ func (s *SQLiteStore) CreateTeamTask(t TeamTask) (*TeamTask, error) {
 			return nil, errors.New("assignee not found")
 		}
 	}
+	if t.TaskType == "" {
+		t.TaskType = "general"
+	}
+	if t.TenantID == "" {
+		if team, err := s.GetTeam(t.TeamID); err == nil && team != nil {
+			t.TenantID = team.TenantID
+		}
+	}
+	if t.TenantID == "" {
+		t.TenantID = NormalizeTenant("")
+	}
+	if t.TaskNumber == 0 {
+		var maxN int
+		_ = s.db.QueryRow(`SELECT coalesce(max(task_number),0) FROM team_tasks WHERE team_id=?`, t.TeamID).Scan(&maxN)
+		t.TaskNumber = maxN + 1
+	}
+	if t.Identifier == "" && t.TaskNumber > 0 {
+		t.Identifier = fmt.Sprintf("T-%d", t.TaskNumber)
+	}
 	t.ID = newID()
-	_, err := s.db.Exec(`INSERT INTO team_tasks(id, team_id, title, status, assignee_agent_id) VALUES(?,?,?,?,?)`,
-		t.ID, t.TeamID, t.Title, t.Status, t.AssigneeAgentID)
+	now := formatTime(time.Now().UTC())
+	t.CreatedAt = now
+	t.UpdatedAt = now
+	_, err := s.db.Exec(`INSERT INTO team_tasks(`+teamTaskColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.TeamID, t.Title, t.Subject, t.Description, t.Status, t.Priority, t.AssigneeAgentID,
+		t.OwnerAgentID, t.AssigneeUserID, t.CreatedByAgentID, t.ParentID, t.UserID, t.Channel, t.ChatID,
+		t.TaskType, t.TaskNumber, t.Identifier, t.Result, encodeTaskIDs(t.BlockedBy), t.ProgressPercent,
+		t.ProgressStep, t.FollowupAt, t.FollowupCount, t.FollowupMax, t.FollowupMessage, t.FollowupChannel,
+		t.FollowupChatID, t.Metadata, t.TenantID, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
-	cp := t
-	return &cp, nil
+	return s.GetTeamTask(t.ID)
+}
+
+func encodeTaskIDs(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return strings.Join(ids, ",")
+}
+
+func decodeTaskIDs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (s *SQLiteStore) ListTeamTasks(teamID, status string) ([]*TeamTask, error) {
@@ -252,9 +304,9 @@ func (s *SQLiteStore) ListTeamTasks(teamID, status string) ([]*TeamTask, error) 
 	var rows *sql.Rows
 	var err error
 	if status == "" {
-		rows, err = s.db.Query(`SELECT id, team_id, title, status, assignee_agent_id FROM team_tasks WHERE team_id=?`, teamID)
+		rows, err = s.db.Query(`SELECT `+teamTaskColumns+` FROM team_tasks WHERE team_id=? ORDER BY task_number, created_at`, teamID)
 	} else {
-		rows, err = s.db.Query(`SELECT id, team_id, title, status, assignee_agent_id FROM team_tasks WHERE team_id=? AND status=?`, teamID, status)
+		rows, err = s.db.Query(`SELECT `+teamTaskColumns+` FROM team_tasks WHERE team_id=? AND status=? ORDER BY task_number, created_at`, teamID, status)
 	}
 	if err != nil {
 		return nil, err
@@ -262,34 +314,54 @@ func (s *SQLiteStore) ListTeamTasks(teamID, status string) ([]*TeamTask, error) 
 	defer rows.Close()
 	out := []*TeamTask{}
 	for rows.Next() {
-		t, err := scanTask(rows)
+		tk, err := scanTaskRow(rows)
 		if err != nil {
 			continue
 		}
-		out = append(out, t)
+		out = append(out, tk)
 	}
 	return out, nil
 }
 
 func (s *SQLiteStore) GetTeamTask(id string) (*TeamTask, error) {
-	row := s.db.QueryRow(`SELECT id, team_id, title, status, assignee_agent_id FROM team_tasks WHERE id=?`, id)
-	t, err := scanTask(row)
+	row := s.db.QueryRow(`SELECT `+teamTaskColumns+` FROM team_tasks WHERE id=?`, strings.TrimSpace(id))
+	tk, err := scanTaskRow(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	return tk, nil
 }
 
-func scanTask(sc scanner) (*TeamTask, error) {
+func scanTaskRow(sc scanner) (*TeamTask, error) {
 	var t TeamTask
-	var assignee sql.NullString
-	if err := sc.Scan(&t.ID, &t.TeamID, &t.Title, &t.Status, &assignee); err != nil {
+	var assignee, owner, assigneeUser, createdBy, parent, blockedBy, followupAt, followupMsg, followupCh, followupChat sql.NullString
+	err := sc.Scan(&t.ID, &t.TeamID, &t.Title, &t.Subject, &t.Description, &t.Status, &t.Priority,
+		&assignee, &owner, &assigneeUser, &createdBy, &parent, &t.UserID, &t.Channel, &t.ChatID,
+		&t.TaskType, &t.TaskNumber, &t.Identifier, &t.Result, &blockedBy, &t.ProgressPercent,
+		&t.ProgressStep, &followupAt, &t.FollowupCount, &t.FollowupMax, &followupMsg, &followupCh,
+		&followupChat, &t.Metadata, &t.TenantID, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
 		return nil, err
 	}
 	t.AssigneeAgentID = assignee.String
+	t.OwnerAgentID = owner.String
+	t.AssigneeUserID = assigneeUser.String
+	t.CreatedByAgentID = createdBy.String
+	t.ParentID = parent.String
+	t.BlockedBy = decodeTaskIDs(blockedBy.String)
+	t.FollowupAt = followupAt.String
+	t.FollowupMessage = followupMsg.String
+	t.FollowupChannel = followupCh.String
+	t.FollowupChatID = followupChat.String
+	if t.Subject == "" {
+		t.Subject = t.Title
+	}
+	if t.Title == "" {
+		t.Title = t.Subject
+	}
 	return &t, nil
 }
 
@@ -298,14 +370,16 @@ func (s *SQLiteStore) UpdateTeamTask(t TeamTask) (*TeamTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	if title := strings.TrimSpace(t.Title); title != "" {
+	if title := strings.TrimSpace(firstNonEmptyStr(t.Title, t.Subject)); title != "" {
 		cur.Title = title
+		cur.Subject = title
 	}
 	if st := strings.ToLower(strings.TrimSpace(t.Status)); st != "" {
-		if !validTaskStatus(st) {
-			return nil, errors.New("status must be todo, doing, or done")
+		v, ok := NormalizeTeamTaskStatus(st)
+		if !ok {
+			return nil, errors.New("unknown task status")
 		}
-		cur.Status = st
+		cur.Status = v
 	}
 	if t.AssigneeAgentID != "" {
 		if _, err := s.GetAgent(t.AssigneeAgentID); err != nil {
@@ -313,12 +387,66 @@ func (s *SQLiteStore) UpdateTeamTask(t TeamTask) (*TeamTask, error) {
 		}
 		cur.AssigneeAgentID = t.AssigneeAgentID
 	}
-	_, err = s.db.Exec(`UPDATE team_tasks SET title=?, status=?, assignee_agent_id=? WHERE id=?`,
-		cur.Title, cur.Status, cur.AssigneeAgentID, cur.ID)
+	if t.Description != "" {
+		cur.Description = t.Description
+	}
+	if t.Result != "" {
+		cur.Result = t.Result
+	}
+	if t.Priority != 0 {
+		cur.Priority = t.Priority
+	}
+	if t.ProgressPercent != 0 {
+		cur.ProgressPercent = t.ProgressPercent
+	}
+	if t.ProgressStep != "" {
+		cur.ProgressStep = t.ProgressStep
+	}
+	if t.Channel != "" {
+		cur.Channel = t.Channel
+	}
+	if t.ChatID != "" {
+		cur.ChatID = t.ChatID
+	}
+	cur.UpdatedAt = formatTime(time.Now().UTC())
+	_, err = s.db.Exec(`UPDATE team_tasks SET title=?, subject=?, description=?, status=?, priority=?,
+		assignee_agent_id=?, owner_agent_id=?, assignee_user_id=?, created_by_agent_id=?, parent_id=?,
+		user_id=?, channel=?, chat_id=?, task_type=?, task_number=?, identifier=?, result=?, blocked_by=?,
+		progress_percent=?, progress_step=?, followup_at=?, followup_count=?, followup_max=?,
+		followup_message=?, followup_channel=?, followup_chat_id=?, metadata=?, tenant_id=?, updated_at=?
+		WHERE id=?`,
+		cur.Title, cur.Subject, cur.Description, cur.Status, cur.Priority, cur.AssigneeAgentID,
+		cur.OwnerAgentID, cur.AssigneeUserID, cur.CreatedByAgentID, cur.ParentID, cur.UserID,
+		cur.Channel, cur.ChatID, cur.TaskType, cur.TaskNumber, cur.Identifier, cur.Result,
+		encodeTaskIDs(cur.BlockedBy), cur.ProgressPercent, cur.ProgressStep, cur.FollowupAt,
+		cur.FollowupCount, cur.FollowupMax, cur.FollowupMessage, cur.FollowupChannel,
+		cur.FollowupChatID, cur.Metadata, cur.TenantID, cur.UpdatedAt, cur.ID)
 	if err != nil {
 		return nil, err
 	}
-	return cur, nil
+	return s.GetTeamTask(cur.ID)
+}
+
+func (s *SQLiteStore) DeleteTeamTask(id string) error {
+	res, err := s.db.Exec(`DELETE FROM team_tasks WHERE id=?`, strings.TrimSpace(id))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	_, _ = s.db.Exec(`DELETE FROM team_task_comments WHERE task_id=?`, strings.TrimSpace(id))
+	_, _ = s.db.Exec(`DELETE FROM team_task_attachments WHERE task_id=?`, strings.TrimSpace(id))
+	return nil
+}
+
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *SQLiteStore) CreateTeamMessage(m TeamMessage) (*TeamMessage, error) {
