@@ -217,6 +217,7 @@ func NewRouter(opt Options) http.Handler {
 	registerZaloSendRoutes(mux, opt.Store)
 	registerHookRegistryRoutes(mux, opt.Store)
 	registerVaultVersionRoutes(mux, opt.Store)
+	registerVaultStorageRoutes(mux, opt.Store)
 	registerKGDedupRoutes(mux, opt.Store)
 	registerKGExtractRoutes(mux, opt.Store, opt.Provider)
 	registerPairedDeviceRoutes(mux, opt.Store)
