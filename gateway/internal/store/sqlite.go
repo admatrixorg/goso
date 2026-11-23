@@ -539,6 +539,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migratePairedDevices(); err != nil {
 		return fmt.Errorf("migrate paired devices: %w", err)
 	}
+
+	if err := s.migrateAgentConfigPermissions(); err != nil {
+		return fmt.Errorf("migrate agent config permissions: %w", err)
+	}
 	if err := s.migrateAuthUsers(); err != nil {
 		return fmt.Errorf("migrate auth users: %w", err)
 	}
