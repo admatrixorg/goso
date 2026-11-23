@@ -89,7 +89,7 @@ func handleZaloSessionGet(st store.StoreIface) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"channel": name, "configured": true, "cookies": len(cred.Cookies),
-			"imei_set": strings.TrimSpace(cred.IMEI) != "",
+			"imei_set":       strings.TrimSpace(cred.IMEI) != "",
 			"has_secret_key": strings.TrimSpace(cred.SecretKey) != "",
 		})
 	}
