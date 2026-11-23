@@ -216,6 +216,7 @@ func NewRouter(opt Options) http.Handler {
 	registerZaloPersonalRoutes(mux, opt.Store)
 	registerHookRegistryRoutes(mux, opt.Store)
 	registerVaultVersionRoutes(mux, opt.Store)
+	registerKGDedupRoutes(mux, opt.Store)
 	registerWorkstationExecRoutes(mux, opt.Store)
 	aliasAPI(mux, "POST /api/workstations/{id}/probe", handleWorkstationProbe(opt.Store))
 	registerExtraRoutes(mux, opt)

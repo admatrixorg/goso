@@ -531,6 +531,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateVaultVersions(); err != nil {
 		return fmt.Errorf("migrate vault versions: %w", err)
 	}
+
+	if err := s.migrateKGDedup(); err != nil {
+		return fmt.Errorf("migrate kg dedup: %w", err)
+	}
 	if err := s.migrateAuthUsers(); err != nil {
 		return fmt.Errorf("migrate auth users: %w", err)
 	}
