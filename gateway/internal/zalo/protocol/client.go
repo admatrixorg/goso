@@ -68,6 +68,8 @@ type Session struct {
 	Language  string
 	SecretKey string
 	Services  *ServiceMap
+	WSURL     string
+	wsURLs    []string
 	BaseURL   *url.URL
 	Jar       http.CookieJar
 	HTTP      *http.Client
@@ -201,14 +203,28 @@ func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, 
 	info := &LoginInfo{UID: strings.TrimSpace(envelope.UID)}
 	if len(envelope.Data) > 0 {
 		var data struct {
-			UID  string `json:"uid"`
-			Name string `json:"display_name"`
+			UID  string   `json:"uid"`
+			Name string   `json:"display_name"`
+			ZpwWebsocket []string `json:"zpw_ws"`
+			ServiceMap   *struct {
+				Chat      []string `json:"chat"`
+				Group     []string `json:"group"`
+				File      []string `json:"file"`
+				Profile   []string `json:"profile"`
+				GroupPoll []string `json:"group_poll"`
+			} `json:"zpw_service_map_v3"`
 		}
 		if json.Unmarshal(envelope.Data, &data) == nil {
 			if info.UID == "" {
 				info.UID = strings.TrimSpace(data.UID)
 			}
 			info.Name = strings.TrimSpace(data.Name)
+			if len(data.ZpwWebsocket) > 0 {
+				s.wsURLs = append([]string(nil), data.ZpwWebsocket...)
+			}
+			if data.ServiceMap != nil {
+				s.Services = &ServiceMap{Chat: data.ServiceMap.Chat, Group: data.ServiceMap.Group, File: data.ServiceMap.File, Profile: data.ServiceMap.Profile, GroupPoll: data.ServiceMap.GroupPoll}
+			}
 		}
 	}
 	if info.UID == "" {
