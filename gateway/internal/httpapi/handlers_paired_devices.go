@@ -67,7 +67,7 @@ func pairDeviceFromBody(st store.StoreIface, tenant string, raw []byte, role str
 	}
 	return x.InsertPairedDevice(store.PairedDevice{
 		TenantID: tenant, SenderID: sender, Channel: strings.TrimSpace(body.Channel),
-		ChatID: firstNonEmpty(body.ChatID, body.ChatID2),
+		ChatID:   firstNonEmpty(body.ChatID, body.ChatID2),
 		PairedBy: firstNonEmpty(body.PairedBy, role, "operator"),
 	})
 }

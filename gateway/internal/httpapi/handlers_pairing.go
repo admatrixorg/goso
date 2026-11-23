@@ -4,8 +4,8 @@ package httpapi
 
 import (
 	"encoding/json"
-	"io"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
