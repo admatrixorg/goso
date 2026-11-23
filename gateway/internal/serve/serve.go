@@ -174,6 +174,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())
 		go cron.Loop(context.Background(), st, rt.CronFire)
+		go heartbeatLoop(context.Background(), st, rt.CronFire)
 		if heartbeat.Enabled() {
 			go heartbeat.Loop(context.Background(), obs)
 		}
@@ -218,6 +219,7 @@ func New(st store.StoreIface, version string) (http.Handler, Status) {
 	if rateLimit > 0 {
 		handler = ratelimit.New(rateLimit).Middleware(handler)
 	}
+	handler = httpapi.RequireRole(handler)
 	if adminToken != "" || viewToken != "" || !devMode {
 		// Empty token + no explicit GOSO_DEV_MODE → 401 (SPEC 016).
 		// Pairing exchange is an exact POST path inside Require (code is the secret).

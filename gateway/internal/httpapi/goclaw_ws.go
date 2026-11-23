@@ -50,6 +50,9 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 	if req.Method != "connect" && !authed {
 		return false, writeGoClawErr(conn, req.ID, "UNAUTHORIZED", "connect first")
 	}
+	if req.Method != "connect" && state != nil && !wsAuthorize(req.Method, state.Identity) {
+		return authed, writeGoClawErr(conn, req.ID, "FORBIDDEN", "role does not allow this action")
+	}
 	switch req.Method {
 	case "connect":
 		var p struct {
