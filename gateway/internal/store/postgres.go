@@ -230,6 +230,10 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateTelemetry(); err != nil {
 		return fmt.Errorf("migrate telemetry: %w", err)
 	}
+
+	if err := s.migrateUsage(); err != nil {
+		return fmt.Errorf("migrate usage: %w", err)
+	}
 	if err := s.backfillTaskSubject(); err != nil {
 		return fmt.Errorf("backfill task subject: %w", err)
 	}
