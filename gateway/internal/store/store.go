@@ -685,6 +685,7 @@ func LiteEnabled() bool {
 
 // Store is an in-memory store. Safe for concurrent use.
 type Store struct {
+	hookExecutions map[string]*HookExecution
 	mu              sync.RWMutex
 	agents          map[string]*Agent
 	sessions        map[string]*Session

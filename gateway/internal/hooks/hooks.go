@@ -291,16 +291,44 @@ func (e *Engine) Run(ctx context.Context, ev pipeline.Event) pipeline.Decision {
 			continue
 		}
 		cfg, _ := ParseConfig(h.Config)
+		start := time.Now()
 		switch h.HandlerType {
 		case HandlerBlock:
 			if ev.Name == pipeline.PreToolUse && !dec.Block {
 				dec = pipeline.Decision{Block: true, Message: cfg.Message}
 			}
+			e.record(h, ev, hooksDecisionBlock, time.Since(start), "")
 		case HandlerHTTP:
 			e.deliver(h, cfg, ev)
+			e.record(h, ev, hooksDecisionAllow, time.Since(start), "")
+		default:
+			e.record(h, ev, hooksDecisionSkip, time.Since(start), h.HandlerType+" handler is not dispatched here")
 		}
 	}
 	return dec
+}
+
+const (
+	hooksDecisionAllow = "allow"
+	hooksDecisionBlock = "block"
+	hooksDecisionSkip  = "skip"
+)
+
+// record writes one execution row so the ledger reflects real traffic.
+func (e *Engine) record(h *store.Hook, ev pipeline.Event, decision string, dur time.Duration, errText string) {
+	if e == nil || e.st == nil {
+		return
+	}
+	x, ok := e.st.(store.HookExecutionStore)
+	if !ok {
+		return
+	}
+	_ = x.InsertHookExecution(store.HookExecution{
+		TenantID: store.NormalizeTenant(ev.TenantID), HookID: h.ID, HookName: h.Matcher,
+		SessionID: ev.SessionID, Event: string(ev.Name), Decision: decision,
+		DurationMS: int(dur.Milliseconds()), Error: errText,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 type payload struct {

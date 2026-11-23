@@ -523,6 +523,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("migrate hooks: %w", err)
 	}
+
+	if err := s.migrateHookExecutions(); err != nil {
+		return fmt.Errorf("migrate hook executions: %w", err)
+	}
 	if err := s.migrateAuthUsers(); err != nil {
 		return fmt.Errorf("migrate auth users: %w", err)
 	}
