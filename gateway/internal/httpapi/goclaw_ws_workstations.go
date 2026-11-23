@@ -1,13 +1,16 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
 
 func wsWorkstationView(w *store.Workstation) map[string]any {
@@ -307,9 +310,20 @@ func handleGoClawWorkstations(conn *websocket.Conn, st store.StoreIface, req goc
 		if err != nil || w == nil {
 			return writeGoClawErr(conn, req.ID, "NOT_FOUND", "workstation not found")
 		}
+		probeCtx, probeCancel := timeoutCtxPair(15)
+		defer probeCancel()
+		res, rerr := workstation.Run(probeCtx, workstation.ExecRequest{
+			Workstation: w, Command: "echo", Args: []string{"goso-probe"}, Timeout: 15 * time.Second,
+		})
+		if rerr != nil {
+			return writeGoClaw(conn, req.ID, map[string]any{
+				"ok": false, "connected": false, "backend_type": w.BackendType,
+				"message": rerr.Error(),
+			})
+		}
 		return writeGoClaw(conn, req.ID, map[string]any{
-			"ok": true, "connected": false, "backend_type": w.BackendType,
-			"message": "stored backend; live ssh probe is not configured",
+			"ok": res.OK, "connected": res.OK, "backend_type": res.Backend,
+			"output": strings.TrimSpace(res.Stdout), "duration_ms": res.DurationMS,
 		})
 
 	default:
@@ -341,4 +355,9 @@ func identityLabel(who *auth.Identity) string {
 		return "system"
 	}
 	return firstNonEmpty(who.Email, who.UserID, "system")
+}
+
+// timeoutCtxPair returns a context and its cancel so the caller can release it.
+func timeoutCtxPair(sec int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), time.Duration(sec)*time.Second)
 }
