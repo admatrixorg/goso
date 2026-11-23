@@ -45,6 +45,16 @@ func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 		return wsTeamTaskEvents(conn, st, req, tenant, tnt, true)
 	case "teams.events.list":
 		return wsTeamTaskEvents(conn, st, req, tenant, tnt, false)
+	case "teams.tasks.delete":
+		return wsTeamTaskDelete(conn, st, req, tnt)
+	case "teams.tasks.delete-bulk":
+		return wsTeamTaskDeleteBulk(conn, st, req, tnt)
+	case "teams.tasks.attachments":
+		return wsTeamTaskAttachments(conn, st, req, tenant)
+	case "teams.tasks.attachment_add":
+		return wsTeamTaskAttachmentAdd(conn, st, req, tenant, tnt)
+	case "teams.tasks.attachment_delete":
+		return wsTeamTaskAttachmentDelete(conn, st, req, tenant)
 	case "teams.scopes":
 		return writeGoClaw(conn, req.ID, map[string]any{"scopes": []any{}})
 	case "teams.workspace.list":
@@ -413,4 +423,104 @@ func wsTeamTaskEvents(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 		return writeGoClaw(conn, req.ID, map[string]any{"events": rows, "total": len(rows)})
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+}
+
+func wsTeamTaskDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		TaskID2 string `json:"id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	t, err := st.GetTeamTask(id)
+	if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	if err := st.DeleteTeamTask(t.ID); err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true, "deleted": 1})
+}
+
+func wsTeamTaskDeleteBulk(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
+	var p struct {
+		TaskIDs  []string `json:"taskIds"`
+		TaskIDs2 []string `json:"ids"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	ids := p.TaskIDs
+	if len(ids) == 0 {
+		ids = p.TaskIDs2
+	}
+	deleted := 0
+	for _, id := range ids {
+		t, err := st.GetTeamTask(id)
+		if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
+			continue
+		}
+		if st.DeleteTeamTask(t.ID) == nil {
+			deleted++
+		}
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true, "deleted": deleted})
+}
+
+func wsTeamTaskAttachments(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		TaskID2 string `json:"id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	x := store.Attachments(st)
+	if x == nil || id == "" {
+		return writeGoClaw(conn, req.ID, map[string]any{"attachments": []any{}, "total": 0})
+	}
+	rows := x.ListTeamTaskAttachments(tenant, id)
+	return writeGoClaw(conn, req.ID, map[string]any{"attachments": rows, "total": len(rows)})
+}
+
+func wsTeamTaskAttachmentAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant, tnt string) error {
+	var p struct {
+		TaskID   string `json:"taskId"`
+		TaskID2  string `json:"id"`
+		Path     string `json:"path"`
+		FileSize int64  `json:"file_size"`
+		MimeType string `json:"mime_type"`
+		ChatID   string `json:"chat_id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	t, err := st.GetTeamTask(id)
+	if err != nil || t == nil || !wsTaskAllowed(st, t, tnt) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	x := store.Attachments(st)
+	if x == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_IMPLEMENTED", "attachments unavailable")
+	}
+	saved, perr := x.PutTeamTaskAttachment(store.TeamTaskAttachment{
+		TenantID: tenant, TaskID: t.ID, TeamID: t.TeamID, ChatID: p.ChatID,
+		Path: p.Path, FileSize: p.FileSize, MimeType: p.MimeType,
+	})
+	if perr != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", perr.Error())
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"attachment": saved})
+}
+
+func wsTeamTaskAttachmentDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		ID     string `json:"id"`
+		FileID string `json:"attachmentId"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	x := store.Attachments(st)
+	if x == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_IMPLEMENTED", "attachments unavailable")
+	}
+	if err := x.DeleteTeamTaskAttachment(tenant, firstNonEmpty(p.FileID, p.ID)); err != nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "attachment not found")
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
 }

@@ -368,9 +368,24 @@ func wsTeamTaskView(t *store.TeamTask) map[string]any {
 	if t == nil {
 		return map[string]any{}
 	}
+	subject := t.Subject
+	if subject == "" {
+		subject = t.Title
+	}
 	return map[string]any{
-		"id": t.ID, "team_id": t.TeamID, "title": t.Title, "status": t.Status,
-		"assignee_agent_id": t.AssigneeAgentID,
+		"id": t.ID, "team_id": t.TeamID, "title": t.Title, "subject": subject,
+		"description": t.Description, "status": t.Status, "priority": t.Priority,
+		"assignee_agent_id": t.AssigneeAgentID, "owner_agent_id": t.OwnerAgentID,
+		"assignee_user_id": t.AssigneeUserID, "created_by_agent_id": t.CreatedByAgentID,
+		"parent_id": t.ParentID, "user_id": t.UserID, "channel": t.Channel, "chat_id": t.ChatID,
+		"task_type": t.TaskType, "task_number": t.TaskNumber, "identifier": t.Identifier,
+		"result": t.Result, "blocked_by": t.BlockedBy, "progress_percent": t.ProgressPercent,
+		"progress_step": t.ProgressStep, "followup_at": t.FollowupAt,
+		"followup_count": t.FollowupCount, "followup_max": t.FollowupMax,
+		"followup_message": t.FollowupMessage, "followup_channel": t.FollowupChannel,
+		"followup_chat_id": t.FollowupChatID,
+		"created_at":       t.CreatedAt, "updated_at": t.UpdatedAt,
+		"comment_count": t.CommentCount, "attachment_count": t.AttachmentCount,
 	}
 }
 
@@ -383,8 +398,12 @@ func wsTeamTasksList(conn *websocket.Conn, st store.StoreIface, req goclawReq, t
 	_ = json.Unmarshal(req.Params, &p)
 	tid := firstNonEmpty(p.TeamID, p.TeamID2)
 	out := []map[string]any{}
+	statusFilter := strings.ToLower(strings.TrimSpace(p.Status))
+	if statusFilter == "all" {
+		statusFilter = ""
+	}
 	if st != nil && (tid == "" || wsTeamAllowed(st, tid, tnt)) {
-		tasks, _ := st.ListTeamTasks(tid, strings.TrimSpace(p.Status))
+		tasks, _ := st.ListTeamTasks(tid, statusFilter)
 		for _, t := range tasks {
 			if !wsTaskAllowed(st, t, tnt) {
 				continue

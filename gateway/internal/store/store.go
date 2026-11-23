@@ -53,13 +53,44 @@ type TeamMember struct {
 	Role    string `json:"role"`
 }
 
-// TeamTask is a Kanban card (status todo|doing|done).
+// TeamTask is a Kanban card. Status accepts the Goso vocabulary
+// (todo|doing|done) and the GoClaw one (pending|in_progress|completed and
+// the rest), so imported and local cards share one board.
 type TeamTask struct {
-	ID              string `json:"id"`
-	TeamID          string `json:"team_id"`
-	Title           string `json:"title"`
-	Status          string `json:"status"`
-	AssigneeAgentID string `json:"assignee_agent_id,omitempty"`
+	ID               string   `json:"id"`
+	TenantID         string   `json:"-"`
+	TeamID           string   `json:"team_id"`
+	Title            string   `json:"title"`
+	Subject          string   `json:"subject,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	Status           string   `json:"status"`
+	Priority         int      `json:"priority"`
+	AssigneeAgentID  string   `json:"assignee_agent_id,omitempty"`
+	OwnerAgentID     string   `json:"owner_agent_id,omitempty"`
+	AssigneeUserID   string   `json:"assignee_user_id,omitempty"`
+	CreatedByAgentID string   `json:"created_by_agent_id,omitempty"`
+	ParentID         string   `json:"parent_id,omitempty"`
+	UserID           string   `json:"user_id,omitempty"`
+	Channel          string   `json:"channel,omitempty"`
+	ChatID           string   `json:"chat_id,omitempty"`
+	TaskType         string   `json:"task_type,omitempty"`
+	TaskNumber       int      `json:"task_number"`
+	Identifier       string   `json:"identifier,omitempty"`
+	Result           string   `json:"result,omitempty"`
+	BlockedBy        []string `json:"blocked_by,omitempty"`
+	ProgressPercent  int      `json:"progress_percent"`
+	ProgressStep     string   `json:"progress_step,omitempty"`
+	FollowupAt       string   `json:"followup_at,omitempty"`
+	FollowupCount    int      `json:"followup_count"`
+	FollowupMax      int      `json:"followup_max"`
+	FollowupMessage  string   `json:"followup_message,omitempty"`
+	FollowupChannel  string   `json:"followup_channel,omitempty"`
+	FollowupChatID   string   `json:"followup_chat_id,omitempty"`
+	Metadata         string   `json:"metadata,omitempty"`
+	CreatedAt        string   `json:"created_at,omitempty"`
+	UpdatedAt        string   `json:"updated_at,omitempty"`
+	CommentCount     int      `json:"comment_count"`
+	AttachmentCount  int      `json:"attachment_count"`
 }
 
 // TeamMessage is one mailbox row.
@@ -535,6 +566,7 @@ type StoreIface interface {
 	ListTeamTasks(teamID, status string) ([]*TeamTask, error)
 	GetTeamTask(string) (*TeamTask, error)
 	UpdateTeamTask(TeamTask) (*TeamTask, error)
+	DeleteTeamTask(string) error
 	CreateTeamMessage(TeamMessage) (*TeamMessage, error)
 	ListTeamMessages(teamID string) ([]*TeamMessage, error)
 	AddAgentLink(fromID, toID string) error

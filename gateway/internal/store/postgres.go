@@ -222,6 +222,13 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateTeamTaskExtras(); err != nil {
 		return fmt.Errorf("migrate team task extras: %w", err)
 	}
+
+	if err := s.migrateTeamTasksExt(); err != nil {
+		return fmt.Errorf("migrate team tasks ext: %w", err)
+	}
+	if err := s.backfillTaskSubject(); err != nil {
+		return fmt.Errorf("backfill task subject: %w", err)
+	}
 	if err := s.migrateWorkstations(); err != nil {
 		return fmt.Errorf("postgres migrate workstations: %w", err)
 	}
