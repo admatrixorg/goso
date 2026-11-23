@@ -238,6 +238,10 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateSkills(); err != nil {
 		return fmt.Errorf("migrate skills: %w", err)
 	}
+
+	if err := s.migrateMCPGrants(); err != nil {
+		return fmt.Errorf("migrate mcp grants: %w", err)
+	}
 	if err := s.backfillTaskSubject(); err != nil {
 		return fmt.Errorf("backfill task subject: %w", err)
 	}

@@ -212,6 +212,7 @@ func NewRouter(opt Options) http.Handler {
 	usageStoreForSummary = opt.Store
 	skillListStore = opt.Store
 	registerExtrasRoutes(mux, opt.Store)
+	registerMCPGrantRoutes(mux, opt.Store)
 	registerExtraRoutes(mux, opt)
 	registerAgentAdvancedRoutes(mux, opt)
 	registerAgentSkillsExtraRoutes(mux, opt.Store)

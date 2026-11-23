@@ -155,6 +155,10 @@ func (s *Store) Close() error {
 }
 
 // Add records one LLM call. Nil-safe.
+// OnRecord is an optional sink that persists each record outside the meter.
+// The gateway sets it so usage_events keeps growing while chats run.
+var OnRecord func(Record)
+
 func (s *Store) Add(r Record) {
 	if s == nil {
 		return
@@ -168,6 +172,9 @@ func (s *Store) Add(r Record) {
 		r.CreatedAt = r.CreatedAt.UTC()
 	}
 	r.TotalTokens = r.PromptTokens + r.CompletionTokens
+	if OnRecord != nil {
+		OnRecord(r)
+	}
 	if s.db != nil {
 		est := 0
 		if r.Estimated {
