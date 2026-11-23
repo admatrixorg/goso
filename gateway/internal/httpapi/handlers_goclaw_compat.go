@@ -17,14 +17,14 @@ func registerGoClawCompatRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /v1/agents/{id}/kg/stats", handleRealKGStats(st))
 	mux.HandleFunc("GET /v1/agents/{id}/kg/entities", handleRealKGEntities(st))
 	mux.HandleFunc("GET /v1/vault/documents", remapJSON(handleListVaultDocs(st), func(m map[string]any) map[string]any {
-		docs := m["docs"]
-		if docs == nil {
-			docs = []any{}
-		}
+		docs := goClawVaultDocList(m["docs"])
+		m["docs"] = docs
 		m["documents"] = docs
 		return m
 	}))
-	mux.HandleFunc("GET /v1/vault/documents/{id}", handleGetVaultDoc(st))
+	mux.HandleFunc("GET /v1/vault/documents/{id}/links", handleGoClawVaultLinks(st))
+	mux.HandleFunc("GET /api/vault/documents/{id}/links", handleGoClawVaultLinks(st))
+	mux.HandleFunc("GET /v1/vault/documents/{id}", handleGoClawVaultDocGet(st))
 	mux.HandleFunc("PUT /v1/vault/documents/{id}", handleGoClawVaultPut(st))
 	mux.HandleFunc("DELETE /v1/vault/documents/{id}", handleGoClawVaultDelete(st))
 	mux.HandleFunc("GET /v1/memory/documents", handleGoClawMemoryDocuments(st))
