@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"context"
-	"time"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 
