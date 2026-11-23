@@ -3,6 +3,7 @@
 package pkgmgr
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -191,6 +192,7 @@ type Manager struct {
 	seq    atomic.Int64
 	now    func() time.Time
 	probe  ProbeFunc
+	runner Runner
 	FailAt int // tests: fail the next job at this 1-based step (0 = success)
 	allow  map[string]*allowRow
 	pkgs   map[string]*pkgRow
@@ -588,6 +590,58 @@ func (m *Manager) runJobLocked(row *pkgRow, action string, startFrom int, runtim
 				break
 			}
 			if row.Ecosystem == EcoGitHub {
+				row.Warning = "git is not available in this image"
+				j.Log = appendLog(j.Log, "warning: "+row.Warning)
+			}
+		}
+		if effective != ActionUninstall && n == 2 {
+			if warn, ok := runtimeGate(runtimes, row.Ecosystem); ok {
+				_ = warn
+				if bin, args, ok := applyCommand(row.Ecosystem, row.Name, row.Version); ok {
+					j.Log = appendLog(j.Log, "run: "+bin+" "+strings.Join(args, " "))
+					res := m.runStep(bin, args)
+					if res.Output != "" {
+						j.Log = appendLog(j.Log, res.Output)
+					}
+					if !res.OK {
+						lastErr = errors.New("apply failed: " + res.Err)
+						row.Warning = res.Err
+						break
+					}
+				} else {
+					lastErr = ErrRuntime
+					row.Warning = row.Ecosystem + " installs are not supported in this image"
+					j.Log = appendLog(j.Log, "warning: "+row.Warning)
+					break
+				}
+			}
+		}
+		if effective == ActionUninstall && n == 2 {
+			if bin, args, ok := removeCommand(row.Ecosystem, row.Name); ok {
+				j.Log = appendLog(j.Log, "run: "+bin+" "+strings.Join(args, " "))
+				res := m.runStep(bin, args)
+				if res.Output != "" {
+					j.Log = appendLog(j.Log, res.Output)
+				}
+				if !res.OK {
+					lastErr = errors.New("remove failed: " + res.Err)
+					row.Warning = res.Err
+					break
+				}
+			}
+		}
+		if effective != ActionUninstall && n == 3 {
+			if bin, args, ok := verifyCommand(row.Ecosystem, row.Name); ok {
+				res := m.runStep(bin, args)
+				if !res.OK {
+					lastErr = errors.New("verify failed: " + res.Err)
+					row.Warning = "installed but not importable"
+					j.Log = appendLog(j.Log, "verify: "+res.Err)
+					break
+				}
+				j.Log = appendLog(j.Log, "verify: ok")
+			}
+			if row.Ecosystem == EcoGitHub {
 				if c := m.creds[KindGitHub]; c == nil || c.Hash == "" {
 					row.Warning = "github CLI credential is not configured; private fetches are unavailable"
 					j.Log = appendLog(j.Log, "warning: "+row.Warning)
@@ -778,4 +832,12 @@ func SecretField(k string) bool {
 		}
 	}
 	return false
+}
+
+// runStep executes one package command through the injected runner.
+func (m *Manager) runStep(bin string, args []string) ExecResult {
+	if m.runner == nil {
+		m.runner = DefaultRunner(3 * time.Minute)
+	}
+	return m.runner(context.Background(), bin, args)
 }

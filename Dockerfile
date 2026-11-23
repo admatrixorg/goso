@@ -10,9 +10,16 @@ COPY gateway ./gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/goso-gateway ./gateway/cmd/goso-gateway
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata wget \
+# python and node are installed so the package manager can install for real.
+# The venv lives outside /data because a declared VOLUME hides build writes.
+RUN apk add --no-cache ca-certificates tzdata wget python3 py3-pip nodejs npm \
 	&& adduser -D -u 1000 goso \
-	&& mkdir -p /data && chown goso:goso /data
+	&& mkdir -p /data \
+	&& python3 -m venv /opt/pyenv \
+	&& chown -R goso:goso /data /opt/pyenv
+ENV PATH="/opt/pyenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+	PIP_NO_CACHE_DIR=1 \
+	PIP_DISABLE_PIP_VERSION_CHECK=1
 COPY --from=build /out/goso-gateway /usr/local/bin/goso-gateway
 USER goso
 WORKDIR /data
