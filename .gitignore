@@ -6,6 +6,8 @@ dist/
 !.env.example
 .DS_Store
 data/
+!control-plane/src/data/
+!control-plane/src/data/**
 var/
 *.db
 *.db-journal
