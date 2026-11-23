@@ -319,7 +319,8 @@ func handleGoClawVaultPut(st store.StoreIface) http.HandlerFunc {
 		if v, ok := body["title"].(string); ok && strings.TrimSpace(v) != "" {
 			doc.Title = strings.TrimSpace(v)
 		}
-		if v, ok := body["body"].(string); ok {
+		if v, ok := body["body"].(string); ok && v != doc.Body {
+			snapshotVaultDoc(st, requestTenant(r), doc.ID, doc.Title, doc.Body, "edit")
 			doc.Body = v
 		}
 		if v, ok := body["path"].(string); ok && strings.TrimSpace(v) != "" {
