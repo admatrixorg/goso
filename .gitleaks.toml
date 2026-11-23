@@ -17,6 +17,8 @@ paths = [
     '''(^|/)\.planning/''',
     '''(^|/)\.env$''',
     '''(^|/)\.env\.[^./]+$''',
+    # Vendored GoClaw control-plane snapshot; it is not built or shipped.
+    '''(^|/)control-plane/src-goso/''',
 ]
 
 # Fake fixtures only. condition=AND so the fake value is ignored only in that

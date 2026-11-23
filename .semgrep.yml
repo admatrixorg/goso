@@ -12,6 +12,8 @@ rules:
         - "**/*.md"
         # Fake OPENSSH headers in rejection tests (header only, or header plus the literal AAAA). Not a blanket test exclude.
         - "control-plane/src/api/workstations-ops.test.ts"
+        # Vendored GoClaw control-plane snapshot; not built or shipped.
+        - "control-plane/src-goso/**"
         - "gateway/internal/workstation/workstations_test.go"
         - "gateway/internal/httpapi/handlers_storage_test.go"
         - "gateway/internal/httpapi/handlers_workstations_test.go"
