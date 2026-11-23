@@ -396,3 +396,32 @@ func (s *SQLiteStore) ListRunTimeline(tenant, runID string, limit int) []*Timeli
 }
 
 var _ = errors.New
+
+// timelineExtColumns widens run_timeline_items to the GoClaw shape so richer
+// timeline rows survive the import and the reader can render them.
+var timelineExtColumns = [][2]string{
+	{"session_key", "TEXT NOT NULL DEFAULT ''"},
+	{"agent_id", "TEXT NOT NULL DEFAULT ''"},
+	{"user_id", "TEXT NOT NULL DEFAULT ''"},
+	{"channel", "TEXT NOT NULL DEFAULT ''"},
+	{"chat_id", "TEXT NOT NULL DEFAULT ''"},
+	{"item_type", "TEXT NOT NULL DEFAULT ''"},
+	{"status", "TEXT NOT NULL DEFAULT ''"},
+	{"title", "TEXT NOT NULL DEFAULT ''"},
+	{"preview", "TEXT NOT NULL DEFAULT ''"},
+	{"content", "TEXT NOT NULL DEFAULT ''"},
+	{"tool_name", "TEXT NOT NULL DEFAULT ''"},
+	{"tool_call_id", "TEXT NOT NULL DEFAULT ''"},
+	{"trace_id", "TEXT NOT NULL DEFAULT ''"},
+	{"span_id", "TEXT NOT NULL DEFAULT ''"},
+	{"metadata", "TEXT NOT NULL DEFAULT ''"},
+}
+
+func (s *SQLiteStore) migrateTimelineExt() error {
+	for _, col := range timelineExtColumns {
+		if err := s.addColumnIfMissing("run_timeline_items", col[0], col[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}

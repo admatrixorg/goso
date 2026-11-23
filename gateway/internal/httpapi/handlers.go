@@ -219,6 +219,7 @@ func NewRouter(opt Options) http.Handler {
 	registerKGDedupRoutes(mux, opt.Store)
 	registerPairedDeviceRoutes(mux, opt.Store)
 	registerAgentConfigPermissionRoutes(mux, opt.Store)
+	registerRunTimelineRoutes(mux, opt.Store)
 	registerWorkstationExecRoutes(mux, opt.Store)
 	aliasAPI(mux, "POST /api/workstations/{id}/probe", handleWorkstationProbe(opt.Store))
 	registerExtraRoutes(mux, opt)
