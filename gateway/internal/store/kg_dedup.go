@@ -23,10 +23,10 @@ type KGDedupCandidate struct {
 
 // KGMergeResult reports what a merge changed.
 type KGMergeResult struct {
-	KeptID        string `json:"kept_id"`
-	MergedID      string `json:"merged_id"`
-	RelationsMoved int   `json:"relations_moved"`
-	RelationsDropped int `json:"relations_dropped"`
+	KeptID           string `json:"kept_id"`
+	MergedID         string `json:"merged_id"`
+	RelationsMoved   int    `json:"relations_moved"`
+	RelationsDropped int    `json:"relations_dropped"`
 }
 
 // KGDedupStore is the duplicate review capability.
