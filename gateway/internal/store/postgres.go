@@ -218,6 +218,9 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateExtras(); err != nil {
 		return fmt.Errorf("postgres migrate extras: %w", err)
 	}
+	if err := s.migrateWorkstations(); err != nil {
+		return fmt.Errorf("postgres migrate workstations: %w", err)
+	}
 	if err := s.migrateToolSettings(); err != nil {
 		return fmt.Errorf("postgres migrate tool settings: %w", err)
 	}
