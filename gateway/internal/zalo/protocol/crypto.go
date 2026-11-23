@@ -22,6 +22,12 @@ var (
 // DefaultUserAgent is the client GoClaw presents to Zalo web.
 const DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
+// DefaultAPIType and DefaultAPIVersion are the client identify Zalo expects.
+const (
+	DefaultAPIType    = 30
+	DefaultAPIVersion = 671
+)
+
 // DefaultLanguage is the language code Zalo expects.
 const DefaultLanguage = "vi"
 
