@@ -32,6 +32,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/ratelimit"
 	"github.com/mqglobal/goso/gateway/internal/secrets"
 	"github.com/mqglobal/goso/gateway/internal/security"
+	"github.com/mqglobal/goso/gateway/internal/pkgmgr"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/team"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
@@ -249,6 +250,9 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 			InputTokens: rec.PromptTokens, OutputTokens: rec.CompletionTokens,
 			TotalTokens: rec.TotalTokens, CallCount: 1, CreatedAt: stamp,
 		})
+	}
+	if pk := pkgmgr.Default(); pk != nil {
+		pk.SetRunner(pkgmgr.DefaultRunner(3 * time.Minute))
 	}
 	obs.Register(mux)
 	if !testing.Testing() {
