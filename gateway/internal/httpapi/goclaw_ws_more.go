@@ -16,6 +16,7 @@ import (
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/logstore"
+	"github.com/mqglobal/goso/gateway/internal/skill"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
@@ -74,9 +75,9 @@ func handleGoClawMore(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	case "config.defaults":
 		return writeGoClaw(conn, req.ID, map[string]any{"values": map[string]any{}})
 	case "skills.list":
-		return wsSkillsList(conn, st, req)
+		return wsSkillsList(conn, st, req, wsSkillsTenant(tnt, who))
 	case "skills.get":
-		return wsSkillGet(conn, st, req)
+		return wsSkillGet(conn, st, req, wsSkillsTenant(tnt, who))
 	case "exec.approval.list":
 		return wsApprovalsList(conn, req)
 	case "exec.approval.approve":
@@ -202,18 +203,38 @@ func wsTeamsList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt s
 
 func wsTeamGet(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		TeamID  string `json:"teamId"`
+		TeamID2 string `json:"team_id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	if st == nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
-	t, err := st.GetTeam(strings.TrimSpace(p.ID))
+	t, err := st.GetTeam(firstNonEmpty(p.TeamID, p.TeamID2, p.ID))
 	if err != nil || t == nil || !wsTeamAllowed(st, t.ID, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	members, _ := st.ListTeamMembers(t.ID)
-	return writeGoClaw(conn, req.ID, wsTeamView(t, members, wsAgentIndex(st)))
+	return writeGoClaw(conn, req.ID, map[string]any{
+		"team": wsTeamView(t, members, wsAgentIndex(st)), "members": wsTeamMemberRows(members, wsAgentIndex(st)),
+	})
+}
+
+func wsTeamMemberRows(members []*store.TeamMember, agents map[string]*store.Agent) []map[string]any {
+	out := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		if m == nil {
+			continue
+		}
+		row := map[string]any{"team_id": m.TeamID, "agent_id": m.AgentID, "role": m.Role}
+		if a := agents[m.AgentID]; a != nil {
+			row["agent_key"] = a.AgentKey
+			row["display_name"] = a.DisplayName
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
@@ -246,6 +267,8 @@ func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt 
 func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
 		ID          string `json:"id"`
+		TeamID      string `json:"teamId"`
+		TeamID2     string `json:"team_id"`
 		Name        string `json:"name"`
 		LeadAgentID string `json:"lead_agent_id"`
 	}
@@ -253,7 +276,7 @@ func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt 
 	if st == nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
-	t, err := st.GetTeam(strings.TrimSpace(p.ID))
+	t, err := st.GetTeam(firstNonEmpty(p.TeamID, p.TeamID2, p.ID))
 	if err != nil || t == nil || !wsTeamAllowed(st, t.ID, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
@@ -273,16 +296,19 @@ func wsTeamUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt 
 
 func wsTeamDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		TeamID  string `json:"teamId"`
+		TeamID2 string `json:"team_id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TeamID, p.TeamID2, p.ID)
 	if st == nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
-	if !wsTeamAllowed(st, strings.TrimSpace(p.ID), tnt) {
+	if !wsTeamAllowed(st, id, tnt) {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
-	if err := st.DeleteTeam(strings.TrimSpace(p.ID)); err != nil {
+	if err := st.DeleteTeam(id); err != nil {
 		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "team not found")
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
@@ -465,32 +491,76 @@ func wsConfigPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq) err
 	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
 }
 
-func wsSkillsList(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
-	rec := httptest.NewRecorder()
-	handleListSkills()(rec, httptest.NewRequest(http.MethodGet, "/api/skills", nil))
-	var out map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		return writeGoClaw(conn, req.ID, map[string]any{"skills": []any{}})
+// wsSkillsTenant picks the tenant a skill listing runs under.
+func wsSkillsTenant(tnt string, who *auth.Identity) string {
+	if strings.TrimSpace(tnt) != "" {
+		return tnt
 	}
-	return writeGoClaw(conn, req.ID, out)
+	if who != nil && strings.TrimSpace(who.TenantID) != "" {
+		return who.TenantID
+	}
+	return store.DefaultTenant
 }
 
-func wsSkillGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+func wsSkillDescription(tenant, name string) string {
+	doc, err := skill.Load(tenant, name)
+	if err != nil || doc == nil {
+		return ""
+	}
+	for _, line := range strings.Split(doc.Body, "\n") {
+		line = strings.TrimSpace(strings.TrimLeft(line, "#"))
+		if line != "" {
+			if len(line) > 180 {
+				line = line[:180]
+			}
+			return line
+		}
+	}
+	return ""
+}
+
+// wsSkillRows maps the on-disk skill catalog onto the skill row the UI reads.
+func wsSkillRows(tenant string) []map[string]any {
+	infos, _ := skill.List(tenant)
+	out := make([]map[string]any, 0, len(infos))
+	for _, info := range infos {
+		name := strings.TrimSpace(info.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"id": name, "name": name, "slug": name,
+			"description": wsSkillDescription(tenant, name),
+			"source": "filesystem", "visibility": "tenant", "version": 1,
+			"is_system": false, "status": "active", "enabled": true,
+			"manager_agents": []any{}, "missing_deps": []any{},
+		})
+	}
+	return out
+}
+
+func wsSkillsList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	rows := wsSkillRows(tenant)
+	return writeGoClaw(conn, req.ID, map[string]any{"skills": rows, "total": len(rows)})
+}
+
+func wsSkillGet(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
 	var p struct {
 		Name string `json:"name"`
 		ID   string `json:"id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	want := firstNonEmpty(p.Name, p.ID)
-	rec := httptest.NewRecorder()
-	handleListSkills()(rec, httptest.NewRequest(http.MethodGet, "/api/skills", nil))
-	var out struct {
-		Skills []map[string]any `json:"skills"`
+	if want == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "name is required")
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	for _, s := range out.Skills {
-		if v, ok := s["name"].(string); ok && v == want {
-			return writeGoClaw(conn, req.ID, s)
+	for _, row := range wsSkillRows(tenant) {
+		if row["name"] == want {
+			if doc, err := skill.Load(tenant, want); err == nil && doc != nil {
+				row["content"] = doc.Body
+				row["body"] = doc.Body
+			}
+			return writeGoClaw(conn, req.ID, row)
 		}
 	}
 	return writeGoClawErr(conn, req.ID, "NOT_FOUND", "skill not found")
