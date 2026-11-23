@@ -179,6 +179,9 @@ func NewRouter(opt Options) http.Handler {
 	registerCronRoutes(mux, opt)
 	registerBackupRoutes(mux, opt)
 	registerPairingRoutes(mux, opt.Pairing)
+	registerAuthLoginRoutes(mux, opt.Store)
+	registerUserDirectoryRoutes(mux, opt.Store)
+	registerGoClawCompatRoutes(mux, opt)
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)
 	registerPendingRoutes(mux, opt)
@@ -204,6 +207,7 @@ func routerBase(opt Options) *http.ServeMux {
 	al := opt.Audit
 	version := opt.Version
 	mux := http.NewServeMux()
+	registerGoClawExtraDeps(opt)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		body := map[string]any{"ok": true, "version": version, "ws_up": WSMounted()}
@@ -1075,7 +1079,7 @@ func registerChannels(mux *http.ServeMux, opt Options) {
 		mux.HandleFunc("POST /api/channels/zalo-oa/bot/{tenant}/{inst}", handleTenantZaloBotWebhook(opt.Channels))
 	}
 	aliasAPI(mux, "GET /api/channels", handleListChannels(opt.Store, opt.Channels))
-	aliasAPI(mux, "GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
+	mux.HandleFunc("GET /api/channels/{name}/health", handleChannelHealth(opt.Store, opt.Channels))
 	aliasAPI(mux, "PATCH /api/channels/{name}", handlePatchChannel(opt.Store, opt.Channels))
 	aliasAPI(mux, "PUT /api/channels/{name}/secrets", handlePutChannelSecrets(opt.Store, opt.Channels))
 	aliasAPI(mux, "DELETE /api/channels/{name}/secrets", handleDeleteChannelSecrets(opt.Store, opt.Channels))

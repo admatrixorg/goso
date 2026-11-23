@@ -209,6 +209,12 @@ func (s *PostgresStore) migratePostgres() error {
 	if err := s.migrateHooks(); err != nil {
 		return fmt.Errorf("postgres migrate hooks: %w", err)
 	}
+	if err := s.migrateAuthUsers(); err != nil {
+		return fmt.Errorf("postgres migrate auth users: %w", err)
+	}
+	if err := s.migrateAuthSessions(); err != nil {
+		return fmt.Errorf("postgres migrate auth sessions: %w", err)
+	}
 	if err := s.migrateToolSettings(); err != nil {
 		return fmt.Errorf("postgres migrate tool settings: %w", err)
 	}

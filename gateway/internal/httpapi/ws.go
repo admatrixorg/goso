@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
@@ -69,6 +70,8 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 			provider = llm.Echo{}
 		}
 		goclawOK := false
+		state := &wsConnState{}
+		ctx := withWSState(r.Context(), state)
 		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
@@ -85,7 +88,7 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 			if probe.Type == "req" {
 				var now bool
 				var err error
-				now, err = handleGoClawReq(r.Context(), conn, st, provider, msg, goclawOK)
+				now, err = handleGoClawReq(ctx, conn, st, provider, msg, goclawOK, state)
 				if err != nil {
 					return
 				}
@@ -143,3 +146,8 @@ func RegisterWS(mux *http.ServeMux, st store.StoreIface, provider llm.Provider) 
 }
 
 func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
+
+// wsConnState is per-connection state. Identity is set by connect.
+type wsConnState struct {
+	Identity *auth.Identity
+}

@@ -128,6 +128,9 @@ type Config struct {
 	Bypass  []string
 	Pairing *Pairing
 	Keys    KeyGate
+	// Sessions resolves a signed-in user token to an identity. Nil keeps
+	// admin/view-only behavior.
+	Sessions SessionGate
 	// SelfAuth reports a request that its handler authenticates itself, such
 	// as a Telegram webhook carrying the bot's secret token. Such a request
 	// skips the Bearer check; the handler must reject a bad secret.
@@ -152,7 +155,7 @@ func RequireTokens(admin, view string, bypass []string) func(http.Handler) http.
 func Require(cfg Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if pairingExchangePath(r) || nodeRequestPath(r) {
+			if pairingExchangePath(r) || nodeRequestPath(r) || authLoginPath(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -185,6 +188,12 @@ func Require(cfg Config) func(http.Handler) http.Handler {
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
 				return
 			}
+			if cfg.Sessions != nil {
+				if id, ok := cfg.Sessions.Accept(got); ok {
+					next.ServeHTTP(w, r.WithContext(WithIdentity(r.Context(), id)))
+					return
+				}
+			}
 			if cfg.Keys != nil {
 				if g, ok := cfg.Keys.Accept(got); ok {
 					if !TenantMismatch(g, r) && scopeAllows(g, r) {
@@ -201,6 +210,18 @@ func Require(cfg Config) func(http.Handler) http.Handler {
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		})
+	}
+}
+
+func authLoginPath(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/api/auth/login", "/v1/auth/login":
+		return true
+	default:
+		return false
 	}
 }
 

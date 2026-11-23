@@ -11,7 +11,7 @@ import { EmailForm, type EmailLoginResult } from "./email-form";
 
 export function LoginPage() {
   const { t } = useTranslation("login");
-  const [mode, setMode] = useState<LoginMode>("token");
+  const [mode, setMode] = useState<LoginMode>("email");
 
   const setCredentials = useAuthStore((s) => s.setCredentials);
   const setPairing = useAuthStore((s) => s.setPairing);

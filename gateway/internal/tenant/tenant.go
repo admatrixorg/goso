@@ -42,7 +42,12 @@ func Resolve(r *http.Request) string {
 	if g, ok := auth.GrantFrom(r.Context()); ok {
 		return store.NormalizeTenant(g.KeyTenant())
 	}
-	raw := strings.TrimSpace(r.Header.Get(Header))
+	if id, ok := auth.IdentityFrom(r.Context()); ok {
+		if !id.IsOwner() {
+			return store.NormalizeTenant(id.TenantID)
+		}
+	}
+	raw := tenantHeader(r)
 	id := store.NormalizeTenant(raw)
 	if id == Default {
 		return Default
@@ -60,8 +65,21 @@ func Invalid(r *http.Request) bool {
 	if r == nil || !Enabled() {
 		return false
 	}
-	raw := strings.TrimSpace(r.Header.Get(Header))
+	raw := tenantHeader(r)
 	return raw != "" && !store.TenantOK(raw)
+}
+
+
+func tenantHeader(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	for _, k := range []string{Header, "X-GoClaw-Tenant-Id", "X-Goclaw-Tenant-Id"} {
+		if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func isAdmin(r *http.Request) bool {
