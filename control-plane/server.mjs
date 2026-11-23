@@ -21,14 +21,18 @@ const mime = {
   ".map": "application/json",
 };
 
+function underPrefix(pathname, prefix) {
+  return pathname === prefix || pathname.startsWith(prefix + "/");
+}
+
 function shouldProxy(pathname) {
   return (
     pathname === "/healthz" ||
     pathname === "/health" ||
     pathname === "/metrics" ||
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/v1") ||
-    pathname.startsWith("/ws")
+    underPrefix(pathname, "/api") ||
+    underPrefix(pathname, "/v1") ||
+    underPrefix(pathname, "/ws")
   );
 }
 
