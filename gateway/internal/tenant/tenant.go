@@ -46,6 +46,14 @@ func Resolve(r *http.Request) string {
 		if !id.IsOwner() {
 			return store.NormalizeTenant(id.TenantID)
 		}
+		// An owner may switch tenant with a valid header. Without one, the
+		// session tenant is the answer, never the "default" stub.
+		if raw := tenantHeader(r); raw != "" {
+			if tt := store.NormalizeTenant(raw); store.TenantOK(tt) {
+				return tt
+			}
+		}
+		return store.NormalizeTenant(id.TenantID)
 	}
 	raw := tenantHeader(r)
 	id := store.NormalizeTenant(raw)

@@ -32,6 +32,7 @@ type ProviderInfo struct {
 	DisplayName  string `json:"display_name,omitempty"`
 	ProviderType string `json:"provider_type,omitempty"`
 	APIBase      string `json:"api_base,omitempty"`
+	APIKey       string `json:"api_key,omitempty"`
 }
 
 func (p ProviderInfo) WithGoClawAliases() ProviderInfo {
@@ -46,6 +47,9 @@ func (p ProviderInfo) WithGoClawAliases() ProviderInfo {
 	}
 	if p.APIBase == "" {
 		p.APIBase = p.BaseURL
+	}
+	if p.KeySet && p.APIKey == "" {
+		p.APIKey = "***"
 	}
 	return p
 }

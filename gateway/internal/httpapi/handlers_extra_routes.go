@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/billing"
@@ -28,6 +30,7 @@ func registerExtraRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /v1/vault/search", handleSearchVault(st))
 	mux.HandleFunc("GET /v1/vault/graph", handleVaultGraph(st))
 	mux.HandleFunc("GET /v1/vault/tree", handleVaultTree(st))
+	mux.HandleFunc("GET /v1/agents/{id}/memory/documents", handleAgentMemoryDocuments(st))
 	mux.HandleFunc("GET /v1/vault/links", withDocID(handleVaultDocLinks(st)))
 	mux.HandleFunc("POST /v1/vault/upload", handleVaultUpload(st, opt.Audit))
 	mux.HandleFunc("POST /v1/vault/rescan", handleSyncVault(st))
@@ -135,22 +138,137 @@ func handleContactResolve(dir *channel.Contacts, st store.StoreIface) http.Handl
 	}
 }
 
+type vaultTreeRow struct {
+	Name      string
+	Path      string
+	DocID     string
+	Scope     string
+	Title     string
+	UpdatedAt string
+}
+
+// vaultTreeCache keeps one lightweight tenant listing for a minute. The
+// vault holds thousands of docs; rebuilding it per subtree request spiked
+// memory enough to OOM the gateway.
+var vaultTreeCache struct {
+	mu   sync.Mutex
+	at   map[string]time.Time
+	rows map[string][]vaultTreeRow
+}
+
+func vaultTreeRows(st store.StoreIface, tenant string) []vaultTreeRow {
+	if st == nil {
+		return nil
+	}
+	now := time.Now()
+	vaultTreeCache.mu.Lock()
+	defer vaultTreeCache.mu.Unlock()
+	if vaultTreeCache.at == nil {
+		vaultTreeCache.at = map[string]time.Time{}
+		vaultTreeCache.rows = map[string][]vaultTreeRow{}
+	}
+	if at, ok := vaultTreeCache.at[tenant]; ok && now.Sub(at) < time.Minute {
+		return vaultTreeCache.rows[tenant]
+	}
+	rows := []vaultTreeRow{}
+	for _, d := range st.ListVaultDocs() {
+		if d == nil || !store.SameTenant(d.TenantID, tenant) {
+			continue
+		}
+		p := strings.Trim(d.Path, "/")
+		if p == "" {
+			continue
+		}
+		rows = append(rows, vaultTreeRow{
+			Name: p, Path: p, DocID: d.ID, Scope: d.Scope, Title: d.Title,
+			UpdatedAt: d.Mtime.UTC().Format(time.RFC3339),
+		})
+	}
+	vaultTreeCache.at[tenant] = now
+	vaultTreeCache.rows[tenant] = rows
+	return rows
+}
+
 func handleVaultTree(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		type node struct {
-			Path  string `json:"path"`
-			Title string `json:"title"`
+		prefix := strings.Trim(strings.TrimSpace(r.URL.Query().Get("path")), "/")
+		type entry struct {
+			Name        string `json:"name"`
+			Path        string `json:"path"`
+			IsDir       bool   `json:"isDir"`
+			HasChildren bool   `json:"hasChildren,omitempty"`
+			DocID       string `json:"docId,omitempty"`
+			DocType     string `json:"docType,omitempty"`
+			Scope       string `json:"scope,omitempty"`
+			Title       string `json:"title,omitempty"`
+			UpdatedAt   string `json:"updatedAt,omitempty"`
 		}
-		docs := []node{}
-		if st != nil {
-			for _, d := range vaultSvc(st).List() {
-				if d == nil || !store.SameTenant(d.TenantID, requestTenant(r)) {
+		files := []entry{}
+		dirs := map[string]entry{}
+		for _, d := range vaultTreeRows(st, requestTenant(r)) {
+			p := d.Path
+			if prefix != "" {
+				if !strings.HasPrefix(p, prefix+"/") {
 					continue
 				}
-				docs = append(docs, node{Path: d.Path, Title: d.Title})
+				p = strings.TrimPrefix(p, prefix+"/")
 			}
+			if i := strings.Index(p, "/"); i >= 0 {
+				dirName := p[:i]
+				dirPath := dirName
+				if prefix != "" {
+					dirPath = prefix + "/" + dirName
+				}
+				dirs[dirPath] = entry{Name: dirName, Path: dirPath, IsDir: true, HasChildren: true}
+				continue
+			}
+			if p == "" {
+				continue
+			}
+			full := p
+			if prefix != "" {
+				full = prefix + "/" + p
+			}
+			files = append(files, entry{
+				Name: p, Path: full, DocID: d.DocID, DocType: "md",
+				Scope: d.Scope, Title: d.Title, UpdatedAt: d.UpdatedAt,
+			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"documents": docs, "tree": docs, "total": len(docs)})
+		entries := make([]entry, 0, len(dirs)+len(files))
+		dirNames := make([]string, 0, len(dirs))
+		for k := range dirs {
+			dirNames = append(dirNames, k)
+		}
+		sort.Strings(dirNames)
+		for _, k := range dirNames {
+			entries = append(entries, dirs[k])
+		}
+		sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
+		entries = append(entries, files...)
+		writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "total": len(entries)})
+	}
+}
+
+func handleAgentMemoryDocuments(st store.StoreIface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		agent, err := agentVisible(st, r.PathValue("id"), requestTenant(r))
+		if err != nil || agent == nil {
+			writeErr(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		list, _ := st.QueryMemories(store.MemoryQuery{AgentID: agent.ID})
+		docs := []map[string]any{}
+		for _, m := range list {
+			if m == nil {
+				continue
+			}
+			updated := int64(0)
+			if !m.CreatedAt.IsZero() {
+				updated = m.CreatedAt.UnixMilli()
+			}
+			docs = append(docs, map[string]any{"path": m.ID, "hash": m.ID, "agent_id": agent.ID, "updated_at": updated})
+		}
+		writeJSON(w, http.StatusOK, docs)
 	}
 }
 

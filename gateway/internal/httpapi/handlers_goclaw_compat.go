@@ -75,12 +75,12 @@ func remapJSON(h http.HandlerFunc, fn func(map[string]any) map[string]any) http.
 func handleGoClawMemoryDocuments(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if st == nil {
-			writeJSON(w, http.StatusOK, map[string]any{"documents": []any{}})
+			writeJSON(w, http.StatusOK, []any{})
 			return
 		}
 		list, err := st.QueryMemories(store.MemoryQuery{AgentID: strings.TrimSpace(r.URL.Query().Get("agent_id"))})
 		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"documents": []any{}})
+			writeJSON(w, http.StatusOK, []any{})
 			return
 		}
 		docs := []map[string]any{}
@@ -94,7 +94,7 @@ func handleGoClawMemoryDocuments(st store.StoreIface) http.HandlerFunc {
 			}
 			docs = append(docs, map[string]any{"path": m.ID, "hash": m.ID, "updated_at": updated})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"documents": docs})
+		writeJSON(w, http.StatusOK, docs)
 	}
 }
 

@@ -35,7 +35,7 @@ func handleListAPIKeys(reg *apikey.Registry) http.HandlerFunc {
 		if rows == nil {
 			rows = []apikey.Public{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"keys": rows})
+		writeJSON(w, http.StatusOK, rows)
 	}
 }
 

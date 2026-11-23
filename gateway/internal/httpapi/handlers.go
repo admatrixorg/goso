@@ -185,6 +185,7 @@ func NewRouter(opt Options) http.Handler {
 	registerExtrasRoutes(mux, opt.Store)
 	registerExtraRoutes(mux, opt)
 	registerAgentAdvancedRoutes(mux, opt)
+	registerAgentSkillsExtraRoutes(mux, opt.Store)
 	registerSkillsExtraRoutes(mux, opt)
 	registerMiscExtraRoutes(mux, opt)
 	registerMiscExtra2Routes(mux, opt)

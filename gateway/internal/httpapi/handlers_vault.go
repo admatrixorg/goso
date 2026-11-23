@@ -225,6 +225,7 @@ func handleVaultHealth(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
+// handleVaultGraph answers the compact DTO the control plane graph view reads.
 func handleVaultGraph(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := vault.DefaultGraphNodeCap
@@ -235,12 +236,42 @@ func handleVaultGraph(st store.StoreIface) http.HandlerFunc {
 			}
 		}
 		g := vaultSvc(st).Graph(limit, requestTenant(r))
-		if g.Nodes == nil {
-			g.Nodes = []vault.GraphNode{}
+		type gnode struct {
+			ID  string `json:"id"`
+			T   string `json:"t"`
+			P   string `json:"p"`
+			DT  string `json:"dt"`
+			Deg int    `json:"deg"`
 		}
-		if g.Edges == nil {
-			g.Edges = []vault.GraphEdge{}
+		type gedge struct {
+			ID   string `json:"id"`
+			From string `json:"from"`
+			To   string `json:"to"`
+			Type string `json:"type"`
 		}
-		writeJSON(w, http.StatusOK, g)
+		deg := map[string]int{}
+		for _, e := range g.Edges {
+			deg[e.FromID]++
+			if e.ToID != "" {
+				deg[e.ToID]++
+			}
+		}
+		nodes := make([]gnode, 0, len(g.Nodes))
+		nodeSet := map[string]bool{}
+		for _, n := range g.Nodes {
+			nodeSet[n.ID] = true
+			nodes = append(nodes, gnode{ID: n.ID, T: n.Title, P: n.Path, DT: "document", Deg: deg[n.ID]})
+		}
+		edges := make([]gedge, 0, len(g.Edges))
+		for _, e := range g.Edges {
+			if e.FromID == "" || e.ToID == "" || !nodeSet[e.FromID] || !nodeSet[e.ToID] {
+				continue
+			}
+			edges = append(edges, gedge{ID: e.FromID + "->" + e.ToID, From: e.FromID, To: e.ToID, Type: "wikilink"})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"nodes": nodes, "edges": edges,
+			"total_nodes": len(nodes), "total_edges": len(edges),
+		})
 	}
 }
