@@ -152,9 +152,9 @@ func registerMiscExtra2Routes(mux *http.ServeMux, opt Options) {
 
 	mux.HandleFunc("POST /v1/cli-credentials/check-binary", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Name     string `json:"name"`
-			Binary   string `json:"binary_name"`
-			Path     string `json:"binary_path"`
+			Name   string `json:"name"`
+			Binary string `json:"binary_name"`
+			Path   string `json:"binary_path"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		name := firstNonEmpty(body.Name, body.Binary)

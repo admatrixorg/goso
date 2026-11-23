@@ -15,7 +15,7 @@ func TestAuthLoginIssuesAdminToken(t *testing.T) {
 	t.Setenv("GOSO_ADMIN_TOKEN", "admin-token")
 
 	mux := http.NewServeMux()
-	registerAuthLoginRoutes(mux)
+	registerAuthLoginRoutes(mux, nil)
 
 	body, _ := json.Marshal(map[string]string{"email": "Owner@local.test", "password": "s3cret"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
@@ -42,7 +42,7 @@ func TestAuthLoginAcceptsSecondAccountAndLocalPart(t *testing.T) {
 	t.Setenv("GOSO_ADMIN_TOKEN", "admin-token")
 
 	mux := http.NewServeMux()
-	registerAuthLoginRoutes(mux)
+	registerAuthLoginRoutes(mux, nil)
 
 	try := func(email, pass string, want int) {
 		t.Helper()
@@ -67,7 +67,7 @@ func TestAuthLoginRejectsBadPassword(t *testing.T) {
 	t.Setenv("GOSO_ADMIN_TOKEN", "admin-token")
 
 	mux := http.NewServeMux()
-	registerAuthLoginRoutes(mux)
+	registerAuthLoginRoutes(mux, nil)
 	body, _ := json.Marshal(map[string]string{"email": "owner@local.test", "password": "nope"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	w := httptest.NewRecorder()

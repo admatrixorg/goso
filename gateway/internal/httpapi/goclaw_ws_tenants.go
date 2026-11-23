@@ -162,8 +162,8 @@ func wsMemberView(tenantID string, m tenant.Member) map[string]any {
 	return map[string]any{
 		"id": m.ID, "tenant_id": tenantID, "user_id": m.Subject,
 		"display_name": firstNonEmpty(gosoUserDisplay(m.Subject, tenantID), m.Subject),
-		"email": gosoUserLookup(m.Subject, tenantID).Email,
-		"role": m.Role, "created_at": created, "updated_at": created,
+		"email":        gosoUserLookup(m.Subject, tenantID).Email,
+		"role":         m.Role, "created_at": created, "updated_at": created,
 	}
 }
 

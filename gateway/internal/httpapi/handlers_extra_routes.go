@@ -32,7 +32,6 @@ func registerExtraRoutes(mux *http.ServeMux, opt Options) {
 	mux.HandleFunc("GET /v1/vault/tree", handleVaultTree(st))
 	mux.HandleFunc("GET /v1/agents/{id}/memory/documents", handleAgentMemoryDocuments(st))
 	mux.HandleFunc("GET /v1/vault/links", withDocID(handleVaultDocLinks(st)))
-	mux.HandleFunc("POST /v1/vault/upload", handleVaultUpload(st, opt.Audit))
 	mux.HandleFunc("POST /v1/vault/rescan", handleSyncVault(st))
 	mux.HandleFunc("POST /v1/vault/enrichment/stop", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})

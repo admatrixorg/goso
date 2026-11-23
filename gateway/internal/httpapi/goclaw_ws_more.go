@@ -11,8 +11,8 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/approval"
-	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/auditlog"
+	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/billing"
 	"github.com/mqglobal/goso/gateway/internal/llm"
 	"github.com/mqglobal/goso/gateway/internal/logstore"
@@ -111,7 +111,6 @@ func handleGoClawMore(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 		return writeGoClawErr(conn, req.ID, "NOT_IMPLEMENTED", req.Method+" is not implemented on GOSO WS")
 	}
 }
-
 
 // wsTenantFilter returns the tenant a caller is limited to. Empty means the
 // operator token or an owner, who may read every tenant.
@@ -219,8 +218,8 @@ func wsTeamGet(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt str
 
 func wsTeamCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
-		Name        string `json:"name"`
-		LeadAgentID string `json:"lead_agent_id"`
+		Name         string `json:"name"`
+		LeadAgentID  string `json:"lead_agent_id"`
 		LeadAgentId2 string `json:"leadAgentId"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
@@ -291,11 +290,11 @@ func wsTeamDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt 
 
 func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
-		TeamID  string `json:"teamId"`
-		TeamID2 string `json:"team_id"`
-		AgentID string `json:"agentId"`
+		TeamID   string `json:"teamId"`
+		TeamID2  string `json:"team_id"`
+		AgentID  string `json:"agentId"`
 		AgentID2 string `json:"agent_id"`
-		Role    string `json:"role"`
+		Role     string `json:"role"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	tid := firstNonEmpty(p.TeamID, p.TeamID2)
@@ -319,9 +318,9 @@ func wsTeamMemberAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq, t
 
 func wsTeamMemberRemove(conn *websocket.Conn, st store.StoreIface, req goclawReq, tnt string) error {
 	var p struct {
-		TeamID  string `json:"teamId"`
-		TeamID2 string `json:"team_id"`
-		AgentID string `json:"agentId"`
+		TeamID   string `json:"teamId"`
+		TeamID2  string `json:"team_id"`
+		AgentID  string `json:"agentId"`
 		AgentID2 string `json:"agent_id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
@@ -509,10 +508,10 @@ func wsApprovalsList(conn *websocket.Conn, req goclawReq) error {
 
 func wsApprovalDecide(conn *websocket.Conn, req goclawReq, want string) error {
 	var p struct {
-		ID      string `json:"approvalId"`
-		ID2     string `json:"approval_id"`
-		ID3     string `json:"id"`
-		Reason  string `json:"reason"`
+		ID     string `json:"approvalId"`
+		ID2    string `json:"approval_id"`
+		ID3    string `json:"id"`
+		Reason string `json:"reason"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	id := firstNonEmpty(p.ID, p.ID2, p.ID3)
@@ -567,10 +566,10 @@ func wsLogsTail(conn *websocket.Conn, req goclawReq) error {
 
 func wsSessionPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
 	var p struct {
-		SessionID string `json:"sessionId"`
+		SessionID  string `json:"sessionId"`
 		SessionID2 string `json:"session_id"`
-		Label     string `json:"label"`
-		Archived  *bool  `json:"archived"`
+		Label      string `json:"label"`
+		Archived   *bool  `json:"archived"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	id := firstNonEmpty(p.SessionID, p.SessionID2)
@@ -613,10 +612,10 @@ func wsAgentLinksList(conn *websocket.Conn, st store.StoreIface, req goclawReq) 
 
 func wsAgentLinkAdd(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
 	var p struct {
-		From   string `json:"fromAgentId"`
-		From2  string `json:"from_agent_id"`
-		To     string `json:"toAgentId"`
-		To2    string `json:"to_agent_id"`
+		From  string `json:"fromAgentId"`
+		From2 string `json:"from_agent_id"`
+		To    string `json:"toAgentId"`
+		To2   string `json:"to_agent_id"`
 	}
 	_ = json.Unmarshal(req.Params, &p)
 	from := firstNonEmpty(p.From, p.From2)

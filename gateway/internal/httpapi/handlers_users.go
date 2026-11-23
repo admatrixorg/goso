@@ -282,7 +282,9 @@ func handleCreateDirectoryUser(st store.StoreIface) http.HandlerFunc {
 				}
 			}
 			if store.AuthUsers(st) != nil {
-				if f, ok := st.(interface{ PutImportSource(string, string, string, string) error }); ok && f != nil {
+				if f, ok := st.(interface {
+					PutImportSource(string, string, string, string) error
+				}); ok && f != nil {
 					_ = f.PutImportSource(tid, "auth_user", u.Email, u.ID)
 				}
 			}

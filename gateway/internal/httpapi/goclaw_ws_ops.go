@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -183,9 +183,9 @@ func wsCronCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq) erro
 		AgentID  string `json:"agentId"`
 		Enabled  *bool  `json:"enabled"`
 		Schedule struct {
-			Kind string `json:"kind"`
-			Expr string `json:"expr"`
-			EveryMs int64 `json:"everyMs"`
+			Kind    string `json:"kind"`
+			Expr    string `json:"expr"`
+			EveryMs int64  `json:"everyMs"`
 		} `json:"schedule"`
 	}
 	_ = json.Unmarshal(req.Params, &p)

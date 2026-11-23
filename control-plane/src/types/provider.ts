@@ -9,7 +9,8 @@ export interface ProviderData {
   display_name: string;
   provider_type: string;
   api_base: string;
-  api_key: string; // masked "***" from server
+  api_key: string; // masked "***" when the server sends one
+  key_set?: boolean;
   enabled: boolean;
   settings?: Record<string, unknown>;
   created_at: string;

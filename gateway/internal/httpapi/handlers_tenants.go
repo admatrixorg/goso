@@ -284,6 +284,7 @@ func guardDeactivatedTenant(reg *tenant.Registry, next http.Handler) http.Handle
 		next.ServeHTTP(w, r)
 	})
 }
+
 // visibleTenants keeps tenants a signed-in user may see: every tenant for an
 // owner or an operator token, memberships only for anyone else.
 func visibleTenants(reg *tenant.Registry, r *http.Request, rows []tenant.Public) []tenant.Public {

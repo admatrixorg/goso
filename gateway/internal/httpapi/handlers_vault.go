@@ -272,6 +272,7 @@ func handleVaultGraph(st store.StoreIface) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"nodes": nodes, "edges": edges,
 			"total_nodes": len(nodes), "total_edges": len(edges),
+			"truncated": g.Truncated, "node_cap": g.NodeCap,
 		})
 	}
 }

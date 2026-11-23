@@ -77,7 +77,6 @@ func Invalid(r *http.Request) bool {
 	return raw != "" && !store.TenantOK(raw)
 }
 
-
 func tenantHeader(r *http.Request) string {
 	if r == nil {
 		return ""

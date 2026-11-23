@@ -501,7 +501,6 @@ func wsHeartbeatView(h *store.AgentHeartbeat) map[string]any {
 	}
 }
 
-
 // resolveAgentID accepts an agent id or agent key and returns the canonical id.
 func resolveAgentID(st store.StoreIface, tenant, idOrKey string) string {
 	idOrKey = strings.TrimSpace(idOrKey)

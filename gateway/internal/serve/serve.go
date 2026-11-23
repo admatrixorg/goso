@@ -285,6 +285,7 @@ func ChannelTurnRunner(rt *agent.Runtime) channel.TurnRunner {
 		return res, nil
 	}
 }
+
 type sessionGate struct{ st store.StoreIface }
 
 func (g sessionGate) Accept(token string) (auth.Identity, bool) {

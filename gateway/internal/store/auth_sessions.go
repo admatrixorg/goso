@@ -149,7 +149,6 @@ func (s *SQLiteStore) DeleteAuthSessionsForUser(userID string) error {
 	return err
 }
 
-
 func (s *SQLiteStore) ListAuthSessionsForUser(userID string) ([]AuthSession, error) {
 	rows, err := s.db.Query(`SELECT id, user_id, email, tenant_id, role, created_at, expires_at
 		FROM auth_sessions WHERE user_id=? ORDER BY created_at DESC`, strings.TrimSpace(userID))

@@ -516,12 +516,12 @@ func (s *SQLiteStore) ListCLIBinaries(tenant string) []*CLIBinary {
 	out := []*CLIBinary{}
 	for rows.Next() {
 		var (
-			b          CLIBinary
-			enabled    int
-			isGlobal   int
-			hasSecret  int
-			denyArgs   string
-			denyVerb   string
+			b         CLIBinary
+			enabled   int
+			isGlobal  int
+			hasSecret int
+			denyArgs  string
+			denyVerb  string
 		)
 		if rows.Scan(&b.ID, &b.TenantID, &b.BinaryName, &b.BinaryPath, &b.Description, &denyArgs, &denyVerb,
 			&b.TimeoutSeconds, &b.Tips, &enabled, &b.CreatedBy, &isGlobal, &b.AdapterName, &hasSecret,

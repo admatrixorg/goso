@@ -28,9 +28,9 @@ func registerSkillsExtraRoutes(mux *http.ServeMux, opt Options) {
 }
 
 type skillBundleDoc struct {
-	Name  string `json:"name"`
-	Path  string `json:"path,omitempty"`
-	Body  string `json:"body"`
+	Name string `json:"name"`
+	Path string `json:"path,omitempty"`
+	Body string `json:"body"`
 }
 
 type skillBundle struct {

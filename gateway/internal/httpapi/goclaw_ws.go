@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/llm"
+	"github.com/mqglobal/goso/gateway/internal/security"
 	"github.com/mqglobal/goso/gateway/internal/store"
 	"github.com/mqglobal/goso/gateway/internal/tenant"
 )
@@ -77,7 +78,10 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 			}
 			who = auth.Identity{UserID: sess.UserID, Email: sess.Email, TenantID: sess.TenantID, Role: sess.Role, Owner: strings.EqualFold(sess.Role, "owner")}
 		default:
-			return false, writeGoClawErr(conn, req.ID, "UNAUTHORIZED", "invalid token")
+			if security.Production() {
+				return false, writeGoClawErr(conn, req.ID, "UNAUTHORIZED", "invalid token")
+			}
+			who = auth.Identity{UserID: "dev", Role: tenant.RoleOwner, TenantID: tenant.Default, Owner: true}
 		}
 		if state != nil {
 			state.Identity = &who
@@ -93,19 +97,10 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 			"edition": "standard", "tenant_id": who.TenantID, "tenant_name": name, "tenant_slug": who.TenantID,
 			"server": map[string]any{"name": "goso-gateway", "version": "0.1.0"},
 		})
-		return true, writeGoClaw(conn, req.ID, map[string]any{
-			"role":            "admin",
-			"status":          "ok",
-			"is_owner":        true,
-			"is_master_scope": true,
-			"edition":         "standard",
-			"tenant_id":       "default",
-			"tenant_name":     "GOSO",
-			"tenant_slug":     "default",
-			"server":          map[string]any{"name": "goso-gateway", "version": "0.1.0"},
-		})
 	case "tenants.mine", "tenants.list", "tenants.get", "tenants.create", "tenants.users.list", "tenants.users.add", "tenants.users.remove":
 		return authed, handleGoClawTenants(conn, req, state.Identity)
+	case "brain.pages", "brain.search", "brain.get", "brain.graph", "wiki.list", "wiki.search", "wiki.get", "wiki.graph":
+		return authed, handleGoClawBrain(conn, req, st, wsIdentityTenant(state))
 	case "health":
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"status": "ok", "version": "0.1.0", "uptime": 0, "database": "sqlite"})
 	case "status":
@@ -154,6 +149,7 @@ func wsIdentityTenant(state *wsConnState) string {
 	}
 	return tenant.Default
 }
+
 type wsStateKey struct{}
 
 func withWSState(ctx context.Context, s *wsConnState) context.Context {

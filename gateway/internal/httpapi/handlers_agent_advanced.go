@@ -220,7 +220,10 @@ func handleAgentImport(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		in := b.Agent
-		in.ID, in.TenantID, in.CreatedAt, in.UpdatedAt = "", tenant, in.CreatedAt, in.UpdatedAt
+		in.ID = ""
+		in.TenantID = tenant
+		in.CreatedAt = time.Time{}
+		in.UpdatedAt = time.Time{}
 		saved, err := st.CreateAgent(in)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

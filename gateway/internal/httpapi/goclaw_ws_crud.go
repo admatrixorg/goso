@@ -382,7 +382,6 @@ func wsSessionPreview(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	return writeGoClaw(conn, req.ID, map[string]any{"session": sess, "messages": out})
 }
 
-
 func wsTeamTaskComments(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant, tnt string) error {
 	var p struct {
 		TaskID  string `json:"taskId"`
@@ -415,4 +414,3 @@ func wsTeamTaskEvents(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 	}
 	return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
 }
-

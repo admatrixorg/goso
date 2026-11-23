@@ -122,9 +122,9 @@ func (s *SQLiteStore) migrateWorkstations() error {
 func (s *SQLiteStore) GetWorkstation(tenant, idOrKey string) (*Workstation, error) {
 	idOrKey = strings.TrimSpace(idOrKey)
 	var (
-		w              Workstation
-		active         int
-		meta           string
+		w      Workstation
+		active int
+		meta   string
 	)
 	err := s.db.QueryRow(`SELECT id, tenant_id, workstation_key, name, backend_type, default_cwd, metadata, active, created_by, created_at, updated_at
 		FROM workstations WHERE tenant_id=? AND (id=? OR workstation_key=?)`, NormalizeTenant(tenant), idOrKey, idOrKey).
