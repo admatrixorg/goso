@@ -14,7 +14,7 @@ type TeamTaskAttachment struct {
 	TeamID           string `json:"team_id"`
 	ChatID           string `json:"chat_id,omitempty"`
 	Path             string `json:"path"`
-	FileSize         int64 `json:"file_size"`
+	FileSize         int64  `json:"file_size"`
 	MimeType         string `json:"mime_type,omitempty"`
 	CreatedByAgentID string `json:"created_by_agent_id,omitempty"`
 	CreatedBySender  string `json:"created_by_sender_id,omitempty"`
@@ -39,16 +39,16 @@ func Attachments(st StoreIface) TeamTaskAttachments {
 }
 
 var teamTaskStatusAliases = map[string]string{
-	"todo": "todo",
-	"doing": "doing",
-	"done": "done",
-	"pending": "pending",
+	"todo":        "todo",
+	"doing":       "doing",
+	"done":        "done",
+	"pending":     "pending",
 	"in_progress": "in_progress",
-	"completed": "completed",
-	"blocked": "blocked",
-	"failed": "failed",
-	"in_review": "in_review",
-	"cancelled": "cancelled",
+	"completed":   "completed",
+	"blocked":     "blocked",
+	"failed":      "failed",
+	"in_review":   "in_review",
+	"cancelled":   "cancelled",
 }
 
 // NormalizeTeamTaskStatus keeps every status either vocabulary already uses.
