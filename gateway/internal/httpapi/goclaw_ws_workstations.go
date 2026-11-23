@@ -310,7 +310,9 @@ func handleGoClawWorkstations(conn *websocket.Conn, st store.StoreIface, req goc
 		if err != nil || w == nil {
 			return writeGoClawErr(conn, req.ID, "NOT_FOUND", "workstation not found")
 		}
-		res, rerr := workstation.Run(timeoutCtx(15), workstation.ExecRequest{
+		probeCtx, probeCancel := timeoutCtxPair(15)
+		defer probeCancel()
+		res, rerr := workstation.Run(probeCtx, workstation.ExecRequest{
 			Workstation: w, Command: "echo", Args: []string{"goso-probe"}, Timeout: 15 * time.Second,
 		})
 		if rerr != nil {
@@ -355,7 +357,7 @@ func identityLabel(who *auth.Identity) string {
 	return firstNonEmpty(who.Email, who.UserID, "system")
 }
 
-func timeoutCtx(sec int) context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(sec)*time.Second)
-	return ctx
+// timeoutCtxPair returns a context and its cancel so the caller can release it.
+func timeoutCtxPair(sec int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), time.Duration(sec)*time.Second)
 }
