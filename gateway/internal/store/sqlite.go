@@ -535,6 +535,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateKGDedup(); err != nil {
 		return fmt.Errorf("migrate kg dedup: %w", err)
 	}
+
+	if err := s.migratePairedDevices(); err != nil {
+		return fmt.Errorf("migrate paired devices: %w", err)
+	}
 	if err := s.migrateAuthUsers(); err != nil {
 		return fmt.Errorf("migrate auth users: %w", err)
 	}
