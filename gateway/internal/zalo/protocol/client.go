@@ -203,8 +203,8 @@ func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, 
 	info := &LoginInfo{UID: strings.TrimSpace(envelope.UID)}
 	if len(envelope.Data) > 0 {
 		var data struct {
-			UID  string   `json:"uid"`
-			Name string   `json:"display_name"`
+			UID          string   `json:"uid"`
+			Name         string   `json:"display_name"`
 			ZpwWebsocket []string `json:"zpw_ws"`
 			ServiceMap   *struct {
 				Chat      []string `json:"chat"`

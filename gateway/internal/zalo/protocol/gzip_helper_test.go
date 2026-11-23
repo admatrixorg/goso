@@ -13,4 +13,3 @@ func gzipForTest(b []byte) []byte {
 	_ = w.Close()
 	return buf.Bytes()
 }
-

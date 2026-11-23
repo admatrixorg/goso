@@ -32,14 +32,14 @@ type InboundMessage struct {
 
 // Listener reads Zalo frames and hands decoded messages to a handler.
 type Listener struct {
-	sess    *Session
-	wsURL   string
-	mu      sync.RWMutex
-	conn    *websocket.Conn
-	cipher  string
-	closed  bool
-	onMsg   func(InboundMessage)
-	done    chan struct{}
+	sess   *Session
+	wsURL  string
+	mu     sync.RWMutex
+	conn   *websocket.Conn
+	cipher string
+	closed bool
+	onMsg  func(InboundMessage)
+	done   chan struct{}
 }
 
 // NewListener builds a listener for the first websocket URL the login
@@ -172,12 +172,12 @@ func (l *Listener) handleMessages(data string, encType uint, threadType string) 
 // decodeInbound reads the fields Zalo sends and skips our own echoes.
 func decodeInbound(raw json.RawMessage, ownUID, threadType string) (InboundMessage, bool) {
 	var wire struct {
-		MsgID    string          `json:"msgId"`
-		UIDFrom  string          `json:"uidFrom"`
-		IDTo     string          `json:"idTo"`
-		DName    string          `json:"dName"`
-		TS       string          `json:"ts"`
-		Content  json.RawMessage `json:"content"`
+		MsgID   string          `json:"msgId"`
+		UIDFrom string          `json:"uidFrom"`
+		IDTo    string          `json:"idTo"`
+		DName   string          `json:"dName"`
+		TS      string          `json:"ts"`
+		Content json.RawMessage `json:"content"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return InboundMessage{}, false
@@ -210,8 +210,8 @@ func decodeContentText(raw json.RawMessage) string {
 		return s
 	}
 	var obj struct {
-		Title   string `json:"title"`
-		Href    string `json:"href"`
+		Title string `json:"title"`
+		Href  string `json:"href"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
 		if strings.TrimSpace(obj.Title) != "" {
