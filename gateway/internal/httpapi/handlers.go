@@ -210,10 +210,12 @@ func NewRouter(opt Options) http.Handler {
 	registerAuthSessionRoutes(mux, opt.Store)
 	registerUserDirectoryRoutes(mux, opt.Store)
 	usageStoreForSummary = opt.Store
+	skillListStore = opt.Store
 	registerExtrasRoutes(mux, opt.Store)
 	registerExtraRoutes(mux, opt)
 	registerAgentAdvancedRoutes(mux, opt)
 	registerAgentSkillsExtraRoutes(mux, opt.Store)
+	registerSkillRegistryRoutes(mux, opt.Store)
 	registerSkillsExtraRoutes(mux, opt)
 	registerMiscExtraRoutes(mux, opt)
 	registerMiscExtra2Routes(mux, opt)

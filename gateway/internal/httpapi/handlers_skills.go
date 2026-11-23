@@ -9,7 +9,11 @@ import (
 	"strings"
 
 	"github.com/mqglobal/goso/gateway/internal/skill"
+	"github.com/mqglobal/goso/gateway/internal/store"
 )
+
+// skillListStore lets the legacy list handler read the skill registry.
+var skillListStore store.StoreIface
 
 func handleListSkills() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +43,10 @@ func handleListSkills() http.HandlerFunc {
 				hits = []skill.Hit{}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"skills": hits})
+			return
+		}
+		if rows := skillRowsForPage(skillListStore, tid); len(rows) > 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"skills": rows, "total": len(rows)})
 			return
 		}
 		list, err := skill.List(tid)
