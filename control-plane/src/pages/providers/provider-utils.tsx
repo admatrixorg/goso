@@ -148,6 +148,6 @@ export function ProviderApiKeyBadge({
     );
   }
   return (
-    <span className="text-xs-plus text-muted-foreground/60">{t("apiKey.notSet")}</span>
+    <span className="text-xs-plus text-muted-foreground">{t("apiKey.notSet")}</span>
   );
 }

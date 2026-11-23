@@ -32,7 +32,7 @@ export function LoginLayout({ children, subtitle }: LoginLayoutProps) {
           <div className="mx-auto mb-3 h-24 w-24" aria-label="GOSO">
             <img src="/admatrix-mark-transparent-v3.png" alt="" className="h-full w-full object-contain" />
           </div>
-          <h1 className="bg-gradient-to-r from-blue-700 via-blue-500 to-cyan-400 bg-clip-text text-3xl font-bold tracking-tight text-transparent">GOSO</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-blue-700 dark:text-blue-300">GOSO</h1>
           {subtitle && (
             <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
           )}

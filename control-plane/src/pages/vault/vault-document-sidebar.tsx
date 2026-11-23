@@ -124,6 +124,7 @@ export function VaultDocumentSidebar({
             ? <Loader2 className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground animate-spin" />
             : <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />}
           <input ref={inputRef} type="text" value={query} onChange={(e) => handleQueryChange(e.target.value)}
+            aria-label={t("searchPlaceholder")}
             placeholder={t("searchPlaceholder")}
             className="w-full rounded-md border bg-background pl-7 pr-7 py-1 text-base md:text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
           {query && (

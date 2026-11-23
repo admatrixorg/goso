@@ -43,7 +43,7 @@ export function ConnectionStatus({ collapsed }: { collapsed?: boolean }) {
           <span className="truncate">
             {connected ? t("connected") : t("disconnected")}
             {connected && serverVersion && (
-              <span className="ml-1 opacity-60">· {cleanVersion(serverVersion)}</span>
+              <span className="ml-1 text-muted-foreground">· {cleanVersion(serverVersion)}</span>
             )}
           </span>
         )}

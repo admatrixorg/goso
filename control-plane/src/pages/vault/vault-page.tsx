@@ -136,26 +136,26 @@ export function VaultPage() {
 
       {/* Main: header + graph + detail panel */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-10 items-center gap-2 px-3 border-b shrink-0">
+        <div className="flex h-10 min-w-0 items-center gap-2 overflow-x-auto px-3 border-b shrink-0">
           {isMobile && (
-            <Button variant="ghost" size="xs" className="h-7 w-7 p-0" onClick={() => setSidebarOpen(true)}>
+            <Button variant="ghost" size="xs" className="h-7 w-7 shrink-0 p-0" aria-label={t("openMenu", "Open menu")} onClick={() => setSidebarOpen(true)}>
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
           )}
           <FileArchive className="h-4 w-4 text-indigo-500 shrink-0" />
           <span className="whitespace-nowrap text-sm font-semibold mr-auto">{t("title")}</span>
 
-          <select value={selectedAgent} onChange={(e) => handleAgentChange(e.target.value)}
+          <select aria-label={t("allAgents")} value={selectedAgent} onChange={(e) => handleAgentChange(e.target.value)}
             className="text-base md:text-sm border rounded px-2 py-1 bg-background h-7">
             <option value="">{t("allAgents")}</option>
             {(agents ?? []).map((a) => <option key={a.id} value={a.id}>{a.display_name || a.agent_key}</option>)}
           </select>
-          <select value={selectedTeam} onChange={(e) => handleTeamChange(e.target.value)}
+          <select aria-label={t("allTeams", "All teams")} value={selectedTeam} onChange={(e) => handleTeamChange(e.target.value)}
             className="text-base md:text-sm border rounded px-2 py-1 bg-background h-7">
             <option value="">{t("allTeams", "All teams")}</option>
             {(teams ?? []).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
           </select>
-          <Button size="sm" variant="outline" onClick={() => setSearchOpen(true)} disabled={!selectedAgent}>
+          <Button size="sm" variant="outline" className="shrink-0" aria-label={t("search", "Search vault")} onClick={() => setSearchOpen(true)} disabled={!selectedAgent}>
             <Search className="h-3.5 w-3.5" />
           </Button>
           <TooltipProvider>
@@ -164,6 +164,8 @@ export function VaultPage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  className="shrink-0"
+                  aria-label={enriching ? t("stopEnrich", "Stop enrichment") : t("rescanTooltip", "Rescan workspace")}
                   onClick={enriching ? () => setStopConfirmOpen(true) : async () => { await rescan(); loadRoot(); }}
                   disabled={rescanPending || stopPending}
                 >
@@ -183,7 +185,7 @@ export function VaultPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
-                  <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <Button size="sm" className="shrink-0" aria-label={t("create", "Create document")} onClick={() => setCreateOpen(true)}>
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </span>

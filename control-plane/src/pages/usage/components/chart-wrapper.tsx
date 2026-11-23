@@ -46,12 +46,14 @@ export function ChartWrapper({
           style={{ height }}
         >
           <div className="mb-2 rounded-full bg-muted p-2">
-            <BarChart3 className="h-5 w-5 text-muted-foreground" />
+            <BarChart3 aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
           </div>
           <p className="text-xs text-muted-foreground">{emptyText}</p>
         </div>
       ) : (
-        children
+        <div role="img" aria-label={title}>
+          {children}
+        </div>
       )}
     </div>
   );

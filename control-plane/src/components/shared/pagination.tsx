@@ -47,7 +47,7 @@ export function Pagination({
             value={String(pageSize)}
             onValueChange={(v) => onPageSizeChange(Number(v))}
           >
-            <SelectTrigger size="sm" className="w-[84px]">
+            <SelectTrigger size="sm" className="w-[84px]" aria-label={t("rows")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -66,6 +66,7 @@ export function Pagination({
           <Button
             variant="outline"
             size="icon-sm"
+            aria-label={t("previousPage", "Previous page")}
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
           >
@@ -74,6 +75,7 @@ export function Pagination({
           <Button
             variant="outline"
             size="icon-sm"
+            aria-label={t("nextPage", "Next page")}
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
           >
