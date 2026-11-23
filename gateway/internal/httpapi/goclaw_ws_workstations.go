@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"time"
 	"encoding/json"
 	"strings"
 
@@ -8,6 +10,7 @@ import (
 
 	"github.com/mqglobal/goso/gateway/internal/auth"
 	"github.com/mqglobal/goso/gateway/internal/store"
+	"github.com/mqglobal/goso/gateway/internal/workstation"
 )
 
 func wsWorkstationView(w *store.Workstation) map[string]any {
@@ -307,9 +310,18 @@ func handleGoClawWorkstations(conn *websocket.Conn, st store.StoreIface, req goc
 		if err != nil || w == nil {
 			return writeGoClawErr(conn, req.ID, "NOT_FOUND", "workstation not found")
 		}
+		res, rerr := workstation.Run(timeoutCtx(15), workstation.ExecRequest{
+			Workstation: w, Command: "echo", Args: []string{"goso-probe"}, Timeout: 15 * time.Second,
+		})
+		if rerr != nil {
+			return writeGoClaw(conn, req.ID, map[string]any{
+				"ok": false, "connected": false, "backend_type": w.BackendType,
+				"message": rerr.Error(),
+			})
+		}
 		return writeGoClaw(conn, req.ID, map[string]any{
-			"ok": true, "connected": false, "backend_type": w.BackendType,
-			"message": "stored backend; live ssh probe is not configured",
+			"ok": res.OK, "connected": res.OK, "backend_type": res.Backend,
+			"output": strings.TrimSpace(res.Stdout), "duration_ms": res.DurationMS,
 		})
 
 	default:
@@ -341,4 +353,9 @@ func identityLabel(who *auth.Identity) string {
 		return "system"
 	}
 	return firstNonEmpty(who.Email, who.UserID, "system")
+}
+
+func timeoutCtx(sec int) context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(sec)*time.Second)
+	return ctx
 }
