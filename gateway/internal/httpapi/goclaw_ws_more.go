@@ -559,7 +559,7 @@ func wsSkillRows(tenant string) []map[string]any {
 }
 
 func wsSkillsList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
-	rows := wsSkillRows(tenant)
+	rows := skillRowsForPage(st, tenant)
 	return writeGoClaw(conn, req.ID, map[string]any{"skills": rows, "total": len(rows)})
 }
 

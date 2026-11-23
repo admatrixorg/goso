@@ -3,9 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
-	"github.com/mqglobal/goso/gateway/internal/skill"
 	"github.com/mqglobal/goso/gateway/internal/store"
 )
 
@@ -23,18 +21,20 @@ func handleAgentSkillsList(st store.StoreIface) http.HandlerFunc {
 			writeErr(w, http.StatusNotFound, "agent not found")
 			return
 		}
-		infos, _ := skill.List(requestTenant(r))
-		out := make([]map[string]any, 0, len(infos))
-		for _, info := range infos {
-			name := strings.TrimSpace(info.Name)
-			if name == "" {
-				continue
+		tenant := requestTenant(r)
+		granted := map[string]bool{}
+		if x := store.Skills(st); x != nil {
+			for _, g := range x.ListAgentSkillGrants(tenant, agent.ID) {
+				granted[g.SkillID] = true
 			}
-			out = append(out, map[string]any{
-				"id": name, "name": name, "slug": name, "description": "",
-				"visibility": "tenant", "version": 1, "granted": false,
-				"can_manage": true, "is_system": false,
-			})
+		}
+		rows := skillRowsForPage(st, tenant)
+		out := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			id, _ := row["id"].(string)
+			row["granted"] = granted[id]
+			row["can_manage"] = true
+			out = append(out, row)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"skills": out, "agent_id": agent.ID})
 	}
