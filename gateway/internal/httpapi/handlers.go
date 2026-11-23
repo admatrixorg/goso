@@ -217,6 +217,7 @@ func NewRouter(opt Options) http.Handler {
 	registerHookRegistryRoutes(mux, opt.Store)
 	registerVaultVersionRoutes(mux, opt.Store)
 	registerKGDedupRoutes(mux, opt.Store)
+	registerKGExtractRoutes(mux, opt.Store, opt.Provider)
 	registerPairedDeviceRoutes(mux, opt.Store)
 	registerAgentConfigPermissionRoutes(mux, opt.Store)
 	registerRunTimelineRoutes(mux, opt.Store)
