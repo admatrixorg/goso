@@ -1,0 +1,371 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/gorilla/websocket"
+
+	"github.com/mqglobal/goso/gateway/internal/auth"
+	"github.com/mqglobal/goso/gateway/internal/channel"
+	"github.com/mqglobal/goso/gateway/internal/store"
+)
+
+func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, who *auth.Identity) error {
+	tenant := tenantOfIdentity(who)
+	switch req.Method {
+	case "agents.create":
+		return wsAgentCreate(conn, st, req, tenant)
+	case "agents.update":
+		return wsAgentUpdate(conn, st, req, tenant)
+	case "agents.delete":
+		return wsAgentDelete(conn, st, req, tenant)
+	case "channels.instances.list":
+		return wsChannelInstancesList(conn, st, req, tenant)
+	case "channels.instances.create":
+		return wsChannelInstanceCreate(conn, st, req, tenant)
+	case "channels.instances.update":
+		return wsChannelInstanceUpdate(conn, st, req, tenant)
+	case "channels.instances.delete":
+		return wsChannelInstanceDelete(conn, st, req, tenant)
+	case "teams.tasks.get", "teams.tasks.get-light":
+		return wsTeamTaskGet(conn, st, req)
+	case "teams.tasks.assign":
+		return wsTeamTaskPatch(conn, st, req, "assign")
+	case "teams.tasks.approve":
+		return wsTeamTaskPatch(conn, st, req, "approve")
+	case "teams.tasks.reject":
+		return wsTeamTaskPatch(conn, st, req, "reject")
+	case "teams.tasks.comment":
+		return wsTeamTaskComment(conn, st, req, who)
+	case "teams.tasks.comments":
+		return writeGoClaw(conn, req.ID, map[string]any{"comments": []any{}})
+	case "teams.tasks.events":
+		return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+	case "teams.events.list":
+		return writeGoClaw(conn, req.ID, map[string]any{"events": []any{}})
+	case "teams.scopes":
+		return writeGoClaw(conn, req.ID, map[string]any{"scopes": []any{}})
+	case "teams.workspace.list":
+		return writeGoClaw(conn, req.ID, map[string]any{"files": []any{}})
+	case "teams.workspace.read":
+		return writeGoClaw(conn, req.ID, map[string]any{"content": ""})
+	case "teams.workspace.delete":
+		return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+	case "sessions.preview":
+		return wsSessionPreview(conn, st, req, tenant)
+	case "run.timeline.get":
+		return writeGoClaw(conn, req.ID, map[string]any{"items": []any{}})
+	case "browser.pairing.status":
+		return writeGoClaw(conn, req.ID, map[string]any{"status": "not_configured", "paired": false})
+	case "chat_behavior.preview":
+		return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+	default:
+		return writeGoClawErr(conn, req.ID, "NOT_IMPLEMENTED", req.Method+" is not implemented on GOSO WS")
+	}
+}
+
+func wsAgentCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		AgentKey     string `json:"agent_key"`
+		AgentKey2    string `json:"agentKey"`
+		DisplayName  string `json:"display_name"`
+		DisplayName2 string `json:"displayName"`
+		Model        string `json:"model"`
+		Provider     string `json:"provider"`
+		Provider2    string `json:"llm_provider"`
+		Instructions string `json:"instructions"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	key := firstNonEmpty(p.AgentKey, p.AgentKey2)
+	if st == nil || key == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "agent_key is required")
+	}
+	a, err := st.CreateAgent(store.Agent{
+		TenantID: tenant, AgentKey: key,
+		DisplayName: firstNonEmpty(p.DisplayName, p.DisplayName2),
+		Model:       p.Model, LLMProvider: firstNonEmpty(p.Provider, p.Provider2),
+		Instructions: p.Instructions,
+	})
+	if err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, publicAgentView(a, false, false))
+}
+
+func wsAgentUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		ID           string  `json:"id"`
+		ID2          string  `json:"agentId"`
+		DisplayName  *string `json:"display_name"`
+		DisplayName2 *string `json:"displayName"`
+		Model        *string `json:"model"`
+		Provider     *string `json:"provider"`
+		Provider2    *string `json:"llm_provider"`
+		Instructions *string `json:"instructions"`
+		Enabled      *bool   `json:"enabled"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.ID, p.ID2)
+	a, err := agentVisible(st, id, tenant)
+	if err != nil || a == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "agent not found")
+	}
+	if v := p.DisplayName; v != nil {
+		a.DisplayName = strings.TrimSpace(*v)
+	}
+	if p.DisplayName2 != nil {
+		a.DisplayName = strings.TrimSpace(*p.DisplayName2)
+	}
+	if p.Model != nil {
+		a.Model = strings.TrimSpace(*p.Model)
+	}
+	if v := p.Provider; v != nil {
+		a.LLMProvider = strings.TrimSpace(*v)
+	}
+	if p.Provider2 != nil {
+		a.LLMProvider = strings.TrimSpace(*p.Provider2)
+	}
+	if p.Instructions != nil {
+		a.Instructions = *p.Instructions
+	}
+	if p.Enabled != nil {
+		a.Enabled = *p.Enabled
+	}
+	upd, err := st.UpdateAgent(*a)
+	if err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, publicAgentView(upd, false, false))
+}
+
+func wsAgentDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		ID  string `json:"id"`
+		ID2 string `json:"agentId"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.ID, p.ID2)
+	a, err := agentVisible(st, id, tenant)
+	if err != nil || a == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "agent not found")
+	}
+	if err := st.DeleteAgent(a.ID); err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+}
+
+func wsChannelInstancesList(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	rows := []map[string]any{}
+	if st != nil {
+		for _, cfg := range st.ListChannelConfigs() {
+			if cfg == nil {
+				continue
+			}
+			if owner, ok := channel.TenantOf(cfg.Name); ok && !store.SameTenant(owner, tenant) {
+				continue
+			}
+			rows = append(rows, channelInstanceView(cfg))
+		}
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"instances": rows, "total": len(rows)})
+}
+
+func wsChannelInstanceCreate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		Name        string `json:"name"`
+		ChannelType string `json:"channel_type"`
+		Type        string `json:"type"`
+		AgentID     string `json:"agent_id"`
+		Enabled     *bool  `json:"enabled"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	name := strings.TrimSpace(p.Name)
+	catalog := firstNonEmpty(p.ChannelType, p.Type)
+	if st == nil || name == "" || catalog == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "name and channel_type are required")
+	}
+	full := tenant + "/" + catalog + "/" + name
+	enabled := true
+	if p.Enabled != nil {
+		enabled = *p.Enabled
+	}
+	cfg := store.ChannelConfig{Name: full, Enabled: enabled, AgentID: strings.TrimSpace(p.AgentID)}
+	if err := st.PutChannelConfig(cfg); err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	saved, _ := st.GetChannelConfig(full)
+	if saved == nil {
+		saved = &cfg
+	}
+	return writeGoClaw(conn, req.ID, channelInstanceView(saved))
+}
+
+func wsChannelInstanceUpdate(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		ID      string  `json:"id"`
+		AgentID *string `json:"agent_id"`
+		Enabled *bool   `json:"enabled"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := strings.TrimSpace(p.ID)
+	if st == nil || id == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "id is required")
+	}
+	if owner, ok := channel.TenantOf(id); ok && !store.SameTenant(owner, tenant) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "instance not found")
+	}
+	cfg, err := st.GetChannelConfig(id)
+	if err != nil || cfg == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "instance not found")
+	}
+	if p.AgentID != nil {
+		cfg.AgentID = strings.TrimSpace(*p.AgentID)
+	}
+	if p.Enabled != nil {
+		cfg.Enabled = *p.Enabled
+	}
+	if err := st.PutChannelConfig(*cfg); err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, channelInstanceView(cfg))
+}
+
+func wsChannelInstanceDelete(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := strings.TrimSpace(p.ID)
+	if st == nil || id == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "id is required")
+	}
+	if owner, ok := channel.TenantOf(id); ok && !store.SameTenant(owner, tenant) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "instance not found")
+	}
+	if err := st.DeleteChannelConfig(id); err != nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "instance not found")
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+}
+
+func wsTeamTaskGet(conn *websocket.Conn, st store.StoreIface, req goclawReq) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		TaskID2 string `json:"id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	if st == nil || id == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "task is required")
+	}
+	t, err := st.GetTeamTask(id)
+	if err != nil || t == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	return writeGoClaw(conn, req.ID, wsTeamTaskView(t))
+}
+
+func wsTeamTaskPatch(conn *websocket.Conn, st store.StoreIface, req goclawReq, action string) error {
+	var p struct {
+		TaskID   string `json:"taskId"`
+		TaskID2  string `json:"id"`
+		Assignee string `json:"assigneeAgentId"`
+		Status   string `json:"status"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.TaskID, p.TaskID2)
+	if st == nil || id == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "task is required")
+	}
+	t, err := st.GetTeamTask(id)
+	if err != nil || t == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	switch action {
+	case "assign":
+		if strings.TrimSpace(p.Assignee) != "" {
+			t.AssigneeAgentID = strings.TrimSpace(p.Assignee)
+		}
+	case "approve":
+		t.Status = "done"
+	case "reject":
+		t.Status = "todo"
+	}
+	upd, err := st.UpdateTeamTask(*t)
+	if err != nil {
+		return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+	}
+	return writeGoClaw(conn, req.ID, wsTeamTaskView(upd))
+}
+
+func wsTeamTaskComment(conn *websocket.Conn, st store.StoreIface, req goclawReq, who *auth.Identity) error {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		Body    string `json:"body"`
+		Content string `json:"content"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := strings.TrimSpace(p.TaskID)
+	body := firstNonEmpty(p.Body, p.Content)
+	if st == nil || id == "" || body == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "taskId and body are required")
+	}
+	t, err := st.GetTeamTask(id)
+	if err != nil || t == nil {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "task not found")
+	}
+	from := "system"
+	if who != nil {
+		from = firstNonEmpty(who.UserID, who.Email, "system")
+	}
+	msg := store.TeamMessage{TeamID: t.TeamID, FromAgentID: from, Body: body}
+	if _, err := st.CreateTeamMessage(msg); err != nil {
+		// A human commenter is not an agent row; fall back to the task assignee
+		// or any team agent so the note lands in the team mailbox.
+		fallback := strings.TrimSpace(t.AssigneeAgentID)
+		if fallback == "" {
+			if members, _ := st.ListTeamMembers(t.TeamID); len(members) > 0 && members[0] != nil {
+				fallback = members[0].AgentID
+			}
+		}
+		if fallback == "" {
+			return writeGoClawErr(conn, req.ID, "INVALID", err.Error())
+		}
+		msg.FromAgentID = fallback
+		if _, err2 := st.CreateTeamMessage(msg); err2 != nil {
+			return writeGoClawErr(conn, req.ID, "INVALID", err2.Error())
+		}
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
+}
+
+func wsSessionPreview(conn *websocket.Conn, st store.StoreIface, req goclawReq, tenant string) error {
+	var p struct {
+		SessionID  string `json:"sessionId"`
+		SessionID2 string `json:"session_id"`
+	}
+	_ = json.Unmarshal(req.Params, &p)
+	id := firstNonEmpty(p.SessionID, p.SessionID2)
+	if st == nil || id == "" {
+		return writeGoClawErr(conn, req.ID, "INVALID", "sessionId is required")
+	}
+	sess, err := st.GetSession(id)
+	if err != nil || sess == nil || !store.SameTenant(sess.TenantID, tenant) {
+		return writeGoClawErr(conn, req.ID, "NOT_FOUND", "session not found")
+	}
+	msgs, _ := st.ListMessages(id)
+	out := []map[string]any{}
+	start := len(msgs) - 3
+	if start < 0 {
+		start = 0
+	}
+	for _, m := range msgs[start:] {
+		if m == nil {
+			continue
+		}
+		out = append(out, map[string]any{"role": m.Role, "content": m.Content, "created_at": m.CreatedAt})
+	}
+	return writeGoClaw(conn, req.ID, map[string]any{"session": sess, "messages": out})
+}
