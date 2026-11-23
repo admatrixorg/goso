@@ -565,6 +565,9 @@ func (s *SQLiteStore) migrate() error {
 		return fmt.Errorf("migrate telemetry: %w", err)
 	}
 
+	if err := s.migrateTimelineExt(); err != nil {
+		return fmt.Errorf("migrate timeline ext: %w", err)
+	}
 	if err := s.migrateUsage(); err != nil {
 		return fmt.Errorf("migrate usage: %w", err)
 	}
