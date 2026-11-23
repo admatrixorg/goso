@@ -1023,10 +1023,12 @@ func sqlText(t *testing.T, db *sql.DB) string {
 		b.WriteString(strings.Join([]string{from, to, raw}, "|"))
 		b.WriteByte('\n')
 	}
+	// vault_versions is part of the gateway schema now, so the guard only covers
+	// vault_documents, the table the importer must never create itself.
 	var versions int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('vault_versions', 'vault_documents')`).Scan(&versions); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = 'vault_documents'`).Scan(&versions); err != nil {
 		// Postgres has no sqlite_master. Limit the lookup to the importer schema.
-		if err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ('vault_versions', 'vault_documents')`).Scan(&versions); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'vault_documents'`).Scan(&versions); err != nil {
 			t.Fatal(err)
 		}
 	}
