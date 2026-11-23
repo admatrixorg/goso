@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mqglobal/goso/gateway/internal/agent"
 	"github.com/mqglobal/goso/gateway/internal/apikey"
@@ -224,6 +225,30 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 			"created_at": tr.CreatedAt,
 		}
 		return out, spans, true
+	}
+	billing.OnRecord = func(rec billing.Record) {
+		x := store.Usage(st)
+		if x == nil {
+			return
+		}
+		tenantID := "default"
+		if st != nil {
+			if ag, err := st.GetAgent(rec.AgentID); err == nil && ag != nil && ag.TenantID != "" {
+				tenantID = ag.TenantID
+			}
+		}
+		now := rec.CreatedAt.UTC()
+		if now.IsZero() {
+			now = time.Now().UTC()
+		}
+		stamp := now.Format(time.RFC3339)
+		_ = x.InsertUsageEvent(store.UsageEvent{
+			TenantID: tenantID, EventTime: stamp, BucketHour: stamp, EventType: "llm_call",
+			ResourceType: "model", ResourceName: rec.Provider, AgentID: rec.AgentID,
+			Provider: rec.Provider, Status: "ok",
+			InputTokens: rec.PromptTokens, OutputTokens: rec.CompletionTokens,
+			TotalTokens: rec.TotalTokens, CallCount: 1, CreatedAt: stamp,
+		})
 	}
 	obs.Register(mux)
 	if !testing.Testing() {
