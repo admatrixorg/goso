@@ -221,6 +221,7 @@ func NewRouter(opt Options) http.Handler {
 	registerPairedDeviceRoutes(mux, opt.Store)
 	registerAgentConfigPermissionRoutes(mux, opt.Store)
 	registerRunTimelineRoutes(mux, opt.Store)
+	registerGrantMatrixRoutes(mux, opt.Store)
 	registerWorkstationExecRoutes(mux, opt.Store)
 	aliasAPI(mux, "POST /api/workstations/{id}/probe", handleWorkstationProbe(opt.Store))
 	registerExtraRoutes(mux, opt)
