@@ -543,6 +543,10 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.migrateAgentConfigPermissions(); err != nil {
 		return fmt.Errorf("migrate agent config permissions: %w", err)
 	}
+
+	if err := s.migrateCLIGrants(); err != nil {
+		return fmt.Errorf("migrate cli grants: %w", err)
+	}
 	if err := s.migrateAuthUsers(); err != nil {
 		return fmt.Errorf("migrate auth users: %w", err)
 	}
