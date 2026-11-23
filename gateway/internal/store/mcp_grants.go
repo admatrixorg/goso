@@ -60,7 +60,7 @@ func (s *SQLiteStore) migrateMCPGrants() error {
 const mcpGrantColumns = `id, tenant_id, server_id, agent_id, enabled, tool_allow, tool_deny, config_overrides, granted_by, created_at`
 
 func (s *SQLiteStore) ListMCPGrants(tenant, serverID string) []*MCPGrant {
-	rows, err := s.db.Query(`SELECT ` + mcpGrantColumns + ` FROM mcp_agent_grants WHERE tenant_id=? AND server_id=? ORDER BY created_at`,
+	rows, err := s.db.Query(`SELECT `+mcpGrantColumns+` FROM mcp_agent_grants WHERE tenant_id=? AND server_id=? ORDER BY created_at`,
 		NormalizeTenant(tenant), strings.TrimSpace(serverID))
 	if err != nil {
 		return []*MCPGrant{}
@@ -81,7 +81,7 @@ func (s *SQLiteStore) ListMCPGrants(tenant, serverID string) []*MCPGrant {
 }
 
 func (s *SQLiteStore) ListAgentMCPGrants(tenant, agentID string) []*MCPGrant {
-	rows, err := s.db.Query(`SELECT ` + mcpGrantColumns + ` FROM mcp_agent_grants WHERE tenant_id=? AND agent_id=? ORDER BY created_at`,
+	rows, err := s.db.Query(`SELECT `+mcpGrantColumns+` FROM mcp_agent_grants WHERE tenant_id=? AND agent_id=? ORDER BY created_at`,
 		NormalizeTenant(tenant), strings.TrimSpace(agentID))
 	if err != nil {
 		return []*MCPGrant{}
@@ -118,7 +118,7 @@ func (s *SQLiteStore) PutMCPGrant(g MCPGrant) (*MCPGrant, error) {
 	if g.ToolDeny == "" {
 		g.ToolDeny = "[]"
 	}
-	_, err := s.db.Exec(`INSERT INTO mcp_agent_grants(` + mcpGrantColumns + `) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(server_id, agent_id) DO UPDATE SET enabled=excluded.enabled, tool_allow=excluded.tool_allow, tool_deny=excluded.tool_deny, config_overrides=excluded.config_overrides`,
+	_, err := s.db.Exec(`INSERT INTO mcp_agent_grants(`+mcpGrantColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(server_id, agent_id) DO UPDATE SET enabled=excluded.enabled, tool_allow=excluded.tool_allow, tool_deny=excluded.tool_deny, config_overrides=excluded.config_overrides`,
 		g.ID, g.TenantID, g.ServerID, g.AgentID, boolInt(g.Enabled), g.ToolAllow, g.ToolDeny,
 		g.ConfigOverrides, g.GrantedBy, g.CreatedAt)
 	if err != nil {
