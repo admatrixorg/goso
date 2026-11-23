@@ -64,13 +64,13 @@ func handleCLIGrantPut(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 		var body struct {
-			BinaryID  string `json:"binary_id"`
-			BinaryRef string `json:"binary_name"`
-			AgentID   string `json:"agent_id"`
-			Enabled   *bool  `json:"enabled"`
-			DenyArgs  []string `json:"deny_args"`
-			TimeoutSec int    `json:"timeout_seconds"`
-			Tips      string `json:"tips"`
+			BinaryID   string   `json:"binary_id"`
+			BinaryRef  string   `json:"binary_name"`
+			AgentID    string   `json:"agent_id"`
+			Enabled    *bool    `json:"enabled"`
+			DenyArgs   []string `json:"deny_args"`
+			TimeoutSec int      `json:"timeout_seconds"`
+			Tips       string   `json:"tips"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json")
