@@ -185,6 +185,7 @@ func NewRouter(opt Options) http.Handler {
 	registerExtrasRoutes(mux, opt.Store)
 	registerExtraRoutes(mux, opt)
 	registerAgentAdvancedRoutes(mux, opt)
+	registerSkillsExtraRoutes(mux, opt)
 	registerGoClawCompatRoutes(mux, opt)
 	registerChannelPairingRoutes(mux, opt.Store)
 	registerZaloPersonalQR(mux, opt.Store)
