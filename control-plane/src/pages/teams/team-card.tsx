@@ -58,11 +58,13 @@ export function TeamCard({ team, onClick, onDelete }: TeamCardProps) {
   const overflow = memberCount - MAX_VISIBLE;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex cursor-pointer flex-col gap-3 rounded-lg border bg-card p-4 text-left transition-all hover:border-primary/30 hover:shadow-md"
-    >
+    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={team.name}
+        className="flex w-full cursor-pointer flex-col gap-3 text-left"
+      >
       {/* Top row: icon + name + status */}
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -102,6 +104,8 @@ export function TeamCard({ team, onClick, onDelete }: TeamCardProps) {
         </div>
       )}
 
+      </button>
+
       {/* Bottom: time + delete */}
       <div className="flex items-center gap-1.5">
         <div className="ml-auto flex items-center gap-1.5">
@@ -115,16 +119,17 @@ export function TeamCard({ team, onClick, onDelete }: TeamCardProps) {
               variant="ghost"
               size="xs"
               className="text-muted-foreground hover:text-destructive"
+              aria-label="Delete team"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();
               }}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
