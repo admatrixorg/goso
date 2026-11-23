@@ -46,14 +46,14 @@ func handleVaultStorage(st store.StoreIface) http.HandlerFunc {
 		})
 		_, statErr := os.Stat(dir)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"tenant_id":    tenant,
-			"root":         root,
-			"tenant_dir":   dir,
-			"exists":       statErr == nil,
+			"tenant_id":      tenant,
+			"root":           root,
+			"tenant_dir":     dir,
+			"exists":         statErr == nil,
 			"markdown_files": files,
 			"markdown_bytes": bytes,
-			"sync_enabled": vault.ScopedSyncEnabled(),
-			"layout":       "<root>/t/<tenant>/<relative path>.md",
+			"sync_enabled":   vault.ScopedSyncEnabled(),
+			"layout":         "<root>/t/<tenant>/<relative path>.md",
 		})
 	}
 }
