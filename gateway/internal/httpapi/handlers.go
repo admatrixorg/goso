@@ -215,6 +215,7 @@ func NewRouter(opt Options) http.Handler {
 	registerMCPGrantRoutes(mux, opt.Store)
 	registerZaloPersonalRoutes(mux, opt.Store)
 	registerZaloSendRoutes(mux, opt.Store)
+	registerZaloListenRoutes(mux, opt.Store)
 	registerHookRegistryRoutes(mux, opt.Store)
 	registerVaultVersionRoutes(mux, opt.Store)
 	registerVaultStorageRoutes(mux, opt.Store)

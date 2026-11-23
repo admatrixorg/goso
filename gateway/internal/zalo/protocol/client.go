@@ -245,3 +245,13 @@ func (s *Session) Decorate(req *http.Request) {
 		req.Header.Set("Referer", s.BaseURL.String()+"/")
 	}
 }
+
+// WebSocketURLs returns the sockets the login handshake handed out.
+func (s *Session) WebSocketURLs() []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, len(s.wsURLs))
+	copy(out, s.wsURLs)
+	return out
+}
