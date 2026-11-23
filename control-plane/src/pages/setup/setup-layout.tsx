@@ -10,7 +10,7 @@ export function SetupLayout({ children }: { children: React.ReactNode }) {
           <div className="mx-auto mb-4 h-20 w-20" aria-label="Admatrix">
             <img src="/admatrix-mark-transparent-v3.png" alt="" className="h-full w-full object-contain" />
           </div>
-          <h1 className="bg-gradient-to-r from-blue-700 via-blue-500 to-cyan-400 bg-clip-text text-4xl font-bold tracking-tight text-transparent">Admatrix Setup</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-blue-700 dark:text-blue-300">Admatrix Setup</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {t("layout.subtitle", "Let's get your gateway up and running")}
           </p>

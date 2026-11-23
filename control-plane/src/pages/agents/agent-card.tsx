@@ -27,11 +27,13 @@ export function AgentCard({ agent, onClick, onResummon, onDelete }: AgentCardPro
   const showSubtitle = agent.display_name && !UUID_RE.test(agent.agent_key);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex cursor-pointer flex-col gap-3 rounded-lg border bg-card p-4 text-left transition-all hover:border-primary/30 hover:shadow-md"
-    >
+    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={displayName}
+        className="flex w-full cursor-pointer flex-col gap-3 text-left"
+      >
       {/* Top row: icon + name + status */}
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -77,7 +79,9 @@ export function AgentCard({ agent, onClick, onResummon, onDelete }: AgentCardPro
         </div>
       )}
 
-      {/* Bottom badges */}
+      </button>
+
+      {/* Bottom badges and actions */}
       <div className="flex items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -149,6 +153,6 @@ export function AgentCard({ agent, onClick, onResummon, onDelete }: AgentCardPro
           </Button>
         )}
       </div>
-    </button>
+    </div>
   );
 }

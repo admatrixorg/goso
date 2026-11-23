@@ -141,6 +141,7 @@ export function FileUploadDialog({
               ref={inputRef}
               type="file"
               multiple
+              aria-label={t("upload.dropOrClick")}
               className="hidden"
               onChange={handleInputChange}
             />

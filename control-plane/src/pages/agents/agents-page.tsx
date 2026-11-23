@@ -123,7 +123,7 @@ export function AgentsPage() {
           value={typeFilter ?? "__all__"}
           onValueChange={(v) => setTypeFilter(v === "__all__" ? undefined : v)}
         >
-          <SelectTrigger className="h-9 w-36 text-xs">
+          <SelectTrigger className="h-9 w-36 text-xs" aria-label={t("allTypes", "All Types")}>
             <SelectValue placeholder={t("allTypes", "All Types")} />
           </SelectTrigger>
           <SelectContent>
@@ -139,7 +139,7 @@ export function AgentsPage() {
             value={ownerFilter ?? "__all__"}
             onValueChange={(v) => setOwnerFilter(v === "__all__" ? undefined : v)}
           >
-            <SelectTrigger className="h-9 w-44 text-xs">
+            <SelectTrigger className="h-9 w-44 text-xs" aria-label={t("allCreators", "All creators")}>
               <SelectValue placeholder={t("allCreators")} />
             </SelectTrigger>
             <SelectContent>
@@ -162,6 +162,8 @@ export function AgentsPage() {
                   variant={viewMode === "card" ? "default" : "ghost"}
                   size="xs"
                   className="h-7 w-7 p-0"
+                  aria-label={t("viewCard", "Card view")}
+                  aria-pressed={viewMode === "card"}
                   onClick={() => setViewMode("card")}
                 >
                   <LayoutGrid className="h-3.5 w-3.5" />
@@ -175,6 +177,8 @@ export function AgentsPage() {
                   variant={viewMode === "list" ? "default" : "ghost"}
                   size="xs"
                   className="h-7 w-7 p-0"
+                  aria-label={t("viewList", "List view")}
+                  aria-pressed={viewMode === "list"}
                   onClick={() => setViewMode("list")}
                 >
                   <List className="h-3.5 w-3.5" />

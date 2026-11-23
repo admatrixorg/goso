@@ -27,6 +27,7 @@ interface ProviderListRowProps {
   oauthPool?: ProviderOAuthPoolSummary;
   showPoolHint?: boolean;
   onClick: () => void;
+  deleteLabel?: string;
   onDelete?: () => void;
   onPoolSetup?: () => void;
 }
@@ -41,6 +42,7 @@ export function ProviderListRow({
   oauthPool,
   showPoolHint,
   onClick,
+  deleteLabel = "Delete provider",
   onDelete,
   onPoolSetup,
 }: ProviderListRowProps) {
@@ -81,15 +83,6 @@ export function ProviderListRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onClick();
-        }
-      }}
       className={cn(
         "flex w-full cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-left transition-all hover:border-primary/30 hover:shadow-sm",
         oauthPool?.role === "owner" && "border-primary/20 bg-primary/[0.02]",
@@ -97,6 +90,12 @@ export function ProviderListRow({
         showMemberConnector && "ml-4 w-[calc(100%-1rem)]",
       )}
     >
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={displayName}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+      >
       {showMemberConnector && (
         <>
           <span
@@ -210,11 +209,14 @@ export function ProviderListRow({
         {provider.enabled ? tc("enabled") : tc("disabled")}
       </div>
 
+      </button>
+
       {onDelete && (
         <Button
           variant="ghost"
           size="xs"
           className="shrink-0 text-muted-foreground hover:text-destructive"
+          aria-label={deleteLabel}
           onClick={(event) => {
             event.stopPropagation();
             onDelete();

@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/Inter-latin.woff2") format("woff2");
+}
+
 @import "tailwindcss";
 @import "highlight.js/styles/github.min.css";
 @plugin "@tailwindcss/typography";

@@ -39,6 +39,7 @@ export function SearchInput({
       <Input
         value={local}
         onChange={(e) => setLocal(e.target.value)}
+        aria-label={placeholder ?? t("searchPlaceholder")}
         placeholder={placeholder ?? t("searchPlaceholder")}
         className="pl-9"
       />

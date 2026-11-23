@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 type Status = "success" | "warning" | "error" | "info" | "default";
 
 const statusClasses: Record<Status, string> = {
-  success: "bg-success/15 text-success",
-  warning: "bg-warning/15 text-warning",
-  error: "bg-destructive/15 text-destructive",
-  info: "bg-primary/15 text-primary",
+  success: "bg-success/15 text-emerald-800 dark:text-emerald-300",
+  warning: "bg-warning/15 text-amber-800 dark:text-amber-300",
+  error: "bg-destructive/15 text-red-800 dark:text-red-300",
+  info: "bg-primary/15 text-blue-800 dark:text-blue-300",
   default: "bg-muted text-muted-foreground",
 };
 

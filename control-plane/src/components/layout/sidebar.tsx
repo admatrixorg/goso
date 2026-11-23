@@ -74,7 +74,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
             <span className="h-8 w-8 shrink-0" aria-hidden="true">
               <img src="/admatrix-mark-transparent-v3.png" alt="" className="h-full w-full object-contain" />
             </span>
-            <span className="bg-gradient-to-r from-blue-700 via-blue-500 to-cyan-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
+            <span className="text-lg font-bold tracking-tight text-blue-700 dark:text-blue-300">
               GOSO
             </span>
           </div>
