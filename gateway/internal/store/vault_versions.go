@@ -83,7 +83,7 @@ func (s *SQLiteStore) InsertVaultVersion(v VaultVersion) (*VaultVersion, error) 
 const vaultVersionColumns = `id, tenant_id, doc_id, version, title, body, changed_by, custom_scope, created_at`
 
 func (s *SQLiteStore) ListVaultVersions(tenant, docID string) []*VaultVersion {
-	rows, err := s.db.Query(`SELECT ` + vaultVersionColumns + ` FROM vault_versions WHERE tenant_id=? AND doc_id=? ORDER BY version DESC`,
+	rows, err := s.db.Query(`SELECT `+vaultVersionColumns+` FROM vault_versions WHERE tenant_id=? AND doc_id=? ORDER BY version DESC`,
 		NormalizeTenant(tenant), strings.TrimSpace(docID))
 	if err != nil {
 		return []*VaultVersion{}
@@ -102,7 +102,7 @@ func (s *SQLiteStore) ListVaultVersions(tenant, docID string) []*VaultVersion {
 
 func (s *SQLiteStore) GetVaultVersion(tenant, docID string, version int) (*VaultVersion, error) {
 	var v VaultVersion
-	err := s.db.QueryRow(`SELECT ` + vaultVersionColumns + ` FROM vault_versions WHERE tenant_id=? AND doc_id=? AND version=?`,
+	err := s.db.QueryRow(`SELECT `+vaultVersionColumns+` FROM vault_versions WHERE tenant_id=? AND doc_id=? AND version=?`,
 		NormalizeTenant(tenant), strings.TrimSpace(docID), version).
 		Scan(&v.ID, &v.TenantID, &v.DocID, &v.Version, &v.Title, &v.Body, &v.ChangedBy, &v.CustomScope, &v.CreatedAt)
 	if err != nil {
