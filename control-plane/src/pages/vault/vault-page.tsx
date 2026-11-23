@@ -113,10 +113,12 @@ export function VaultPage() {
         <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar. On mobile it is only mounted while open, so a closed panel
+          cannot hold focusable controls or a hit area off screen. */}
+      {(!isMobile || sidebarOpen) && (
       <div className={
         isMobile
-          ? `fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`
+          ? "fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw]"
           : "w-80 md:w-80 lg:w-96 shrink-0"
       }>
         <VaultDocumentSidebar
@@ -133,6 +135,7 @@ export function VaultPage() {
           treeVersion={treeVersion}
         />
       </div>
+      )}
 
       {/* Main: header + graph + detail panel */}
       <div className="flex min-w-0 flex-1 flex-col">
