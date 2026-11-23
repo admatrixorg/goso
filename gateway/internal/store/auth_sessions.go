@@ -32,6 +32,8 @@ type AuthSessionStore interface {
 	LookupAuthSession(token string) (*AuthSession, error)
 	DeleteAuthSession(token string) error
 	DeleteAuthSessionsForUser(userID string) error
+	ListAuthSessionsForUser(userID string) ([]AuthSession, error)
+	DeleteAuthSessionByID(userID, id string) error
 }
 
 var (
@@ -145,6 +147,65 @@ func (s *SQLiteStore) DeleteAuthSession(token string) error {
 func (s *SQLiteStore) DeleteAuthSessionsForUser(userID string) error {
 	_, err := s.db.Exec(`DELETE FROM auth_sessions WHERE user_id=?`, strings.TrimSpace(userID))
 	return err
+}
+
+
+func (s *SQLiteStore) ListAuthSessionsForUser(userID string) ([]AuthSession, error) {
+	rows, err := s.db.Query(`SELECT id, user_id, email, tenant_id, role, created_at, expires_at
+		FROM auth_sessions WHERE user_id=? ORDER BY created_at DESC`, strings.TrimSpace(userID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AuthSession{}
+	for rows.Next() {
+		var sess AuthSession
+		var created, expires string
+		if rows.Scan(&sess.ID, &sess.UserID, &sess.Email, &sess.TenantID, &sess.Role, &created, &expires) != nil {
+			continue
+		}
+		sess.CreatedAt = parseTime(created)
+		sess.ExpiresAt = parseTime(expires)
+		out = append(out, sess)
+	}
+	return out, nil
+}
+
+func (s *SQLiteStore) DeleteAuthSessionByID(userID, id string) error {
+	res, err := s.db.Exec(`DELETE FROM auth_sessions WHERE id=? AND user_id=?`, strings.TrimSpace(id), strings.TrimSpace(userID))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// --- memory sessions ---
+
+func (s *Store) ListAuthSessionsForUser(userID string) ([]AuthSession, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []AuthSession{}
+	for _, v := range s.authSessions {
+		if v.UserID == strings.TrimSpace(userID) {
+			out = append(out, *v)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) DeleteAuthSessionByID(userID, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, v := range s.authSessions {
+		if v.UserID == strings.TrimSpace(userID) && v.ID == strings.TrimSpace(id) {
+			delete(s.authSessions, k)
+			return nil
+		}
+	}
+	return ErrNotFound
 }
 
 // --- memory ---

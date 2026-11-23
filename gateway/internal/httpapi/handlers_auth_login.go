@@ -120,6 +120,58 @@ func loginTenantFor(email, userID string) loginTenant {
 
 // issueToken returns a per-user session token. The admin token stays a
 // break-glass fallback when sessions cannot be written.
+
+// Login is rate limited per email+IP so password guessing cannot spin.
+const (
+	loginRateWindow = time.Minute
+	loginRateMax    = 10
+)
+
+var (
+	loginRateMu sync.Mutex
+	loginRates  = map[string][]time.Time{}
+)
+
+func loginRateAllow(key string) bool {
+	now := time.Now()
+	loginRateMu.Lock()
+	defer loginRateMu.Unlock()
+	recent := loginRates[key][:0]
+	for _, at := range loginRates[key] {
+		if now.Sub(at) < loginRateWindow {
+			recent = append(recent, at)
+		}
+	}
+	if len(recent) >= loginRateMax {
+		loginRates[key] = recent
+		return false
+	}
+	loginRates[key] = append(recent, now)
+	return true
+}
+
+func loginClientIP(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-Real-IP")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); v != "" {
+		if i := strings.Index(v, ","); i >= 0 {
+			v = v[:i]
+		}
+		return strings.TrimSpace(v)
+	}
+	host := r.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i > 0 {
+		host = host[:i]
+	}
+	return host
+}
+
+// loginLockedByDB reports whether persisted failures keep the account locked.
+func loginLockedByDB(u *store.AuthUser) bool {
+	return u != nil && u.FailedCount >= loginLockThreshold && !u.UpdatedAt.IsZero() && time.Since(u.UpdatedAt) < loginLockDuration
+}
+
 func issueToken(st store.StoreIface, userID, email string, tn loginTenant) string {
 	if sessions := store.AuthSessions(st); sessions != nil {
 		if token, _, err := sessions.CreateAuthSession(userID, email, tn.ID, tn.Role, loginSessionTTL); err == nil && token != "" {
@@ -143,6 +195,12 @@ func handleAuthLogin(st store.StoreIface) http.HandlerFunc {
 			return
 		}
 
+		if !loginRateAllow(strings.ToLower(email) + "|" + loginClientIP(r)) {
+			w.Header().Set("Retry-After", "60")
+			writeErr(w, http.StatusTooManyRequests, "too many login attempts")
+			return
+		}
+
 		admin := strings.TrimSpace(os.Getenv("GOSO_ADMIN_TOKEN"))
 		if admin == "" {
 			writeErr(w, http.StatusUnauthorized, "invalid credentials")
@@ -159,12 +217,16 @@ func handleAuthLogin(st store.StoreIface) http.HandlerFunc {
 					writeErr(w, http.StatusForbidden, "account not active")
 					return
 				}
+				if loginLockedByDB(u) {
+					writeErr(w, http.StatusLocked, "account temporarily locked")
+					return
+				}
 				if u.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(pass)) != nil {
-					if loginNoteFail(email) {
+					count, _ := users.NoteAuthUserFailure(u.ID)
+					if count >= loginLockThreshold || loginNoteFail(email) {
 						writeErr(w, http.StatusLocked, "account temporarily locked")
 						return
 					}
-					_, _ = users.NoteAuthUserFailure(u.ID)
 					writeErr(w, http.StatusUnauthorized, "invalid credentials")
 					return
 				}

@@ -180,6 +180,7 @@ func NewRouter(opt Options) http.Handler {
 	registerBackupRoutes(mux, opt)
 	registerPairingRoutes(mux, opt.Pairing)
 	registerAuthLoginRoutes(mux, opt.Store)
+	registerAuthSessionRoutes(mux, opt.Store)
 	registerUserDirectoryRoutes(mux, opt.Store)
 	registerExtrasRoutes(mux, opt.Store)
 	registerExtraRoutes(mux, opt)
