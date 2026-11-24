@@ -122,6 +122,10 @@ func handleGoClawReq(ctx context.Context, conn *websocket.Conn, st store.StoreIf
 			})
 		}
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"agents": agents})
+	case "device.pair.list":
+		return authed, writeGoClaw(conn, req.ID, map[string]any{"devices": []any{}, "total": 0})
+	case "bitrix.portals.list":
+		return authed, writeGoClaw(conn, req.ID, map[string]any{"portals": []any{}, "total": 0})
 	case "quota.usage":
 		return authed, writeGoClaw(conn, req.ID, map[string]any{"enabled": false, "entries": []any{}})
 	case "heartbeat.get", "heartbeat.set", "heartbeat.toggle", "heartbeat.test", "heartbeat.logs", "heartbeat.checklist.get", "heartbeat.checklist.set", "heartbeat.targets":
