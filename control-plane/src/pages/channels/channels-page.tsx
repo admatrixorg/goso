@@ -174,7 +174,7 @@ export function ChannelsPage() {
                   instance={inst}
                   status={getStatus(inst)}
                   agentName={getAgentName(inst.agent_id)}
-                  onClick={() => navigate(`/channels/${inst.id}`)}
+                  onClick={() => navigate(`/channels/${encodeURIComponent(inst.id)}`)}
                   onAuth={channelsWithAuth.has(inst.channel_type) ? () => setQrTarget(inst) : undefined}
                   onDelete={!inst.is_default ? () => setDeleteTarget(inst) : undefined}
                 />
