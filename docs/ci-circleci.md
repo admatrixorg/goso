@@ -1,7 +1,7 @@
 # CI on CircleCI
 
-The pipeline in `.circleci/config.yml` mirrors `.github/workflows/ci.yml`.
+CI for this repository is the CircleCI job `verify` in `.circleci/config.yml`.
 
-The job `verify` runs on every push and every pull request. GitHub Actions stays on until a CircleCI run is green on main.
+It runs `make verify`, the memory-vi bench, `make -C desktop verify`, and `make smoke`, with a pgvector Postgres service. Tool versions match the former GitHub Actions workflow: Go 1.25, gitleaks 8.24.3, semgrep 1.110.0, Node 22.14.0, pnpm 11.
 
-Cut over after a green CircleCI `verify` on main: disable `.github/workflows/ci.yml` in the repository settings, or delete that file.
+The GitHub Actions workflow was removed after CircleCI job 3 on main succeeded.
