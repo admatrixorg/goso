@@ -27,6 +27,18 @@ func handlePutChannelSecrets(st store.StoreIface, mgr *channel.Manager) http.Han
 			writeErr(w, http.StatusForbidden, "lite: channels off")
 			return
 		}
+		// A zalo-personal channel runs the native cookie client, so its credential
+		// is the account cookie set rather than the bridge secret. Accept it here
+		// before the bridge-only guard runs.
+		if catalog == "zalo-personal" {
+			if saved, code, msg := saveZaloCookieCredential(st, name, r); saved {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name, "written": []string{"cookies", "secret_key", "imei"}})
+				return
+			} else if code != 0 {
+				writeErr(w, code, msg)
+				return
+			}
+		}
 		if channel.WritableFields(name) == nil {
 			if catalog == "zalo-personal" {
 				writeErr(w, http.StatusBadRequest, "zalo-personal uses QR, not a token form")

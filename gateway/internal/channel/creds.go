@@ -91,8 +91,16 @@ func FieldKind(name, field string) (kind string, ok bool) {
 			return KindAppSecret, true
 		}
 	case "zalo-personal":
-		if owned && field == "bridge_secret" {
-			return KindBridge, true
+		if owned {
+			switch field {
+			case "bridge_secret":
+				return KindBridge, true
+			case "cookies", "secret_key", "imei":
+				// The native client signs in with the account cookie set, so these
+				// three are the credential the channel actually needs.
+				return kindSession, true
+			}
+			return "", false
 		}
 	case "feishu":
 		if owned && field == "app_secret" {
