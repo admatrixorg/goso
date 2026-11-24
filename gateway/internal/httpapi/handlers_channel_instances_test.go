@@ -194,9 +194,11 @@ func TestZCRMBridgeChannelSetup(t *testing.T) {
 // offset and search instead of returning every instance on every call.
 func TestChannelInstanceListPages(t *testing.T) {
 	h, st, _ := instanceRouter(t)
-	for _, slug := range []string{"a1", "a2", "a3", "a4", "a5"} {
+	base := time.Date(2026, 11, 24, 9, 0, 0, 0, time.UTC)
+	for i, slug := range []string{"a1", "a2", "a3", "a4", "a5"} {
 		name := "tenant-a/zalo-personal/" + slug
-		if err := st.PutChannelConfig(store.ChannelConfig{Name: name}); err != nil {
+		cfg := store.ChannelConfig{Name: name, UpdatedAt: base.Add(time.Duration(i) * time.Minute)}
+		if err := st.PutChannelConfig(cfg); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -216,8 +218,8 @@ func TestChannelInstanceListPages(t *testing.T) {
 	if page.Total != 5 || len(page.Instances) != 2 || page.Limit != 2 || page.Offset != 0 {
 		t.Fatalf("first page %+v", page)
 	}
-	if got := page.Instances[0]["name"]; got != "tenant-a/zalo-personal/a1" {
-		t.Fatalf("first row %v", got)
+	if got := page.Instances[0]["name"]; got != "tenant-a/zalo-personal/a5" {
+		t.Fatalf("first row %v, want the most recently written", got)
 	}
 
 	last := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=2&offset=4", "")
@@ -228,7 +230,7 @@ func TestChannelInstanceListPages(t *testing.T) {
 	if err := json.Unmarshal(last.Body.Bytes(), &tail); err != nil {
 		t.Fatal(err)
 	}
-	if tail.Total != 5 || len(tail.Instances) != 1 || tail.Instances[0]["name"] != "tenant-a/zalo-personal/a5" {
+	if tail.Total != 5 || len(tail.Instances) != 1 || tail.Instances[0]["name"] != "tenant-a/zalo-personal/a1" {
 		t.Fatalf("last page %+v", tail)
 	}
 
@@ -256,5 +258,36 @@ func TestChannelInstanceListPages(t *testing.T) {
 	}
 	if hit.Total != 1 || len(hit.Instances) != 1 {
 		t.Fatalf("search %+v", hit)
+	}
+}
+
+// A channel an operator has just created must land on the first page, not hide
+// behind a name sort, so the list orders by the most recently written row.
+func TestChannelInstanceListNewestFirst(t *testing.T) {
+	h, st, _ := instanceRouter(t)
+	base := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	for i, slug := range []string{"z-old", "a-newest", "m-middle"} {
+		name := "tenant-a/zalo-personal/" + slug
+		cfg := store.ChannelConfig{Name: name, UpdatedAt: base.Add(time.Duration(i) * time.Minute)}
+		if err := st.PutChannelConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=2&offset=0", "")
+	var page struct {
+		Instances []map[string]any `json:"instances"`
+		Total     int              `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Instances) != 2 {
+		t.Fatalf("page %+v", page)
+	}
+	if got := page.Instances[0]["name"]; got != "tenant-a/zalo-personal/m-middle" {
+		t.Fatalf("first row %v, want the most recently written", got)
+	}
+	if got := page.Instances[1]["name"]; got != "tenant-a/zalo-personal/a-newest" {
+		t.Fatalf("second row %v", got)
 	}
 }
