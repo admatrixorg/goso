@@ -38,6 +38,15 @@ id = "generic-api-key"
   ]
 
   [[rules.allowlists]]
+  description = "Zalo public zcid wrapping constant. It is protocol data every Zalo web client ships, and it protects nothing."
+  condition = "AND"
+  regexTarget = "secret"
+  regexes = ['''^3FC4F0D2AB50057BCE0D90D9187A22B1$''']
+  paths = [
+    '''(^|/)gateway/internal/zalo/protocol/params\.go$''',
+  ]
+
+  [[rules.allowlists]]
   description = "AWS documentation example secret used as an S3 test fixture (access key is AKIAFAKE)"
   condition = "AND"
   regexTarget = "secret"
