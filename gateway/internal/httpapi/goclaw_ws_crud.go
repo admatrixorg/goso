@@ -65,6 +65,8 @@ func handleGoClawCRUD(conn *websocket.Conn, st store.StoreIface, req goclawReq, 
 		return writeGoClaw(conn, req.ID, map[string]any{"ok": true})
 	case "sessions.preview":
 		return wsSessionPreview(conn, st, req, tenant)
+	case "zalo.personal.qr.start":
+		return wsZaloQRStart(conn, st, req, tenant)
 	case "run.timeline.get":
 		return wsRunTimeline(conn, st, req, tenant)
 	case "browser.pairing.status":
