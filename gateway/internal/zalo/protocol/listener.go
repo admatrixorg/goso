@@ -34,14 +34,17 @@ type InboundMessage struct {
 
 // Listener reads Zalo frames and hands decoded messages to a handler.
 type Listener struct {
-	sess   *Session
-	wsURL  string
-	mu     sync.RWMutex
-	conn   *websocket.Conn
-	cipher string
-	closed bool
-	onMsg  func(InboundMessage)
-	done   chan struct{}
+	sess       *Session
+	wsURL      string
+	mu         sync.RWMutex
+	conn       *websocket.Conn
+	cipher     string
+	closed     bool
+	onMsg      func(InboundMessage)
+	done       chan struct{}
+	frames     int
+	lastKey    string
+	pingCancel context.CancelFunc
 }
 
 // NewListener builds a listener for the first websocket URL the login
@@ -96,6 +99,7 @@ func (l *Listener) Start(ctx context.Context) error {
 		return fmt.Errorf("zalo personal: ws dial %s http %d cookies %d: %w", wsURL, code, n, err)
 	}
 	conn.SetReadLimit(1 << 20)
+	conn.SetReadDeadline(time.Now().Add(3 * time.Minute))
 	l.mu.Lock()
 	l.conn = conn
 	l.mu.Unlock()
@@ -111,6 +115,7 @@ func (l *Listener) Start(ctx context.Context) error {
 			}
 			return fmt.Errorf("zalo personal: ws read: %w", rerr)
 		}
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Minute))
 		l.HandleFrame(data)
 	}
 }
@@ -123,6 +128,10 @@ func (l *Listener) Stop() {
 	l.mu.Lock()
 	conn := l.conn
 	l.closed = true
+	if l.pingCancel != nil {
+		l.pingCancel()
+		l.pingCancel = nil
+	}
 	l.mu.Unlock()
 	if conn != nil {
 		_ = conn.Close()
@@ -141,6 +150,11 @@ func (l *Listener) HandleFrame(data []byte) {
 	version := data[0]
 	cmd := binary.LittleEndian.Uint16(data[1:3])
 	subCmd := data[3]
+	key := fmt.Sprintf("%d_%d_%d", version, cmd, subCmd)
+	l.mu.Lock()
+	l.frames++
+	l.lastKey = key
+	l.mu.Unlock()
 	var envelope struct {
 		Key     *string `json:"key"`
 		Encrypt uint    `json:"encrypt"`
@@ -149,12 +163,13 @@ func (l *Listener) HandleFrame(data []byte) {
 	if err := json.Unmarshal(data[4:], &envelope); err != nil {
 		return
 	}
-	switch fmt.Sprintf("%d_%d_%d", version, cmd, subCmd) {
+	switch key {
 	case "1_1_1":
 		if envelope.Key != nil {
 			l.mu.Lock()
 			l.cipher = strings.TrimSpace(*envelope.Key)
 			l.mu.Unlock()
+			l.startPing()
 		}
 	case "1_501_0":
 		l.handleMessages(envelope.Data, envelope.Encrypt, "user")
@@ -173,13 +188,18 @@ func (l *Listener) handleMessages(data string, encType uint, threadType string) 
 	}
 	var envelope struct {
 		Data struct {
-			Msgs []json.RawMessage `json:"msgs"`
+			Msgs      []json.RawMessage `json:"msgs"`
+			GroupMsgs []json.RawMessage `json:"groupMsgs"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return
 	}
-	for _, raw := range envelope.Data.Msgs {
+	raws := envelope.Data.Msgs
+	if threadType == "group" && len(envelope.Data.GroupMsgs) > 0 {
+		raws = envelope.Data.GroupMsgs
+	}
+	for _, raw := range raws {
 		msg, ok := decodeInbound(raw, l.sess.UID, threadType)
 		if !ok {
 			continue
@@ -201,19 +221,20 @@ func decodeInbound(raw json.RawMessage, ownUID, threadType string) (InboundMessa
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return InboundMessage{}, false
 	}
-	if ownUID != "" && wire.UIDFrom == ownUID {
+	if wire.UIDFrom == "0" || (ownUID != "" && wire.UIDFrom == ownUID) {
 		return InboundMessage{}, false
 	}
 	text := decodeContentText(wire.Content)
 	if strings.TrimSpace(text) == "" {
 		return InboundMessage{}, false
 	}
-	thread := wire.IDTo
-	if threadType == "group" && thread == "" {
+	fromID := wire.UIDFrom
+	thread := fromID
+	if threadType == "group" {
 		thread = wire.IDTo
 	}
 	return InboundMessage{
-		ID: wire.MsgID, FromID: wire.UIDFrom, FromName: wire.DName,
+		ID: wire.MsgID, FromID: fromID, FromName: wire.DName,
 		ThreadID: thread, ThreadType: threadType, Text: text,
 		Timestamp: parseInt64(wire.TS),
 	}, true
@@ -349,4 +370,66 @@ func injectWSCookies(headers http.Header, jar http.CookieJar, wsURL string) {
 		cookie = existing + "; " + cookie
 	}
 	headers.Set("Cookie", cookie)
+}
+
+const defaultPingInterval = 30 * time.Second
+
+func (l *Listener) startPing() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	if l.pingCancel != nil {
+		l.mu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	l.pingCancel = cancel
+	l.mu.Unlock()
+	go l.pingLoop(ctx, defaultPingInterval)
+}
+
+func (l *Listener) pingLoop(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = defaultPingInterval
+	}
+	l.sendPing()
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			l.sendPing()
+		}
+	}
+}
+
+func (l *Listener) sendPing() {
+	if l == nil {
+		return
+	}
+	body, _ := json.Marshal(map[string]any{"eventId": time.Now().UnixMilli()})
+	buf := make([]byte, 4+len(body))
+	buf[0] = 1
+	binary.LittleEndian.PutUint16(buf[1:3], 2)
+	buf[3] = 1
+	copy(buf[4:], body)
+	l.mu.Lock()
+	conn := l.conn
+	l.mu.Unlock()
+	if conn != nil {
+		_ = conn.WriteMessage(websocket.BinaryMessage, buf)
+	}
+}
+
+// Stats reports how many frames arrived and whether the cipher handshake ran.
+func (l *Listener) Stats() (frames int, lastKey string, cipher bool) {
+	if l == nil {
+		return 0, "", false
+	}
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.frames, l.lastKey, strings.TrimSpace(l.cipher) != ""
 }

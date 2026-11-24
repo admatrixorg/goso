@@ -21,6 +21,9 @@ type Status struct {
 	StartedAt string                   `json:"started_at,omitempty"`
 	LastError string                   `json:"last_error,omitempty"`
 	Received  int                      `json:"received"`
+	Frames    int                      `json:"frames"`
+	LastKey   string                   `json:"last_key,omitempty"`
+	Cipher    bool                     `json:"cipher"`
 	Last      *protocol.InboundMessage `json:"last,omitempty"`
 }
 
@@ -74,7 +77,7 @@ func (m *Manager) Start(ctx context.Context, channel string, cred *protocol.Cred
 		sess.WSURL = pickWSURL(urls[0])
 	}
 	s := &session{sess: sess, uid: in.UID, name: in.Name, started: time.Now().UTC()}
-	ln, lerr2 := protocol.NewListener(sess, func(msg protocol.InboundMessage) {
+	onMsg := func(msg protocol.InboundMessage) {
 		s.mu.Lock()
 		s.inbox = append(s.inbox, msg)
 		if len(s.inbox) > m.inboxCap {
@@ -84,7 +87,8 @@ func (m *Manager) Start(ctx context.Context, channel string, cred *protocol.Cred
 		if m.OnInbound != nil {
 			go m.OnInbound(channel, msg)
 		}
-	})
+	}
+	ln, lerr2 := protocol.NewListener(sess, onMsg)
 	if lerr2 != nil {
 		return nil, lerr2
 	}
@@ -98,10 +102,33 @@ func (m *Manager) Start(ctx context.Context, channel string, cred *protocol.Cred
 	m.sessions[channel] = s
 	m.mu.Unlock()
 	go func() {
-		if rerr := ln.Start(runCtx); rerr != nil {
+		current := ln
+		for {
+			rerr := current.Start(runCtx)
+			if runCtx.Err() != nil {
+				return
+			}
 			s.mu.Lock()
-			s.lastErr = rerr.Error()
+			if rerr != nil {
+				s.lastErr = rerr.Error()
+			}
 			s.mu.Unlock()
+			select {
+			case <-runCtx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+			next, nerr := protocol.NewListener(sess, onMsg)
+			if nerr != nil {
+				s.mu.Lock()
+				s.lastErr = nerr.Error()
+				s.mu.Unlock()
+				return
+			}
+			s.mu.Lock()
+			s.listener = next
+			s.mu.Unlock()
+			current = next
 		}
 	}()
 	return s.status(channel), nil
@@ -194,6 +221,9 @@ func (s *session) status(channel string) *Status {
 		Channel: channel, Running: true, UID: s.uid, Name: s.name,
 		StartedAt: s.started.Format(time.RFC3339), LastError: s.lastErr,
 		Received: len(s.inbox),
+	}
+	if s.listener != nil {
+		st.Frames, st.LastKey, st.Cipher = s.listener.Stats()
 	}
 	if n := len(s.inbox); n > 0 {
 		last := s.inbox[n-1]

@@ -23,7 +23,7 @@ func frame(version byte, cmd uint16, sub byte, body map[string]any) []byte {
 func TestDecodeInboundTextAndObject(t *testing.T) {
 	str := json.RawMessage(`"hello there"`)
 	msg, ok := decodeInbound([]byte(`{"msgId":"m1","uidFrom":"u2","idTo":"u1","dName":"An","ts":"1700000000000","content":"hello there"}`), "u1", "user")
-	if !ok || msg.Text != "hello there" || msg.FromID != "u2" || msg.ThreadID != "u1" || msg.Timestamp != 1700000000000 {
+	if !ok || msg.Text != "hello there" || msg.FromID != "u2" || msg.ThreadID != "u2" || msg.Timestamp != 1700000000000 {
 		t.Fatalf("string content %#v ok=%v", msg, ok)
 	}
 	_ = str
@@ -39,6 +39,9 @@ func TestDecodeInboundSkipsSelfEcho(t *testing.T) {
 	}
 	if _, ok := decodeInbound([]byte(`{"msgId":"m","uidFrom":"u2","idTo":"u9","content":""}`), "u1", "user"); ok {
 		t.Fatal("empty text must be skipped")
+	}
+	if _, ok := decodeInbound([]byte(`{"msgId":"m","uidFrom":"0","idTo":"u9","content":"hi"}`), "u1", "user"); ok {
+		t.Fatal("uidFrom 0 is a self echo")
 	}
 }
 
@@ -96,7 +99,7 @@ func TestListenerReceivesFrame(t *testing.T) {
 	go func() { _ = ln.Start(ctx) }()
 	select {
 	case m := <-got:
-		if m.Text != "ping from qc" || m.FromID != "u2" || m.FromName != "Bình" || m.ThreadID != "u1" {
+		if m.Text != "ping from qc" || m.FromID != "u2" || m.FromName != "Bình" || m.ThreadID != "u2" {
 			t.Fatalf("message %#v", m)
 		}
 	case <-time.After(4 * time.Second):
