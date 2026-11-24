@@ -291,3 +291,35 @@ func TestChannelInstanceListNewestFirst(t *testing.T) {
 		t.Fatalf("second row %v", got)
 	}
 }
+
+func TestChannelMemoryExtractionIsEmptyNotMissing(t *testing.T) {
+	h, st, _ := instanceRouter(t)
+	name := "tenant-a/zalo-personal/shop"
+	if err := st.PutChannelConfig(store.ChannelConfig{Name: name}); err != nil {
+		t.Fatal(err)
+	}
+	path := "/v1/channels/instances/tenant-a/zalo-personal/shop/memory-extraction"
+	w := tenantCall(t, h, "tenant-a", "GET", path, "")
+	if w.Code != 200 {
+		t.Fatalf("status %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Config       map[string]any `json:"config"`
+		PendingCount int            `json:"pending_count"`
+		RecentItems  []any          `json:"recent_items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Config["enabled"] != false || body.PendingCount != 0 || body.RecentItems == nil {
+		t.Fatalf("status body %+v", body)
+	}
+	items := tenantCall(t, h, "tenant-a", "GET", path+"/items", "")
+	if items.Code != 200 {
+		t.Fatalf("items %d %s", items.Code, items.Body.String())
+	}
+	ctx := tenantCall(t, h, "tenant-a", "GET", "/v1/channels/instances/tenant-a/zalo-personal/shop/contexts", "")
+	if ctx.Code != 200 {
+		t.Fatalf("contexts %d %s", ctx.Code, ctx.Body.String())
+	}
+}
