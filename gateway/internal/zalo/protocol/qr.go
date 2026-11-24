@@ -179,7 +179,7 @@ func (q *QRSession) Finish(ctx context.Context) (*Credential, error) {
 	if resp, derr := q.Session.HTTP.Do(req); derr == nil {
 		resp.Body.Close()
 	}
-	cred := &Credential{UserAgent: q.Session.UserAgent}
+	cred := &Credential{UserAgent: q.Session.UserAgent, IMEI: newIMEI(q.Session.UserAgent)}
 	for _, host := range []string{"https://chat.zalo.me", "https://id.zalo.me", "https://wpa.chat.zalo.me"} {
 		u, perr := url.Parse(host)
 		if perr != nil || q.Session.Jar == nil {
@@ -192,5 +192,8 @@ func (q *QRSession) Finish(ctx context.Context) (*Credential, error) {
 			cred.Cookies = append(cred.Cookies, Cookie{Name: c.Name, Value: c.Value})
 		}
 	}
+	// Keep the payload key beside the cookies, so a later read does not depend on
+	// the jar still carrying it.
+	cred.SecretKey = KeyFromCookies(cred.Cookies)
 	return cred, nil
 }

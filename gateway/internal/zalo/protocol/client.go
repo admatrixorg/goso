@@ -2,6 +2,8 @@ package protocol
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // DefaultBaseURL is the Zalo web origin the client talks to.
@@ -105,7 +109,24 @@ func NewSessionWithCredential(cred *Credential) (*Session, error) {
 		sess.Language = DefaultLanguage
 	}
 	sess.HTTP = &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	// The QR login captures cookies, and the key Zalo crypts every API payload
+	// with travels in the zpw_enk cookie, so read it from there when the stored
+	// credential does not carry it already.
+	if sess.SecretKey == "" {
+		sess.SecretKey = KeyFromCookies(cred.Cookies)
+	}
 	return sess, nil
+}
+
+// KeyFromCookies returns the payload key a cookie set carries. Zalo ships it in
+// zpw_enk, base64 encoded, and it never appears as its own field after a login.
+func KeyFromCookies(cookies []Cookie) string {
+	for _, c := range cookies {
+		if strings.EqualFold(strings.TrimSpace(c.Name), "zpw_enk") {
+			return strings.TrimSpace(c.Value)
+		}
+	}
+	return ""
 }
 
 // applyCookies seeds the base host and the poll subdomains, because
@@ -129,8 +150,9 @@ func applyCookies(jar http.CookieJar, base *url.URL, cookies []Cookie) {
 
 // LoginInfo is the payload Zalo returns for the signed in account.
 type LoginInfo struct {
-	UID  string `json:"uid"`
-	Name string `json:"display_name,omitempty"`
+	UID       string `json:"uid"`
+	Name      string `json:"display_name,omitempty"`
+	SecretKey string `json:"zpw_enk,omitempty"`
 }
 
 // LoginPath is the own-info route.
@@ -205,6 +227,7 @@ func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, 
 		var data struct {
 			UID          string   `json:"uid"`
 			Name         string   `json:"display_name"`
+			ZPWEnk       string   `json:"zpw_enk"`
 			ZpwWebsocket []string `json:"zpw_ws"`
 			ServiceMap   *struct {
 				Chat      []string `json:"chat"`
@@ -219,6 +242,12 @@ func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, 
 				info.UID = strings.TrimSpace(data.UID)
 			}
 			info.Name = strings.TrimSpace(data.Name)
+			info.SecretKey = strings.TrimSpace(data.ZPWEnk)
+			// The payload key arrives with the login reply, so a session that
+			// never had one becomes able to crypt API calls after this read.
+			if s.SecretKey == "" && info.SecretKey != "" {
+				s.SecretKey = info.SecretKey
+			}
 			if len(data.ZpwWebsocket) > 0 {
 				s.wsURLs = append([]string(nil), data.ZpwWebsocket...)
 			}
@@ -259,4 +288,10 @@ func (s *Session) WebSocketURLs() []string {
 // cookiejarForLogin returns an empty jar for the login host flow.
 func cookiejarForLogin() (http.CookieJar, error) {
 	return cookiejar.New(nil)
+}
+
+// newIMEI builds the device id Zalo expects on API calls.
+func newIMEI(userAgent string) string {
+	sum := md5.Sum([]byte(userAgent))
+	return uuid.New().String() + "-" + hex.EncodeToString(sum[:])
 }

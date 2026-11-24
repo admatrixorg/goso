@@ -102,9 +102,9 @@ func storedZaloCredential(st store.StoreIface, name string) (*protocol.Credentia
 	if perr != nil {
 		return nil, perr
 	}
-	if strings.TrimSpace(cred.SecretKey) == "" {
-		return nil, errNoZaloSecret
-	}
+	// The key can travel in the zpw_enk cookie rather than the secret_key field,
+	// and the session builder reads it from there, so an empty field is not a
+	// reason to refuse the credential.
 	return cred, nil
 }
 
