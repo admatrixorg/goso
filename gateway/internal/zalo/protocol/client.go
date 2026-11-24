@@ -255,3 +255,8 @@ func (s *Session) WebSocketURLs() []string {
 	copy(out, s.wsURLs)
 	return out
 }
+
+// cookiejarForLogin returns an empty jar for the login host flow.
+func cookiejarForLogin() (http.CookieJar, error) {
+	return cookiejar.New(nil)
+}
