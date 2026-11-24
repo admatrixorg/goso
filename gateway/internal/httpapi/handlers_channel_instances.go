@@ -179,9 +179,15 @@ func handleChannelInstanceList(st store.StoreIface) http.HandlerFunc {
 		rows := []map[string]any{}
 		if st != nil {
 			configs := st.ListChannelConfigs()
-			// A stable order is what makes paging mean anything, so sort by name
-			// before slicing.
-			sort.Slice(configs, func(i, j int) bool { return configs[i].Name < configs[j].Name })
+			// Newest first, so a channel an operator has just created lands on the
+			// first page instead of hiding behind a name sort. Name breaks ties,
+			// which keeps paging stable for rows written at the same moment.
+			sort.Slice(configs, func(i, j int) bool {
+				if !configs[i].UpdatedAt.Equal(configs[j].UpdatedAt) {
+					return configs[i].UpdatedAt.After(configs[j].UpdatedAt)
+				}
+				return configs[i].Name < configs[j].Name
+			})
 			for _, cfg := range configs {
 				if cfg == nil {
 					continue
