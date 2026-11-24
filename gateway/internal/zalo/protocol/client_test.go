@@ -2,9 +2,11 @@ package protocol
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -40,15 +42,37 @@ func TestParseCredentialRejectsEmpty(t *testing.T) {
 
 func TestGetLoginInfoSendsCookies(t *testing.T) {
 	var seenCookie, seenUA string
+	replyKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 16)))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if c, err := r.Cookie("zpw_sek"); err == nil {
 			seenCookie = c.Value
 		}
 		seenUA = r.Header.Get("User-Agent")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		// The reply is encrypted with the key the request carried, which the
+		// server rebuilds from the zcid and its extension.
+		key, err := deriveEncryptKey(r.URL.Query().Get("zcid_ext"), r.URL.Query().Get("zcid"))
+		if err != nil {
+			t.Errorf("derive key: %v", err)
+			return
+		}
+		inner, _ := json.Marshal(map[string]any{
 			"error_code": 0,
-			"data":       map[string]any{"uid": "1234567890", "display_name": "Zalo QC"},
+			"data": map[string]any{
+				"uid":          "1234567890",
+				"display_name": "Zalo QC",
+				"zpw_enk":      replyKey,
+				"zpw_service_map_v3": map[string]any{
+					"chat":    []string{"https://tt-chat-wpa.chat.zalo.me"},
+					"profile": []string{"https://tt-profile-wpa.chat.zalo.me"},
+				},
+			},
 		})
+		enc, eerr := EncodeAESCBC([]byte(key), string(inner), false)
+		if eerr != nil {
+			t.Errorf("encrypt reply: %v", eerr)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"error_code": 0, "data": enc})
 	}))
 	defer srv.Close()
 
@@ -68,6 +92,15 @@ func TestGetLoginInfoSendsCookies(t *testing.T) {
 	}
 	if info.UID != "1234567890" || info.Name != "Zalo QC" {
 		t.Fatalf("info %#v", info)
+	}
+	if info.SecretKey != replyKey {
+		t.Fatalf("payload key %q", info.SecretKey)
+	}
+	if sess.SecretKey == "" {
+		t.Fatal("the session did not adopt the payload key from the reply")
+	}
+	if sess.ServiceURL("profile") != "https://tt-profile-wpa.chat.zalo.me" {
+		t.Fatalf("profile service %q", sess.ServiceURL("profile"))
 	}
 	if seenCookie != "secret-value" {
 		t.Fatalf("server saw cookie %q", seenCookie)

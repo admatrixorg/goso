@@ -2,6 +2,7 @@ package zalo
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,18 +40,33 @@ func TestManagerStartsAndReceives(t *testing.T) {
 	defer wsSrv.Close()
 	wsURL := "ws" + strings.TrimPrefix(wsSrv.URL, "http")
 
+	replyKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 16)))
 	loginSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		// The reply is encrypted under the key the signed request carried, which
+		// the server rebuilds from the zcid and its extension.
+		key, kerr := protocol.DeriveEncryptKey(r.URL.Query().Get("zcid_ext"), r.URL.Query().Get("zcid"))
+		if kerr != nil {
+			t.Errorf("derive key: %v", kerr)
+			return
+		}
+		inner, _ := json.Marshal(map[string]any{
 			"error_code": 0,
 			"data": map[string]any{
 				"uid":          "u1",
 				"display_name": "QC Account",
+				"zpw_enk":      replyKey,
 				"zpw_ws":       []string{wsURL},
 				"zpw_service_map_v3": map[string]any{
 					"chat": []string{"https://chat.example"},
 				},
 			},
 		})
+		enc, eerr := protocol.EncodeAESCBC([]byte(key), string(inner), false)
+		if eerr != nil {
+			t.Errorf("encrypt reply: %v", eerr)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"error_code": 0, "data": enc})
 	}))
 	defer loginSrv.Close()
 

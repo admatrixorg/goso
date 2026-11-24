@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -98,7 +97,7 @@ func (s *Session) SendMessage(ctx context.Context, threadID string, kind ThreadT
 		return nil, fmt.Errorf("zalo personal: send message: %w", derr)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, _ := ReadBody(resp, 1<<20)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("zalo personal: send http %d", resp.StatusCode)
 	}

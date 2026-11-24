@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -185,14 +184,28 @@ func (s *Session) GetLoginInfo(ctx context.Context) (*LoginInfo, error) {
 	return s.GetLoginInfoOn(ctx, DefaultWPAURL)
 }
 
-// GetLoginInfoOn calls the own-info endpoint on a given base, so a test can
-// drive a local server without touching the network.
+// GetLoginInfoOn reads the login reply on a given base, so a test can drive a
+// local server without touching the network.
 func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, error) {
 	if s == nil || s.HTTP == nil {
 		return nil, fmt.Errorf("zalo personal: session is not ready")
 	}
+	if strings.TrimSpace(s.IMEI) == "" {
+		s.IMEI = newIMEI(s.UserAgent)
+	}
+	if strings.TrimSpace(s.Language) == "" {
+		s.Language = DefaultLanguage
+	}
+	// The call is signed the way the web client signs it. A request without the
+	// zcid layer is answered with a session key error even when the cookies are
+	// good, so this is the step that makes a stored cookie set usable.
+	params, replyKey, perr := s.EncryptParam("getlogininfo")
+	if perr != nil {
+		return nil, perr
+	}
+	params["nretry"] = "0"
 	endpoint := strings.TrimRight(base, "/") + LoginPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BuildURL(endpoint, params), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -202,65 +215,126 @@ func (s *Session) GetLoginInfoOn(ctx context.Context, base string) (*LoginInfo, 
 		return nil, fmt.Errorf("zalo personal: login info request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, _ := ReadBody(resp, 8<<20)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("zalo personal: login info http %d", resp.StatusCode)
 	}
 	var envelope struct {
-		ErrorCode int             `json:"error_code"`
-		ErrorMsg  string          `json:"error_message"`
-		Data      json.RawMessage `json:"data"`
-		UID       string          `json:"uid"`
+		ErrorCode    int             `json:"error_code"`
+		ErrorMessage string          `json:"error_message"`
+		Data         json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("zalo personal: login info is not json")
+	if jerr := json.Unmarshal(body, &envelope); jerr != nil {
+		return nil, fmt.Errorf("zalo personal: login info is not json: %s", clip(string(body), 160))
 	}
 	if envelope.ErrorCode != 0 {
-		msg := strings.TrimSpace(envelope.ErrorMsg)
-		if msg == "" {
-			msg = "error " + strconv.Itoa(envelope.ErrorCode)
-		}
-		return nil, fmt.Errorf("zalo personal: login rejected: %s", msg)
+		return nil, fmt.Errorf("zalo personal: login rejected: %s", firstNonEmpty(envelope.ErrorMessage, "error "+strconv.Itoa(envelope.ErrorCode)))
 	}
-	info := &LoginInfo{UID: strings.TrimSpace(envelope.UID)}
-	if len(envelope.Data) > 0 {
-		var data struct {
-			UID          string   `json:"uid"`
-			Name         string   `json:"display_name"`
-			ZPWEnk       string   `json:"zpw_enk"`
-			ZpwWebsocket []string `json:"zpw_ws"`
-			ServiceMap   *struct {
-				Chat      []string `json:"chat"`
-				Group     []string `json:"group"`
-				File      []string `json:"file"`
-				Profile   []string `json:"profile"`
-				GroupPoll []string `json:"group_poll"`
-			} `json:"zpw_service_map_v3"`
+	var encrypted string
+	if len(envelope.Data) == 0 || json.Unmarshal(envelope.Data, &encrypted) != nil || encrypted == "" {
+		return nil, fmt.Errorf("zalo personal: login reply carried no data")
+	}
+	raw := encrypted
+	if unescaped, uerr := url.PathUnescape(encrypted); uerr == nil {
+		raw = unescaped
+	}
+	plain, derr := DecodeAESCBC([]byte(replyKey), raw)
+	if derr != nil {
+		return nil, fmt.Errorf("zalo personal: decrypt login reply: %w", derr)
+	}
+	var inner struct {
+		ErrorCode    int             `json:"error_code"`
+		ErrorMessage string          `json:"error_message"`
+		Data         json.RawMessage `json:"data"`
+	}
+	if jerr := json.Unmarshal(plain, &inner); jerr != nil {
+		return nil, fmt.Errorf("zalo personal: unwrap login reply: %w", jerr)
+	}
+	if inner.ErrorCode != 0 {
+		return nil, fmt.Errorf("zalo personal: login rejected: %s", firstNonEmpty(inner.ErrorMessage, "error "+strconv.Itoa(inner.ErrorCode)))
+	}
+	var data struct {
+		UID          string   `json:"uid"`
+		Name         string   `json:"display_name"`
+		ZPWEnk       string   `json:"zpw_enk"`
+		ZpwWebsocket []string `json:"zpw_ws"`
+		ServiceMap   *struct {
+			Chat      []string `json:"chat"`
+			Group     []string `json:"group"`
+			File      []string `json:"file"`
+			Profile   []string `json:"profile"`
+			GroupPoll []string `json:"group_poll"`
+		} `json:"zpw_service_map_v3"`
+	}
+	if len(inner.Data) > 0 {
+		if jerr := json.Unmarshal(inner.Data, &data); jerr != nil {
+			return nil, fmt.Errorf("zalo personal: login payload is not json: %w", jerr)
 		}
-		if json.Unmarshal(envelope.Data, &data) == nil {
-			if info.UID == "" {
-				info.UID = strings.TrimSpace(data.UID)
-			}
-			info.Name = strings.TrimSpace(data.Name)
-			info.SecretKey = strings.TrimSpace(data.ZPWEnk)
-			// The payload key arrives with the login reply, so a session that
-			// never had one becomes able to crypt API calls after this read.
-			if s.SecretKey == "" && info.SecretKey != "" {
-				s.SecretKey = info.SecretKey
-			}
-			if len(data.ZpwWebsocket) > 0 {
-				s.wsURLs = append([]string(nil), data.ZpwWebsocket...)
-			}
-			if data.ServiceMap != nil {
-				s.Services = &ServiceMap{Chat: data.ServiceMap.Chat, Group: data.ServiceMap.Group, File: data.ServiceMap.File, Profile: data.ServiceMap.Profile, GroupPoll: data.ServiceMap.GroupPoll}
-			}
-		}
+	}
+	info := &LoginInfo{
+		UID:       strings.TrimSpace(data.UID),
+		Name:      strings.TrimSpace(data.Name),
+		SecretKey: strings.TrimSpace(data.ZPWEnk),
 	}
 	if info.UID == "" {
 		return nil, fmt.Errorf("zalo personal: login info has no uid")
 	}
+	if len(data.ZpwWebsocket) > 0 {
+		s.wsURLs = append([]string(nil), data.ZpwWebsocket...)
+	}
+	if data.ServiceMap != nil {
+		s.Services = &ServiceMap{
+			Chat:      data.ServiceMap.Chat,
+			Group:     data.ServiceMap.Group,
+			File:      data.ServiceMap.File,
+			Profile:   data.ServiceMap.Profile,
+			GroupPoll: data.ServiceMap.GroupPoll,
+		}
+	}
+	// The reply carries the payload key every later call is crypted with, so a
+	// session that had none becomes usable here.
+	if s.SecretKey == "" && info.SecretKey != "" {
+		s.SecretKey = info.SecretKey
+	}
+	// Go's cookie jar does not share a cookie across subdomains, and every
+	// service route lives on its own host, so the cookie set has to be placed on
+	// each of them explicitly or the call goes out unauthenticated.
+	s.SeedServiceHosts()
 	s.UID = info.UID
 	return info, nil
+}
+
+// SeedServiceHosts copies the account cookies onto every host the login reply
+// handed out. Without it a call to the profile or group host carries no session.
+func (s *Session) SeedServiceHosts() {
+	if s == nil || s.Jar == nil || s.Services == nil {
+		return
+	}
+	from := DefaultBaseURL
+	if s.BaseURL != nil {
+		from = s.BaseURL.String()
+	}
+	source, err := url.Parse(from)
+	if err != nil {
+		return
+	}
+	cookies := s.Jar.Cookies(source)
+	if len(cookies) == 0 {
+		return
+	}
+	hosts := make([]string, 0, 8)
+	hosts = append(hosts, s.Services.Chat...)
+	hosts = append(hosts, s.Services.Group...)
+	hosts = append(hosts, s.Services.File...)
+	hosts = append(hosts, s.Services.Profile...)
+	hosts = append(hosts, s.Services.GroupPoll...)
+	for _, host := range hosts {
+		target, perr := url.Parse(strings.TrimSpace(host))
+		if perr != nil || target.Host == "" {
+			continue
+		}
+		s.Jar.SetCookies(target, cookies)
+	}
 }
 
 // Decorate adds the headers the Zalo web client sends.
