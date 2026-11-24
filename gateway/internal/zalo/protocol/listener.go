@@ -34,10 +34,10 @@ type InboundMessage struct {
 
 // Listener reads Zalo frames and hands decoded messages to a handler.
 type Listener struct {
-	sess   *Session
-	wsURL  string
-	mu     sync.RWMutex
-	conn   *websocket.Conn
+	sess       *Session
+	wsURL      string
+	mu         sync.RWMutex
+	conn       *websocket.Conn
 	cipher     string
 	closed     bool
 	onMsg      func(InboundMessage)
