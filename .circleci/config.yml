@@ -1,0 +1,105 @@
+# GOSO CI on CircleCI.
+#
+# Mirrors .github/workflows/ci.yml so the two stay comparable: one verify job
+# with a Postgres service (pgvector, because the vault vector tests need the
+# extension), the same tool versions, and the same commands.
+version: 2.1
+
+jobs:
+  verify:
+    docker:
+      - image: cimg/go:1.25
+      - image: pgvector/pgvector:pg16
+        environment:
+          POSTGRES_USER: goso
+          POSTGRES_PASSWORD: goso
+          POSTGRES_DB: goso
+    environment:
+      CI: "true"
+      GOSO_TEST_POSTGRES_DSN: postgres://goso:goso@localhost:5432/goso?sslmode=disable
+    resource_class: large
+    steps:
+      - checkout
+
+      - run:
+          name: toolchain version
+          command: go version
+
+      - run:
+          name: install build tools, gitleaks and pip
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends make gcc libc6-dev python3 python3-pip python3-venv
+            VER=8.24.3
+            curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+            tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+            sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+            gitleaks version
+
+      - run:
+          name: install semgrep
+          command: |
+            # A venv keeps the pinned setuptools beside semgrep and puts the
+            # binary somewhere every later step can find it. setuptools 82+
+            # dropped pkg_resources, which semgrep 1.110 still imports.
+            python3 -m venv "$HOME/semgrep-venv"
+            "$HOME/semgrep-venv/bin/pip" install -q --upgrade pip
+            "$HOME/semgrep-venv/bin/pip" install -q "setuptools==70.3.0" "semgrep==1.110.0"
+            sudo ln -sf "$HOME/semgrep-venv/bin/semgrep" /usr/local/bin/semgrep
+            echo 'export PATH="$HOME/semgrep-venv/bin:$PATH"' >> "$BASH_ENV"
+            semgrep --version
+
+      - run:
+          name: install node and pnpm
+          command: |
+            # cimg images ship nvm. Every later step runs in a fresh shell, so
+            # the loader goes into BASH_ENV and each step sources it.
+            export NVM_DIR="$HOME/.nvm"
+            . "$NVM_DIR/nvm.sh"
+            nvm install 22
+            nvm alias default 22
+            npm install -g pnpm@11
+            echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"' >> "$BASH_ENV"
+            node --version
+            pnpm --version
+
+      - run:
+          name: wait for postgres
+          command: |
+            for i in $(seq 1 30); do
+              if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex(('127.0.0.1',5432))==0 else 1)"; then
+                echo "postgres is accepting connections"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "postgres did not come up" >&2
+            exit 1
+
+      - run:
+          name: make verify
+          command: make verify
+
+      - run:
+          name: memory-vi bench (sqlite + postgres)
+          command: go test ./gateway/memorybench -count=1 -timeout 15m -v
+
+      - run:
+          name: desktop verify
+          command: make -C desktop verify
+
+      - run:
+          name: gateway smoke
+          command: make smoke
+
+workflows:
+  ci:
+    jobs:
+      - verify:
+          filters:
+            branches:
+              only:
+                - main
+# CircleCI builds feature branches only when the project setting
+# "Only build pull requests" is on, which matches the GitHub workflow triggers
+# of pull_request and push to main.
