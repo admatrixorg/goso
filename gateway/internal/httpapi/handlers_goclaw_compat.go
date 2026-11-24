@@ -136,12 +136,28 @@ func handleGoClawChannelInstance(st store.StoreIface) http.HandlerFunc {
 	}
 }
 
+// uiChannelType maps a stored channel name onto the id the control plane uses.
+// The catalog names carry a hyphen and the page keys carry an underscore, so a
+// raw name makes the page miss its own type: labels fall back to the raw text
+// and the row loses the action that signs the account in again.
+func uiChannelType(name string) string {
+	switch strings.TrimSpace(name) {
+	case "zalo-personal":
+		return "zalo_personal"
+	case "zalo-oa":
+		return "zalo_oa"
+	default:
+		return name
+	}
+}
+
 func channelInstanceView(cfg *store.ChannelConfig) map[string]any {
 	chType := cfg.Name
 	parts := strings.Split(cfg.Name, "/")
 	if len(parts) >= 2 {
 		chType = parts[1]
 	}
+	chType = uiChannelType(chType)
 	updated := ""
 	if !cfg.UpdatedAt.IsZero() {
 		updated = cfg.UpdatedAt.UTC().Format(time.RFC3339)
