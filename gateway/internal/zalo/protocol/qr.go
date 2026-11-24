@@ -33,7 +33,7 @@ type QRCode struct {
 type QRSession struct {
 	Session    *Session
 	VersionStr string
-	Code    QRCode
+	Code       QRCode
 }
 
 // NewQRSession builds a session for the login host.
