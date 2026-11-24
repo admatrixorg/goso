@@ -55,7 +55,7 @@ func runZaloQR(conn *websocket.Conn, st store.StoreIface, tenant, instance strin
 	}
 	if err := writeGoClawEvent(conn, "zalo.personal.qr.code", map[string]any{
 		"instance_id": instance,
-		"png_b64":     protocol.PNGDataURI(code.ImagePNG),
+		"png_b64":     protocol.PNGBase64(code.ImagePNG),
 		"code":        code.Code,
 	}); err != nil {
 		return

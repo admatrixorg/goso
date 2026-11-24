@@ -127,6 +127,7 @@ export function ChannelListRow({
             <Button
               variant="ghost"
               size="xs"
+              aria-label={t("actions.auth", "Authenticate channel")}
               className="text-muted-foreground hover:text-primary"
               onClick={(e) => {
                 e.stopPropagation();
@@ -140,6 +141,7 @@ export function ChannelListRow({
             <Button
               variant="ghost"
               size="xs"
+              aria-label={t("actions.delete", "Delete channel")}
               className="text-muted-foreground hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
