@@ -83,6 +83,20 @@ func runZaloQR(conn *websocket.Conn, st store.StoreIface, tenant, instance strin
 		})
 		return
 	}
+	// Read the login info once on a host-seeded session, because the reply
+	// carries the payload key the stored cookie set must keep.
+	if sess, serr := protocol.NewSessionWithCredential(cred); serr == nil {
+		if info, ierr := sess.GetLoginInfo(ctx); ierr == nil && info != nil {
+			if cred.SecretKey == "" {
+				cred.SecretKey = info.SecretKey
+			}
+			if cred.IMEI == "" {
+				cred.IMEI = info.UID
+			}
+		} else if sess.SecretKey != "" && cred.SecretKey == "" {
+			cred.SecretKey = sess.SecretKey
+		}
+	}
 	encoded, _ := json.Marshal(cred)
 	_ = secrets.Put(st, zaloCookieSecretName(instance), encoded)
 	_ = writeGoClawEvent(conn, "zalo.personal.qr.done", map[string]any{
