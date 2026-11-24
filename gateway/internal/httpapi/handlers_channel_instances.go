@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,12 +138,51 @@ func itoaInt(v int64) string {
 
 // The channels page reads and writes one prefix, so list and detail live here
 // too and share the view the older paths already return.
+// instancePageSize bounds keep one page small enough to render and large enough
+// to be useful.
+const (
+	instancePageDefault = 20
+	instancePageMax     = 200
+)
+
+// atoiDefault reads a query number, falling back when it is absent or unusable.
+func atoiDefault(raw string, fallback int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func clampInt(value, low, high int) int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+
 func handleChannelInstanceList(st store.StoreIface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenant := requestTenant(r)
-		out := []map[string]any{}
+		query := r.URL.Query()
+		limit := clampInt(atoiDefault(query.Get("limit"), instancePageDefault), 1, instancePageMax)
+		offset := clampInt(atoiDefault(query.Get("offset"), 0), 0, 1<<20)
+		search := strings.ToLower(strings.TrimSpace(query.Get("search")))
+
+		rows := []map[string]any{}
 		if st != nil {
-			for _, cfg := range st.ListChannelConfigs() {
+			configs := st.ListChannelConfigs()
+			// A stable order is what makes paging mean anything, so sort by name
+			// before slicing.
+			sort.Slice(configs, func(i, j int) bool { return configs[i].Name < configs[j].Name })
+			for _, cfg := range configs {
 				if cfg == nil {
 					continue
 				}
@@ -151,10 +192,26 @@ func handleChannelInstanceList(st store.StoreIface) http.HandlerFunc {
 						continue
 					}
 				}
-				out = append(out, channelInstanceView(cfg))
+				if search != "" && !strings.Contains(strings.ToLower(cfg.Name), search) {
+					continue
+				}
+				rows = append(rows, channelInstanceView(cfg))
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"instances": out, "total": len(out)})
+		total := len(rows)
+		if offset > total {
+			offset = total
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"instances": rows[offset:end],
+			"total":     total,
+			"limit":     limit,
+			"offset":    offset,
+		})
 	}
 }
 

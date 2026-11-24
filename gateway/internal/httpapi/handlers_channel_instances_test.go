@@ -189,3 +189,72 @@ func TestZCRMBridgeChannelSetup(t *testing.T) {
 		t.Fatalf("list %s", w.Body.String())
 	}
 }
+
+// The channels page asks for one page at a time, so the list must honour limit,
+// offset and search instead of returning every instance on every call.
+func TestChannelInstanceListPages(t *testing.T) {
+	h, st, _ := instanceRouter(t)
+	for _, slug := range []string{"a1", "a2", "a3", "a4", "a5"} {
+		name := "tenant-a/zalo-personal/" + slug
+		if err := st.PutChannelConfig(store.ChannelConfig{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=2&offset=0", "")
+	if first.Code != 200 {
+		t.Fatalf("first page %d %s", first.Code, first.Body.String())
+	}
+	var page struct {
+		Instances []map[string]any `json:"instances"`
+		Total     int              `json:"total"`
+		Limit     int              `json:"limit"`
+		Offset    int              `json:"offset"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 5 || len(page.Instances) != 2 || page.Limit != 2 || page.Offset != 0 {
+		t.Fatalf("first page %+v", page)
+	}
+	if got := page.Instances[0]["name"]; got != "tenant-a/zalo-personal/a1" {
+		t.Fatalf("first row %v", got)
+	}
+
+	last := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=2&offset=4", "")
+	var tail struct {
+		Instances []map[string]any `json:"instances"`
+		Total     int              `json:"total"`
+	}
+	if err := json.Unmarshal(last.Body.Bytes(), &tail); err != nil {
+		t.Fatal(err)
+	}
+	if tail.Total != 5 || len(tail.Instances) != 1 || tail.Instances[0]["name"] != "tenant-a/zalo-personal/a5" {
+		t.Fatalf("last page %+v", tail)
+	}
+
+	// A bigger page size must return more rows, which is what makes the size
+	// selector on the page do something.
+	wide := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=100&offset=0", "")
+	var wideBody struct {
+		Instances []map[string]any `json:"instances"`
+	}
+	if err := json.Unmarshal(wide.Body.Bytes(), &wideBody); err != nil {
+		t.Fatal(err)
+	}
+	if len(wideBody.Instances) != 5 {
+		t.Fatalf("wide page returned %d rows", len(wideBody.Instances))
+	}
+
+	// Search narrows the total, so the page count follows the filter.
+	found := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?search=a3", "")
+	var hit struct {
+		Instances []map[string]any `json:"instances"`
+		Total     int              `json:"total"`
+	}
+	if err := json.Unmarshal(found.Body.Bytes(), &hit); err != nil {
+		t.Fatal(err)
+	}
+	if hit.Total != 1 || len(hit.Instances) != 1 {
+		t.Fatalf("search %+v", hit)
+	}
+}
