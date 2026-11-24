@@ -39,17 +39,27 @@ jobs:
       - run:
           name: install semgrep
           command: |
-            python3 -m pip install --user "setuptools==70.3.0" "semgrep==1.110.0"
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+            # A venv keeps the pinned setuptools beside semgrep and puts the
+            # binary somewhere every later step can find it. setuptools 82+
+            # dropped pkg_resources, which semgrep 1.110 still imports.
+            python3 -m venv "$HOME/semgrep-venv"
+            "$HOME/semgrep-venv/bin/pip" install -q --upgrade pip
+            "$HOME/semgrep-venv/bin/pip" install -q "setuptools==70.3.0" "semgrep==1.110.0"
+            sudo ln -sf "$HOME/semgrep-venv/bin/semgrep" /usr/local/bin/semgrep
+            echo 'export PATH="$HOME/semgrep-venv/bin:$PATH"' >> "$BASH_ENV"
+            semgrep --version
 
       - run:
           name: install node and pnpm
           command: |
+            # cimg images ship nvm. Every later step runs in a fresh shell, so
+            # the loader goes into BASH_ENV and each step sources it.
             export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            . "$NVM_DIR/nvm.sh"
             nvm install 22
             nvm alias default 22
             npm install -g pnpm@11
+            echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"' >> "$BASH_ENV"
             node --version
             pnpm --version
 
