@@ -1,11 +1,15 @@
 package protocol
 
-import "testing"
+import (
+	"encoding/base64"
+	"strings"
+	"testing"
+)
 
 // A QR login stores cookies, and the payload key travels in the zpw_enk cookie
 // rather than its own field, so the session must read it from there.
 func TestKeyFromCookies(t *testing.T) {
-	key := "MDEyMzQ1Njc4OUFCQ0RFRg=="
+	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 16)))
 	got := KeyFromCookies([]Cookie{
 		{Name: "zpsid", Value: "sid"},
 		{Name: "ZPW_ENK", Value: key},
@@ -19,7 +23,7 @@ func TestKeyFromCookies(t *testing.T) {
 }
 
 func TestSessionReadsSecretKeyFromCookies(t *testing.T) {
-	key := "MDEyMzQ1Njc4OUFCQ0RFRg=="
+	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 16)))
 	sess, err := NewSessionWithCredential(&Credential{
 		Cookies: []Cookie{{Name: "zpw_enk", Value: key}, {Name: "zpsid", Value: "sid"}},
 		IMEI:    "imei-1",

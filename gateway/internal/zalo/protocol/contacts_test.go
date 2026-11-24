@@ -105,7 +105,7 @@ func contactSession(t *testing.T, base, secret string) *Session {
 }
 
 func TestFetchContactsReadsFriendsAndGroups(t *testing.T) {
-	secret := base64.StdEncoding.EncodeToString([]byte("0123456789ABCDEF"))
+	secret := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 16)))
 	srv := contactServer(t, secret)
 	sess := contactSession(t, srv.URL, secret)
 
