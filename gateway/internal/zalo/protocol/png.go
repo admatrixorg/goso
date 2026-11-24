@@ -1,11 +1,14 @@
 package protocol
 
-import "encoding/base64"
+import (
+	"encoding/base64"
+	"strings"
+)
 
-// PNGDataURI wraps the QR bytes in the data URI the dialog renders.
-func PNGDataURI(png []byte) string {
+// PNGBase64 returns the raw base64 payload the dialog prefixes itself.
+func PNGBase64(png []byte) string {
 	if len(png) == 0 {
 		return ""
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+	return strings.TrimPrefix(base64.StdEncoding.EncodeToString(png), "")
 }
