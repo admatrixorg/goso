@@ -17,7 +17,6 @@ jobs:
     environment:
       CI: "true"
       GOSO_TEST_POSTGRES_DSN: postgres://goso:goso@localhost:5432/goso?sslmode=disable
-    resource_class: large
     steps:
       - checkout
 
@@ -95,11 +94,4 @@ jobs:
 workflows:
   ci:
     jobs:
-      - verify:
-          filters:
-            branches:
-              only:
-                - main
-# CircleCI builds feature branches only when the project setting
-# "Only build pull requests" is on, which matches the GitHub workflow triggers
-# of pull_request and push to main.
+      - verify
