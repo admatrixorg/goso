@@ -28,7 +28,7 @@ export function useChannelInstances(filters: ChannelInstanceFilters = {}) {
       if (filters.limit) params.limit = String(filters.limit);
       if (filters.offset !== undefined) params.offset = String(filters.offset);
 
-      const res = await http.get<{ instances: ChannelInstanceData[]; total?: number }>("/v1/channels/instances", params);
+      const res = await http.get<{ instances: ChannelInstanceData[]; total?: number }>("/v1/channel-instances", params);
       return { instances: res.instances ?? [], total: res.total ?? 0 };
     },
     placeholderData: (prev) => prev,
@@ -46,7 +46,7 @@ export function useChannelInstances(filters: ChannelInstanceFilters = {}) {
   const createInstance = useCallback(
     async (data: ChannelInstanceInput) => {
       try {
-        const res = await http.post<{ id: string }>("/v1/channels/instances", data);
+        const res = await http.post<{ id: string }>("/v1/channel-instances", data);
         await invalidate();
         toast.success(
           i18next.t("channels:toast.created"),
@@ -64,7 +64,7 @@ export function useChannelInstances(filters: ChannelInstanceFilters = {}) {
   const updateInstance = useCallback(
     async (id: string, data: Partial<ChannelInstanceInput>) => {
       try {
-        await http.put(`/v1/channels/instances/${id}`, data);
+        await http.put(`/v1/channel-instances/${id}`, data);
         await invalidate();
         toast.success(i18next.t("channels:toast.updated"));
       } catch (err) {
@@ -78,7 +78,7 @@ export function useChannelInstances(filters: ChannelInstanceFilters = {}) {
   const deleteInstance = useCallback(
     async (id: string) => {
       try {
-        await http.delete(`/v1/channels/instances/${id}`);
+        await http.delete(`/v1/channel-instances/${id}`);
         await invalidate();
         toast.success(i18next.t("channels:toast.deleted"));
       } catch (err) {

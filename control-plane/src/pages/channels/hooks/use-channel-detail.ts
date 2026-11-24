@@ -43,7 +43,7 @@ export function useChannelDetail(instanceId: string | undefined) {
   const { data, isLoading: loading } = useQuery({
     queryKey: queryKeys.channels.detail(instanceId ?? ""),
     queryFn: async () => {
-      return http.get<ChannelInstanceData>(`/v1/channels/instances/${instanceId}`);
+      return http.get<ChannelInstanceData>(`/v1/channel-instances/${instanceId}`);
     },
     staleTime: 60_000,
     enabled: !!instanceId,
@@ -60,7 +60,7 @@ export function useChannelDetail(instanceId: string | undefined) {
     async (updates: Record<string, unknown>) => {
       if (!instanceId) return;
       try {
-        await http.put(`/v1/channels/instances/${instanceId}`, updates);
+        await http.put(`/v1/channel-instances/${instanceId}`, updates);
         await invalidate();
         toast.success(i18next.t("channels:toast.updated"));
       } catch (err) {
@@ -75,7 +75,7 @@ export function useChannelDetail(instanceId: string | undefined) {
   const listManagerGroups = useCallback(
     async (): Promise<GroupManagerGroupInfo[]> => {
       if (!instanceId) return [];
-      const res = await http.get<{ groups: GroupManagerGroupInfo[] }>(`/v1/channels/instances/${instanceId}/writers/groups`);
+      const res = await http.get<{ groups: GroupManagerGroupInfo[] }>(`/v1/channel-instances/${instanceId}/writers/groups`);
       return res.groups ?? [];
     },
     [instanceId, http],
@@ -84,7 +84,7 @@ export function useChannelDetail(instanceId: string | undefined) {
   const listManagers = useCallback(
     async (groupId: string): Promise<GroupManagerData[]> => {
       if (!instanceId) return [];
-      const res = await http.get<{ writers: GroupManagerData[] }>(`/v1/channels/instances/${instanceId}/writers`, { group_id: groupId });
+      const res = await http.get<{ writers: GroupManagerData[] }>(`/v1/channel-instances/${instanceId}/writers`, { group_id: groupId });
       return res.writers ?? [];
     },
     [instanceId, http],
@@ -93,7 +93,7 @@ export function useChannelDetail(instanceId: string | undefined) {
   const addManager = useCallback(
     async (groupId: string, userId: string, displayName?: string, username?: string) => {
       if (!instanceId) return;
-      await http.post(`/v1/channels/instances/${instanceId}/writers`, {
+      await http.post(`/v1/channel-instances/${instanceId}/writers`, {
         group_id: groupId,
         user_id: userId,
         display_name: displayName ?? "",
@@ -106,7 +106,7 @@ export function useChannelDetail(instanceId: string | undefined) {
   const removeManager = useCallback(
     async (groupId: string, userId: string) => {
       if (!instanceId) return;
-      await http.delete(`/v1/channels/instances/${instanceId}/writers/${userId}?group_id=${encodeURIComponent(groupId)}`);
+      await http.delete(`/v1/channel-instances/${instanceId}/writers/${userId}?group_id=${encodeURIComponent(groupId)}`);
     },
     [instanceId, http],
   );
