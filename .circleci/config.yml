@@ -17,7 +17,6 @@ jobs:
     environment:
       CI: "true"
       GOSO_TEST_POSTGRES_DSN: postgres://goso:goso@localhost:5432/goso?sslmode=disable
-    resource_class: large
     steps:
       - checkout
 
@@ -52,14 +51,12 @@ jobs:
       - run:
           name: install node and pnpm
           command: |
-            # cimg images ship nvm. Every later step runs in a fresh shell, so
-            # the loader goes into BASH_ENV and each step sources it.
-            export NVM_DIR="$HOME/.nvm"
-            . "$NVM_DIR/nvm.sh"
-            nvm install 22
-            nvm alias default 22
-            npm install -g pnpm@11
-            echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"' >> "$BASH_ENV"
+            # cimg/go does not ship nvm. Install Node from the official tarball
+            # so later steps see node and pnpm on PATH without a shell hook.
+            NODE_VER=22.14.0
+            curl -fsSL "https://nodejs.org/dist/v${NODE_VER}/node-v${NODE_VER}-linux-x64.tar.xz" -o /tmp/node.tar.xz
+            sudo tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+            sudo npm install -g pnpm@11
             node --version
             pnpm --version
 
@@ -95,11 +92,4 @@ jobs:
 workflows:
   ci:
     jobs:
-      - verify:
-          filters:
-            branches:
-              only:
-                - main
-# CircleCI builds feature branches only when the project setting
-# "Only build pull requests" is on, which matches the GitHub workflow triggers
-# of pull_request and push to main.
+      - verify
