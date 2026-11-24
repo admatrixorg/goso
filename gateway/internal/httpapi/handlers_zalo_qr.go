@@ -99,6 +99,7 @@ func runZaloQR(conn *websocket.Conn, st store.StoreIface, tenant, instance strin
 	}
 	encoded, _ := json.Marshal(cred)
 	_ = secrets.Put(st, zaloCookieSecretName(instance), encoded)
+	startZaloListener(st, instance)
 	_ = writeGoClawEvent(conn, "zalo.personal.qr.done", map[string]any{
 		"instance_id": instance, "success": true, "cookies": len(cred.Cookies),
 	})

@@ -41,6 +41,9 @@ type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	inboxCap int
+	// OnInbound is called after a message is stored in the inbox. It is the
+	// hook that turns a received Zalo message into an agent reply.
+	OnInbound func(channel string, msg protocol.InboundMessage)
 }
 
 // NewManager builds an empty manager.
@@ -78,6 +81,9 @@ func (m *Manager) Start(ctx context.Context, channel string, cred *protocol.Cred
 			s.inbox = s.inbox[len(s.inbox)-m.inboxCap:]
 		}
 		s.mu.Unlock()
+		if m.OnInbound != nil {
+			go m.OnInbound(channel, msg)
+		}
 	})
 	if lerr2 != nil {
 		return nil, lerr2
@@ -132,6 +138,27 @@ func (m *Manager) Status(channel string) Status {
 		return Status{Channel: channel}
 	}
 	return *s.status(channel)
+}
+
+// Send posts a text message on the running session.
+func (m *Manager) Send(channel, threadID, threadType, text string) error {
+	if m == nil {
+		return fmt.Errorf("zalo: manager is nil")
+	}
+	m.mu.Lock()
+	s := m.sessions[strings.TrimSpace(channel)]
+	m.mu.Unlock()
+	if s == nil || s.sess == nil {
+		return fmt.Errorf("zalo: session is not running")
+	}
+	kind := protocol.ThreadUser
+	if strings.EqualFold(threadType, "group") {
+		kind = protocol.ThreadGroup
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	_, err := s.sess.SendMessage(ctx, threadID, kind, text)
+	return err
 }
 
 // Inbox returns the newest messages for one channel.

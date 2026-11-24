@@ -12,8 +12,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
@@ -68,13 +70,30 @@ func (l *Listener) Start(ctx context.Context) error {
 	hdr.Set("Origin", DefaultBaseURL)
 	hdr.Set("User-Agent", l.sess.UserAgent)
 	hdr.Set("Accept-Language", "en-US,en;q=0.9")
-	if l.sess.Jar != nil {
-		SeedCookies(l.sess.Jar, strings.Replace(l.wsURL, "wss://", "https://", 1), nil)
+	hdr.Set("Cache-Control", "no-cache")
+	hdr.Set("Pragma", "no-cache")
+	// Go cookie jars do not match host-only cookies onto a wss host, so copy
+	// chat.zalo.me cookies onto the request by hand, the way the web client does.
+	injectWSCookies(hdr, l.sess.Jar, l.wsURL)
+	wsURL := l.wsURL
+	if l.sess != nil {
+		wsURL = l.sess.BuildURL(l.wsURL, map[string]string{"t": strconv.FormatInt(time.Now().UnixMilli(), 10)})
 	}
-	dialer := websocket.Dialer{EnableCompression: true, HandshakeTimeout: 30e9}
-	conn, _, err := dialer.DialContext(ctx, l.wsURL, hdr)
+	dialer := websocket.Dialer{EnableCompression: true, HandshakeTimeout: 30 * time.Second}
+	conn, resp, err := dialer.DialContext(ctx, wsURL, hdr)
 	if err != nil {
-		return fmt.Errorf("zalo personal: ws dial: %w", err)
+		code := 0
+		if resp != nil {
+			code = resp.StatusCode
+		}
+		n := 0
+		if l.sess != nil && l.sess.Jar != nil {
+			u, _ := url.Parse(DefaultBaseURL + "/")
+			if u != nil {
+				n = len(l.sess.Jar.Cookies(u))
+			}
+		}
+		return fmt.Errorf("zalo personal: ws dial %s http %d cookies %d: %w", wsURL, code, n, err)
 	}
 	conn.SetReadLimit(1 << 20)
 	l.mu.Lock()
@@ -297,4 +316,37 @@ func gunzip(data []byte) ([]byte, error) {
 	}
 	defer r.Close()
 	return io.ReadAll(r)
+}
+
+// injectWSCookies copies account cookies onto a websocket handshake. The jar is
+// queried with https://chat.zalo.me and with the websocket host rewritten as
+// https, because net/http/cookiejar will not return host-only cookies for wss.
+func injectWSCookies(headers http.Header, jar http.CookieJar, wsURL string) {
+	if jar == nil {
+		return
+	}
+	seen := map[string]string{}
+	base, _ := url.Parse(DefaultBaseURL + "/")
+	if base != nil {
+		for _, c := range jar.Cookies(base) {
+			seen[c.Name] = c.Name + "=" + c.Value
+		}
+	}
+	if u, err := url.Parse(strings.Replace(wsURL, "wss://", "https://", 1)); err == nil {
+		for _, c := range jar.Cookies(u) {
+			seen[c.Name] = c.Name + "=" + c.Value
+		}
+	}
+	if len(seen) == 0 {
+		return
+	}
+	parts := make([]string, 0, len(seen))
+	for _, v := range seen {
+		parts = append(parts, v)
+	}
+	cookie := strings.Join(parts, "; ")
+	if existing := headers.Get("Cookie"); existing != "" {
+		cookie = existing + "; " + cookie
+	}
+	headers.Set("Cookie", cookie)
 }

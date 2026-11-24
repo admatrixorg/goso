@@ -257,6 +257,7 @@ func muxWithPairing(st store.StoreIface, version string, provider llm.Provider, 
 	obs.Register(mux)
 	if !testing.Testing() {
 		go chMgr.StartAll(context.Background())
+		go httpapi.StartConfiguredZaloListeners(st)
 		go cron.Loop(context.Background(), st, rt.CronFire)
 		go heartbeatLoop(context.Background(), st, rt.CronFire)
 		if heartbeat.Enabled() {

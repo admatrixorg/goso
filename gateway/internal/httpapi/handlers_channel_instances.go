@@ -285,6 +285,9 @@ func handleChannelInstanceCreate(st store.StoreIface) http.HandlerFunc {
 			DMPolicy: "pairing", GroupPolicy: "allowlist", RequireMention: true,
 			Settings: mapToStrings(body.Config), UpdatedAt: time.Now().UTC(),
 		}
+		if kind == "zalo-personal" {
+			cfg.DMPolicy = "open"
+		}
 		if err := st.PutChannelConfig(cfg); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
