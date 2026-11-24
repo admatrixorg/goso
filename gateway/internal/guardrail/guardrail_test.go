@@ -16,7 +16,10 @@ func TestAppend(t *testing.T) {
 	if Append(got) != got {
 		t.Fatal("rule added twice")
 	}
-	if len(Reply) > 900 {
+	if len(Reply) > 1400 {
 		t.Fatalf("guardrail too long: %d bytes", len(Reply))
+	}
+	if !strings.Contains(Reply, "xưng") || !strings.Contains(Reply, "tao/mày") {
+		t.Fatal("customer voice missing from the guardrail")
 	}
 }
