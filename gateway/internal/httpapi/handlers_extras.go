@@ -211,7 +211,13 @@ func handlePricingList(st store.StoreIface) http.HandlerFunc {
 		if rows == nil {
 			rows = []*store.PricingOverride{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"overrides": rows})
+		// The catalog carries the synced list price per model, so a caller can
+		// compute a cost without an override on every model.
+		catalog := []*store.PricingCatalogEntry{}
+		if u := store.Usage(st); u != nil {
+			catalog = u.ListPricingCatalog()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"overrides": rows, "catalog": catalog, "catalog_total": len(catalog)})
 	}
 }
 
