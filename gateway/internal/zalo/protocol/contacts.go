@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -216,7 +215,7 @@ func (s *Session) apiGetEncrypted(ctx context.Context, serviceKey, apiPath strin
 		return nil, fmt.Errorf("zalo personal: %s request: %w", apiPath, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	body, _ := ReadBody(resp, 8<<20)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("zalo personal: %s answered http %d", apiPath, resp.StatusCode)
 	}
@@ -226,7 +225,7 @@ func (s *Session) apiGetEncrypted(ctx context.Context, serviceKey, apiPath strin
 		Data      json.RawMessage `json:"data"`
 	}
 	if jerr := json.Unmarshal(body, &envelope); jerr != nil {
-		return nil, fmt.Errorf("zalo personal: %s reply is not json", apiPath)
+		return nil, fmt.Errorf("zalo personal: %s reply is not json: %s", apiPath, clip(string(body), 160))
 	}
 	if envelope.ErrorCode != 0 {
 		msg := strings.TrimSpace(envelope.ErrorMsg)
@@ -265,7 +264,7 @@ func (s *Session) apiPostEncrypted(ctx context.Context, serviceKey, apiPath, par
 		return nil, fmt.Errorf("zalo personal: %s request: %w", apiPath, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	body, _ := ReadBody(resp, 8<<20)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("zalo personal: %s answered http %d", apiPath, resp.StatusCode)
 	}
@@ -275,7 +274,7 @@ func (s *Session) apiPostEncrypted(ctx context.Context, serviceKey, apiPath, par
 		Data      json.RawMessage `json:"data"`
 	}
 	if jerr := json.Unmarshal(body, &envelope); jerr != nil {
-		return nil, fmt.Errorf("zalo personal: %s reply is not json", apiPath)
+		return nil, fmt.Errorf("zalo personal: %s reply is not json: %s", apiPath, clip(string(body), 160))
 	}
 	if envelope.ErrorCode != 0 {
 		msg := strings.TrimSpace(envelope.ErrorMsg)
