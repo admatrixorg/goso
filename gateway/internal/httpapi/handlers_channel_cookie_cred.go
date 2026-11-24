@@ -17,6 +17,9 @@ import (
 // a cookie credential, so the caller can fall through to the bridge path.
 func saveZaloCookieCredential(st store.StoreIface, name string, r *http.Request) (bool, int, string) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	// Restore the body so the bridge path that runs when this returns false
+	// still sees the JSON it expects.
+	r.Body = io.NopCloser(bytes.NewReader(raw))
 	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
 		return false, 0, ""
 	}
