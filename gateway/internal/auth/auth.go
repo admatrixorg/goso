@@ -284,7 +284,7 @@ func scopeAllows(g Grant, r *http.Request) bool {
 		if g.Has("approvals") && approvalsPath(path) {
 			return true
 		}
-		return false
+		return g.Has("read") && tenantUserList(g, r)
 	}
 	if privilegedWrite(path) {
 		return false
@@ -299,6 +299,21 @@ func scopeAllows(g Grant, r *http.Request) bool {
 		return g.Has("approvals")
 	}
 	return g.Has("write")
+}
+
+// tenantUserList lets a gateway-wide key with read scope list the people of
+// one tenant, so a service outside the gateway that keeps its own directory can
+// find who runs each tenant. The list handler filters by the tenant_id query,
+// not by the key, so a tenant-bound key must never reach it, and a query
+// without tenant_id (every tenant's people at once) is refused.
+func tenantUserList(g Grant, r *http.Request) bool {
+	if g.KeyTenant() != defaultTenant {
+		return false
+	}
+	if r.URL.Path != "/api/users" && r.URL.Path != "/v1/users" {
+		return false
+	}
+	return strings.TrimSpace(r.URL.Query().Get("tenant_id")) != ""
 }
 
 func privilegedWrite(path string) bool {
