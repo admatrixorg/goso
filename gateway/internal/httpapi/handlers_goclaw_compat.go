@@ -107,9 +107,11 @@ func handleGoClawChannelInstances(st store.StoreIface) http.HandlerFunc {
 				if cfg == nil {
 					continue
 				}
+				// Same rule as the instance list: a tenant sees only its own
+				// channels. Master is a tenant, not a view over every tenant.
 				if strings.Contains(cfg.Name, "/") {
 					owner := strings.SplitN(cfg.Name, "/", 2)[0]
-					if !store.SameTenant(owner, tid) && tid != store.DefaultTenant && tid != "master" {
+					if !store.SameTenant(owner, tid) {
 						continue
 					}
 				}

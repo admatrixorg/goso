@@ -192,9 +192,12 @@ func handleChannelInstanceList(st store.StoreIface) http.HandlerFunc {
 				if cfg == nil {
 					continue
 				}
+				// One tenant's page shows that tenant's channels only. The master
+				// tenant used to skip this check and every other tenant's rows
+				// showed up under master, which read as if they belonged to it.
 				if strings.Contains(cfg.Name, "/") {
 					owner := strings.SplitN(cfg.Name, "/", 2)[0]
-					if !store.SameTenant(owner, tenant) && tenant != store.DefaultTenant && tenant != "master" {
+					if !store.SameTenant(owner, tenant) {
 						continue
 					}
 				}

@@ -292,6 +292,45 @@ func TestChannelInstanceListNewestFirst(t *testing.T) {
 	}
 }
 
+// A tenant's page lists that tenant's channels only. The master tenant used to
+// skip the check, so every other tenant's channels were listed as if they
+// belonged to master. Both the paged instance route and the compat list the
+// page calls must answer the same way.
+func TestChannelInstanceListStaysInTenant(t *testing.T) {
+	h, st, _ := instanceRouter(t)
+	base := time.Date(2026, 11, 26, 8, 0, 0, 0, time.UTC)
+	for i, name := range []string{
+		"master/zalo-personal/own",
+		"tenant-a/zalo-personal/other",
+		"tenant-b/telegram/another",
+	} {
+		cfg := store.ChannelConfig{Name: name, UpdatedAt: base.Add(time.Duration(i) * time.Minute)}
+		if err := st.PutChannelConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{"/v1/channel-instances?limit=100", "/v1/channels/instances"} {
+		w := tenantCall(t, h, "master", "GET", path, "")
+		if w.Code != 200 {
+			t.Fatalf("%s status %d %s", path, w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "master/zalo-personal/own") {
+			t.Fatalf("%s missing the tenant's own channel: %s", path, body)
+		}
+		if strings.Contains(body, "tenant-a/zalo-personal/other") || strings.Contains(body, "tenant-b/telegram/another") {
+			t.Fatalf("%s leaked another tenant's channel: %s", path, body)
+		}
+	}
+	own := tenantCall(t, h, "tenant-a", "GET", "/v1/channel-instances?limit=100", "")
+	if own.Code != 200 || !strings.Contains(own.Body.String(), "tenant-a/zalo-personal/other") {
+		t.Fatalf("tenant-a lost its own channel: %d %s", own.Code, own.Body.String())
+	}
+	if strings.Contains(own.Body.String(), "master/zalo-personal/own") {
+		t.Fatalf("tenant-a saw master's channel: %s", own.Body.String())
+	}
+}
+
 func TestChannelMemoryExtractionIsEmptyNotMissing(t *testing.T) {
 	h, st, _ := instanceRouter(t)
 	name := "tenant-a/zalo-personal/shop"
