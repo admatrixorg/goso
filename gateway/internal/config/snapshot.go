@@ -254,6 +254,7 @@ var secretEnvKeys = []string{
 	"GOSO_VIEW_TOKEN",
 	"GOSO_MASTER_KEY",
 	"GOSO_DATABASE_URL",
+	"GOSO_JEV_API_KEY",
 }
 
 // ContainsSecret reports whether encoded JSON leaked a live env secret.

@@ -62,6 +62,7 @@ func TestSnapshotNeverReturnsAuthToken(t *testing.T) {
 	t.Setenv("GOSO_VIEW_TOKEN", "view-token-abcdef")
 	t.Setenv("GOSO_MASTER_KEY", "master-key-abcdef")
 	t.Setenv("GOSO_DATABASE_URL", "postgres://user:pass@localhost/goso")
+	t.Setenv("GOSO_JEV_API_KEY", "jev-secret-token-xyz")
 	t.Setenv("GOSO_OTEL_ENDPOINT", "http://127.0.0.1:4318")
 	snap := BuildSnapshot(time.Time{})
 	if snap.Auth.TokenSet.Value != true || snap.Auth.TokenSet.Editable {
@@ -74,7 +75,7 @@ func TestSnapshotNeverReturnsAuthToken(t *testing.T) {
 	if ContainsSecret(b) {
 		t.Fatalf("snapshot leaked secret: %s", b)
 	}
-	if strings.Contains(string(b), secret) || strings.Contains(string(b), "view-token-abcdef") {
+	if strings.Contains(string(b), secret) || strings.Contains(string(b), "view-token-abcdef") || strings.Contains(string(b), "jev-secret-token-xyz") {
 		t.Fatalf("token value in GET: %s", b)
 	}
 	if strings.Contains(string(b), "postgres://") || strings.Contains(string(b), "user:pass") {

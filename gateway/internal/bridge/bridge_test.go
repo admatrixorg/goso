@@ -595,6 +595,8 @@ func TestKnowledgeSync(t *testing.T) {
 	t.Setenv("GOSO_MASTER_KEY", master)
 	t.Setenv("GOSO_LLM_API_KEY", "")
 	t.Setenv("GOSO_DEFAULT_API_KEY", "")
+	t.Setenv("GOSO_JEV_ENABLED", "")
+	t.Setenv("GOSO_JEV_API_KEY", "")
 	cat := newMem()
 	fake := &fakeLLM{text: "da ro"}
 	svc := &Service{Secret: "test-secret", Version: "test", Catalog: cat, Store: store.New(), Complete: fake.Complete}

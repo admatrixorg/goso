@@ -1,0 +1,15 @@
+{
+  "version": "2026-11-02.1",
+  "relevance": {
+    "instructions": {
+      "question": "Does the passage in `passage` contain information that would help answer `customer_message`? Judge only that passage.",
+      "customer_message": "{{message}}",
+      "passage_name": "{{name}}",
+      "passage": "{{content}}"
+    },
+    "criteria": {
+      "true": "The passage states a fact, name, or topic the customer message is asking about.",
+      "false": "The passage is about a different topic and does not help answer the customer message."
+    }
+  }
+}
