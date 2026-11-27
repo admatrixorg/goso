@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bảng việc</title>
+  <meta name="description" content="Bảng việc của repo: việc đang làm, chờ review, chờ duyệt, đã xong.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <p class="eyebrow">Bảng việc</p>
+        <h1 id="project-name"></h1>
+        <p class="meta-line" id="meta-line"></p>
+      </div>
+      <div class="metrics" aria-label="Chỉ số tổng quan">
+        <div class="metric">
+          <span class="label">PR đang mở</span>
+          <span class="value" id="m-open">0</span>
+        </div>
+        <div class="metric">
+          <span class="label">PR đã gộp 7 ngày</span>
+          <span class="value" id="m-prs">0</span>
+        </div>
+        <div class="metric">
+          <span class="label">Doing / WIP</span>
+          <span class="value" id="m-doing">0/4</span>
+        </div>
+        <div class="metric">
+          <span class="label">In Review / WIP</span>
+          <span class="value" id="m-review">0/4</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="filters">
+      <input class="search" id="search" type="search" placeholder="Tìm ID, tiêu đề, owner, SPEC…" aria-label="Tìm kiếm thẻ">
+      <select id="filter-owner" aria-label="Lọc theo người phụ trách">
+        <option value="">Mọi owner</option>
+      </select>
+      <select id="filter-stream" aria-label="Lọc theo stream">
+        <option value="">Mọi stream</option>
+      </select>
+      <button type="button" class="toggle" id="filter-bottleneck" aria-pressed="false">Chỉ xem điểm nghẽn</button>
+      <button type="button" class="theme-btn" id="theme-btn">Dark mode</button>
+      <span class="result-count" id="result-count"></span>
+    </div>
+
+    <main class="board" id="board"></main>
+    <div class="legend" id="legend" aria-label="Chú thích màu stream"></div>
+    <footer>
+      Nguồn dữ liệu duy nhất: <code>kanban/data.json</code>.
+      Cập nhật bảng: sửa tệp đó rồi chạy <code>python3 kanban/render.py</code>.
+    </footer>
+  </div>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
