@@ -6,9 +6,9 @@ window.KANBAN_DATA = {
     "repo_url": "https://github.com/admatrixorg/goso",
     "main_commit": "50a470a",
     "main_url": "https://github.com/admatrixorg/goso/commit/50a470a3",
-    "prs_merged": 50,
+    "prs_merged": 51,
     "prs_open": 4,
-    "updated_at": "2026-11-27 13:50 UTC+7",
+    "updated_at": "2026-11-27 14:06 UTC+7",
     "bottleneck_summary": "4 PR đứng ở review từ đầu tháng 11, chạm WIP 4; #38 xung đột với main.",
     "ledgers": {
       "Chuyển GoClaw → Goso": "[bảng admatrix-process](https://github.com/admatrixmdp/admatrix-process)",
@@ -157,6 +157,24 @@ window.KANBAN_DATA = {
       "group": null,
       "group_label": null,
       "next_step": "Xem lại giao diện rồi gộp hoặc đóng",
+      "note": ""
+    },
+    {
+      "id": "#140",
+      "title": "docs: bảng việc kanban và AGENTS.md gọn trỏ agent đọc bảng",
+      "column": "done",
+      "owner": "Lead",
+      "url": "https://github.com/admatrixorg/goso/pull/140",
+      "kind": "pr",
+      "stream": "tai-lieu",
+      "spec": "",
+      "head": "docs/bang-viec-kanban",
+      "mergeable": "",
+      "status": "gộp 27/11",
+      "bottleneck": false,
+      "group": "tuan",
+      "group_label": "Gộp trong 7 ngày",
+      "next_step": "",
       "note": ""
     },
     {

@@ -1,8 +1,8 @@
 <!-- Sinh bởi kanban/render.py từ kanban/data.json. Đừng sửa tay. -->
 # Kanban Board: goso
 
-- **Repo:** [admatrixorg/goso](https://github.com/admatrixorg/goso) · **Cập nhật:** `2026-11-27 13:50 UTC+7` · **`main`:** [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3)
-- **Tổng:** `50` PR gộp trong 7 ngày, `4` PR đang mở
+- **Repo:** [admatrixorg/goso](https://github.com/admatrixorg/goso) · **Cập nhật:** `2026-11-27 14:06 UTC+7` · **`main`:** [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3)
+- **Tổng:** `51` PR gộp trong 7 ngày, `4` PR đang mở
 - **Điểm nghẽn số 1:** 4 PR đứng ở review từ đầu tháng 11, chạm WIP 4; #38 xung đột với main.
 - **Nguồn dữ liệu:** [`data.json`](data.json) · **Bảng web:** [`web/index.html`](web/index.html)
 
@@ -22,8 +22,9 @@
 ## 4. ⛔ Blocked / Chờ duyệt (`0`)
 - _Không có thẻ._
 
-## 5. ✅ Done (`13`)
-**Gộp trong 7 ngày (`13`):**
+## 5. ✅ Done (`14`)
+**Gộp trong 7 ngày (`14`):**
+- **[#140](https://github.com/admatrixorg/goso/pull/140)** docs: bảng việc kanban và AGENTS.md gọn trỏ agent đọc bảng (`docs/bang-viec-kanban`, gộp 27/11) — *Owner: Lead*
 - **[#139](https://github.com/admatrixorg/goso/pull/139)** feat(auth): cho khoá API cấp gateway chỉ đọc xem người dùng của một tenant (`feat/system-key-read-users`, gộp 2026-11-26) — *Owner: admatrixmdp*
 - **[#137](https://github.com/admatrixorg/goso/pull/137)** fix(channels): list only the request tenant channels (`fix/channel-list-tenant-scope`, gộp 2026-11-26) — *Owner: admatrixmdp*
 - **[#138](https://github.com/admatrixorg/goso/pull/138)** ci: serialize test packages when a shared Postgres is configured (`ci/serialize-pg-tests`, gộp 2026-11-26) — *Owner: admatrixmdp*
@@ -47,6 +48,7 @@
 | [#24](https://github.com/admatrixorg/goso/pull/24) | In Review | admatrixmdp | Tính năng | đứng từ 12/11 |  | `cursor/jev-knowledge-filter-f553` | Có | Chạy test bridge rồi gộp hoặc đóng |
 | [#23](https://github.com/admatrixorg/goso/pull/23) | In Review | admatrixmdp | Sửa lỗi | đứng từ 02/11 |  | `fix/replycheck-customer-words` | Có | Chạy test replycheck rồi gộp hoặc đóng |
 | [#10](https://github.com/admatrixorg/goso/pull/10) | In Review | admatrixmdp | Tính năng | đứng từ 12/11 |  | `cursor/chat-project-sidebar-a600` | Có | Xem lại giao diện rồi gộp hoặc đóng |
+| [#140](https://github.com/admatrixorg/goso/pull/140) | Done | Lead | Tài liệu / spec | gộp 27/11 |  | `docs/bang-viec-kanban` |  |  |
 | [#139](https://github.com/admatrixorg/goso/pull/139) | Done | admatrixmdp | Tính năng | gộp 2026-11-26 |  | `feat/system-key-read-users` |  |  |
 | [#137](https://github.com/admatrixorg/goso/pull/137) | Done | admatrixmdp | Sửa lỗi | gộp 2026-11-26 |  | `fix/channel-list-tenant-scope` |  |  |
 | [#138](https://github.com/admatrixorg/goso/pull/138) | Done | admatrixmdp | Vận hành / CI | gộp 2026-11-26 |  | `ci/serialize-pg-tests` |  |  |

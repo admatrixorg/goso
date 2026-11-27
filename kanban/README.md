@@ -3,7 +3,7 @@
 
 Bảng Kanban của **admatrixorg/goso**, 5 cột từ **To Do → Done**. Agent đọc bảng này đầu phiên để biết repo đang có gì và tới đâu.
 
-- **Cập nhật:** `2026-11-27 13:50 UTC+7` · **`main`:** [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3)
+- **Cập nhật:** `2026-11-27 14:06 UTC+7` · **`main`:** [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3)
 - **Nguồn dữ liệu duy nhất:** [`kanban/data.json`](data.json)
 - **Bản web** (lọc owner/stream, điểm nghẽn, sáng/tối): mở [`kanban/web/index.html`](web/index.html) — mở thẳng tệp cũng chạy (dữ liệu nhúng trong `web/data.js`).
 - **Bản chi tiết theo cột:** [`kanban/chi-tiet.md`](chi-tiet.md)
@@ -14,7 +14,7 @@ Bảng Kanban của **admatrixorg/goso**, 5 cột từ **To Do → Done**. Agent
 
 | `main` | PR đã gộp 7 ngày | PR đang mở | Doing / WIP | Điểm nghẽn |
 | --- | --- | --- | --- | --- |
-| [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3) | `50` | `4` | `1/4` | **In Review 4/4** |
+| [`50a470a`](https://github.com/admatrixorg/goso/commit/50a470a3) | `51` | `4` | `1/4` | **In Review 4/4** |
 
 > **Điểm nghẽn số 1:** 4 PR đứng ở review từ đầu tháng 11, chạm WIP 4; #38 xung đột với main.
 
@@ -25,7 +25,7 @@ flowchart LR
   TODO["To Do\n0 thẻ"] --> DOING["Doing\n1 / WIP 4"]
   DOING --> REVIEW["In Review\n4 / WIP 4"]
   REVIEW --> BLOCKED["Blocked / Chờ duyệt\n0 thẻ"]
-  REVIEW --> DONE["Done\n13 thẻ"]
+  REVIEW --> DONE["Done\n14 thẻ"]
   BLOCKED --> DONE
   style REVIEW fill:#fff7ed,stroke:#d97706,stroke-width:2px
   style BLOCKED fill:#fff1f2,stroke:#e11d48
@@ -43,7 +43,7 @@ flowchart LR
 <th align="left" width="20%" bgcolor="#eff6ff">🚧 Doing<br><sub>1/4</sub></th>
 <th align="left" width="20%" bgcolor="#fff7ed">🔎 In Review<br><sub>4/4</sub></th>
 <th align="left" width="20%" bgcolor="#fff1f2">⛔ Blocked / Chờ duyệt<br><sub>0</sub></th>
-<th align="left" width="20%" bgcolor="#ecfdf5">✅ Done<br><sub>13</sub></th>
+<th align="left" width="20%" bgcolor="#ecfdf5">✅ Done<br><sub>14</sub></th>
 </tr>
 </thead>
 <tbody>
@@ -65,6 +65,7 @@ flowchart LR
 </td>
 <td valign="top" width="20%">
 <p><sub><strong>Gộp trong 7 ngày</strong></sub></p>
+<p><strong><a href="https://github.com/admatrixorg/goso/pull/140">#140</a></strong><br>docs: bảng việc kanban và AGENTS.md gọn trỏ agent đọc bảng<br><sub>Lead · gộp 27/11 · <code>docs/bang-viec-kanban</code></sub></p>
 <p><strong><a href="https://github.com/admatrixorg/goso/pull/139">#139</a></strong><br>feat(auth): cho khoá API cấp gateway chỉ đọc xem người dùng của một tenant<br><sub>admatrixmdp · gộp 2026-11-26 · <code>feat/system-key-read-users</code></sub></p>
 <p><strong><a href="https://github.com/admatrixorg/goso/pull/137">#137</a></strong><br>fix(channels): list only the request tenant channels<br><sub>admatrixmdp · gộp 2026-11-26 · <code>fix/channel-list-tenant-scope</code></sub></p>
 <p><strong><a href="https://github.com/admatrixorg/goso/pull/138">#138</a></strong><br>ci: serialize test packages when a shared Postgres is configured<br><sub>admatrixmdp · gộp 2026-11-26 · <code>ci/serialize-pg-tests</code></sub></p>
